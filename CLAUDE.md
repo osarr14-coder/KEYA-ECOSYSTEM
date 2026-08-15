@@ -66,6 +66,9 @@ backend/
     core/             # middleware RLS, viewsets/mixins réutilisables, utilitaires partagés
   config/             # settings.py, settings_test.py, urls.py, wsgi/asgi
   conftest.py         # fixtures de test partagées entre apps (ex : real_celery_worker)
+packages/             # monorepo npm (workspaces), frontend — indépendant du backend Django
+  design-system/       # AppShell, StatusBadge, tokens de densité (ticket 007)
+package.json           # racine du monorepo npm — workspaces: ["packages/*"]
 ```
 
 Un nouveau domaine métier (trust events, travaux/preuves, inspections...) = une
@@ -278,6 +281,53 @@ effacer le `MilestoneTemplate` Sénégal (ticket 002), pas seulement le `Country
 test `transactional_db` qui a besoin de `Milestone` doit appeler
 `ensure_senegal_milestone_template_seeded()`, pas seulement
 `get_or_create_senegal_country_pack()`.
+
+## Design system frontend (ticket 007)
+
+Premier code frontend du projet — monorepo npm workspaces à la racine (`package.json`
+racine, `workspaces: ["packages/*"]`), **distinct du backend Django** (`/backend` reste un
+projet Python autonome, aucune dépendance croisée). `packages/design-system` est le
+premier package ; les futures apps web des tickets 008+ (HOME, BUILD, FINANCE) vivront
+dans ce même monorepo, probablement sous un futur `apps/` (choix à confirmer quand ces
+tickets démarreront), et consommeront ce package via le protocole workspace plutôt que par
+copie de fichiers.
+
+Stack : React 18 + TypeScript, Vitest + Testing Library (pas de bundler de build pour le
+MVP — le package s'importe directement depuis `src/` via les workspaces, `tsc --noEmit`
+sert de vérification de types, pas de compilation). Tests dans `*.test.ts(x)` à côté du
+code qu'ils testent, comme le reste du projet (pytest) plutôt qu'un dossier `__tests__/`
+séparé.
+
+**`AppShell`** (`src/components/AppShell`) est un seul composant paramétré par une prop
+`density: 'dense' | 'confortable'` — jamais deux implémentations séparées pour BUILD/
+FINANCE (dense) et HOME (confortable). Le filtrage des modules professionnels (BUILD,
+FINANCE, NOTARY) est générique : chaque `AppModule` porte un `requiredRoles?: string[]`
+optionnel, un module sans cette prop est toujours visible, un module qui la porte n'est
+visible que si `userRoles` contient au moins un des rôles listés — ce package ne connaît
+pas le vocabulaire RBAC exact du backend (ticket 001), c'est à l'app consommatrice de
+fournir les bons codes de rôle à `userRoles`.
+
+**`StatusBadge`** (`src/components/StatusBadge`) associe à chacun des 5 niveaux
+`TrustLevel` (mêmes valeurs que `apps/trust/models.py::TrustLevel`, ticket 003 — même
+vocabulaire de doctrine, aucune dépendance de code vers `/backend`) une **forme SVG
+géométriquement distincte** (`shapes.tsx`), pas seulement une couleur différente — c'est ce
+qui rend le badge distinguable en niveaux de gris (testé en comparant les `d` de path
+réellement rendus, pas juste une étiquette `data-shape`). Le popover au clic attend des
+données au format du retour de `apps/trust/repository.py::get_current_status` (`level`,
+`source`, `actor`, `scope`, `createdAt`) — le composant ne calcule ni score ni pourcentage,
+il affiche l'événement tel quel, cohérent avec la doctrine Visible Trust.
+
+**Gouvernance "une seule source de vérité visuelle" (critère d'acceptation)** : un test
+(`src/governance.test.ts`) garde qu'aucun second composant de badge n'apparaît dans
+`packages/design-system/src/components`. Portée assumée : ce test ne peut scanner que ce
+package — si une future app (ticket 008+) redéfinit son propre badge ailleurs dans le
+monorepo, ce test ne le détectera pas. Cette section CLAUDE.md est le second filet : toute
+app frontend future doit importer `StatusBadge` depuis `@keya/design-system`, jamais en
+redéfinir un.
+
+**Tokens de densité** (`src/tokens/density.ts`) : `densityTokens.dense`/`densityTokens.confortable`
+sont exportés indépendamment d'`AppShell` précisément pour être réutilisés par un futur
+composant de liste/tableau (ticket 009, Control Tower BUILD) sans dupliquer les valeurs.
 
 ## Tickets
 
