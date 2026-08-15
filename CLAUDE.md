@@ -63,12 +63,15 @@ backend/
     evidence/         # Document (GED), WorkDeclaration, Evidence
     inspections/      # Inspection, Reserve (machine à état), ReserveCorrection
     tasks/            # Task (inbox transversale, app label 'inbox_tasks')
+    home/             # agrégation lecture seule pour HOME client, aucun modèle propre (ticket 008)
     core/             # middleware RLS, viewsets/mixins réutilisables, utilitaires partagés
   config/             # settings.py, settings_test.py, urls.py, wsgi/asgi
   conftest.py         # fixtures de test partagées entre apps (ex : real_celery_worker)
 packages/             # monorepo npm (workspaces), frontend — indépendant du backend Django
   design-system/       # AppShell, StatusBadge, tokens de densité (ticket 007)
-package.json           # racine du monorepo npm — workspaces: ["packages/*"]
+apps/                  # apps web du monorepo npm (ticket 008+), une par surface produit
+  home/                 # app HOME (client), package @keya/home (ticket 008)
+package.json           # racine du monorepo npm — workspaces: ["packages/*", "apps/*"]
 ```
 
 Un nouveau domaine métier (trust events, travaux/preuves, inspections...) = une
@@ -335,6 +338,61 @@ BUILD ou HOME sans revue manuelle. Un nom de composant `*Badge*` légitimement d
 **Tokens de densité** (`src/tokens/density.ts`) : `densityTokens.dense`/`densityTokens.confortable`
 sont exportés indépendamment d'`AppShell` précisément pour être réutilisés par un futur
 composant de liste/tableau (ticket 009, Control Tower BUILD) sans dupliquer les valeurs.
+
+## HOME client (ticket 008)
+
+Premier app frontend du monorepo — `apps/home` (package `@keya/home`), à côté de
+`packages/design-system` (ticket 007). Décision prise à ce ticket, faute de précédent :
+les futures apps web (BUILD, FINANCE...) vivront sous `apps/<nom>`, workspace npm React +
+Vite + Vitest, consommant `@keya/design-system` via le protocole workspace — jamais de
+copie de fichiers. `AppShell` (variante `confortable`) et `StatusBadge` sont réutilisés
+tels quels (import direct), rien n'est redéfini en parallèle.
+
+**Deux ajouts au schéma `apps/programs`, nécessaires à ce ticket** (Asset/Lot étaient
+« finis » au ticket 002, mais n'avaient pas besoin de ces données avant) :
+- `Asset.location` (texte libre) : absent du ticket 002, requis par le hero du bien.
+- `LotClient` (`organization`/`lot`/`client`, RLS standard) : rattache un utilisateur
+  (rôle `client`) au(x) `Lot` qu'il a acquis. C'est la donnée qui fonde le critère de
+  sécurité central du ticket — sans elle, impossible de distinguer « les lots du client »
+  de « tous les lots de son organisation ». Aucun endpoint d'écriture pour ce ticket
+  (explicitement lecture seule) : une assignation se crée par l'ORM, pas par l'API — une
+  UI/API d'assignation viendrait d'un futur ticket, hors scope ici.
+
+**Tout calcul vit dans `apps/home/services.py`, jamais dans le frontend** (critère
+d'acceptation central) :
+- `Milestone` ne porte jamais directement de `TrustEvent` dans ce projet (voir sections
+  Append-only et GED ci-dessus : les événements portent sur `WorkDeclaration`, `Evidence`,
+  `Inspection`, `Reserve`) — le statut d'un jalon se dérive donc du dernier événement
+  parmi TOUTE la chaîne d'objets qui s'y rattachent transitivement
+  (`compute_milestone_status`).
+- La progression (`progress_percentage`) est une moyenne pondérée par palier
+  (`LEVEL_PROGRESS_FRACTION` : declare=20/documente=40/controle=60/verifie=80/valide=100,
+  aucun jalon=0), pas un simple compte de jalons `valide` — celui-ci resterait proche de
+  0% pour la plupart des lots, `Inspection` ne posant `TrustLevel.VALIDE` que via la levée
+  d'une réserve (ticket 005), jamais sur un jalon inspecté `conforme` sans réserve
+  (plafonné à `verifie`). Formule assumée et documentée dans `services.py`, pas une
+  doctrine préexistante.
+- Le « problème principal » (V3.0 §26.1) est la réserve ouverte la plus récente dont le
+  statut dérivé (`apps.inspections.services.get_reserve_status`) n'est pas terminal
+  (`get_open_reserve`) — absente du payload si aucune réserve n'est ouverte.
+- Le frontend (`apps/home/src`) ne fait strictement AUCUN calcul : `toTrustEventData`
+  (`src/api/types.ts`) ne fait que renommer des clés snake_case → camelCase pour
+  `StatusBadge`, jamais dériver une valeur.
+
+**Sécurité — le client ne voit que SES lots, jamais tous ceux de son organisation** :
+`apps.home.views._ClientLotScopedView.get_lot_or_404` résout le `Lot` UNIQUEMENT via une
+`LotClient` explicite pour l'utilisateur courant (même schéma que
+`apps.tasks.views.MyTasksView`, ticket 006 — RLS reste un filet de sécurité en plus,
+jamais le seul filtre). Un lot qui existe mais n'est pas assigné à ce client renvoie 404,
+même dans la MÊME organisation que ses propres lots — testé par tentative explicite
+(`apps/home/tests.py::TestClientNeverSeesAnotherLotsData`), pas par l'absence de lien
+dans l'UI.
+
+`GET /api/me/tasks/` (ticket 006) est réutilisé tel quel pour « Mes actions » — aucune
+`Task` n'est aujourd'hui générée pour un rôle `client` (seul `reserve_opened` → constructeur
+existe), donc cette vue reste vide en pratique tant qu'aucun futur ticket n'ajoute un
+générateur de libellé ciblant le client. Vérifié manuellement dans un vrai navigateur
+contre le backend réel (voir rapport de fin de ticket) — comportement attendu, pas un bug.
 
 ## Tickets
 

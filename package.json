@@ -3,7 +3,8 @@
   "private": true,
   "description": "Monorepo frontend KEYA ECOSYSTEM — packages partagés (design-system) et, à terme, les apps web (HOME, BUILD, FINANCE...) des tickets 008+. Backend Django indépendant, voir /backend.",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "engines": {
     "node": ">=18"

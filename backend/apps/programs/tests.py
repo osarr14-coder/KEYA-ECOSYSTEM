@@ -1,12 +1,15 @@
 from pathlib import Path
 
 import pytest
+from django.db import connection
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.organizations.models import CountryPack
+from apps.accounts.models import User
+from apps.core.rls import set_rls_context
+from apps.organizations.models import CountryPack, Organization
 
-from .models import Asset, Lot, MilestoneTemplate, MilestoneTemplateStep, Program
+from .models import Asset, Lot, LotClient, MilestoneTemplate, MilestoneTemplateStep, Program
 
 PASSWORD = 'strongpass123'
 
@@ -202,3 +205,55 @@ class TestCrudIsOrganizationScoped:
     def test_lot_of_another_organization_is_not_visible(self):
         client_b, _program_a, _asset_a, lot_a = self._setup_org_a_hierarchy_then_switch_to_org_b()
         self._assert_not_visible(client_b, 'lot-detail', 'lot-list', lot_a['id'])
+
+
+def _raw_sql(sql, params):
+    """Même utilitaire que `apps/organizations/tests.py::_raw_sql` (dupliqué
+    volontairement, pas importé — chaque fichier de test RLS de ce projet
+    reste autonome, voir CLAUDE.md) : SQL brut sur la connexion Django elle-
+    même, hors ORM, pour exercer la policy RLS directement.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(sql, params)
+        try:
+            return cursor.fetchall()
+        except Exception:
+            return None
+
+
+@pytest.mark.django_db
+class TestLotClientRowLevelSecurity:
+    """Ticket 008 — `programs_lot_client` porte l'assignation client → lot
+    qui fonde le critère de sécurité central du ticket (« le client ne voit
+    aucune donnée d'un autre lot que le ou les siens »). Comme toute nouvelle
+    table de ce projet (CLAUDE.md, section RLS multi-tenant), sa policy est
+    prouvée en SQL brut, pas seulement via l'API — voir
+    apps/organizations/tests.py pour le test de référence.
+    """
+
+    def test_select_hides_lot_client_of_another_organization_despite_forged_context(self):
+        senegal = CountryPack.objects.get(code='SN')
+        org_a = Organization.objects.create(name='Org LotClient A', country_pack=senegal)
+        org_b = Organization.objects.create(name='Org LotClient B', country_pack=senegal)
+
+        client_user = User.objects.create_user(email='lotclient-rls@example.com', password='pass12345')
+        outsider = User.objects.create_user(email='lotclient-outsider@example.com', password='pass12345')
+
+        set_rls_context(user_id=client_user.id, organization_id=org_a.id)
+        program = Program.objects.create(organization=org_a, name='Programme A')
+        asset = Asset.objects.create(organization=org_a, program=program, name='Bien A')
+        lot = Lot.objects.create(organization=org_a, asset=asset, name='Lot A')
+        assignment = LotClient.objects.create(organization=org_a, lot=lot, client=client_user)
+
+        # Contexte forgé vers l'organisation B, dont ni le client ni
+        # l'outsider ne sont membres — même schéma que le test de référence
+        # du ticket 001 (apps/organizations/tests.py).
+        set_rls_context(user_id=outsider.id, organization_id=org_b.id)
+        rows = _raw_sql(
+            'SELECT id FROM programs_lot_client WHERE id = %s', [str(assignment.id)],
+        )
+
+        assert rows == [], (
+            'La policy RLS a laissé passer une lecture inter-organisation de '
+            'programs_lot_client malgré un contexte forgé.'
+        )
