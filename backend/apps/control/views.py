@@ -121,6 +121,13 @@ class SyncInspectionView(APIView):
             current_event = outcome.current_event
             return Response({
                 'status': 'conflict',
+                # Repris tel quel, jamais régénéré : c'est précisément dans
+                # ce cas — rien n'a été écrit en base, voir SyncConflict —
+                # que le correlation ID est le SEUL fil qui relie encore la
+                # tentative rejetée à ce qu'un inspecteur a réellement saisi
+                # sur le terrain. Symétrique avec la réponse `applied`, qui
+                # le porte déjà via `InspectionSerializer.client_correlation_id`.
+                'correlation_id': str(data['correlation_id']),
                 'current_event': {
                     'id': str(current_event.id) if current_event else None,
                     'level': current_event.level if current_event else None,

@@ -1,4 +1,5 @@
 import io
+import logging
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -232,6 +233,80 @@ class TestSyncInspectionConflict:
             trust_repository.list_for_subject(reserve).order_by('created_at').values_list('source', flat=True),
         )
         assert events == ['ouverte', 'nouvelle_inspection', 'levee']
+
+
+@pytest.mark.django_db
+class TestSyncInspectionConflictObservability:
+    """Un item rejeté en conflit n'écrit RIEN en base (voir SyncConflict) —
+    le correlation ID doit donc rester traçable AILLEURS que dans la table
+    `Inspection` : la réponse HTTP elle-même, et les logs serveur. C'est
+    précisément dans ce cas (rien à relire en base) qu'on en a le plus
+    besoin pour reconstituer, après coup, ce qui s'est passé sur le terrain.
+    """
+
+    def test_correlation_id_is_traceable_in_the_conflict_response_and_in_server_logs(self, caplog):
+        _constructeur_client, constructeur_organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'sync-conflict-observability-constructeur@example.com', 'Org Sync Conflict Observability Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, _i_user = _setup_inspecteur(
+            'sync-conflict-observability-inspecteur@example.com', 'Org Sync Conflict Observability Inspecteur',
+        )
+
+        first_payload = {
+            'organization': str(constructeur_organization.id),
+            'work_declaration': str(declaration.id),
+            'outcome': InspectionOutcome.CONFORME,
+            'correlation_id': '77777777-7777-7777-7777-777777777771',
+            'known_latest_event_id': None,
+        }
+        second_payload = {
+            'organization': str(constructeur_organization.id),
+            'work_declaration': str(declaration.id),
+            'outcome': InspectionOutcome.AVEC_RESERVE,
+            'correlation_id': '77777777-7777-7777-7777-777777777772',
+            'known_latest_event_id': None,
+        }
+
+        # Les DEUX requêtes sous surveillance des logs — l'historique complet
+        # nécessaire pour reconstituer l'incident inclut aussi bien l'item
+        # qui a réussi que celui rejeté juste après, pas seulement ce
+        # dernier isolément.
+        with caplog.at_level(logging.INFO, logger='apps.control.services'):
+            first_response = inspecteur_client.post(
+                reverse('control-sync-inspection'), first_payload, format='json',
+            )
+            assert first_response.status_code == 201, first_response.data
+
+            second_response = inspecteur_client.post(
+                reverse('control-sync-inspection'), second_payload, format='json',
+            )
+            assert second_response.status_code == 409, second_response.data
+
+        # 1. Le correlation ID de l'item REJETÉ est présent dans la réponse
+        # elle-même — rien n'a été écrit en base pour cet item (voir
+        # TestSyncInspectionConflict ci-dessus), la réponse HTTP est donc son
+        # seul point d'ancrage immédiat côté client.
+        assert second_response.data['correlation_id'] == second_payload['correlation_id']
+
+        # 2. Les DEUX correlation ID (celui qui a réussi ET celui rejeté)
+        # apparaissent dans les logs serveur — reconstituer l'incident exige
+        # de voir les deux tentatives, pas seulement la rejetée isolément.
+        assert first_payload['correlation_id'] in caplog.text
+        assert second_payload['correlation_id'] in caplog.text
+
+        # 3. Le log de conflit lui-même porte bien le correlation ID de
+        # l'item REJETÉ (pas seulement présent quelque part dans le texte
+        # combiné — attaché au bon message, au bon niveau).
+        conflict_records = [
+            record for record in caplog.records
+            if record.getMessage().startswith('control_sync_inspection_conflict')
+        ]
+        assert len(conflict_records) == 1
+        assert conflict_records[0].levelname == 'WARNING'
+        assert second_payload['correlation_id'] in conflict_records[0].getMessage()
+        # ...et n'est jamais mélangé avec celui du premier envoi (qui, lui,
+        # n'a jamais généré de log de conflit).
+        assert first_payload['correlation_id'] not in conflict_records[0].getMessage()
 
 
 @pytest.mark.django_db

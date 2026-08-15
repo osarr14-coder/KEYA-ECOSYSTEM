@@ -621,6 +621,18 @@ défaut neutre pour que TOUT appelant antérieur (`InspectionViewSet.create`, ti
   (`apps/control/services.py`, `logger.info`/`warning` avec `correlation_id=...`) et exposé
   en lecture par `InspectionSerializer`.
 
+**Traçable même quand RIEN n'est écrit en base (cas `conflict`)** : un item rejeté ne
+produit aucune ligne `Inspection` (voir `SyncConflict` ci-dessus) — le correlation ID n'a
+donc, dans ce cas précis, que deux points d'ancrage : la réponse HTTP elle-même
+(`SyncInspectionView.post` renvoie `correlation_id` dans le corps du 409, symétrique avec
+le 201 qui le porte via `InspectionSerializer`) et les logs serveur
+(`control_sync_inspection_conflict correlation_id=...`, niveau `WARNING`). Les deux sont
+testés explicitement, y compris que le log de conflit porte le correlation ID du bon item
+et jamais celui d'un envoi voisin qui a réussi
+(`apps/control/tests.py::TestSyncInspectionConflictObservability`) — c'est précisément dans
+ce cas (rien à relire en base) qu'on en a le plus besoin pour reconstituer, après coup, ce
+qui s'est passé sur le terrain.
+
 **Piège de conception découvert en écrivant les tests (`apps/control/tests.py`) — la
 cible du conflit n'est PAS le `WorkDeclaration`/`Evidence` lui-même** : son propre
 `TrustEvent` (`declare`/`evidence_upload`) existe dès sa création par le CONSTRUCTEUR, sans
