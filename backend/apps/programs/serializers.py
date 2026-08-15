@@ -35,8 +35,11 @@ class AssetSerializer(serializers.ModelSerializer):
 class LotSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lot
-        fields = ['id', 'name', 'asset', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'name', 'asset', 'assigned_organization', 'created_at']
+        # `assigned_organization` (ticket 009, point d'ancrage PRO minimal)
+        # se pose exclusivement via `LotViewSet.assign_organization`, jamais
+        # par un PATCH générique ici — un seul chemin de mutation, documenté.
+        read_only_fields = ['id', 'assigned_organization', 'created_at']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

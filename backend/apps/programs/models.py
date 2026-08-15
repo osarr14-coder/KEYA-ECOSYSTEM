@@ -59,6 +59,23 @@ class Lot(models.Model):
     )
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='lots')
     name = models.CharField(max_length=255)
+    # Ajouté au ticket 009 (BUILD Control Tower), sur demande explicite de
+    # l'utilisateur : POINT D'ANCRAGE MINIMAL pour un futur module PRO
+    # (Professional Capability Passport, complément V4.0 §6.2), PAS son
+    # implémentation complète — aucun flux de candidature/opportunité ici,
+    # juste ce champ + un endpoint qui le pose. Un futur ticket PRO doit
+    # ÉTENDRE ce champ, pas le redéfinir ni en créer un second. Distinct de
+    # `organization` (l'organisation du programme/sponsor, qui scope la RLS
+    # de toute la hiérarchie) : `assigned_organization` est l'entreprise
+    # constructrice responsable de l'EXÉCUTION de ce lot — peut rester
+    # identique à `organization` (auto-exécution, seul cas déjà couvert par
+    # les fixtures de tickets précédents) ou, à terme, une organisation
+    # tierce. `null=True` : « capacité manquante » (ticket 009, vue
+    # Exceptions) = aucune organisation constructrice affectée.
+    assigned_organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name='assigned_lots',
+        null=True, blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -12,4 +12,5 @@ urlpatterns = [
     path('api/', include('apps.inspections.urls')),
     path('api/', include('apps.tasks.urls')),
     path('api/', include('apps.home.urls')),
+    path('api/', include('apps.build.urls')),
 ]

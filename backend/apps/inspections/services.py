@@ -186,3 +186,18 @@ def get_reserve_status(reserve):
     """
     current_event = trust_repository.get_current_status(reserve)
     return current_event.source if current_event else None
+
+
+# Un statut dérivé (voir get_reserve_status) parmi ces sources signifie que
+# la réserve n'est pas encore résolue — `levee`/`rejetee` sont les deux
+# seules sorties terminales (voir _advance_existing_reserve ci-dessus).
+# Propriété du domaine Reserve lui-même : centralisé ici plutôt que dans
+# apps.home ou apps.build pour que les deux (et tout futur consommateur)
+# partagent exactement la même définition, jamais deux copies qui pourraient
+# diverger. Déplacé depuis apps/home/services.py au ticket 009, quand un
+# second consommateur (apps/build) en a eu besoin.
+OPEN_RESERVE_STATUSES = {'ouverte', 'correction_proposee', 'nouvelle_inspection'}
+
+
+def is_reserve_open(reserve):
+    return get_reserve_status(reserve) in OPEN_RESERVE_STATUSES

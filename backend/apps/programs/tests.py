@@ -257,3 +257,82 @@ class TestLotClientRowLevelSecurity:
             'La policy RLS a laissé passer une lecture inter-organisation de '
             'programs_lot_client malgré un contexte forgé.'
         )
+
+
+@pytest.mark.django_db
+class TestLotAssignedOrganization:
+    """Ticket 009 (BUILD Control Tower) — `Lot.assigned_organization` est un
+    point d'ancrage minimal pour un futur module PRO (voir docstring du
+    modèle) : ce test couvre uniquement le mécanisme (le champ se pose, un
+    lot sans affectation reste `null`), pas un quelconque flux de
+    candidature.
+    """
+
+    def test_lot_has_no_assigned_organization_by_default(self):
+        client = _register_and_authenticate('assign-default@example.com', 'Org Assign Default')
+        program = _create_program(client)
+        asset = _create_asset(client, program['id'])
+        lot = _create_lot(client, asset['id'])
+
+        assert lot['assigned_organization'] is None
+
+    def test_assign_organization_sets_the_field(self):
+        client = _register_and_authenticate('assign-sets@example.com', 'Org Assign Sets')
+        program = _create_program(client)
+        asset = _create_asset(client, program['id'])
+        lot = _create_lot(client, asset['id'])
+
+        senegal = CountryPack.objects.get(code='SN')
+        constructeur_org = Organization.objects.create(name='Org Constructeur Cible', country_pack=senegal)
+
+        response = client.post(
+            reverse('lot-assign-organization', args=[lot['id']]),
+            {'organization_id': str(constructeur_org.id)}, format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['assigned_organization'] == constructeur_org.id
+
+        # Persisté, pas seulement renvoyé dans la réponse.
+        refreshed = client.get(reverse('lot-detail', args=[lot['id']])).data
+        assert refreshed['assigned_organization'] == constructeur_org.id
+
+    def test_assign_organization_requires_organization_id(self):
+        client = _register_and_authenticate('assign-requires@example.com', 'Org Assign Requires')
+        program = _create_program(client)
+        asset = _create_asset(client, program['id'])
+        lot = _create_lot(client, asset['id'])
+
+        response = client.post(reverse('lot-assign-organization', args=[lot['id']]), {}, format='json')
+
+        assert response.status_code == 400
+
+    def test_assign_organization_rejects_an_unknown_organization_id(self):
+        client = _register_and_authenticate('assign-unknown@example.com', 'Org Assign Unknown')
+        program = _create_program(client)
+        asset = _create_asset(client, program['id'])
+        lot = _create_lot(client, asset['id'])
+
+        response = client.post(
+            reverse('lot-assign-organization', args=[lot['id']]),
+            {'organization_id': '00000000-0000-0000-0000-000000000000'}, format='json',
+        )
+
+        assert response.status_code == 400
+
+    def test_assign_organization_on_a_lot_of_another_organization_returns_404(self):
+        client_a = _register_and_authenticate('assign-other-a@example.com', 'Org Assign Other A')
+        program = _create_program(client_a)
+        asset = _create_asset(client_a, program['id'])
+        lot = _create_lot(client_a, asset['id'])
+
+        client_b = _register_and_authenticate('assign-other-b@example.com', 'Org Assign Other B')
+        senegal = CountryPack.objects.get(code='SN')
+        target_org = Organization.objects.create(name='Org Assign Other Target', country_pack=senegal)
+
+        response = client_b.post(
+            reverse('lot-assign-organization', args=[lot['id']]),
+            {'organization_id': str(target_org.id)}, format='json',
+        )
+
+        assert response.status_code == 404

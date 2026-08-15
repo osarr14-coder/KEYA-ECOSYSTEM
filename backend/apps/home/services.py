@@ -18,34 +18,11 @@ from django.db.models import Q
 
 from apps.evidence.models import Evidence, WorkDeclaration
 from apps.inspections.models import Inspection, Reserve
-from apps.inspections.services import get_reserve_status
+from apps.inspections.services import OPEN_RESERVE_STATUSES, get_reserve_status
 from apps.programs.models import Lot, LotClient
 from apps.trust import repository as trust_repository
-from apps.trust.models import TrustEvent, TrustLevel
-
-# Conversion documentée d'un TrustLevel en fraction de progression — décision
-# de CE ticket (008), pas une doctrine préexistante : le ticket demande une
-# « progression dérivée des Milestone/TrustEvent » sans donner de formule.
-# Un simple compte de jalons `valide` resterait proche de 0% pour la plupart
-# des lots : `Inspection` ne pose `TrustLevel.VALIDE` que via la levée d'une
-# réserve (`apps.inspections.services._advance_existing_reserve`), jamais sur
-# un jalon inspecté `conforme` sans réserve (qui plafonne à `verifie`). Une
-# moyenne pondérée par palier reflète donc mieux l'avancement réel perçu par
-# le client que ce comptage strict. Voir CLAUDE.md, section HOME (ticket 008).
-LEVEL_PROGRESS_FRACTION = {
-    None: 0,
-    TrustLevel.DECLARE: 20,
-    TrustLevel.DOCUMENTE: 40,
-    TrustLevel.CONTROLE: 60,
-    TrustLevel.VERIFIE: 80,
-    TrustLevel.VALIDE: 100,
-}
-
-# Une réserve dont le dernier événement porte une de ces sources n'est pas
-# encore résolue — c'est le « problème principal » d'un lot, si elle existe.
-# `levee`/`rejetee` sont les deux seules sorties terminales (voir
-# apps/inspections/services.py::_advance_existing_reserve).
-OPEN_RESERVE_STATUSES = {'ouverte', 'correction_proposee', 'nouvelle_inspection'}
+from apps.trust.models import TrustEvent
+from apps.trust.services import LEVEL_PROGRESS_FRACTION
 
 
 def get_client_lots(user):

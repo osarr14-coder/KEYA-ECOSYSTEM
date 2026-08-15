@@ -64,13 +64,16 @@ backend/
     inspections/      # Inspection, Reserve (machine à état), ReserveCorrection
     tasks/            # Task (inbox transversale, app label 'inbox_tasks')
     home/             # agrégation lecture seule pour HOME client, aucun modèle propre (ticket 008)
+    build/            # agrégation Exceptions/Tous les lots pour BUILD, aucun modèle propre (ticket 009)
     core/             # middleware RLS, viewsets/mixins réutilisables, utilitaires partagés
   config/             # settings.py, settings_test.py, urls.py, wsgi/asgi
   conftest.py         # fixtures de test partagées entre apps (ex : real_celery_worker)
+  pytest.ini          # norecursedirs explicite — ne JAMAIS retirer, voir section BUILD (ticket 009)
 packages/             # monorepo npm (workspaces), frontend — indépendant du backend Django
-  design-system/       # AppShell, StatusBadge, tokens de densité (ticket 007)
+  design-system/       # AppShell, StatusBadge, AlertBanner, tokens (densité, couleurs) (tickets 007-008)
 apps/                  # apps web du monorepo npm (ticket 008+), une par surface produit
   home/                 # app HOME (client), package @keya/home (ticket 008)
+  build/                 # app BUILD (constructeur/sponsor), package @keya/build (ticket 009)
 package.json           # racine du monorepo npm — workspaces: ["packages/*", "apps/*"]
 ```
 
@@ -430,6 +433,66 @@ après implémentation (pas seulement via les tests automatisés) : capture DOM 
 les couleurs `semanticColors.alert` réellement appliquées (pas seulement présentes dans le
 code), et le résumé de tâche prioritaire réellement peuplé + navigable vers l'onglet
 complet.
+
+## BUILD Production Control Tower (ticket 009)
+
+Troisième app frontend, `apps/build` (package `@keya/build`) — même schéma que `apps/home`
+(ticket 008) : `AppShell` en variante `dense`, `StatusBadge` et `AlertBanner` réutilisés
+tels quels. Deux vues : **Exceptions** (par défaut, jamais un tableau de KPI — aucun champ
+agrégé n'existe même dans le payload de cet endpoint, littéralement impossible d'y « faire
+remonter des KPI par défaut ») et **Tous les lots** (tri/filtre/densité/pagination, écran
+d'usage intensif, pas de version simplifiée).
+
+**« Capacités manquantes » — définition explicitement choisie par l'utilisateur**, à
+distinguer d'autres lectures plausibles (jalons manquants, disponibilité d'inspecteur) :
+un `Lot` sans organisation constructrice affectée. Nouveau champ
+`Lot.assigned_organization` (nullable, `apps/programs/models.py`) — **point d'ancrage
+MINIMAL pour un futur module PRO (Professional Capability Passport, complément V4.0 §6.2),
+PAS son implémentation complète** : aucun flux de candidature/opportunité, juste ce champ +
+`LotViewSet.assign_organization` (`POST /api/lots/{id}/assign_organization/`) qui le pose.
+Un futur ticket PRO doit ÉTENDRE ce champ et cet endpoint, jamais les redéfinir ni en créer
+un second.
+
+**Les 5 catégories d'exceptions sont calculées en un nombre de requêtes SQL BORNÉ,
+indépendant du nombre de lots de l'organisation** (`apps/build/services.py`) — critère
+d'acceptation central du ticket (« reste utilisable au-delà de 200 lignes ») : des requêtes
+`__in=` groupées sur l'ensemble des lots de l'organisation, jamais une requête par lot dans
+une boucle Python. Preuve par `CaptureQueriesContext` comparant le nombre de requêtes entre
+~6 lots et 201 lots (`apps/build/tests.py::TestAllLotsScalesToTwoHundredLots`) — un temps en
+millisecondes aurait été flaky (dépend de la machine), le nombre de requêtes ne l'est pas.
+« Lots en retard » est une heuristique ASSUMÉE (comme la formule de progression du
+ticket 008) : rien ne modélise un échéancier planifié dans ce projet — un lot est « en
+retard » s'il n'a pas atteint son dernier jalon ET qu'aucune nouvelle déclaration de
+travaux n'y a été faite depuis plus de `STALE_LOT_THRESHOLD_DAYS` (14 jours).
+
+**Deux constantes déplacées vers leur app domaine propriétaire, au lieu d'être dupliquées**,
+quand BUILD (second consommateur) en a eu besoin : `OPEN_RESERVE_STATUSES` (ticket 008,
+`apps/home/services.py`) a migré vers `apps.inspections.services` (le domaine `Reserve`
+lui-même) ; `LEVEL_PROGRESS_FRACTION` (ticket 008) a migré vers un nouveau
+`apps/trust/services.py` (le domaine `TrustLevel`). HOME et BUILD importent désormais tous
+les deux depuis ces emplacements uniques — deux copies auraient pu diverger silencieusement
+et afficher un pourcentage différent pour le même lot selon l'écran.
+
+**Sécurité — rappel critique explicite du ticket** : aucune action de BUILD ne permet à un
+rôle constructeur de modifier directement le statut d'une réserve (garde déjà posée au
+ticket 005). L'action réelle sur une réserve ouverte est « Documenter une correction »
+(`POST /api/reserve-corrections/`, crée un `TrustEvent` `correction_proposee` — ne résout
+JAMAIS la réserve elle-même, seule une réinspection peut le faire). Vérifié à trois niveaux
+indépendants : le backend (`apps/build/tests.py::TestConstructeurCannotChangeReserveStatusFromBuild`,
+tentative explicite sur `InspectionViewSet.create` et `ReserveViewSet` en écriture), le
+frontend (`ExceptionsView.test.tsx`, scan de TOUS les boutons rendus contre une liste de
+formulations interdites), et manuellement dans un vrai navigateur (scan JS de
+`document.querySelectorAll('button')` sur les deux vues, aucun résultat).
+
+**Piège pytest découvert en écrivant ce ticket** : `norecursedirs` par défaut de pytest
+inclut `build` (pensé pour des répertoires de sortie de compilation) — `apps/build/tests.py`
+était donc **silencieusement exclu** de la suite complète (`pytest` sans argument), alors que
+`pytest apps/build` seul le trouvait (un chemin explicite contourne `norecursedirs`). Détecté
+en comparant le nombre de tests collectés par la suite complète à la somme des suites par
+app — jamais supposé qu'un compte qui « semble stable » entre deux runs est forcément
+complet. Corrigé dans `pytest.ini` (`norecursedirs` explicite, sans `build`). À surveiller
+si un futur module ajoute un dossier nommé `dist`, `venv`, ou toute autre valeur de la
+liste par défaut de pytest.
 
 ## Tickets
 
