@@ -42,13 +42,29 @@ backend/
   apps/
     accounts/        # User custom (email comme identifiant), auth JWT
     organizations/   # Organization, CountryPack, Membership, Role
-    core/             # middleware RLS, exceptions, utilitaires partagés
+    programs/         # Program, Asset, Lot, MilestoneTemplate(+Step), Milestone
+    core/             # middleware RLS, viewsets/mixins réutilisables, utilitaires partagés
   config/             # settings.py, settings_test.py, urls.py, wsgi/asgi
 ```
 
-Un nouveau domaine métier (programme/bien/lot, trust events, travaux/preuves,
-inspections...) = une nouvelle app Django sous `apps/`, jamais un fourre-tout dans
-`core`.
+Un nouveau domaine métier (trust events, travaux/preuves, inspections...) = une
+nouvelle app Django sous `apps/`, jamais un fourre-tout dans `core`. `apps/core` ne
+contient que ce qui est réellement transverse (middleware RLS, `OrganizationScopedMixin`
+dans `viewsets.py`) — pas de logique propre à un domaine métier.
+
+Pattern des ViewSets CRUD scopés par organisation (voir `apps/programs/views.py`) :
+hériter de `apps.core.viewsets.OrganizationScopedMixin`, qui filtre le queryset par
+`request.organization` et pose `organization` automatiquement à la création — la RLS
+reste le rempart de dernier recours, ce mixin est un filtre applicatif en plus, pas à sa
+place. Toute table enfant qui dénormalise `organization_id` depuis son parent (ex :
+`Asset.organization` recopié depuis `Asset.program.organization`) doit aussi scoper le
+queryset du champ FK parent dans le serializer (`self.fields['program'].queryset = ...`)
+pour qu'un client ne puisse pas rattacher sa ligne à un parent d'une autre organisation
+en forgeant son id.
+
+Logique métier qui dépasse un simple CRUD (ex : instanciation des `Milestone` d'un `Lot`
+à partir du `MilestoneTemplate` actif) vit dans un `services.py` par app, pas dans les
+vues ni les serializers.
 
 ## RLS multi-tenant — mécanique
 
@@ -62,10 +78,18 @@ inspections...) = une nouvelle app Django sous `apps/`, jamais un fourre-tout da
 3. RLS est activé avec `FORCE ROW LEVEL SECURITY` pour qu'elle s'applique aussi au
    propriétaire de la table (le rôle applicatif Django ne doit jamais être superuser en
    test d'intégration RLS, sinon la policy est silencieusement ignorée).
-4. Tout test de non-contournement RLS doit passer par une connexion DB directe
-   (psycopg2, hors ORM Django) pour prouver que la policy bloque même en contournant la
-   couche applicative — un test qui ne passe que par l'API Django prouve la vue, pas la
-   policy.
+4. Tout test de non-contournement RLS doit exécuter du SQL brut (hors ORM Django) pour
+   prouver que la policy bloque même en contournant la couche applicative — un test qui
+   ne passe que par l'API Django prouve la vue, pas la policy. **Piège vécu au ticket
+   001** : une connexion psycopg2 vraiment séparée ne voit pas les lignes créées par une
+   fixture de test qui utilise le fixture pytest-django `db` (transaction ouverte puis
+   rollback, jamais committée — invisible depuis une autre session). Deux options
+   valables selon le cas : soit exécuter le SQL brut sur `django.db.connection.cursor()`
+   (même session que l'ORM, donc voit les données non committées) en fixant le contexte
+   RLS explicitement à chaque test avec `apps.core.rls.set_rls_context(...)`, soit passer
+   la fixture sur `transactional_db` pour de vrais commits si une connexion séparée est
+   réellement nécessaire. Voir `apps/organizations/tests.py` pour l'implémentation de
+   référence.
 
 ## Tickets
 

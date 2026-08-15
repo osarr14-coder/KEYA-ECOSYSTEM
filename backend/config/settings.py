@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'apps.accounts',
     'apps.organizations',
+    'apps.programs',
     'apps.core',
 ]
 
