@@ -1,0 +1,57 @@
+import { useEffect, useState } from 'react';
+
+import { AlertBanner } from '@keya/design-system';
+
+import { InspectionFormView } from './views/InspectionFormView';
+import { MissionsListView } from './views/MissionsListView';
+
+function useOnlineStatus(): boolean {
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    function goOnline() {
+      setIsOnline(true);
+    }
+    function goOffline() {
+      setIsOnline(false);
+    }
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
+  return isOnline;
+}
+
+/**
+ * `AlertBanner` (ticket 007/008) réutilisé tel quel pour l'indicateur hors
+ * ligne — pas `AppShell` : conçu pour un layout desktop dense/confortable
+ * (sidebar + topbar), pas pour un écran tactile 360-430px. Voir CLAUDE.md,
+ * section CONTROL PWA.
+ */
+export function App() {
+  const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
+  const isOnline = useOnlineStatus();
+
+  return (
+    <div style={{ maxWidth: '430px', minWidth: '360px', margin: '0 auto', padding: '12px' }}>
+      {!isOnline && (
+        <AlertBanner title="Hors ligne">
+          Vos saisies sont enregistrées sur cet appareil et seront synchronisées à la reconnexion.
+        </AlertBanner>
+      )}
+
+      {selectedMissionId === null ? (
+        <MissionsListView onSelectMission={setSelectedMissionId} />
+      ) : (
+        <InspectionFormView
+          missionId={selectedMissionId}
+          onBack={() => setSelectedMissionId(null)}
+        />
+      )}
+    </div>
+  );
+}

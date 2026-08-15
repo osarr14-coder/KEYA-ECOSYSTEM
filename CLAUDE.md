@@ -74,6 +74,7 @@ packages/             # monorepo npm (workspaces), frontend — indépendant du 
 apps/                  # apps web du monorepo npm (ticket 008+), une par surface produit
   home/                 # app HOME (client), package @keya/home (ticket 008)
   build/                 # app BUILD (constructeur/sponsor), package @keya/build (ticket 009)
+  control-pwa/           # PWA CONTROL (inspecteur), package @keya/control-pwa (ticket 010, passe 1)
 package.json           # racine du monorepo npm — workspaces: ["packages/*", "apps/*"]
 ```
 
@@ -493,6 +494,91 @@ app — jamais supposé qu'un compte qui « semble stable » entre deux runs est
 complet. Corrigé dans `pytest.ini` (`norecursedirs` explicite, sans `build`). À surveiller
 si un futur module ajoute un dossier nommé `dist`, `venv`, ou toute autre valeur de la
 liste par défaut de pytest.
+
+## CONTROL PWA — mobile offline (ticket 010, passe 1)
+
+Quatrième app frontend, `apps/control-pwa` (package `@keya/control-pwa`) — **la première PWA
+du monorepo**, distincte des trois précédentes à plusieurs égards volontaires :
+
+- **Pas d'`AppShell`** (contrairement à HOME/BUILD) : conçu pour un layout desktop
+  dense/confortable (sidebar + topbar), pas pour un écran tactile 360-430px. Seul
+  `AlertBanner` (ticket 007/008) est réutilisé, pour l'indicateur hors ligne — un vrai
+  troisième consommateur, confirmant que le promouvoir au design system au ticket 008 était
+  justifié.
+- **Aucun backend touché** : ce ticket est explicitement découpé en deux passes par
+  l'utilisateur ; cette passe ne couvre QUE l'app + IndexedDB + l'horodatage double, jamais
+  la synchronisation réseau réelle (passe 2). Aucun fichier `backend/` n'est modifié par
+  cette passe — les « missions » sont une liste statique en mémoire
+  (`src/db/missions.ts::MOCK_MISSIONS`), pas un fetch, faute d'un concept de « mission
+  assignée à un inspecteur » côté backend aujourd'hui (`apps/tasks` ne génère que des Task
+  pour le rôle constructeur, voir section Task Inbox ci-dessus).
+
+**Toute saisie est écrite en IndexedDB IMMÉDIATEMENT** (`InspectionFormView.tsx::persist`),
+jamais différée jusqu'à un bouton « Enregistrer » final — chaque coche de checklist, ajout/
+suppression de photo, sélection de décision déclenche une écriture ; le commentaire se
+sauvegarde au blur (pas à chaque frappe, pour limiter le nombre d'écritures, mais jamais
+seulement à la fermeture). C'est ce qui garantit qu'aucune saisie n'est perdue si
+l'inspecteur ferme l'app à n'importe quel moment, pas seulement s'il pense à valider avant
+de quitter.
+
+**Modèle `InspectionDraft`** (`src/db/types.ts`) : `correlationId` généré côté client
+(`crypto.randomUUID()`) DÈS la création du brouillon — condition posée par le ticket pour
+la traçabilité de bout en bout côté serveur, une fois la passe 2 construite. `syncStatus`
+modélise déjà les 4 valeurs (`pending/syncing/synced/conflict`) même si SEUL `pending` est
+atteignable cette passe (aucune logique n'existe pour en faire progresser un) — pour que la
+passe 2 n'ait pas à migrer le schéma IndexedDB. `deviceTimestamp` reposé à chaque
+sauvegarde ; `serverTimestamp` reste `null` tant qu'aucune synchronisation n'a jamais eu
+lieu — les deux champs existent dès cette passe précisément pour pouvoir un jour révéler
+une dérive d'horloge entre appareil et serveur, mais rien ne les compare encore.
+
+**`SyncStatusIndicator`** (`src/components/`) : PAS `StatusBadge` du design system —
+`pending/syncing/synced/conflict` n'est pas un des 5 niveaux Visible Trust, même
+raisonnement qu'`AlertBanner` vs `StatusBadge` (ticket 008). Local à cette app pour
+l'instant, pas encore promu au design system — aucun second consommateur ne l'a réclamé.
+
+**Piège d'outillage découvert en écrivant le test de persistance des photos** : le `Blob`
+de jsdom (utilisé par défaut pour tout `new Blob(...)` sous Vitest+jsdom) n'est PAS reconnu
+par `structuredClone` — un Blob jsdom cloné revient comme un objet générique SANS ses
+méthodes (`.text()` etc.), silencieusement. `fake-indexeddb` utilise ce même mécanisme de
+clonage en interne pour simuler l'algorithme de structured clone qu'utilise un vrai
+IndexedDB de navigateur — sans correctif, un test de persistance de photo aurait
+« réussi » en comparant des objets vides des deux côtés, un faux positif dangereux pour
+EXACTEMENT le critère d'acceptation central de cette passe. Corrigé dans
+`src/setupTests.ts` : `globalThis.Blob` réassigné au `Blob` natif de `node:buffer` avant
+l'exécution des tests — un vrai navigateur n'a pas ce problème (ce correctif aligne
+uniquement l'environnement de test sur le comportement réel, ne change rien en production).
+Même fichier : polyfill minimal de `URL.createObjectURL`/`revokeObjectURL`, absents de
+jsdom, utilisés pour prévisualiser une photo sans relecture asynchrone du Blob.
+
+**Critère d'acceptation central de cette passe, vérifié à deux niveaux** :
+1. `src/db/repository.test.ts` — au niveau de la couche de données seule (sans React),
+   contre une vraie IndexedDB polyfillée (`fake-indexeddb`, pas un mock de notre code) :
+   écrit un brouillon complet (checklist/commentaire/décision/2 photos), ferme
+   explicitement la connexion, en rouvre une NOUVELLE (jamais de singleton mis en cache
+   dans `db.ts`, précisément pour que ce test puisse le prouver), relit, vérifie chaque
+   champ individuellement y compris le contenu binaire réel des photos (`blob.text()`),
+   et vérifie qu'aucun appel réseau n'a eu lieu.
+2. `src/App.test.tsx` — au niveau applicatif complet : `navigator.onLine = false` posé
+   AVANT la première saisie, saisie intégrale pilotée via l'UI (checklist, 2 photos,
+   commentaire, décision), `unmount()` du composant racine pour détruire tout état React
+   en mémoire (simulant une fermeture totale de process), nouveau `render(<App />)`, et
+   vérification que TOUT est restauré — y compris l'horodatage device, comparé
+   directement en base entre les deux "sessions", pas seulement via l'état React affiché
+   (qui pourrait survivre par accident de portée mémoire du test plutôt que par une vraie
+   relecture).
+
+**Vérifié aussi manuellement dans un vrai navigateur** (pas seulement les tests
+automatisés) : saisie complète avec une vraie photo JPEG (40×40, vérifiée par upload de
+fichier réel, pas un mock), confirmation via `read_network_requests` qu'aucune requête
+n'atteint un serveur pendant toute la saisie (seules des requêtes `blob:` locales et le
+bruit de l'extension de navigateur elle-même), fermeture RÉELLE de l'onglet Chrome
+(`tabs_close_mcp`, pas juste une navigation), réouverture dans un nouvel onglet : checklist,
+commentaire, décision et photo (dimensions 40×40 exactes, revérifiées via
+`img.naturalWidth`/`naturalHeight` après chargement du Blob) tous intégralement retrouvés.
+
+**Explicitement hors scope de cette passe** (passe 2, pas encore construite) : synchronisation
+réseau réelle, résolution de conflit, compression photo avant upload, retry avec backoff. Un
+item reste en `pending` indéfiniment — attendu et documenté, pas un bug.
 
 ## Tickets
 
