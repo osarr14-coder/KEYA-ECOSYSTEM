@@ -8,7 +8,7 @@ from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
 
 from . import repository
-from .models import TrustEvent, TrustLevel
+from .models import TrustEvent, TrustEventIsImmutable, TrustLevel
 
 
 def _create_org_with_milestone(email, organization_name):
@@ -104,6 +104,76 @@ class TestAppendOnly:
     def test_repository_exposes_no_update_or_delete_function(self):
         assert not hasattr(repository, 'update')
         assert not hasattr(repository, 'delete')
+
+
+@pytest.mark.django_db
+class TestPythonLevelImmutabilityGuard:
+    """Complète les tests DB ci-dessus : quelqu'un qui contourne
+    `apps.trust.repository` (ex : `TrustEvent.objects.filter(...).update()`
+    directement) doit obtenir une exception Python explicite immédiatement,
+    pas un échec silencieux à 0 ligne — le silence est exactement ce que RLS
+    seule produirait (voir tests ci-dessus), ce qui serait piégeux pour un
+    futur développeur qui ne passerait pas par le repository.
+    """
+
+    def test_queryset_update_raises_immediately(self):
+        organization, user, milestone = _create_org_with_milestone(
+            'guard-update@example.com', 'Org Guard Update',
+        )
+        event = repository.create(
+            subject=milestone, organization=organization, level=TrustLevel.DECLARE,
+            actor=user, source='declaration_terrain',
+        )
+
+        with pytest.raises(TrustEventIsImmutable):
+            TrustEvent.objects.filter(id=event.id).update(level=TrustLevel.VALIDE)
+
+        event.refresh_from_db()
+        assert event.level == TrustLevel.DECLARE
+
+    def test_queryset_delete_raises_immediately(self):
+        organization, user, milestone = _create_org_with_milestone(
+            'guard-delete@example.com', 'Org Guard Delete',
+        )
+        event = repository.create(
+            subject=milestone, organization=organization, level=TrustLevel.DECLARE,
+            actor=user, source='declaration_terrain',
+        )
+
+        with pytest.raises(TrustEventIsImmutable):
+            TrustEvent.objects.filter(id=event.id).delete()
+
+        assert TrustEvent.objects.filter(id=event.id).exists()
+
+    def test_instance_save_on_existing_row_raises_immediately(self):
+        organization, user, milestone = _create_org_with_milestone(
+            'guard-save@example.com', 'Org Guard Save',
+        )
+        event = repository.create(
+            subject=milestone, organization=organization, level=TrustLevel.DECLARE,
+            actor=user, source='declaration_terrain',
+        )
+
+        event.level = TrustLevel.VALIDE
+        with pytest.raises(TrustEventIsImmutable):
+            event.save()
+
+        event.refresh_from_db()
+        assert event.level == TrustLevel.DECLARE
+
+    def test_instance_delete_raises_immediately(self):
+        organization, user, milestone = _create_org_with_milestone(
+            'guard-instance-delete@example.com', 'Org Guard Instance Delete',
+        )
+        event = repository.create(
+            subject=milestone, organization=organization, level=TrustLevel.DECLARE,
+            actor=user, source='declaration_terrain',
+        )
+
+        with pytest.raises(TrustEventIsImmutable):
+            event.delete()
+
+        assert TrustEvent.objects.filter(id=event.id).exists()
 
 
 @pytest.mark.django_db

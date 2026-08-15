@@ -95,24 +95,39 @@ vues ni les serializers.
 ## Append-only (TrustEvent, ticket 003)
 
 `trust_event` ne doit jamais recevoir d'UPDATE ni de DELETE, pour personne, pas même un
-rôle admin applicatif. Deux couches, pas une seule :
+rôle admin applicatif. Trois couches indépendantes, pas une seule — contourner l'une ne
+contourne pas les autres :
 
-1. **Aucune policy RLS UPDATE/DELETE n'est définie** sur la table — PostgreSQL applique
+1. **Python — `TrustEvent.save()`/`delete()` surchargés + `TrustEventQuerySet`**
+   (`apps/trust/models.py`) lèvent `TrustEventIsImmutable` immédiatement, avant toute
+   requête DB, dès qu'on tente `instance.save()` sur une ligne existante, `instance.delete()`,
+   ou `TrustEvent.objects.filter(...).update()/.delete()`. C'est la couche qui protège contre
+   un contournement de `apps/trust/repository.py` **resté en Django** — sans elle, ces
+   contournements échoueraient silencieusement (voir couche 2), un piège pour un futur
+   développeur qui ne passerait pas par le repository.
+2. **Aucune policy RLS UPDATE/DELETE n'est définie** sur la table — PostgreSQL applique
    alors un déni par défaut pour ces commandes (aucune ligne visible/ciblable), même pour
    le propriétaire de la table via `FORCE ROW LEVEL SECURITY`. Une tentative d'UPDATE/
-   DELETE affecte silencieusement 0 ligne, sans lever d'exception : un test doit donc
-   vérifier l'invariant (`cursor.rowcount == 0` + donnée inchangée après
+   DELETE **en SQL brut** (donc hors de la couche 1, qui ne protège que ce qui passe par
+   l'ORM Django) affecte silencieusement 0 ligne, sans lever d'exception : un test doit
+   donc vérifier l'invariant (`cursor.rowcount == 0` + donnée inchangée après
    `refresh_from_db()`), pas s'attendre à une erreur.
-2. **Un trigger `BEFORE UPDATE/DELETE`** (migration `0002_append_only`) lève une exception
-   inconditionnellement. Il est actuellement « silencieux » en usage normal (la couche 1
-   bloque avant qu'il n'ait à s'exécuter), mais c'est le filet de sécurité qui continuerait
-   à bloquer si une policy RLS UPDATE/DELETE était ajoutée par erreur dans une migration
-   future — d'où un test dédié qui garde son existence via `pg_trigger`
+3. **Un trigger `BEFORE UPDATE/DELETE`** (migration `0002_append_only`) lève une exception
+   inconditionnellement au niveau DB. Il est actuellement « silencieux » en usage normal (la
+   couche 2 bloque avant qu'il n'ait à s'exécuter), mais c'est le filet de sécurité qui
+   continuerait à bloquer si une policy RLS UPDATE/DELETE était ajoutée par erreur dans une
+   migration future — d'où un test dédié qui garde son existence via `pg_trigger`
    (`apps/trust/tests.py::TestAppendOnly::test_append_only_trigger_exists_in_the_database`).
 
 Toute correction d'un événement est un nouvel appel à `repository.create(..., previous_event=...)`,
 jamais une modification. Le module `apps/trust/repository.py` n'expose et ne doit jamais
 exposer de fonction `update`/`delete` — c'est vérifié par un test (`hasattr`).
+
+Les FK de `TrustEvent` (`organization`, `actor`, `subject_type`, `previous_event`) sont
+toutes en `on_delete=PROTECT`, jamais `CASCADE` : un TrustEvent ne doit jamais disparaître
+comme effet de bord de la suppression d'une autre ligne — cohérent avec le principe
+append-only lui-même (une purge, si un jour nécessaire, doit être un choix explicite et
+tracé).
 
 ## Tickets
 

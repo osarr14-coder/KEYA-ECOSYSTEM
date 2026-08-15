@@ -25,11 +25,46 @@ class TrustLevel(models.TextChoices):
     VALIDE = 'valide', 'Validé'
 
 
+class TrustEventIsImmutable(Exception):
+    """Levée par toute tentative de modifier/supprimer un TrustEvent en
+    Python — que ce soit via `instance.save()`/`instance.delete()` sur une
+    ligne existante, ou via `TrustEvent.objects.filter(...).update()/.delete()`
+    en contournant `apps.trust.repository`.
+
+    Sans cette garde, ces contournements échoueraient silencieusement (RLS
+    n'a aucune policy UPDATE/DELETE sur `trust_event`, donc l'opération
+    affecte 0 ligne sans lever d'erreur — voir CLAUDE.md, section
+    "Append-only"). Cette exception rend l'échec visible immédiatement en
+    Python, avant même d'atteindre la DB, en plus du trigger qui protège au
+    niveau DB (migration 0002) si jamais ce garde-fou Python était lui-même
+    contourné (ex : SQL brut).
+    """
+
+
+class TrustEventQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise TrustEventIsImmutable(
+            'TrustEvent.objects.update() est interdit : trust_event est append-only. '
+            'Créez un nouvel événement via apps.trust.repository.create(..., previous_event=...).',
+        )
+
+    def delete(self):
+        raise TrustEventIsImmutable(
+            'TrustEvent.objects.delete() est interdit : trust_event est append-only.',
+        )
+
+
+class TrustEventManager(models.Manager.from_queryset(TrustEventQuerySet)):
+    pass
+
+
 class TrustEvent(models.Model):
     """Append-only strict — voir `apps/trust/repository.py` (aucune méthode
-    update/delete exposée) et la migration `0002_append_only` (trigger
-    Postgres qui rejette tout UPDATE/DELETE au niveau DB, y compris pour le
-    rôle propriétaire de la table).
+    update/delete exposée), la garde Python ci-dessus (`save`/`delete`
+    surchargés, `TrustEventQuerySet`) et la migration `0002_append_only`
+    (trigger Postgres qui rejette tout UPDATE/DELETE au niveau DB, y compris
+    pour le rôle propriétaire de la table). Trois couches indépendantes :
+    contourner l'une ne contourne pas les autres.
 
     Le statut affiché d'un objet métier (Milestone, WorkDeclaration,
     Evidence, Reserve...) est TOUJOURS dérivé du dernier TrustEvent via
@@ -39,7 +74,12 @@ class TrustEvent(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
-        Organization, on_delete=models.CASCADE, related_name='trust_events',
+        # PROTECT et non CASCADE : un TrustEvent ne doit jamais disparaître
+        # comme simple effet de bord de la suppression d'une autre ligne —
+        # une purge de données historiques, si un jour nécessaire, doit être
+        # un choix explicite et tracé, pas une cascade silencieuse. Cohérent
+        # avec `actor`/`subject_type`/`previous_event`, déjà en PROTECT.
+        Organization, on_delete=models.PROTECT, related_name='trust_events',
     )
 
     # Référence polymorphe vers l'objet concerné (Milestone aujourd'hui ;
@@ -66,6 +106,8 @@ class TrustEvent(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    objects = TrustEventManager()
+
     class Meta:
         db_table = 'trust_event'
         indexes = [
@@ -74,3 +116,17 @@ class TrustEvent(models.Model):
 
     def __str__(self):
         return f'{self.get_level_display()} — {self.subject_type} {self.subject_id}'
+
+    def save(self, *args, **kwargs):
+        if self.pk and TrustEvent.objects.filter(pk=self.pk).exists():
+            raise TrustEventIsImmutable(
+                'TrustEvent.save() sur une ligne existante est interdit : trust_event est '
+                'append-only. Créez un nouvel événement via '
+                'apps.trust.repository.create(..., previous_event=...).',
+            )
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise TrustEventIsImmutable(
+            'TrustEvent.delete() est interdit : trust_event est append-only.',
+        )
