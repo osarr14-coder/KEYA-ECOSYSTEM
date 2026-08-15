@@ -35,6 +35,21 @@ def _reserve_opened_label(reserve, assignee):
     )
 
 
+# Invariant 25.6 (complément V4.0) : toute Task liée à une décision qui
+# n'appartient pas à KEYIMMO (ex : une future décision bancaire, notariale,
+# ou d'une autre autorité) doit toujours nommer l'acteur RÉELLEMENT
+# responsable dans son libellé — jamais suggérer que KEYIMMO tranche à sa
+# place. Tout nouveau générateur de libellé de Task (ce ticket n'en compte
+# qu'un, réserve → constructeur) doit être ajouté à LABEL_GENERATORS
+# ci-dessous : c'est ce qui le fait couvrir par le test de garde
+# `TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo` (apps/tasks/tests.py,
+# ticket 006), qui scanne le CODE SOURCE de chaque générateur enregistré —
+# pas seulement le texte produit par celui qui existe aujourd'hui.
+LABEL_GENERATORS = [
+    _reserve_opened_label,
+]
+
+
 def create_task_for_reserve_opened(reserve):
     """Logique métier pure, séparée de la tâche Celery
     (`apps/tasks/tasks.py::process_reserve_opened`) qui l'appelle sous le

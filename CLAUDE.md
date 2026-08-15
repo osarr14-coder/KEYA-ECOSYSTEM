@@ -20,6 +20,22 @@ statut :
   filtre applicatif (voir ticket 001). Toute nouvelle table portant `organization_id`
   doit avoir sa policy RLS et son test de contournement au niveau DB.
 
+## Règles non négociables
+
+Règles transversales qui s'appliquent à tout ticket, présent ou futur — pas seulement au
+ticket qui les a introduites.
+
+- **Invariant 25.6 (complément V4.0) : aucune Task ne doit attribuer implicitement une
+  décision à KEYIMMO.** Une `Task` liée à une décision qui n'appartient pas à KEYIMMO (ex :
+  une décision bancaire, notariale, ou d'une autre autorité) doit toujours nommer dans son
+  libellé l'acteur RÉELLEMENT responsable — jamais suggérer que KEYIMMO tranche à sa place.
+  Introduit au ticket 006 (Task Inbox), voir la section dédiée ci-dessous. Tout nouveau
+  générateur de libellé de Task, dans n'importe quel ticket futur, doit être ajouté au
+  registre `LABEL_GENERATORS` (`apps/tasks/services.py`) pour rester couvert par le test de
+  garde `TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo`
+  (`apps/tasks/tests.py`) — ce test scanne le code source de chaque générateur enregistré,
+  pas seulement le texte produit par ceux qui existent déjà.
+
 ## Stack
 
 - **Backend** : Django 4.2 + Django REST Framework, conventions alignées sur

@@ -1,3 +1,5 @@
+import ast
+import inspect
 from unittest import mock
 
 import pytest
@@ -13,6 +15,7 @@ from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
 from apps.trust.models import TrustEvent
 
+from . import services
 from .models import Task, TaskStatus, TaskType
 
 PASSWORD = 'strongpass123'
@@ -224,6 +227,74 @@ class TestGeneratedLabelNeverAttributesDecisionToKeyimmo:
             f"Le libellé généré ne nomme pas l'acteur responsable : {task.label!r}"
         )
         assert constructeur_user.email in task.label
+
+
+class TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo:
+    """Ticket 006 — test de garde générique, sur le modèle de
+    `TestNoHardcodedMilestoneNames` (ticket 002, apps/programs/tests.py) :
+    contrairement à `TestGeneratedLabelNeverAttributesDecisionToKeyimmo`
+    ci-dessus, qui ne vérifie que le texte produit par le seul générateur
+    existant aujourd'hui (réserve → constructeur), celui-ci scanne le CODE
+    SOURCE de chaque générateur enregistré dans `services.LABEL_GENERATORS`.
+    Invariant 25.6 (complément V4.0) : une Task liée à une décision qui
+    n'appartient pas à KEYIMMO (ex : une future décision bancaire) ne doit
+    jamais laisser entendre que KEYIMMO tranche à la place de l'acteur
+    responsable.
+
+    Doit être étendu automatiquement : tout futur ticket qui ajoute un
+    nouveau générateur de libellé de Task n'a qu'à l'ajouter à
+    `LABEL_GENERATORS` (apps/tasks/services.py) pour être couvert ici, sans
+    modifier ce test.
+    """
+
+    FORBIDDEN_PHRASES = [
+        'keyimmo décide', 'keyimmo décidé', 'keyimmo valide', 'keyimmo validé',
+        'keyimmo approuve', 'keyimmo approuvé', 'keyimmo tranche',
+    ]
+
+    @staticmethod
+    def _source_without_docstring(func):
+        """Retire la docstring du code source avant le scan : elle explique
+        la règle en PARLANT d'elle (« ne doit jamais suggérer que KEYIMMO
+        tranche »), donc un scan naïf du source complet se déclencherait
+        lui-même en faux positif sur sa propre documentation — rencontré en
+        écrivant ce test contre `_reserve_opened_label`. On isole la
+        docstring via `ast` (pas un simple `str.replace`, qui échoue
+        silencieusement dès que `inspect.getdoc` renormalise l'indentation)
+        pour ne scanner que le code exécutable, dont les vrais templates de
+        libellé.
+        """
+        source = inspect.getsource(func)
+        function_node = ast.parse(source).body[0]
+        first_statement = function_node.body[0]
+        is_docstring = (
+            isinstance(first_statement, ast.Expr)
+            and isinstance(first_statement.value, ast.Constant)
+            and isinstance(first_statement.value.value, str)
+        )
+        if not is_docstring:
+            return source
+
+        lines = source.splitlines()
+        del lines[first_statement.lineno - 1:first_statement.end_lineno]
+        return '\n'.join(lines)
+
+    def test_no_registered_label_generator_source_attributes_a_decision_to_keyimmo(self):
+        assert services.LABEL_GENERATORS, (
+            'Aucun générateur de libellé enregistré dans services.LABEL_GENERATORS — '
+            'le registre a-t-il été vidé par erreur ?'
+        )
+
+        offending = []
+        for generator in services.LABEL_GENERATORS:
+            source = self._source_without_docstring(generator).lower()
+            for phrase in self.FORBIDDEN_PHRASES:
+                if phrase in source:
+                    offending.append((generator.__name__, phrase))
+
+        assert offending == [], (
+            f'Des générateurs de libellé de Task attribuent une décision à KEYIMMO : {offending}'
+        )
 
 
 @pytest.mark.django_db
