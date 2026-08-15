@@ -685,9 +685,17 @@ sur le `<textarea>` — force un vrai remount quand l'identité du brouillon cha
 dernier événement serveur connu affiché, et une seule action explicite disponible —
 « Ignorer ma saisie et recommencer » (`InspectionFormView.tsx::
 resolveConflictByDiscarding`) : supprime le brouillon local, repart d'un formulaire vierge
-en connaissance du nouvel état. Une résolution plus fine (fusion, ou « un rôle habilité »
-distinct de l'inspecteur lui-même — mentionné par le ticket) reste un point d'extension non
-couvert ici : documenté, pas implémenté.
+en connaissance du nouvel état.
+
+**Abandon explicite seul (pas de fusion, pas d'arbitrage) : choix produit assumé pour le
+MVP, PAS une limite provisoire à corriger au prochain sprint** — voir
+`docs/adr/0002-control-conflict-resolution-discard-only.md` pour la décision complète et
+ses raisons. Une résolution avec fusion assistée ou arbitrage par un rôle habilité distinct
+de l'inspecteur (mentionné par le ticket) est explicitement reportée, et ne sera
+ticketisée QUE si ce scénario se révèle fréquent en usage réel pendant le pilote —
+mesurable via les logs serveur (`control_sync_inspection_conflict`,
+`apps/control/services.py`). Le mécanisme de DÉTECTION, lui, n'a pas besoin d'être revu si
+cette décision est révisée plus tard : seule l'action proposée à l'inspecteur changerait.
 
 **Limite connue, non résolue par cette passe** : `InspectionDraft.knownLatestEventId` reste
 `null` pour tout brouillon saisi hors ligne (aucun mécanisme de rafraîchissement de l'état
