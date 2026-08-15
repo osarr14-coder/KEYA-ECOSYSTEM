@@ -1,0 +1,31 @@
+name: keya_ecosystem
+
+services:
+
+  # ── Base de données PostgreSQL — port hôte 5433 pour ne pas entrer en
+  # collision avec les Postgres de KEYA/UTB (5432)
+  db:
+    image: postgres:15-alpine
+    environment:
+      # POSTGRES_USER est superuser par construction de l'image officielle —
+      # RLS ne peut pas être forcée sur un superuser, même avec
+      # FORCE ROW LEVEL SECURITY. Ce rôle ne sert donc qu'au bootstrap
+      # (voir docker/initdb/01_create_app_role.sql) ; Django se connecte
+      # avec keya_ecosystem_app, un rôle non-superuser créé et rendu
+      # propriétaire de la base par ce script d'init.
+      POSTGRES_DB: keya_ecosystem_db
+      POSTGRES_USER: keya_ecosystem_root
+      POSTGRES_PASSWORD: keya_ecosystem_root_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - keya_ecosystem_postgres_data:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keya_ecosystem_app -d keya_ecosystem_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  keya_ecosystem_postgres_data:

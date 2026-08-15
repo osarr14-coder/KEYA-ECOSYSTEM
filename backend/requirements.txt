@@ -1,0 +1,19 @@
+# ── Core Django
+Django==4.2.11
+djangorestframework==3.15.1
+djangorestframework-simplejwt==5.3.1
+django-cors-headers==4.3.1
+
+# ── Base de données
+psycopg2-binary==2.9.9
+
+# ── Sécurité & utilitaires
+python-decouple==3.8
+
+# ── Dev & tests
+pytest==8.1.1
+pytest-django==4.8.0
+factory-boy==3.3.0
+coverage==7.4.3
+black==24.2.0
+flake8==7.0.0
