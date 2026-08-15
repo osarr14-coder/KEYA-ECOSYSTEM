@@ -339,6 +339,11 @@ BUILD ou HOME sans revue manuelle. Un nom de composant `*Badge*` légitimement d
 sont exportés indépendamment d'`AppShell` précisément pour être réutilisés par un futur
 composant de liste/tableau (ticket 009, Control Tower BUILD) sans dupliquer les valeurs.
 
+**`AlertBanner`** (`src/components/AlertBanner`, ajouté au ticket 008) : bandeau d'alerte
+générique (couleur + icône via `tokens/colors.ts::semanticColors.alert`), volontairement
+distinct de `StatusBadge` — une alerte opérationnelle n'est pas un `TrustLevel`. Voir
+section HOME client (ticket 008) ci-dessous pour le contexte de son introduction.
+
 ## HOME client (ticket 008)
 
 Premier app frontend du monorepo — `apps/home` (package `@keya/home`), à côté de
@@ -393,6 +398,38 @@ dans l'UI.
 existe), donc cette vue reste vide en pratique tant qu'aucun futur ticket n'ajoute un
 générateur de libellé ciblant le client. Vérifié manuellement dans un vrai navigateur
 contre le backend réel (voir rapport de fin de ticket) — comportement attendu, pas un bug.
+
+**Test utilisateur informel chronométré (critère produit 26.1)** : un premier passage a
+révélé deux manques réels, corrigés depuis — documentés ici pour qu'un futur écran (HOME
+ou ailleurs) applique le même principe dès sa conception plutôt que de redécouvrir le même
+problème :
+- La « prochaine action » n'apparaissait nulle part sur l'écran initial (il fallait cliquer
+  sur l'onglet « Mes actions »). Corrigé par `PriorityTaskSummary`
+  (`apps/home/src/views/PriorityTaskSummary.tsx`) : un résumé compact (titre + échéance +
+  lien vers l'onglet complet) directement en Vue d'ensemble. Consomme **le même** endpoint
+  `GET /api/me/tasks/`, avec `?status=pending&ordering=priority` — le nouveau paramètre
+  `ordering=priority` (`apps/tasks/views.py::MyTasksView`) fait tout le tri côté backend
+  (priorité haute d'abord, puis échéance la plus proche, `nulls_last`) ; le frontend ne fait
+  que prendre `tasks[0]`, aucune logique de sélection dupliquée ni recalculée. Sans
+  `ordering`, le comportement historique (le plus récent d'abord) reste inchangé — aucune
+  régression pour `MyActionsView` ni pour les appelants existants de ticket 006.
+- Le bandeau de réserve ouverte (« problème principal ») ne se distinguait pas
+  visuellement du reste du texte — juste du gras, aucune couleur ni icône, malgré un
+  `role="alert"` sémantique invisible à l'œil. Corrigé par un nouveau composant partagé du
+  design system, `AlertBanner` (`packages/design-system/src/components/AlertBanner`),
+  couleur + icône via un nouveau token `semanticColors.alert`
+  (`packages/design-system/src/tokens/colors.ts`) — sur le même principe que
+  `densityTokens` : réutilisable par un futur écran (ex : exceptions/blocages du Control
+  Tower BUILD, ticket 009), pas propre à HOME. Volontairement un composant SÉPARÉ de
+  `StatusBadge` : une réserve ouverte n'est pas un `TrustLevel` (voir section
+  Inspections/Reserve ci-dessus), réutiliser `StatusBadge` ici aurait laissé croire, à
+  tort, qu'un bandeau de réserve EST un niveau de confiance.
+
+Les deux correctifs ont été revérifiés dans un vrai navigateur contre le backend réel
+après implémentation (pas seulement via les tests automatisés) : capture DOM confirmant
+les couleurs `semanticColors.alert` réellement appliquées (pas seulement présentes dans le
+code), et le résumé de tâche prioritaire réellement peuplé + navigable vers l'onglet
+complet.
 
 ## Tickets
 

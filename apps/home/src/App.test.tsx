@@ -33,10 +33,21 @@ function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
 describe('App — critère produit 26.1 : les 5 éléments identifiables sans interaction', () => {
   // Proxy automatisé du "test utilisateur informel" demandé par le ticket —
   // ne remplace pas une vraie session avec un utilisateur test (voir le
-  // rapport de fin de ticket), mais prouve que les 5 éléments sont bien
-  // rendus SIMULTANÉMENT sur l'écran initial, sans clic supplémentaire.
-  it("affiche bien, avancement, événement récent et problème principal dès le premier rendu", async () => {
-    renderApp();
+  // rapport de fin de ticket, où le test manuel chronométré avait révélé
+  // que "prochaine action" manquait à l'écran initial et que "problème
+  // principal" manquait de contraste visuel — les deux corrigés ici).
+  it("affiche les 5 éléments (bien, avancement, événement récent, problème principal, prochaine action) dès le premier rendu", async () => {
+    renderApp({
+      getMyTasks: async () => [
+        {
+          id: 'task-1', type: 'task' as const, subject_type: 'inbox_tasks.task', subject_id: 'x',
+          program: null, assignee: 'client@example.com', source: 'reserve_opened',
+          label: 'Corriger la fissure signalée', due_date: '2026-04-01T00:00:00Z',
+          priority: 'high' as const, status: 'pending' as const,
+          created_at: '2026-03-06T09:00:00Z', completed_at: null,
+        },
+      ],
+    });
 
     // 1. Le bien
     expect(await screen.findByText('Résidence Ker')).toBeInTheDocument();
@@ -44,11 +55,37 @@ describe('App — critère produit 26.1 : les 5 éléments identifiables sans in
     expect(screen.getByText("45% d'avancement")).toBeInTheDocument();
     // 3. L'événement récent (StatusBadge)
     expect(screen.getByText('Documenté')).toBeInTheDocument();
-    // 4. Le problème principal
-    expect(screen.getByText('Fissure en façade')).toBeInTheDocument();
+    // 4. Le problème principal — avec le style d'alerte (role="alert" + icône)
+    const problem = screen.getByText('Fissure en façade').closest('[data-testid="open-reserve"]');
+    expect(problem).not.toBeNull();
+    expect(problem!.querySelector('[role="alert"]')).not.toBeNull();
+    expect(problem!.querySelector('svg')).not.toBeNull();
+    // 5. La prochaine action — désormais visible sans clic supplémentaire
+    expect(await screen.findByText('Corriger la fissure signalée')).toBeInTheDocument();
+    expect(screen.getByText('Échéance : 01/04/2026')).toBeInTheDocument();
   });
 
-  it("« Mes actions » (prochaine action) est accessible en un clic depuis l'écran initial", async () => {
+  it("« Voir toutes mes actions » depuis le résumé bascule vers l'onglet Mes actions", async () => {
+    renderApp({
+      getMyTasks: async () => [
+        {
+          id: 'task-1', type: 'task' as const, subject_type: 'inbox_tasks.task', subject_id: 'x',
+          program: null, assignee: 'client@example.com', source: 'reserve_opened',
+          label: 'Action test à faire', due_date: null, priority: 'normal' as const,
+          status: 'pending' as const, created_at: '2026-03-06T09:00:00Z', completed_at: null,
+        },
+      ],
+    });
+
+    await screen.findByText('Résidence Ker');
+    fireEvent.click(await screen.findByRole('button', { name: 'Voir toutes mes actions' }));
+
+    // Onglet "Mes actions" désormais actif, avec la liste complète chargée.
+    expect(screen.getByRole('button', { name: 'Mes actions' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByText('Action test à faire')).toBeInTheDocument();
+  });
+
+  it("« Mes actions » reste accessible en un clic depuis l'onglet dédié, indépendamment du résumé", async () => {
     renderApp({
       getMyTasks: async () => [
         {

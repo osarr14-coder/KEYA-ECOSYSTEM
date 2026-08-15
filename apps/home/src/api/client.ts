@@ -14,6 +14,17 @@ export interface ApiClientConfig {
   getAccessToken: () => string | null;
 }
 
+export interface TaskFilters {
+  type?: string;
+  status?: string;
+  program?: string;
+  /** `'priority'` — voir `apps/tasks/views.py::MyTasksView`, ajouté pour ce
+   * ticket : tri haute priorité d'abord, puis échéance la plus proche.
+   * Aucun autre tri n'est calculé ici, seul le paramètre est transmis tel
+   * quel — le tri lui-même reste entièrement côté backend. */
+  ordering?: string;
+}
+
 /**
  * Client HTTP minimal — chaque méthode correspond exactement à un endpoint
  * `apps/home`/`apps/tasks` côté backend, qui a déjà tout calculé (progression,
@@ -37,7 +48,15 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
     getMyLots: () => request<MyLot[]>('/api/me/lots/'),
     getLotOverview: (lotId: string) => request<LotOverview>(`/api/me/lots/${lotId}/overview/`),
     getLotEvidenceFeed: (lotId: string) => request<EvidenceFeedItem[]>(`/api/me/lots/${lotId}/evidence/`),
-    getMyTasks: () => request<Task[]>('/api/me/tasks/'),
+    getMyTasks: (filters: TaskFilters = {}) => {
+      const params = new URLSearchParams();
+      if (filters.type) params.set('type', filters.type);
+      if (filters.status) params.set('status', filters.status);
+      if (filters.program) params.set('program', filters.program);
+      if (filters.ordering) params.set('ordering', filters.ordering);
+      const query = params.toString();
+      return request<Task[]>(`/api/me/tasks/${query ? `?${query}` : ''}`);
+    },
   };
 }
 

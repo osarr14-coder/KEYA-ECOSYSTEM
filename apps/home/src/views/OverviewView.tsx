@@ -1,8 +1,9 @@
-import { StatusBadge } from '@keya/design-system';
+import { AlertBanner, StatusBadge } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { toTrustEventData } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
+import { PriorityTaskSummary } from './PriorityTaskSummary';
 
 // Libellés d'affichage pour `open_reserve.status` (une des sources
 // `apps.inspections.services.get_reserve_status`, PAS un TrustLevel — ne
@@ -17,9 +18,12 @@ const OPEN_RESERVE_STATUS_LABELS: Record<string, string> = {
 
 export interface OverviewViewProps {
   lotId: string;
+  /** Bascule vers l'onglet "Mes actions" — transmis tel quel au résumé de
+   * la tâche prioritaire (`PriorityTaskSummary`). */
+  onSeeAllActions: () => void;
 }
 
-export function OverviewView({ lotId }: OverviewViewProps) {
+export function OverviewView({ lotId, onSeeAllActions }: OverviewViewProps) {
   const api = useApiClient();
   const state = useApiResource(() => api.getLotOverview(lotId), [lotId]);
 
@@ -65,13 +69,14 @@ export function OverviewView({ lotId }: OverviewViewProps) {
       </div>
 
       {overview.open_reserve && (
-        <div role="alert" aria-label="Problème principal" data-testid="open-reserve">
-          <strong>
-            {OPEN_RESERVE_STATUS_LABELS[overview.open_reserve.status] ?? 'Réserve en cours'}
-          </strong>
-          {overview.open_reserve.description && <p>{overview.open_reserve.description}</p>}
+        <div data-testid="open-reserve">
+          <AlertBanner title={OPEN_RESERVE_STATUS_LABELS[overview.open_reserve.status] ?? 'Réserve en cours'}>
+            {overview.open_reserve.description}
+          </AlertBanner>
         </div>
       )}
+
+      <PriorityTaskSummary onSeeAllActions={onSeeAllActions} />
     </section>
   );
 }

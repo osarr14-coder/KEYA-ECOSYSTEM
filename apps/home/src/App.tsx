@@ -86,7 +86,9 @@ export function App({ userRoles = ['client'] }: AppProps) {
             ))}
           </nav>
 
-          {activeTab === 'overview' && <OverviewView lotId={currentLotId} />}
+          {activeTab === 'overview' && (
+            <OverviewView lotId={currentLotId} onSeeAllActions={() => setActiveTab('actions')} />
+          )}
           {activeTab === 'evidence' && <EvidenceFeedView lotId={currentLotId} />}
           {activeTab === 'actions' && <MyActionsView />}
         </>

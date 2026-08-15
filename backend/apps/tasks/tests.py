@@ -1,9 +1,11 @@
 import ast
 import inspect
+from datetime import timedelta
 from unittest import mock
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
@@ -16,7 +18,7 @@ from apps.programs.services import instantiate_milestones_for_lot
 from apps.trust.models import TrustEvent
 
 from . import services
-from .models import Task, TaskStatus, TaskType
+from .models import Task, TaskPriority, TaskStatus, TaskType
 
 PASSWORD = 'strongpass123'
 
@@ -357,3 +359,103 @@ class TestTasksAppIsOrganizationScoped:
         )
         response = outsider_client.get(reverse('task-detail', args=[task.id]))
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestPriorityOrdering:
+    """Ticket 008 — `?ordering=priority` : ajouté pour que le résumé
+    « prochaine action » de HOME (`apps/home`) consomme ce MÊME endpoint
+    plutôt que de dupliquer une logique de sélection côté frontend.
+    """
+
+    def _create_task(self, organization, assignee, reserve, *, priority, due_date=None, label='Tâche test'):
+        from django.contrib.contenttypes.models import ContentType
+
+        return Task.objects.create(
+            organization=organization, type=TaskType.TASK,
+            subject_type=ContentType.objects.get_for_model(reserve), subject_id=reserve.id,
+            assignee=assignee, source='test_fixture', label=label, priority=priority, due_date=due_date,
+        )
+
+    def test_ordering_priority_sorts_high_before_normal_before_low(self):
+        constructeur_client, constructeur_organization, constructeur_user, lot, declaration = (
+            _setup_constructeur_org('priority-constructeur@example.com', 'Org Priority Ordering')
+        )
+        inspecteur_client, _inspecteur_organization, _inspecteur_user = _setup_inspecteur(
+            'priority-inspecteur@example.com', 'Org Priority Ordering Inspecteur',
+        )
+        reserve_id = _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration)
+
+        set_rls_context(user_id=constructeur_user.id, organization_id=constructeur_organization.id)
+        reserve = Reserve.objects.get(id=reserve_id)
+        low_task = self._create_task(
+            constructeur_organization, constructeur_user, reserve,
+            priority=TaskPriority.LOW, label='Tâche basse priorité',
+        )
+        high_task = self._create_task(
+            constructeur_organization, constructeur_user, reserve,
+            priority=TaskPriority.HIGH, label='Tâche haute priorité',
+        )
+
+        response = constructeur_client.get(reverse('my-tasks'), {'ordering': 'priority'})
+
+        assert response.status_code == 200
+        ids_in_order = [row['id'] for row in response.data]
+        assert ids_in_order.index(str(high_task.id)) < ids_in_order.index(str(low_task.id))
+
+    def test_ordering_priority_breaks_ties_by_soonest_due_date_nulls_last(self):
+        constructeur_client, constructeur_organization, constructeur_user, lot, declaration = (
+            _setup_constructeur_org('priority-due-constructeur@example.com', 'Org Priority Due Date')
+        )
+        inspecteur_client, _inspecteur_organization, _inspecteur_user = _setup_inspecteur(
+            'priority-due-inspecteur@example.com', 'Org Priority Due Date Inspecteur',
+        )
+        reserve_id = _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration)
+
+        set_rls_context(user_id=constructeur_user.id, organization_id=constructeur_organization.id)
+        reserve = Reserve.objects.get(id=reserve_id)
+        now = timezone.now()
+        far_task = self._create_task(
+            constructeur_organization, constructeur_user, reserve, priority=TaskPriority.HIGH,
+            due_date=now + timedelta(days=10), label='Échéance lointaine',
+        )
+        soon_task = self._create_task(
+            constructeur_organization, constructeur_user, reserve, priority=TaskPriority.HIGH,
+            due_date=now + timedelta(days=1), label='Échéance proche',
+        )
+        no_due_date_task = self._create_task(
+            constructeur_organization, constructeur_user, reserve, priority=TaskPriority.HIGH,
+            due_date=None, label='Sans échéance',
+        )
+
+        response = constructeur_client.get(reverse('my-tasks'), {'ordering': 'priority'})
+
+        ids_in_order = [row['id'] for row in response.data]
+        # Même priorité (haute) pour les 3 : échéance la plus proche en
+        # premier, « sans échéance » toujours en dernier (nulls_last).
+        assert ids_in_order.index(str(soon_task.id)) < ids_in_order.index(str(far_task.id))
+        assert ids_in_order.index(str(far_task.id)) < ids_in_order.index(str(no_due_date_task.id))
+
+    def test_without_the_ordering_param_behavior_is_unchanged(self):
+        # Non-régression explicite (ticket 006) : sans `ordering=priority`,
+        # le tri par date de création décroissante reste inchangé.
+        constructeur_client, constructeur_organization, constructeur_user, lot, declaration = (
+            _setup_constructeur_org('priority-default-constructeur@example.com', 'Org Priority Default')
+        )
+        inspecteur_client, _inspecteur_organization, _inspecteur_user = _setup_inspecteur(
+            'priority-default-inspecteur@example.com', 'Org Priority Default Inspecteur',
+        )
+        reserve_id = _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration)
+
+        set_rls_context(user_id=constructeur_user.id, organization_id=constructeur_organization.id)
+        reserve = Reserve.objects.get(id=reserve_id)
+        older_task = Task.objects.get(subject_id=reserve_id, source='reserve_opened')
+        newer_task = self._create_task(
+            constructeur_organization, constructeur_user, reserve,
+            priority=TaskPriority.LOW, label='Plus récente',
+        )
+
+        response = constructeur_client.get(reverse('my-tasks'))
+
+        ids_in_order = [row['id'] for row in response.data]
+        assert ids_in_order.index(str(newer_task.id)) < ids_in_order.index(str(older_task.id))
