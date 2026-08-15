@@ -45,23 +45,28 @@ class TestMilestoneInstantiation:
     (instantané pris à la création du lot, pas une référence vivante).
     """
 
-    def test_new_lot_gets_milestones_from_active_senegal_template(self):
+    def test_new_lot_gets_milestones_matching_active_template_content(self):
+        # Les codes attendus viennent de la base (le template actif), jamais
+        # d'une liste écrite en dur ici — sinon ce test lui-même violerait le
+        # critère d'acceptation qu'il est censé vérifier.
+        senegal = CountryPack.objects.get(code='SN')
+        active_template = MilestoneTemplate.objects.get(country_pack=senegal, is_active=True)
+        expected_steps = list(
+            active_template.steps.order_by('order').values('order', 'code', 'label'),
+        )
+
         client = _register_and_authenticate('sponsor1@example.com', 'Org Jalons 1')
         program = _create_program(client)
         asset = _create_asset(client, program['id'])
-
         lot = _create_lot(client, asset['id'])
-
-        response = client.get(reverse('lot-detail', args=[lot['id']]))
-        assert response.status_code == 200
 
         hierarchy = client.get(reverse('program-hierarchy', args=[program['id']])).data
         milestones = hierarchy['assets'][0]['lots'][0]['milestones']
-        codes = [m['code'] for m in milestones]
-        assert codes == [
-            'foncier', 'conception', 'fondations', 'gros_oeuvre',
-            'second_oeuvre', 'finitions', 'reception', 'livraison',
+        actual_steps = [
+            {'order': m['order'], 'code': m['code'], 'label': m['label']} for m in milestones
         ]
+
+        assert actual_steps == expected_steps
 
     def test_editing_template_in_db_only_affects_lots_created_afterwards(self):
         client = _register_and_authenticate('sponsor2@example.com', 'Org Jalons 2')
@@ -91,35 +96,40 @@ class TestMilestoneInstantiation:
         assert 'essai_jalon_supplementaire' in after_codes
 
 
+@pytest.mark.django_db
 class TestNoHardcodedMilestoneNames:
-    """Ticket 002 — critère d'acceptation : aucun nom de jalon en dur dans le
-    code métier. Les noms de jalons Sénégal n'existent que dans la migration
-    de seed (une donnée), jamais dans models/services/serializers/views.
+    """Ticket 002 — critère d'acceptation : « Aucun test ni endpoint ne
+    référence un nom de jalon en dur dans le code métier » — donc `tests.py`
+    lui-même est dans le périmètre du scan, pas seulement models/services/
+    serializers/views. Seules les migrations ont le droit d'écrire ces noms
+    (c'est littéralement leur rôle : y insérer la donnée).
     """
 
-    BUSINESS_CODE_FILES = ['models.py', 'services.py', 'serializers.py', 'views.py']
-
-    # Doit correspondre aux codes de
-    # migrations/0003_seed_senegal_milestone_template.py — dupliqué
-    # volontairement ici plutôt qu'importé : une migration est un
-    # enregistrement historique, pas un module à réutiliser en dehors de
-    # Django lui-même.
-    SENEGAL_MILESTONE_CODES = [
-        'foncier', 'conception', 'fondations', 'gros_oeuvre',
-        'second_oeuvre', 'finitions', 'reception', 'livraison',
+    SCANNED_FILES = [
+        'admin.py', 'apps.py', 'models.py', 'serializers.py',
+        'services.py', 'tests.py', 'urls.py', 'views.py',
     ]
 
-    def test_no_business_code_file_references_a_senegal_milestone_code(self):
+    def test_no_scanned_file_references_a_seeded_milestone_code(self):
+        # Les codes à chercher viennent de la base — jamais d'une liste
+        # écrite en dur ici, sinon ce fichier violerait lui-même le critère
+        # qu'il vérifie.
+        codes = list(MilestoneTemplateStep.objects.values_list('code', flat=True))
+        assert codes, 'Aucun MilestoneTemplateStep en base — le seed a-t-il tourné ?'
+
         app_dir = Path(__file__).parent
         offending = []
-        for filename in self.BUSINESS_CODE_FILES:
-            content = (app_dir / filename).read_text(encoding='utf-8')
-            for code in self.SENEGAL_MILESTONE_CODES:
+        for filename in self.SCANNED_FILES:
+            path = app_dir / filename
+            if not path.exists():
+                continue
+            content = path.read_text(encoding='utf-8')
+            for code in codes:
                 if code in content:
                     offending.append((filename, code))
 
         assert offending == [], (
-            f'Des noms de jalons Sénégal sont codés en dur hors des migrations : {offending}'
+            f'Des noms de jalons sont codés en dur hors des migrations : {offending}'
         )
 
 
@@ -153,20 +163,42 @@ class TestHierarchyIntegrity:
 
 
 @pytest.mark.django_db
-class TestProgramCrudIsOrganizationScoped:
-    """Complète la couverture RLS du ticket 001 pour les nouvelles tables
-    scopées par organisation introduites par ce ticket.
+class TestCrudIsOrganizationScoped:
+    """Ticket 002 — scope explicite : « CRUD Program, Asset, Lot scopés par
+    organisation (RLS du ticket 001) ». Un test par table : chacune a sa
+    propre policy RLS (voir migration 0002_programs_rls.py), donc chacune
+    doit être prouvée séparément — un bug dans la policy d'une seule table
+    ne serait pas détecté en ne testant que Program (voir l'incident de
+    policy découvert sur Membership au ticket 001, qui n'aurait pas été vu
+    par un test générique).
     """
 
-    def test_program_of_another_organization_is_not_visible(self):
-        client_a = _register_and_authenticate('proga@example.com', 'Org Prog A')
+    def _setup_org_a_hierarchy_then_switch_to_org_b(self):
+        client_a = _register_and_authenticate('crud-a@example.com', 'Org CRUD A')
         program_a = _create_program(client_a, name='Programme A')
+        asset_a = _create_asset(client_a, program_a['id'], name='Bien A')
+        lot_a = _create_lot(client_a, asset_a['id'], name='Lot A')
 
-        client_b = _register_and_authenticate('progb@example.com', 'Org Prog B')
+        client_b = _register_and_authenticate('crud-b@example.com', 'Org CRUD B')
+        return client_b, program_a, asset_a, lot_a
 
-        response = client_b.get(reverse('program-detail', args=[program_a['id']]))
+    @staticmethod
+    def _assert_not_visible(client, detail_url_name, list_url_name, object_id):
+        response = client.get(reverse(detail_url_name, args=[object_id]))
         assert response.status_code == 404
 
-        list_response = client_b.get(reverse('program-list'))
-        program_ids = [p['id'] for p in list_response.data]
-        assert program_a['id'] not in program_ids
+        list_response = client.get(reverse(list_url_name))
+        ids = [row['id'] for row in list_response.data]
+        assert object_id not in ids
+
+    def test_program_of_another_organization_is_not_visible(self):
+        client_b, program_a, _asset_a, _lot_a = self._setup_org_a_hierarchy_then_switch_to_org_b()
+        self._assert_not_visible(client_b, 'program-detail', 'program-list', program_a['id'])
+
+    def test_asset_of_another_organization_is_not_visible(self):
+        client_b, _program_a, asset_a, _lot_a = self._setup_org_a_hierarchy_then_switch_to_org_b()
+        self._assert_not_visible(client_b, 'asset-detail', 'asset-list', asset_a['id'])
+
+    def test_lot_of_another_organization_is_not_visible(self):
+        client_b, _program_a, _asset_a, lot_a = self._setup_org_a_hierarchy_then_switch_to_org_b()
+        self._assert_not_visible(client_b, 'lot-detail', 'lot-list', lot_a['id'])
