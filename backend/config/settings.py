@@ -117,13 +117,15 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 
 # ── Celery (ticket 004 : traitement asynchrone média) ──────────────────────
-# Aucun broker Redis n'est provisionné dans cet environnement de dev (Docker
-# Desktop indisponible ici, voir historique du ticket 001). CELERY_TASK_ALWAYS_EAGER
-# fait tourner les tâches en synchrone, dans le même process — le code des
-# tâches (apps/evidence/tasks.py) reste écrit comme du vrai Celery
-# (`@shared_task` + `.delay()`), donc brancher un broker réel plus tard ne
-# demande aucun changement de code, seulement de repasser ce flag à False et
-# de renseigner CELERY_BROKER_URL.
+# Broker Redis réel depuis l'ADR 0001 (docs/adr/0001-celery-eager-mode.md) :
+# `docker run -d --name keyimmo-redis -p 6379:6379 redis:7-alpine`, ou
+# `docker-compose up redis`. CELERY_TASK_ALWAYS_EAGER=False par défaut — les
+# tâches passent réellement par le broker. `settings_test.py` repasse ce
+# flag à True pour la majorité des tests (rapides, exécution synchrone dans
+# la transaction de test) ; seuls les tests d'intégration dédiés
+# (apps/evidence/tests_celery_integration.py) le forcent à False pour
+# exercer un vrai worker.
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=True, cast=bool)
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default=CELERY_BROKER_URL)
+CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=False, cast=bool)
 CELERY_TASK_EAGER_PROPAGATES = True

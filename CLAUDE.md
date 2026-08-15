@@ -161,13 +161,21 @@ de chaîne de custody. Le traitement asynchrone (compression + miniature,
 `apps/evidence/tasks.py`) ne doit jamais toucher aux champs de provenance
 (`source`, `captured_at`, `owner`, `created_at`, `hash`).
 
-Celery est configuré (`config/celery.py`) mais `CELERY_TASK_ALWAYS_EAGER=True` par défaut :
-aucun broker Redis n'est provisionné ici, donc le comportement réel de retry/échec/backoff
-d'une queue asynchrone n'est PAS testé — seul le contenu des tâches l'est. Voir
-**[ADR 0001](docs/adr/0001-celery-eager-mode.md)** pour le détail des conséquences et la
-liste de ce qu'il faut faire avant d'attaquer les tickets 006 et 010, qui dépendent tous
-les deux d'un vrai comportement de queue (génération de Task depuis un TrustEvent pour le
-006 ; file de synchronisation avec retry/backoff explicite pour le 010).
+Celery (`config/celery.py`) tourne contre un vrai broker Redis
+(`docker run -d --name keyimmo-redis -p 6379:6379 redis:7-alpine`), `CELERY_TASK_ALWAYS_EAGER=False`
+par défaut. `config/settings_test.py` repasse ce flag à `True` pour la majorité des tests
+(rapides, exécution synchrone dans la transaction du test — lu directement depuis
+`os.environ`, jamais depuis `.env`, qui contient `False` pour l'environnement réel) ; seuls
+les tests d'intégration dédiés (`apps/evidence/test_celery_integration.py`) le désactivent
+pour faire tourner un vrai worker (sous-processus `--pool=solo`, requis sous Windows). Une
+tâche Celery n'a par construction aucune requête HTTP pour poser le contexte RLS
+(organisation active) : `organization_id`/`requested_by_user_id` sont donc des arguments
+explicites de la tâche, posés en tout début d'exécution via `apps.core.rls.set_rls_context`
+à l'intérieur d'un `transaction.atomic()` englobant tout son corps — sans ce bloc, le
+contexte retombe avant la requête suivante (`SET LOCAL` n'a d'effet que pour la transaction
+en cours, un worker tourne en autocommit par défaut). Voir
+**[ADR 0001](docs/adr/0001-celery-eager-mode.md)** pour l'historique complet et les bugs
+réels rencontrés en branchant un vrai worker.
 
 ## Inspections / Reserve — accès cross-organisation (ticket 005)
 

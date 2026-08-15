@@ -32,7 +32,14 @@ def create_document(
     )
 
     if getattr(uploaded_file, 'content_type', None) in IMAGE_CONTENT_TYPES:
-        process_document_media.delay(str(document.id))
+        # organization_id/owner sont transmis explicitement : un worker
+        # Celery réel n'a aucune requête HTTP pour les résoudre lui-même
+        # (voir apps/evidence/tasks.py et docs/adr/0001-celery-eager-mode.md).
+        process_document_media.delay(
+            document_id=str(document.id),
+            organization_id=str(document.organization_id),
+            requested_by_user_id=str(owner.id),
+        )
 
     return document
 
