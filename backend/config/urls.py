@@ -13,4 +13,5 @@ urlpatterns = [
     path('api/', include('apps.tasks.urls')),
     path('api/', include('apps.home.urls')),
     path('api/', include('apps.build.urls')),
+    path('api/', include('apps.control.urls')),
 ]

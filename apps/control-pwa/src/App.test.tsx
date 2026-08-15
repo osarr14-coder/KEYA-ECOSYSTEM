@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
@@ -132,6 +132,52 @@ describe(
     });
   },
 );
+
+describe('App — passe 2 : la synchronisation démarre au retour du réseau, jamais avant', () => {
+  it('un item saisi hors ligne déclenche un appel réseau réel dès le passage en ligne, et se synchronise', async () => {
+    setOffline();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        status: 'applied',
+        inspection: { id: 'insp-x', created_at: '2026-08-15T10:00:00.000Z', client_correlation_id: 'whatever' },
+      }),
+    } as Response);
+
+    render(<App />);
+    fireEvent.click(await screen.findByText('Lot 12'));
+    await screen.findByRole('heading', { name: 'Lot 12 — Résidence Ker' });
+    fireEvent.click(await screen.findByLabelText('Réserve'));
+
+    const { getDraftForMission } = await import('./db/repository');
+    await waitFor(async () => {
+      const draft = await getDraftForMission('mission-1');
+      expect(draft?.decision).toBe('reserve');
+    });
+
+    // Toujours rien tant qu'on reste hors ligne — même garantie que la
+    // passe 1, jusqu'à cet instant précis.
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // --- Retour du réseau ---
+    Object.defineProperty(window.navigator, 'onLine', { value: true, writable: true, configurable: true });
+    // `act(...)` : `useOnlineStatus` (App.tsx) met à jour un état React de
+    // manière synchrone en réaction à cet événement — sans cet englobage,
+    // React avertit d'une mise à jour hors `act()` (le dispatch n'est ici
+    // pas déclenché via `fireEvent`, qui l'englobe automatiquement).
+    act(() => {
+      window.dispatchEvent(new Event('online'));
+    });
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    await waitFor(async () => {
+      const draft = await getDraftForMission('mission-1');
+      expect(draft?.syncStatus).toBe('synced');
+      expect(draft?.serverTimestamp).toBe('2026-08-15T10:00:00.000Z');
+    });
+  });
+});
 
 describe('App — interface tactile 360-430px', () => {
   it('contraint la largeur du contenu entre 360 et 430px', async () => {

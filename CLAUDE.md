@@ -576,9 +576,132 @@ bruit de l'extension de navigateur elle-même), fermeture RÉELLE de l'onglet Ch
 commentaire, décision et photo (dimensions 40×40 exactes, revérifiées via
 `img.naturalWidth`/`naturalHeight` après chargement du Blob) tous intégralement retrouvés.
 
-**Explicitement hors scope de cette passe** (passe 2, pas encore construite) : synchronisation
-réseau réelle, résolution de conflit, compression photo avant upload, retry avec backoff. Un
-item reste en `pending` indéfiniment — attendu et documenté, pas un bug.
+**Passe 1 s'arrêtait ici** : synchronisation réseau réelle, résolution de conflit,
+compression photo avant upload, retry avec backoff — tout cela est désormais construit,
+voir la section suivante.
+
+## CONTROL PWA — synchronisation réelle (ticket 010, passe 2)
+
+Construite sur les fondations de la passe 1 (IndexedDB, `syncStatus`, horodatage double,
+`correlationId`) — aucune n'a été remise en cause, seulement complétée.
+
+**Backend touché pour la première fois par ce ticket** — nouvelle app `apps/control`
+(label `control_sync`), volontairement **une couche d'API fine, aucune logique métier
+propre** : chaque endpoint délègue à `apps.inspections.services`/`apps.evidence.services`
+déjà validés (tickets 003/004/005), jamais réinventés. Trois routes, `POST
+/api/control/sync/{documents,evidence,inspection}/`, réservées au rôle `inspecteur`
+(`IsInspecteur`, ticket 005) :
+
+- **`SyncDocumentView`/`SyncEvidenceView`** : un inspecteur n'est JAMAIS membre de
+  l'organisation cible (règle d'indépendance, ticket 005) — `apps.evidence.services.
+  create_document`/`create_evidence` ne basculent pas eux-mêmes le contexte RLS (aucun
+  appelant antérieur n'en avait besoin, chacun agissait dans sa propre organisation).
+  `apps/control/services.py::sync_document`/`sync_evidence` reprennent donc exactement le
+  même schéma que `create_inspection` (ticket 005) : bascule explicite du contexte RLS vers
+  l'organisation cible, restaurée dans un `finally`, jamais un contournement général.
+- **`SyncInspectionView`** : cible TOUJOURS `work_declaration` (jamais `evidence`) —
+  volontaire. Les photos de l'inspecteur transitent par leur propre `Evidence`, synchronisée
+  séparément via `SyncEvidenceView` : c'est ce qui garantit qu'un échec d'upload photo ne
+  bloque JAMAIS la synchronisation de la checklist/du commentaire/de la décision (critère
+  d'acceptation explicite de cette passe). Une `Evidence` peut donc exister avant, après, ou
+  en l'absence de toute `Inspection` synchronisée pour un même brouillon.
+
+**Détection de conflit — la règle la plus importante de cette passe : jamais de
+last-write-wins silencieux.** Ajoutée à `apps.inspections.services.create_inspection`
+lui-même (pas un wrapper séparé) via deux paramètres optionnels, tous deux à valeur par
+défaut neutre pour que TOUT appelant antérieur (`InspectionViewSet.create`, tickets
+001-009) garde un comportement rigoureusement inchangé :
+- `expected_latest_event_id` (sentinelle `_NOT_CHECKING_CONFLICT` par défaut, distincte de
+  `None` : `None` explicite signifie « je m'attends à ce qu'aucun événement n'existe encore
+  pour cette cible », absence de paramètre signifie « ne vérifie rien »). La vérification a
+  lieu DANS `_create_inspection_row`, donc dans la MÊME transaction que la création qui
+  suit — aucune fenêtre de course possible entre « je vérifie » et « j'écris ».
+- `client_correlation_id`, posé directement sur `Inspection.client_correlation_id` (nouveau
+  champ, migration 0004) à la création — traçabilité de bout en bout : loggé à chaque étape
+  (`apps/control/services.py`, `logger.info`/`warning` avec `correlation_id=...`) et exposé
+  en lecture par `InspectionSerializer`.
+
+**Piège de conception découvert en écrivant les tests (`apps/control/tests.py`) — la
+cible du conflit n'est PAS le `WorkDeclaration`/`Evidence` lui-même** : son propre
+`TrustEvent` (`declare`/`evidence_upload`) existe dès sa création par le CONSTRUCTEUR, sans
+aucun rapport avec une inspection concurrente. Comparer contre cet événement aurait fait
+échouer en conflit TOUTE première inspection sur un `work_declaration` normal — détecté par
+un test qui échouait alors qu'il n'aurait pas dû (`test_first_sync_of_a_fresh_target_
+succeeds...`). Corrigé : sans `reserve` fournie, la cible du conflit est la DERNIÈRE
+`Inspection` déjà enregistrée sur ce `work_declaration`/`evidence` (via son propre événement
+`inspection_<outcome>`), `None` si aucune n'existe encore — c'est CE `None` qui doit
+correspondre à ce que le client connaît pour qu'une première inspection passe. Avec une
+`reserve` fournie (inspection de suivi), la cible reste la réserve elle-même, sans ce piège
+(son propre événement `ouverte` EST la bonne référence).
+
+**Testé explicitement (`apps/control/tests.py::TestSyncInspectionConflict`)** : deux
+inspections concurrentes sur la même cible, toutes deux avec `known_latest_event_id=None`
+(cas réel d'une saisie intégralement hors ligne, passe 1, où aucun état serveur n'a jamais
+été observé) — la première réussit (201), la seconde est rejetée (409, `status: conflict`)
+SANS qu'aucune donnée ne soit écrasée : une seule `Inspection` existe en base, avec la note
+du premier envoi intacte. Testé à la fois sur un `work_declaration` frais et sur une
+`Reserve` déjà ouverte (inspection de suivi) — les deux cibles nommées par le ticket.
+
+**Frontend — deux files indépendantes** (`src/sync/syncEngine.ts`) :
+- **File de données** : `InspectionDraft.syncStatus` progresse `pending`→`syncing`→
+  `synced`/`conflict`/`pending` (retry) — jamais retentée automatiquement une fois
+  `conflict` (voir `runSyncCycle`, qui ne relance que `pending`/`syncing`). `syncing` est
+  éligible à une nouvelle tentative (pas seulement `pending`) : un item resté bloqué sur
+  `syncing` ne peut venir que d'une interruption (app fermée pendant l'appel réseau) — le
+  laisser figé serait, de fait, un abandon silencieux.
+- **File média** : chaque `LocalPhoto` a son propre `mediaSyncStatus`/`retryCount`/
+  `nextRetryAt`, entièrement découplé de celui du brouillon — `src/sync/syncEngine.ts::
+  syncPhotos`. Compression côté client AVANT mise en queue (`src/media/compressImage.ts`,
+  Canvas + `createImageBitmap`) — dégrade silencieusement vers le blob d'origine si
+  l'environnement ne fournit pas ces API (jsdom en test, sans le paquet `canvas`) plutôt que
+  de faire échouer toute la file pour une raison purement d'environnement.
+- **Backoff exponentiel partagé** (`src/sync/backoff.ts`) : 2s/4s/8s/16s/32s, plafonné à
+  60s, jamais un abandon. Déclenché à chaque transition `offline→online` ET par un sondage
+  périodique (15s) tant que la connexion reste active (`startSyncEngine`) — sans ce second
+  déclencheur, un item en attente de backoff n'aurait plus aucune chance d'être retenté
+  avant la PROCHAINE reconnexion, qui peut ne jamais survenir si le réseau ne coupe jamais
+  réellement pendant la session.
+
+**Piège d'outillage découvert en écrivant `syncEngine.test.ts`** : `setupTests.ts`
+réassigne `globalThis.Blob` au `Blob` natif de Node (correctif de la passe 1, voir
+ci-dessus) — un `new Blob(...)` construit dans un test n'est donc PLUS reconnu par le
+contrôle de type strict de `FormData.append` de jsdom (`TypeError: parameter 2 is not of
+type 'Blob'`), qui vérifie un brand jsdom interne, pas une simple structure compatible.
+Corrigé dans `src/api/client.ts::syncDocument` : le blob est enveloppé dans `new File(...)`
+avant l'ajout au `FormData` — un `File` construit via l'implémentation jsdom n'est jamais
+concerné par la réassignation de `Blob`, et ce changement est de toute façon correct en
+production (un vrai `File`, nommé, plutôt qu'un Blob nu).
+
+**Piège React découvert en écrivant le test de résolution de conflit** : le `<textarea>` du
+commentaire est volontairement NON contrôlé (`defaultValue` + `onBlur`, voir passe 1) — mais
+`resolveConflictByDiscarding` (abandon explicite d'un conflit, voir ci-dessous) remplace le
+brouillon affiché par un composant DÉJÀ MONTÉ, sans jamais démonter/remonter le formulaire.
+React ne réapplique jamais `defaultValue` sur un composant non démonté : le commentaire
+affiché restait silencieusement celui de l'ANCIEN brouillon. Corrigé par `key={draft.id}`
+sur le `<textarea>` — force un vrai remount quand l'identité du brouillon change.
+
+**Résolution de conflit construite dans cette passe** : un item `conflict` reste visible
+(bandeau `AlertBanner`, jamais `StatusBadge` — même raisonnement que le hors-ligne) avec le
+dernier événement serveur connu affiché, et une seule action explicite disponible —
+« Ignorer ma saisie et recommencer » (`InspectionFormView.tsx::
+resolveConflictByDiscarding`) : supprime le brouillon local, repart d'un formulaire vierge
+en connaissance du nouvel état. Une résolution plus fine (fusion, ou « un rôle habilité »
+distinct de l'inspecteur lui-même — mentionné par le ticket) reste un point d'extension non
+couvert ici : documenté, pas implémenté.
+
+**Limite connue, non résolue par cette passe** : `InspectionDraft.knownLatestEventId` reste
+`null` pour tout brouillon saisi hors ligne (aucun mécanisme de rafraîchissement de l'état
+connu pendant la saisie n'est construit ici — hors du scope littéral du ticket, qui ne
+demandait qu'une file de synchronisation, une détection de conflit et une file média). Le
+mécanisme de conflit lui-même reste réel et testé (voir plus haut, en construisant
+directement les deux brouillons concurrents) ; seule la façon dont un client apprendrait un
+état serveur plus récent AVANT de synchroniser reste un point d'extension futur.
+
+**Missions mock, toujours sans correspondance backend par défaut** (limite déjà documentée
+passe 1, non résolue ici) : `MOCK_MISSIONS` porte désormais `organizationId`/
+`workDeclarationId`, mais ce sont des UUID fictifs — une vraie vérification manuelle exige
+de les remplacer temporairement par de vrais identifiants backend (jamais commité tel quel).
+Les tests automatisés n'en ont pas besoin : l'API est mockée (`vi.stubGlobal('fetch', ...)`).
 
 ## Tickets
 

@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getDraftForMission } from '../db/repository';
+import { CHECKLIST_TEMPLATE } from '../db/missions';
+import { createEmptyDraft, getDraftForMission, saveDraft } from '../db/repository';
 import { InspectionFormView } from './InspectionFormView';
 
 beforeEach(async () => {
@@ -102,3 +103,48 @@ describe('InspectionFormView — chaque saisie est écrite immédiatement, jamai
     expect(onBack).toHaveBeenCalledOnce();
   });
 });
+
+describe(
+  'InspectionFormView — un conflit (ticket 010 passe 2) reste visible jusqu\'à une action ' +
+  'explicite, jamais résolu automatiquement',
+  () => {
+    async function createConflictedDraft() {
+      const draft = createEmptyDraft('mission-1', CHECKLIST_TEMPLATE);
+      draft.comment = 'Fissure visible';
+      draft.decision = 'reserve';
+      draft.syncStatus = 'conflict';
+      draft.conflict = { currentEventSource: 'inspection_avec_reserve', currentEventCreatedAt: '2026-08-15T09:00:00.000Z' };
+      await saveDraft(draft);
+      return draft;
+    }
+
+    it('affiche le conflit et la saisie locale intacte, jamais un état vierge silencieux', async () => {
+      await createConflictedDraft();
+      render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+      expect(await screen.findByText('Conflit à résoudre', { selector: 'span' })).toBeInTheDocument();
+      expect(screen.getByText(/inspection_avec_reserve/)).toBeInTheDocument();
+      expect(screen.getByLabelText('Commentaire')).toHaveValue('Fissure visible');
+      expect(screen.getByLabelText('Réserve')).toBeChecked();
+    });
+
+    it('l\'action explicite "Ignorer ma saisie et recommencer" repart d\'un formulaire vierge', async () => {
+      await createConflictedDraft();
+      render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+      await screen.findByText('Conflit à résoudre', { selector: 'span' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Ignorer ma saisie et recommencer' }));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Commentaire')).toHaveValue('');
+      });
+      expect(screen.getByLabelText('Réserve')).not.toBeChecked();
+      expect(screen.queryByText('Conflit à résoudre', { selector: 'span' })).not.toBeInTheDocument();
+
+      // Le brouillon en conflit a bien été supprimé d'IndexedDB — un
+      // rechargement de la mission ne le retrouve plus.
+      const draft = await getDraftForMission('mission-1');
+      expect(draft).toBeUndefined();
+    });
+  },
+);

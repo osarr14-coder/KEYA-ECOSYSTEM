@@ -23,25 +23,47 @@ export interface ChecklistItemState {
   checked: boolean;
 }
 
-/** Une photo capturée localement — le Blob brut, TEL QUE capturé. Aucune
- * compression ici (explicitement hors scope de cette passe, voir ticket :
- * "File média : compression côté client..." est un point de la passe 2). */
+/**
+ * Statut d'upload d'UNE photo — file INDÉPENDANTE de `SyncStatus` (celle du
+ * brouillon entier) : ticket 010 passe 2, "une photo peut échouer à
+ * uploader sans bloquer la synchronisation du reste de l'inspection". Pas
+ * de `conflict` ici — aucune notion de conflit ne s'applique à un simple
+ * upload de fichier (voir CLAUDE.md, addendum passe 2).
+ */
+export type MediaSyncStatus = 'pending' | 'syncing' | 'synced' | 'failed';
+
+/** Une photo capturée localement — `blob` reste TEL QUE capturé (la
+ * compression, ajoutée en passe 2, a lieu juste avant l'upload, jamais sur
+ * la copie locale conservée pour relecture/aperçu). */
 export interface LocalPhoto {
   id: string;
   blob: Blob;
   fileName: string;
   capturedAt: string;
+  mediaSyncStatus: MediaSyncStatus;
+  /** `Document.id` côté serveur une fois l'upload réussi — `null` tant que
+   * `mediaSyncStatus !== 'synced'`. */
+  remoteDocumentId: string | null;
+  retryCount: number;
+  /** Prochaine tentative autorisée (backoff exponentiel) — `null` tant
+   * qu'aucun échec n'a encore eu lieu. */
+  nextRetryAt: string | null;
 }
 
 /** Une mission = une inspection à mener, telle que proposée à l'inspecteur.
- * Mock statique en passe 1 (voir `missions.ts`) — aucun fetch réseau,
- * remplacé par une vraie synchronisation en passe 2. */
+ * Mock statique en passe 1 (voir `missions.ts`) — aucun fetch réseau. Passe
+ * 2 y ajoute `organizationId`/`workDeclarationId` : cible RÉELLE côté
+ * backend nécessaire pour synchroniser quoi que ce soit (une mission sans
+ * ces deux identifiants reste un pur mock, non synchronisable — voir
+ * CLAUDE.md, addendum passe 2, pour la limite connue de cette approche). */
 export interface Mission {
   id: string;
   lotName: string;
   assetName: string;
   programName: string;
   milestoneLabel: string;
+  organizationId: string;
+  workDeclarationId: string;
 }
 
 /**
@@ -72,4 +94,37 @@ export interface InspectionDraft {
    * synchronisation construite (passe 2). */
   serverTimestamp: string | null;
   syncStatus: SyncStatus;
+
+  /**
+   * Dernier `TrustEvent.id` connu du client pour la cible de cette
+   * inspection (WorkDeclaration/Evidence, ou Reserve pour un suivi) — `null`
+   * pour tout brouillon saisi hors ligne sans jamais avoir observé l'état
+   * réel du serveur (cas normal en passe 1/2, aucune récupération de l'état
+   * courant n'est construite ici, voir CLAUDE.md addendum passe 2). C'est
+   * cette valeur que le serveur compare à l'état RÉEL au moment de la
+   * synchronisation : si elles diffèrent, `syncStatus` devient `conflict`
+   * plutôt qu'un écrasement silencieux (voir `apps.inspections.services.
+   * create_inspection`, paramètre `expected_latest_event_id`).
+   */
+  knownLatestEventId: string | null;
+  /** Compteur de tentatives pour la file de DONNÉES (indépendant de celui
+   * de chaque photo, voir `LocalPhoto.retryCount`) — remis à 0 dès un envoi
+   * réussi. */
+  retryCount: number;
+  /** Prochaine tentative autorisée (backoff exponentiel) — `null` tant
+   * qu'aucun échec n'a encore eu lieu ou après un succès. */
+  nextRetryAt: string | null;
+  /** Renseigné uniquement quand `syncStatus === 'conflict'` — ce que le
+   * serveur a rapporté comme dernier événement réel, pour affichage à
+   * l'inspecteur. Ne déclenche JAMAIS de nouvelle tentative automatique :
+   * un conflit reste visible jusqu'à une action EXPLICITE (voir
+   * `resolveConflictByDiscarding`/réécriture manuelle, ticket 010 passe 2). */
+  conflict: { currentEventSource: string | null; currentEventCreatedAt: string | null } | null;
+  /** `Evidence.id` côté serveur une fois toutes les photos synchronisées et
+   * regroupées — `null` tant qu'aucune Evidence n'a encore été créée.
+   * Indépendant de `syncStatus` : une Evidence peut exister AVANT, APRÈS,
+   * ou en l'absence de toute Inspection synchronisée pour ce brouillon
+   * (voir CLAUDE.md, addendum passe 2 : les deux files ne se bloquent
+   * jamais mutuellement). */
+  evidenceId: string | null;
 }

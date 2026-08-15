@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { AlertBanner } from '@keya/design-system';
 
+import { createDefaultApiClient, startSyncEngine } from './sync/syncEngine';
 import { InspectionFormView } from './views/InspectionFormView';
 import { MissionsListView } from './views/MissionsListView';
 
@@ -35,6 +36,14 @@ function useOnlineStatus(): boolean {
 export function App() {
   const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
   const isOnline = useOnlineStatus();
+
+  // Un seul client pour toute la durée de vie de l'app — le moteur de
+  // synchronisation (ticket 010, passe 2) s'appuie sur `window`
+  // (événement `online`) et `navigator.onLine`, jamais sur `isOnline`
+  // ci-dessus (état React, redondant et non nécessaire ici). Démarré/arrêté
+  // avec le cycle de vie de `<App />`, pas plus tôt/tard.
+  const apiClient = useMemo(() => createDefaultApiClient(), []);
+  useEffect(() => startSyncEngine(apiClient), [apiClient]);
 
   return (
     <div style={{ maxWidth: '430px', minWidth: '360px', margin: '0 auto', padding: '12px' }}>

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 
+import { AlertBanner } from '@keya/design-system';
+
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { CHECKLIST_TEMPLATE, MOCK_MISSIONS } from '../db/missions';
-import { createEmptyDraft, getDraftForMission, saveDraft } from '../db/repository';
+import { createEmptyDraft, deleteDraft, getDraftForMission, saveDraft } from '../db/repository';
 import type { Decision, InspectionDraft, LocalPhoto } from '../db/types';
 
 export interface InspectionFormViewProps {
@@ -95,6 +97,10 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       blob: file,
       fileName: file.name,
       capturedAt: new Date().toISOString(),
+      mediaSyncStatus: 'pending',
+      remoteDocumentId: null,
+      retryCount: 0,
+      nextRetryAt: null,
     }));
     await persist({ ...draft, photos: [...draft.photos, ...newPhotos] });
     // Permet de recapturer/resélectionner le même fichier ensuite.
@@ -104,6 +110,22 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   function handlePhotoRemove(photoId: string) {
     if (!draft) return;
     void persist({ ...draft, photos: draft.photos.filter((photo) => photo.id !== photoId) });
+  }
+
+  /**
+   * Seule action de résolution construite dans cette passe (ticket 010,
+   * passe 2) : jamais de nouvelle tentative automatique sur un item en
+   * conflit (voir syncEngine.ts) — l'inspecteur doit explicitement choisir
+   * d'abandonner sa saisie devenue obsolète pour repartir d'un formulaire
+   * vierge, en connaissance du dernier état serveur affiché ci-dessous.
+   * Une résolution plus fine (fusion, "un rôle habilité" distinct de
+   * l'inspecteur lui-même — voir le ticket) reste un point d'extension non
+   * couvert ici.
+   */
+  async function resolveConflictByDiscarding() {
+    if (!draft) return;
+    await deleteDraft(draft.id);
+    setDraft(createEmptyDraft(missionId, CHECKLIST_TEMPLATE));
   }
 
   if (loading || !draft) {
@@ -117,6 +139,19 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       {mission && <p>{mission.programName} · {mission.milestoneLabel}</p>}
 
       <SyncStatusIndicator status={draft.syncStatus} />
+
+      {draft.syncStatus === 'conflict' && (
+        <AlertBanner title="Conflit à résoudre">
+          Cette inspection a déjà été modifiée par ailleurs depuis votre dernière saisie
+          {draft.conflict?.currentEventSource ? ` (dernier événement serveur : ${draft.conflict.currentEventSource})` : ''}.
+          Votre saisie n'a PAS été envoyée pour éviter d'écraser cette modification.
+          <div>
+            <button type="button" onClick={() => void resolveConflictByDiscarding()}>
+              Ignorer ma saisie et recommencer
+            </button>
+          </div>
+        </AlertBanner>
+      )}
 
       <fieldset>
         <legend>Checklist</legend>
@@ -154,7 +189,14 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
 
       <label>
         Commentaire
-        <textarea defaultValue={draft.comment} onBlur={handleCommentBlur} />
+        {/* `key={draft.id}` : force un vrai remount quand le brouillon
+            change d'identité (ex : abandon d'un conflit puis reprise sur un
+            brouillon neuf, voir `resolveConflictByDiscarding` ci-dessus) —
+            sans quoi `defaultValue` (non contrôlé, volontaire : voir
+            docstring plus haut) resterait figé sur l'ancien commentaire,
+            React ne réappliquant jamais `defaultValue` sur un composant déjà
+            monté. */}
+        <textarea key={draft.id} defaultValue={draft.comment} onBlur={handleCommentBlur} />
       </label>
 
       <fieldset>

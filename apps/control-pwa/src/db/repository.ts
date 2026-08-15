@@ -22,6 +22,11 @@ export function createEmptyDraft(missionId: string, checklistTemplate: Checklist
     deviceTimestamp: new Date().toISOString(),
     serverTimestamp: null,
     syncStatus: 'pending',
+    knownLatestEventId: null,
+    retryCount: 0,
+    nextRetryAt: null,
+    conflict: null,
+    evidenceId: null,
   };
 }
 
@@ -68,6 +73,42 @@ export async function getAllDrafts(): Promise<InspectionDraft[]> {
   const db = await openControlDatabase();
   try {
     return await db.getAll('inspection_drafts');
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Écrit le brouillon SANS reposer `deviceTimestamp` — réservé aux
+ * transitions pilotées par le moteur de synchronisation (`syncStatus`,
+ * horodatage serveur, compteurs/horaires de tentative, statut par photo...).
+ * `saveDraft` reste la SEULE fonction utilisée pour une saisie de
+ * l'inspecteur : c'est elle qui fait foi pour `deviceTimestamp` (voir son
+ * propre docstring) — un aller-retour réseau ne doit jamais la modifier,
+ * sous peine de casser le critère d'acceptation central de la passe 1
+ * (l'horodatage device reflète la dernière saisie HUMAINE, rien d'autre).
+ */
+export async function patchDraft(draft: InspectionDraft): Promise<InspectionDraft> {
+  const db = await openControlDatabase();
+  try {
+    await db.put('inspection_drafts', draft);
+  } finally {
+    db.close();
+  }
+  return draft;
+}
+
+/**
+ * Supprime un brouillon — utilisé UNIQUEMENT par la résolution explicite
+ * d'un conflit (ticket 010, passe 2) : l'inspecteur choisit sciemment
+ * d'abandonner sa saisie devenue obsolète plutôt que de la voir écrasée
+ * silencieusement. Jamais appelé automatiquement par le moteur de
+ * synchronisation lui-même.
+ */
+export async function deleteDraft(id: string): Promise<void> {
+  const db = await openControlDatabase();
+  try {
+    await db.delete('inspection_drafts', id);
   } finally {
     db.close();
   }

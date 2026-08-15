@@ -19,7 +19,7 @@ class InspectionSerializer(serializers.ModelSerializer):
         model = Inspection
         fields = [
             'id', 'lot', 'inspector', 'work_declaration', 'evidence', 'outcome',
-            'reserve', 'opened_reserve', 'note', 'created_at',
+            'reserve', 'opened_reserve', 'note', 'created_at', 'client_correlation_id',
         ]
         read_only_fields = fields
 

@@ -5,22 +5,32 @@ import type { ChecklistItemState, Mission } from './types';
  * aucun concept de "mission assignée à un inspecteur" (`apps/tasks` ne
  * génère des Task que pour le rôle constructeur, voir CLAUDE.md section
  * Task Inbox). Faire remonter une vraie liste de missions depuis le
- * serveur est explicitement de la synchronisation réseau — hors scope de
- * cette passe. Remplacé par un vrai fetch (mis en cache localement pour un
- * usage hors ligne) en passe 2.
+ * serveur reste hors scope (limite documentée, non résolue par la passe 2 —
+ * voir CLAUDE.md, addendum passe 2) : `organizationId`/`workDeclarationId`
+ * ci-dessous sont donc eux-mêmes des identifiants FICTIFS pour les tests
+ * automatisés (l'API est mockée), sans correspondance en base par défaut.
+ * Une vérification manuelle en conditions réelles nécessite de les
+ * remplacer temporairement par de vrais UUID backend (voir procédure dans
+ * CLAUDE.md) — jamais commité tel quel.
  */
 export const MOCK_MISSIONS: Mission[] = [
   {
     id: 'mission-1', lotName: 'Lot 12', assetName: 'Résidence Ker',
     programName: 'Programme Keur Massar', milestoneLabel: 'Fondations',
+    organizationId: '00000000-0000-0000-0000-0000000000a1',
+    workDeclarationId: '00000000-0000-0000-0000-0000000000b1',
   },
   {
     id: 'mission-2', lotName: 'Lot 07', assetName: 'Résidence Ker',
     programName: 'Programme Keur Massar', milestoneLabel: 'Gros œuvre',
+    organizationId: '00000000-0000-0000-0000-0000000000a1',
+    workDeclarationId: '00000000-0000-0000-0000-0000000000b2',
   },
   {
     id: 'mission-3', lotName: 'Lot 03', assetName: 'Villa Almadies',
     programName: 'Programme Almadies Sud', milestoneLabel: 'Second œuvre',
+    organizationId: '00000000-0000-0000-0000-0000000000a2',
+    workDeclarationId: '00000000-0000-0000-0000-0000000000b3',
   },
 ];
 

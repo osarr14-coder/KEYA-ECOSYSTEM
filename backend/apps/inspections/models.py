@@ -58,6 +58,15 @@ class Inspection(models.Model):
     note = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Ticket 010 (CONTROL, passe 2) : identifiant généré côté client dès la
+    # saisie hors ligne (avant toute tentative réseau), propagé tel quel
+    # jusqu'ici par `apps.control.services.sync_inspection` — traçabilité de
+    # bout en bout entre le brouillon local et l'Inspection qui en résulte.
+    # `null=True` : toute Inspection créée par la voie normale
+    # (`InspectionViewSet.create`, tickets 001-009) n'en a jamais eu et n'en
+    # a pas besoin — champ propre à la voie de synchronisation CONTROL.
+    client_correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
+
     class Meta:
         db_table = 'inspections_inspection'
         constraints = [

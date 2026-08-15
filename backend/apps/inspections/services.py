@@ -16,9 +16,41 @@ class IndependenceRuleViolation(Exception):
     """
 
 
+class SyncConflict(Exception):
+    """Levée quand `expected_latest_event_id` est fourni et ne correspond
+    plus au dernier `TrustEvent` réel de la cible (Reserve si suivi, sinon
+    WorkDeclaration/Evidence) — ticket 010 (CONTROL, passe 2) : la cible a
+    été modifiée par ailleurs depuis la dernière synchronisation connue du
+    client. La vérification et la création ont lieu dans la MÊME transaction
+    (voir `_create_inspection_row`) : pas de fenêtre de course entre "je
+    vérifie" et "je crée" — jamais un last-write-wins silencieux.
+
+    Rien n'est écrit avant que cette exception ne soit levée : le `raise` se
+    produit avant tout `Inspection.objects.create(...)`, donc la transaction
+    englobante n'a besoin que d'un `raise`/retour, jamais d'un rollback
+    explicite.
+    """
+
+    def __init__(self, current_event):
+        self.current_event = current_event
+        super().__init__(
+            'La cible a été modifiée depuis la dernière synchronisation connue du client.',
+        )
+
+
+# Sentinelle distincte de `None` : `expected_latest_event_id=None` signifie
+# explicitement "le client s'attend à ce qu'aucun événement n'existe encore
+# pour cette cible" (vérifié), alors que ne pas fournir le paramètre du tout
+# (valeur par défaut) signifie "aucune vérification de conflit" — comportement
+# strictement inchangé pour tout appelant antérieur au ticket 010 (aucun ne
+# passe ce paramètre).
+_NOT_CHECKING_CONFLICT = object()
+
+
 def create_inspection(
     *, inspector, inspector_organization, target_organization_id,
     work_declaration_id=None, evidence_id=None, outcome, note='', reserve_id=None,
+    expected_latest_event_id=_NOT_CHECKING_CONFLICT, client_correlation_id=None,
 ):
     """Point d'entrée unique pour créer une `Inspection` — et donc la SEULE
     façon de faire progresser le cycle de vie d'une `Reserve`
@@ -53,6 +85,8 @@ def create_inspection(
                 outcome=outcome,
                 note=note,
                 reserve_id=reserve_id,
+                expected_latest_event_id=expected_latest_event_id,
+                client_correlation_id=client_correlation_id,
             )
         finally:
             # Toujours restaurer le contexte de l'inspecteur avant de rendre
@@ -64,7 +98,8 @@ def create_inspection(
 
 
 def _create_inspection_row(*, inspector, target_organization_id, work_declaration_id,
-                            evidence_id, outcome, note, reserve_id):
+                            evidence_id, outcome, note, reserve_id,
+                            expected_latest_event_id=_NOT_CHECKING_CONFLICT, client_correlation_id=None):
     target_organization = Organization.objects.filter(id=target_organization_id).first()
     if target_organization is None:
         raise ValidationError("organization cible introuvable.")
@@ -90,6 +125,28 @@ def _create_inspection_row(*, inspector, target_organization_id, work_declaratio
         if reserve is None:
             raise ValidationError("reserve introuvable dans l'organisation cible.")
 
+    if expected_latest_event_id is not _NOT_CHECKING_CONFLICT:
+        # Ticket 010 (CONTROL, passe 2) : la cible du conflit est la Reserve
+        # pour une inspection de suivi (c'est elle que le client réexamine).
+        # Sans réserve, ce n'est PAS le WorkDeclaration/Evidence lui-même :
+        # son propre TrustEvent ("declare"/"evidence_upload") existe dès sa
+        # création par le constructeur et n'a rien à voir avec une
+        # inspection concurrente — le comparer aurait fait échouer TOUTE
+        # première inspection en conflit. La cible est donc la DERNIÈRE
+        # Inspection déjà enregistrée sur ce WorkDeclaration/Evidence (via
+        # son propre événement `inspection_<outcome>`), `None` si aucune
+        # n'existe encore. Comparaison faite ICI, dans la même transaction
+        # que la création qui suit : aucune fenêtre de course possible.
+        if reserve is not None:
+            conflict_subject = reserve
+        else:
+            base_subject = work_declaration or evidence
+            conflict_subject = base_subject.inspections.order_by('-created_at').first()
+        current_event = trust_repository.get_current_status(conflict_subject) if conflict_subject else None
+        current_event_id = str(current_event.id) if current_event else None
+        if current_event_id != expected_latest_event_id:
+            raise SyncConflict(current_event)
+
     inspection = Inspection.objects.create(
         organization=target_organization,
         lot=lot,
@@ -99,6 +156,7 @@ def _create_inspection_row(*, inspector, target_organization_id, work_declaratio
         outcome=outcome,
         reserve=reserve,
         note=note,
+        client_correlation_id=client_correlation_id,
     )
 
     inspection_level = TrustLevel.VERIFIE if outcome == InspectionOutcome.CONFORME else TrustLevel.CONTROLE

@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'apps.tasks',
     'apps.home',
     'apps.build',
+    'apps.control',
     'apps.core',
 ]
 

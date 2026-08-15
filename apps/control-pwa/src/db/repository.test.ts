@@ -42,8 +42,16 @@ describe(
         draft.comment = 'Fissure visible sur le mur nord, à surveiller.';
         draft.decision = 'reserve';
         draft.photos = [
-          { id: 'photo-1', blob: makePhotoBlob('photo-1-content'), fileName: 'photo1.jpg', capturedAt: '2026-08-15T09:00:00.000Z' },
-          { id: 'photo-2', blob: makePhotoBlob('photo-2-content'), fileName: 'photo2.jpg', capturedAt: '2026-08-15T09:01:00.000Z' },
+          {
+            id: 'photo-1', blob: makePhotoBlob('photo-1-content'), fileName: 'photo1.jpg',
+            capturedAt: '2026-08-15T09:00:00.000Z', mediaSyncStatus: 'pending', remoteDocumentId: null,
+            retryCount: 0, nextRetryAt: null,
+          },
+          {
+            id: 'photo-2', blob: makePhotoBlob('photo-2-content'), fileName: 'photo2.jpg',
+            capturedAt: '2026-08-15T09:01:00.000Z', mediaSyncStatus: 'pending', remoteDocumentId: null,
+            retryCount: 0, nextRetryAt: null,
+          },
         ];
 
         const saved = await saveDraft(draft);
