@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'apps.trust',
     'apps.evidence',
     'apps.inspections',
+    'apps.tasks',
     'apps.core',
 ]
 

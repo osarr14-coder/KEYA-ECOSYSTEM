@@ -46,8 +46,10 @@ backend/
     trust/            # TrustEvent append-only + repository (create/lecture seule)
     evidence/         # Document (GED), WorkDeclaration, Evidence
     inspections/      # Inspection, Reserve (machine à état), ReserveCorrection
+    tasks/            # Task (inbox transversale, app label 'inbox_tasks')
     core/             # middleware RLS, viewsets/mixins réutilisables, utilitaires partagés
   config/             # settings.py, settings_test.py, urls.py, wsgi/asgi
+  conftest.py         # fixtures de test partagées entre apps (ex : real_celery_worker)
 ```
 
 Un nouveau domaine métier (trust events, travaux/preuves, inspections...) = une
@@ -211,6 +213,55 @@ de fixer ce statut directement : `ReserveViewSet` est strictement en lecture seu
 `create`/`update`/`destroy`), et la seule route qui fait progresser la machine à état
 (`InspectionViewSet.create`) est réservée au rôle `inspecteur` (`IsInspecteur`) — un
 constructeur y est refusé explicitement (403), jamais silencieusement absent d'un menu.
+
+## Task Inbox (ticket 006)
+
+`Task` est polymorphe exactement comme `TrustEvent` (`subject_type`/`subject_id` via
+`django.contrib.contenttypes`) — un `type` (task/notification/alert/exception) est
+TOUJOURS renseigné et exposé par l'API, c'est ce qui rend les 4 types « structurellement
+distincts » plutôt qu'une liste non typée qui se ressemblerait.
+
+**Exception assumée et documentée à la doctrine « le statut ne se stocke jamais »** :
+`Task.status` est un champ réellement stocké (voir docstring du modèle). La doctrine
+(CLAUDE.md, section Visible Trust) concerne les objets dont le statut est une AFFIRMATION
+DE CONFIANCE avec provenance (Milestone, WorkDeclaration, Evidence, Reserve) — une `Task`
+n'affirme aucune confiance sur son sujet, c'est un objet opérationnel d'inbox dont le
+statut est un fait sur elle-même. Marquer une Task traitée (`TaskViewSet.complete` →
+`apps.tasks.services.complete_task`) ne touche donc jamais au `TrustEvent`/`Reserve` qui
+l'a déclenchée : les deux sont des tables sans lien de suppression en cascade entre elles
+(référence polymorphe, pas de FK réelle).
+
+`apps.tasks.tasks.process_reserve_opened` réutilise **exactement** le pattern de
+`apps.evidence.tasks.process_document_media` (ticket 004) : `organization_id`/
+`actor_user_id` en arguments explicites, posés via `set_rls_context` à l'intérieur d'un
+`transaction.atomic()` englobant tout le corps de la tâche. Déclenchée depuis
+`apps.inspections.services._open_new_reserve` via un vrai `.delay()` — jamais un appel
+synchrone déguisé en asynchrone (testé par mock de `.delay()` ET par un test contre un
+vrai worker, `apps/tasks/test_celery_integration.py`).
+
+Le constructeur assigné à une `Task` générée par une réserve ouverte n'est stocké nulle
+part explicitement (`Lot` n'a pas de champ « assigné », ticket 002) — il se déduit de
+`WorkDeclaration.declared_by`, via l'inspection à l'origine de la réserve
+(`apps.tasks.services.resolve_constructeur_for_reserve`). Le libellé généré
+(`apps.tasks.services._reserve_opened_label`) nomme explicitement le constructeur comme
+responsable — jamais KEYIMMO : critère d'acceptation vérifié par une lecture du texte
+réellement généré, pas seulement une revue du code
+(`apps/tasks/tests.py::TestGeneratedLabelNeverAttributesDecisionToKeyimmo`). Toute
+nouvelle Task générée automatiquement par ce projet doit suivre la même règle.
+
+`GET /api/me/tasks/` est scopé sur `assignee=request.user`, pas sur l'organisation active
+comme le reste du projet — RLS reste un filet de sécurité en plus (l'organisation active
+doit de toute façon correspondre à celle de l'assigné), jamais à la place de ce filtre.
+
+`backend/conftest.py` centralise désormais la fixture `real_celery_worker` (introduite au
+ticket 004) et les helpers de seed anti-TRUNCATE (`get_or_create_senegal_country_pack`,
+`ensure_senegal_milestone_template_seeded`) — partagés entre apps plutôt que dupliqués par
+fichier de test. **Piège rencontré en écrivant les tests du ticket 006** : un test
+`transactional_db` antérieur dans la même session pytest (TRUNCATE entre tests) peut aussi
+effacer le `MilestoneTemplate` Sénégal (ticket 002), pas seulement le `CountryPack` — tout
+test `transactional_db` qui a besoin de `Milestone` doit appeler
+`ensure_senegal_milestone_template_seeded()`, pas seulement
+`get_or_create_senegal_country_pack()`.
 
 ## Tickets
 

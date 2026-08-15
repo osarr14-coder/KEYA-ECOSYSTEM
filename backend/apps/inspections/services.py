@@ -123,6 +123,21 @@ def _open_new_reserve(*, inspection, inspector, organization, lot):
         subject=reserve, organization=organization, level=TrustLevel.CONTROLE,
         actor=inspector, source='ouverte',
     )
+
+    # Ticket 006 : une réserve ouverte génère automatiquement une Task pour
+    # le constructeur assigné au lot — via une vraie tâche Celery
+    # asynchrone (.delay()), jamais un appel synchrone ici qui ne ferait que
+    # ressembler à de l'asynchrone. Import différé : évite un cycle au
+    # chargement (apps.tasks.tasks importe apps.inspections.models,
+    # également en différé).
+    from apps.tasks.tasks import process_reserve_opened
+
+    process_reserve_opened.delay(
+        reserve_id=str(reserve.id),
+        organization_id=str(organization.id),
+        actor_user_id=str(inspector.id),
+    )
+
     return reserve
 
 
