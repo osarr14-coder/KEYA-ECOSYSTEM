@@ -318,12 +318,19 @@ données au format du retour de `apps/trust/repository.py::get_current_status` (
 il affiche l'événement tel quel, cohérent avec la doctrine Visible Trust.
 
 **Gouvernance "une seule source de vérité visuelle" (critère d'acceptation)** : un test
-(`src/governance.test.ts`) garde qu'aucun second composant de badge n'apparaît dans
-`packages/design-system/src/components`. Portée assumée : ce test ne peut scanner que ce
-package — si une future app (ticket 008+) redéfinit son propre badge ailleurs dans le
-monorepo, ce test ne le détectera pas. Cette section CLAUDE.md est le second filet : toute
-app frontend future doit importer `StatusBadge` depuis `@keya/design-system`, jamais en
-redéfinir un.
+(`src/governance.test.ts`) scanne le CODE SOURCE (pas les noms de dossier) à la recherche
+de tout composant exporté dont le nom évoque un badge, sur deux périmètres : 1)
+`packages/design-system/src` lui-même (un seul résultat attendu, `StatusBadge`) ; 2) `/apps`
+à la racine du monorepo, où vivront les futures apps HOME/BUILD (tickets 008+) — **tant que
+ce dossier n'existe pas, il n'y a rien à scanner, mais le jour où un ticket futur le crée,
+ce même test (sans modification) commence réellement à le couvrir**, vérifié par un test
+manuel (fixture temporaire avec un composant `TrustBadgeV2` dans un fichier au nom neutre,
+supprimée après vérification que le test échouait bien dessus). Ne pas neutraliser ni
+supprimer la partie `/apps` de ce test en la croyant inutile avant que ce dossier existe —
+c'est précisément le mécanisme qui évite qu'un badge concurrent ne se glisse dans un écran
+BUILD ou HOME sans revue manuelle. Un nom de composant `*Badge*` légitimement différent
+(ex : un badge numérique de compteur, pas un badge de niveau de confiance) s'ajoute à
+`ALLOWLISTED_BADGE_COMPONENT_NAMES` dans le test, jamais en affaiblissant la regex.
 
 **Tokens de densité** (`src/tokens/density.ts`) : `densityTokens.dense`/`densityTokens.confortable`
 sont exportés indépendamment d'`AppShell` précisément pour être réutilisés par un futur
