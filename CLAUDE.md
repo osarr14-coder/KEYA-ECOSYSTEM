@@ -44,6 +44,7 @@ backend/
     organizations/   # Organization, CountryPack, Membership, Role
     programs/         # Program, Asset, Lot, MilestoneTemplate(+Step), Milestone
     trust/            # TrustEvent append-only + repository (create/lecture seule)
+    evidence/         # Document (GED), WorkDeclaration, Evidence
     core/             # middleware RLS, viewsets/mixins réutilisables, utilitaires partagés
   config/             # settings.py, settings_test.py, urls.py, wsgi/asgi
 ```
@@ -128,6 +129,45 @@ toutes en `on_delete=PROTECT`, jamais `CASCADE` : un TrustEvent ne doit jamais d
 comme effet de bord de la suppression d'une autre ligne — cohérent avec le principe
 append-only lui-même (une purge, si un jour nécessaire, doit être un choix explicite et
 tracé).
+
+## GED / Document (ticket 004)
+
+Aucun fichier de `Document` n'est jamais servi par une route non signée. `config/urls.py`
+ne monte volontairement jamais `static(MEDIA_URL, document_root=MEDIA_ROOT)` : il n'existe
+donc littéralement aucune route qui pourrait servir un fichier brut, même par erreur.
+L'unique chemin d'accès :
+
+1. `GET /api/documents/{id}/signed-url/` (authentifié, scopé organisation) — renvoie un
+   lien contenant un token signé (`django.core.signing.TimestampSigner`, 5 min) via
+   `apps/evidence/access.py`.
+2. `GET /api/documents/download/<token>/` — revérifie signature + expiration, PUIS
+   revérifie la permission indépendamment (organisation active + `sensitivity_level`,
+   voir ci-dessous) : un token valide ne suffit jamais seul, l'appartenance a pu changer
+   entre l'émission du lien et son utilisation.
+
+`sensitivity_level` conditionne réellement l'accès, pas seulement l'affichage : un
+document `confidentiel` n'est accessible qu'à son propriétaire (`owner`) ou à un membre
+avec le rôle `admin_keyimmo` — tout autre membre de la même organisation, qui aurait accès
+à un document `interne`/`public` identique, en est exclu (`access.user_can_access_document`,
+appelé à la fois à l'émission du lien ET au téléchargement). Toute nouvelle règle d'accès
+basée sur `sensitivity_level` doit passer par cette fonction, pas par une vérification
+ad hoc dans une vue.
+
+Stockage : `FileSystemStorage` local pour le MVP, pas de vrai S3/MinIO branché (Docker
+indisponible dans cet environnement, voir ticket 001). Le champ `hash` d'un `Document` est
+celui du fichier **tel qu'uploadé**, jamais recalculé après compression — c'est l'ancrage
+de chaîne de custody. Le traitement asynchrone (compression + miniature,
+`apps/evidence/tasks.py`) ne doit jamais toucher aux champs de provenance
+(`source`, `captured_at`, `owner`, `created_at`, `hash`).
+
+Celery est configuré (`config/celery.py`) mais `CELERY_TASK_ALWAYS_EAGER=True` par défaut
+: aucun broker Redis n'est provisionné ici. Les tâches sont de vraies tâches Celery
+(`@shared_task` + `.delay()`), donc brancher un broker réel plus tard ne demande aucun
+changement de code — seulement de repasser ce flag à `False`. Limite connue non résolue :
+en mode eager, la tâche s'exécute dans la même transaction/connexion que la requête HTTP,
+qui a déjà posé le contexte RLS ; un vrai worker distant n'aurait par définition aucune
+requête HTTP pour le faire, et devra résoudre l'organisation du document autrement avant
+de lire/écrire la ligne.
 
 ## Tickets
 

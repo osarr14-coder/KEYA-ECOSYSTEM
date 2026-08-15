@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'apps.organizations',
     'apps.programs',
     'apps.trust',
+    'apps.evidence',
     'apps.core',
 ]
 
@@ -87,6 +88,15 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# MEDIA_URL n'est délibérément jamais monté dans config/urls.py (pas de
+# `static(MEDIA_URL, document_root=MEDIA_ROOT)`) : aucune route ne doit
+# jamais servir un fichier de apps.evidence.Document de façon non signée —
+# voir ticket 004, critère d'acceptation sur sensitivity_level. Le seul accès
+# possible passe par apps/evidence/views.py (URL signée + permission
+# revérifiée à chaque téléchargement).
+MEDIA_ROOT = config('MEDIA_ROOT', default=str(BASE_DIR / 'media'))
+MEDIA_URL = '/media/'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
@@ -104,3 +114,15 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
+
+# ── Celery (ticket 004 : traitement asynchrone média) ──────────────────────
+# Aucun broker Redis n'est provisionné dans cet environnement de dev (Docker
+# Desktop indisponible ici, voir historique du ticket 001). CELERY_TASK_ALWAYS_EAGER
+# fait tourner les tâches en synchrone, dans le même process — le code des
+# tâches (apps/evidence/tasks.py) reste écrit comme du vrai Celery
+# (`@shared_task` + `.delay()`), donc brancher un broker réel plus tard ne
+# demande aucun changement de code, seulement de repasser ce flag à False et
+# de renseigner CELERY_BROKER_URL.
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=True, cast=bool)
+CELERY_TASK_EAGER_PROPAGATES = True

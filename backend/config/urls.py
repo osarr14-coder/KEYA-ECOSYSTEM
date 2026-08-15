@@ -8,4 +8,5 @@ urlpatterns = [
     path('api/auth/', include('apps.accounts.urls')),
     path('api/me/', MeView.as_view(), name='me'),
     path('api/', include('apps.programs.urls')),
+    path('api/', include('apps.evidence.urls')),
 ]
