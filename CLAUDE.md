@@ -160,14 +160,13 @@ de chaîne de custody. Le traitement asynchrone (compression + miniature,
 `apps/evidence/tasks.py`) ne doit jamais toucher aux champs de provenance
 (`source`, `captured_at`, `owner`, `created_at`, `hash`).
 
-Celery est configuré (`config/celery.py`) mais `CELERY_TASK_ALWAYS_EAGER=True` par défaut
-: aucun broker Redis n'est provisionné ici. Les tâches sont de vraies tâches Celery
-(`@shared_task` + `.delay()`), donc brancher un broker réel plus tard ne demande aucun
-changement de code — seulement de repasser ce flag à `False`. Limite connue non résolue :
-en mode eager, la tâche s'exécute dans la même transaction/connexion que la requête HTTP,
-qui a déjà posé le contexte RLS ; un vrai worker distant n'aurait par définition aucune
-requête HTTP pour le faire, et devra résoudre l'organisation du document autrement avant
-de lire/écrire la ligne.
+Celery est configuré (`config/celery.py`) mais `CELERY_TASK_ALWAYS_EAGER=True` par défaut :
+aucun broker Redis n'est provisionné ici, donc le comportement réel de retry/échec/backoff
+d'une queue asynchrone n'est PAS testé — seul le contenu des tâches l'est. Voir
+**[ADR 0001](docs/adr/0001-celery-eager-mode.md)** pour le détail des conséquences et la
+liste de ce qu'il faut faire avant d'attaquer les tickets 006 et 010, qui dépendent tous
+les deux d'un vrai comportement de queue (génération de Task depuis un TrustEvent pour le
+006 ; file de synchronisation avec retry/backoff explicite pour le 010).
 
 ## Tickets
 
