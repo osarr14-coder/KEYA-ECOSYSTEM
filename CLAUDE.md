@@ -45,6 +45,7 @@ backend/
     programs/         # Program, Asset, Lot, MilestoneTemplate(+Step), Milestone
     trust/            # TrustEvent append-only + repository (create/lecture seule)
     evidence/         # Document (GED), WorkDeclaration, Evidence
+    inspections/      # Inspection, Reserve (machine à état), ReserveCorrection
     core/             # middleware RLS, viewsets/mixins réutilisables, utilitaires partagés
   config/             # settings.py, settings_test.py, urls.py, wsgi/asgi
 ```
@@ -167,6 +168,41 @@ d'une queue asynchrone n'est PAS testé — seul le contenu des tâches l'est. V
 liste de ce qu'il faut faire avant d'attaquer les tickets 006 et 010, qui dépendent tous
 les deux d'un vrai comportement de queue (génération de Task depuis un TrustEvent pour le
 006 ; file de synchronisation avec retry/backoff explicite pour le 010).
+
+## Inspections / Reserve — accès cross-organisation (ticket 005)
+
+Premier endroit du projet où deux organisations différentes doivent légitimement
+interagir sur la même donnée : la règle d'indépendance du contrôle (V3.0 §2.3) impose
+qu'un inspecteur ne soit **jamais** membre de l'organisation du lot qu'il inspecte. Le
+modèle RLS de tout le reste du projet (une ligne = une organisation, l'acteur agit
+toujours dans sa propre organisation active) ne permet donc pas à l'inspecteur d'écrire
+normalement dans `Inspection`/`Reserve` — ces tables appartiennent à l'organisation du
+**lot** (le constructeur), jamais à celle de l'inspecteur, précisément pour que le
+constructeur puisse ensuite les lire/y référencer une réserve normalement.
+
+`apps/inspections/services.create_inspection` résout ça en réappliquant, de façon étroite
+et documentée, le même schéma que le bootstrap de `RegisterSerializer.create` (ticket
+001) : bascule explicite du contexte RLS vers l'organisation cible
+(`set_rls_context(organization_id=...)`) le temps de l'opération, toujours restaurée vers
+l'organisation de l'inspecteur ensuite (bloc `finally`, y compris en cas d'erreur). Ce
+n'est PAS un bypass général de RLS — seul ce service y a recours, pour cette seule raison.
+
+Conséquence assumée, hors scope de ce ticket : `target_organization_id` est fourni
+explicitement par le client dans le payload de création (`POST /api/inspections/`), faute
+de mécanisme d'affectation/dispatch (ticket 006 Task Inbox). Et l'inspecteur ne peut pas
+relister ses inspections passées via l'API : `InspectionViewSet` reste scopé normalement
+sur `request.organization`, donc sur la sienne — les lignes qu'il a créées vivent dans
+l'organisation cible. Une vraie « historique de mes inspections » cross-organisation
+nécessiterait une requête dédiée, pas encore construite.
+
+`Reserve` n'a pas de champ `status` : il se dérive du dernier `TrustEvent` de ce sujet
+(`apps.inspections.services.get_reserve_status`, valeurs portées par `source` :
+`ouverte`/`correction_proposee`/`nouvelle_inspection`/`levee`/`rejetee` — pas par `level`,
+qui reste un des 5 niveaux fixes de la doctrine Visible Trust). Aucun endpoint ne permet
+de fixer ce statut directement : `ReserveViewSet` est strictement en lecture seule (pas de
+`create`/`update`/`destroy`), et la seule route qui fait progresser la machine à état
+(`InspectionViewSet.create`) est réservée au rôle `inspecteur` (`IsInspecteur`) — un
+constructeur y est refusé explicitement (403), jamais silencieusement absent d'un menu.
 
 ## Tickets
 

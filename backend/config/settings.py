@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'apps.programs',
     'apps.trust',
     'apps.evidence',
+    'apps.inspections',
     'apps.core',
 ]
 
