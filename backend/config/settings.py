@@ -21,6 +21,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.organizations',
     'apps.programs',
+    'apps.trust',
     'apps.core',
 ]
 

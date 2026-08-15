@@ -43,6 +43,7 @@ backend/
     accounts/        # User custom (email comme identifiant), auth JWT
     organizations/   # Organization, CountryPack, Membership, Role
     programs/         # Program, Asset, Lot, MilestoneTemplate(+Step), Milestone
+    trust/            # TrustEvent append-only + repository (create/lecture seule)
     core/             # middleware RLS, viewsets/mixins réutilisables, utilitaires partagés
   config/             # settings.py, settings_test.py, urls.py, wsgi/asgi
 ```
@@ -90,6 +91,28 @@ vues ni les serializers.
    la fixture sur `transactional_db` pour de vrais commits si une connexion séparée est
    réellement nécessaire. Voir `apps/organizations/tests.py` pour l'implémentation de
    référence.
+
+## Append-only (TrustEvent, ticket 003)
+
+`trust_event` ne doit jamais recevoir d'UPDATE ni de DELETE, pour personne, pas même un
+rôle admin applicatif. Deux couches, pas une seule :
+
+1. **Aucune policy RLS UPDATE/DELETE n'est définie** sur la table — PostgreSQL applique
+   alors un déni par défaut pour ces commandes (aucune ligne visible/ciblable), même pour
+   le propriétaire de la table via `FORCE ROW LEVEL SECURITY`. Une tentative d'UPDATE/
+   DELETE affecte silencieusement 0 ligne, sans lever d'exception : un test doit donc
+   vérifier l'invariant (`cursor.rowcount == 0` + donnée inchangée après
+   `refresh_from_db()`), pas s'attendre à une erreur.
+2. **Un trigger `BEFORE UPDATE/DELETE`** (migration `0002_append_only`) lève une exception
+   inconditionnellement. Il est actuellement « silencieux » en usage normal (la couche 1
+   bloque avant qu'il n'ait à s'exécuter), mais c'est le filet de sécurité qui continuerait
+   à bloquer si une policy RLS UPDATE/DELETE était ajoutée par erreur dans une migration
+   future — d'où un test dédié qui garde son existence via `pg_trigger`
+   (`apps/trust/tests.py::TestAppendOnly::test_append_only_trigger_exists_in_the_database`).
+
+Toute correction d'un événement est un nouvel appel à `repository.create(..., previous_event=...)`,
+jamais une modification. Le module `apps/trust/repository.py` n'expose et ne doit jamais
+exposer de fonction `update`/`delete` — c'est vérifié par un test (`hasattr`).
 
 ## Tickets
 

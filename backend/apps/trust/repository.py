@@ -1,0 +1,43 @@
+"""Seul point d'entrée pour créer et lire des `TrustEvent`.
+
+Volontairement : aucune fonction `update` ni `delete` n'existe dans ce
+module — ni ne doit jamais y être ajoutée (ticket 003, critère
+d'acceptation). Une correction n'est jamais une modification, c'est un
+nouvel appel à `create()` avec `previous_event` renseigné.
+"""
+
+from django.contrib.contenttypes.models import ContentType
+
+from .models import TrustEvent
+
+
+def create(*, subject, organization, level, actor, source, scope='', previous_event=None):
+    return TrustEvent.objects.create(
+        subject_type=ContentType.objects.get_for_model(subject),
+        subject_id=subject.pk,
+        organization=organization,
+        level=level,
+        actor=actor,
+        source=source,
+        scope=scope,
+        previous_event=previous_event,
+    )
+
+
+def list_for_subject(subject):
+    """Tous les événements d'un sujet, du plus récent au plus ancien."""
+    content_type = ContentType.objects.get_for_model(subject)
+    return TrustEvent.objects.filter(
+        subject_type=content_type, subject_id=subject.pk,
+    ).order_by('-created_at')
+
+
+def get_current_status(subject):
+    """Le dernier `TrustEvent` de ce sujet, avec sa provenance complète
+    (level, source, actor, scope, created_at) — jamais un calcul de score ni
+    un pourcentage : le statut EST l'événement, rien n'est dérivé
+    numériquement de la séquence d'événements.
+
+    Retourne `None` si aucun événement n'existe encore pour ce sujet.
+    """
+    return list_for_subject(subject).first()
