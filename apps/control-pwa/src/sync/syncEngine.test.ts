@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApiClient } from '../api/client';
-import { CHECKLIST_TEMPLATE, MOCK_MISSIONS } from '../db/missions';
+import { CHECKLIST_TEMPLATE } from '../db/missions';
 import { createEmptyDraft, getDraft, saveDraft } from '../db/repository';
+import { clearIndexedDB } from '../testUtils/clearIndexedDB';
+import { FIXTURE_MISSIONS, seedFixtureMissions } from '../testUtils/missionFixtures';
 import { runSyncCycle } from './syncEngine';
 
 beforeEach(async () => {
-  const databases = await indexedDB.databases();
-  for (const database of databases) {
-    if (database.name) indexedDB.deleteDatabase(database.name);
-  }
+  await clearIndexedDB();
+  // Ticket 012 : `syncDraft`/`findMission` lisent désormais le cache local
+  // des missions (jamais `MOCK_MISSIONS`, retiré) — peuplé ici pour que la
+  // résolution `organizationId`/`workDeclarationId` fonctionne dans ces tests.
+  await seedFixtureMissions();
 });
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -24,7 +27,7 @@ describe('runSyncCycle — synchronisation réussie', () => {
   it(
     'un item pending passe à synced, avec correlation ID transmis et horodatage serveur reçu',
     async () => {
-      const draft = createEmptyDraft(MOCK_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+      const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
       draft.decision = 'conforme';
       await saveDraft(draft);
 
@@ -33,8 +36,8 @@ describe('runSyncCycle — synchronisation réussie', () => {
         const body = JSON.parse(init!.body as string);
         expect(body.correlation_id).toBe(draft.correlationId);
         expect(body.known_latest_event_id).toBeNull();
-        expect(body.organization).toBe(MOCK_MISSIONS[0].organizationId);
-        expect(body.work_declaration).toBe(MOCK_MISSIONS[0].workDeclarationId);
+        expect(body.organization).toBe(FIXTURE_MISSIONS[0].organizationId);
+        expect(body.work_declaration).toBe(FIXTURE_MISSIONS[0].workDeclarationId);
         return jsonResponse(201, {
           status: 'applied',
           inspection: {
@@ -62,7 +65,7 @@ describe(
   'écrasement silencieux',
   () => {
     it('un conflit détecté (409) place l\'item en conflict, sans perdre la saisie locale, jamais retenté seul', async () => {
-      const draft = createEmptyDraft(MOCK_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+      const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
       draft.comment = 'Fissure visible sur le mur nord.';
       draft.decision = 'reserve';
       await saveDraft(draft);
@@ -102,7 +105,7 @@ describe('runSyncCycle — retry avec backoff exponentiel, jamais un abandon sil
   it('un échec réseau reprogramme une tentative future, retentée seulement une fois le délai écoulé', async () => {
     vi.useFakeTimers();
     try {
-      const draft = createEmptyDraft(MOCK_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+      const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
       draft.decision = 'conforme';
       await saveDraft(draft);
 
@@ -137,7 +140,7 @@ describe('runSyncCycle — retry avec backoff exponentiel, jamais un abandon sil
 
 describe('runSyncCycle — file média indépendante de la file de données', () => {
   it('un échec d\'upload de photo ne bloque jamais la synchronisation du reste de l\'inspection', async () => {
-    const draft = createEmptyDraft(MOCK_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+    const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
     draft.decision = 'conforme';
     draft.photos = [{
       id: 'photo-1', blob: new Blob(['contenu-photo'], { type: 'image/jpeg' }), fileName: 'photo1.jpg',
@@ -181,7 +184,7 @@ describe('runSyncCycle — file média indépendante de la file de données', ()
   });
 
   it('une fois toutes les photos synchronisées, une Evidence est créée en les regroupant', async () => {
-    const draft = createEmptyDraft(MOCK_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+    const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
     // Déjà synchronisée par un cycle précédent (hors scope de ce test) :
     // isole la file média pour ne pas déclencher, en plus, une tentative
     // sur la file de données (qui exigerait un troisième mock d'URL).

@@ -58,6 +58,10 @@ def _setup_inspecteur(email, organization_name):
     return _register(email, organization_name, role_code='inspecteur')
 
 
+def _register_admin(email, organization_name):
+    return _register(email, organization_name, role_code='admin_keyimmo')
+
+
 def _jpeg_file(name='photo.jpg'):
     buffer = io.BytesIO()
     Image.new('RGB', (10, 10), (0, 255, 0)).save(buffer, format='JPEG')
@@ -401,3 +405,178 @@ class TestSyncMediaQueue:
             format='json',
         )
         assert response.status_code == 201, response.data
+
+
+@pytest.mark.django_db
+class TestMissionListView:
+    """Ticket 012 — `GET /api/control/missions/`, remplaçant `MOCK_MISSIONS`
+    côté CONTROL PWA. Critère d'acceptation central : un inspecteur assigné
+    voit SA mission même dans une organisation différente de la sienne
+    (comportement voulu), mais ne voit RIEN d'autre de cette organisation
+    au-delà de cette mission précise.
+    """
+
+    def _create_mission(self, *, admin_user, admin_org, organization, declaration, inspector):
+        from apps.inspections import services as inspections_services
+
+        return inspections_services.create_mission(
+            assigned_by=admin_user, assigned_by_organization_id=admin_org.id,
+            target_organization_id=organization.id, work_declaration_id=declaration.id,
+            assigned_inspector=inspector,
+        )
+
+    def test_inspector_sees_their_own_mission_from_another_organization(self):
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-see-admin@example.com', 'Org MissionList See Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'missionlist-see-constructeur@example.com', 'Org MissionList See Constructeur',
+        )
+        inspecteur_client, inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'missionlist-see-inspecteur@example.com', 'Org MissionList See Inspecteur',
+        )
+        assert inspecteur_organization.id != organization.id
+
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        response = inspecteur_client.get(reverse('control-mission-list'))
+        assert response.status_code == 200
+        assert len(response.data) == 1
+        mission_row = response.data[0]
+        assert mission_row['organization_id'] == str(organization.id)
+        assert mission_row['work_declaration_id'] == str(declaration.id)
+        assert mission_row['lot_name'] == 'Lot'
+        assert mission_row['completed'] is False
+
+    def test_inspector_does_not_see_a_mission_assigned_to_someone_else(self):
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-other-admin@example.com', 'Org MissionList Other Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'missionlist-other-constructeur@example.com', 'Org MissionList Other Constructeur',
+        )
+        _other_inspecteur_client, _other_org, other_inspecteur = _setup_inspecteur(
+            'missionlist-other-inspecteur-a@example.com', 'Org MissionList Other Inspecteur A',
+        )
+        watching_client, _watching_org, _watching_user = _setup_inspecteur(
+            'missionlist-other-inspecteur-b@example.com', 'Org MissionList Other Inspecteur B',
+        )
+
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=other_inspecteur,
+        )
+
+        response = watching_client.get(reverse('control-mission-list'))
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_completed_reflects_an_existing_inspection_by_the_assigned_inspector(self):
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-done-admin@example.com', 'Org MissionList Done Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'missionlist-done-constructeur@example.com', 'Org MissionList Done Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'missionlist-done-inspecteur@example.com', 'Org MissionList Done Inspecteur',
+        )
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        inspection_response = inspecteur_client.post(
+            reverse('inspection-list'),
+            {
+                'organization': str(organization.id),
+                'work_declaration': str(declaration.id),
+                'outcome': InspectionOutcome.CONFORME,
+            },
+            format='json',
+        )
+        assert inspection_response.status_code == 201, inspection_response.data
+
+        response = inspecteur_client.get(reverse('control-mission-list'))
+        assert response.status_code == 200
+        assert response.data[0]['completed'] is True
+
+    def test_non_inspector_role_is_rejected(self):
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-role-admin@example.com', 'Org MissionList Role Admin',
+        )
+        constructeur_client, _organization, _c_user, _lot, _declaration = _setup_constructeur_org(
+            'missionlist-role-constructeur@example.com', 'Org MissionList Role Constructeur',
+        )
+        response = constructeur_client.get(reverse('control-mission-list'))
+        assert response.status_code == 403
+
+    def test_inspector_sees_nothing_else_of_that_organization_beyond_their_own_mission(self):
+        """Le cœur du critère d'acceptation : la mission est visible, mais
+        RIEN d'autre de cette organisation — ni un second lot sans mission
+        assignée, ni une autre Inspection/Reserve, ni les endpoints
+        Program/Asset/Lot du ticket 002. La policy RLS élargie par ce
+        ticket ne doit élargir l'accès QU'à `InspectionMission`, jamais par
+        ricochet à une autre table scopée par organisation.
+        """
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-leak-admin@example.com', 'Org MissionList Leak Admin',
+        )
+        constructeur_client, organization, c_user, lot, declaration = _setup_constructeur_org(
+            'missionlist-leak-constructeur@example.com', 'Org MissionList Leak Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'missionlist-leak-inspecteur@example.com', 'Org MissionList Leak Inspecteur',
+        )
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        # Un second lot de la MÊME organisation, sans aucune mission
+        # assignée à cet inspecteur — reste invisible.
+        set_rls_context(organization_id=organization.id)
+        second_lot = Lot.objects.create(organization=organization, asset=lot.asset, name='Lot Sans Mission')
+        instantiate_milestones_for_lot(second_lot)
+
+        # Une réserve de cette organisation, ouverte par un AUTRE inspecteur
+        # (donc totalement étrangère à la mission de celui qu'on surveille
+        # ici) — reste invisible.
+        # Résolu AVANT d'enregistrer un second inspecteur : `_setup_inspecteur`
+        # bascule le contexte RLS de test vers SA PROPRE organisation
+        # (voir `_register`), ce qui masquerait `lot.milestones` (organisation
+        # cible) si cette lecture avait lieu après.
+        second_milestone_id = str(lot.milestones.order_by('order')[1].id)
+
+        _other_inspecteur_client, _other_org, other_inspecteur = _setup_inspecteur(
+            'missionlist-leak-inspecteur-b@example.com', 'Org MissionList Leak Inspecteur B',
+        )
+        second_declaration_response = constructeur_client.post(
+            reverse('workdeclaration-list'),
+            {'milestone': second_milestone_id},
+            format='json',
+        )
+        assert second_declaration_response.status_code == 201, second_declaration_response.data
+        _other_inspecteur_client.post(
+            reverse('inspection-list'),
+            {
+                'organization': str(organization.id),
+                'work_declaration': second_declaration_response.data['id'],
+                'outcome': InspectionOutcome.AVEC_RESERVE,
+            },
+            format='json',
+        )
+
+        # La mission de l'inspecteur surveillé reste bien visible...
+        mission_response = inspecteur_client.get(reverse('control-mission-list'))
+        assert mission_response.status_code == 200
+        assert len(mission_response.data) == 1
+
+        # ...mais RIEN d'autre de cette organisation ne l'est.
+        assert inspecteur_client.get(reverse('lot-list')).data == []
+        assert inspecteur_client.get(reverse('asset-list')).data == []
+        assert inspecteur_client.get(reverse('program-list')).data == []
+        assert inspecteur_client.get(reverse('reserve-list')).data == []

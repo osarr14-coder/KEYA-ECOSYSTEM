@@ -1,5 +1,5 @@
 import { openControlDatabase } from './db';
-import type { ChecklistItemState, InspectionDraft } from './types';
+import type { ChecklistItemState, InspectionDraft, Mission } from './types';
 
 /**
  * Un brouillon neuf, EN MÉMOIRE seulement — n'écrit rien en IndexedDB tant
@@ -109,6 +109,54 @@ export async function deleteDraft(id: string): Promise<void> {
   const db = await openControlDatabase();
   try {
     await db.delete('inspection_drafts', id);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Remplace intégralement le cache local des missions par la liste reçue du
+ * serveur — ticket 012, `MOCK_MISSIONS` retiré. Un vrai `clear()` puis
+ * réécriture (pas une fusion) : une mission qui n'apparaît plus côté
+ * serveur (réaffectée, etc. — hors scope de ce ticket, mais le cache ne
+ * doit jamais en garder une trace fantôme) ne doit pas persister ici.
+ */
+export async function saveMissions(missions: Mission[]): Promise<void> {
+  const db = await openControlDatabase();
+  try {
+    const tx = db.transaction('missions', 'readwrite');
+    // `clear()` et chaque `put()` sont volontairement lancés SANS `await`
+    // individuel avant `tx.done` : une transaction IndexedDB se termine
+    // automatiquement dès que la boucle d'événements se vide sans nouvelle
+    // requête en attente sur elle — attendre `clear()` seul aurait laissé
+    // le temps à la transaction de se clôturer avant les `put()` suivants
+    // (piège rencontré en écrivant le test de cette fonction : le cache
+    // restait silencieusement vide). Pattern `idb` standard : tout mettre
+    // en file dans le même tick, n'attendre qu'une fois, sur `tx.done`.
+    tx.store.clear();
+    await Promise.all([...missions.map((mission) => tx.store.put(mission)), tx.done]);
+  } finally {
+    db.close();
+  }
+}
+
+/** Lecture hors ligne — c'est CE cache que `MissionsListView`/
+ * `InspectionFormView` consultent, jamais un fetch direct : la liste réelle
+ * n'arrive qu'au retour du réseau (voir `sync/syncEngine.ts::refreshMissions`),
+ * exactement le même principe « local d'abord » que les brouillons. */
+export async function getCachedMissions(): Promise<Mission[]> {
+  const db = await openControlDatabase();
+  try {
+    return await db.getAll('missions');
+  } finally {
+    db.close();
+  }
+}
+
+export async function getCachedMission(missionId: string): Promise<Mission | undefined> {
+  const db = await openControlDatabase();
+  try {
+    return await db.get('missions', missionId);
   } finally {
     db.close();
   }

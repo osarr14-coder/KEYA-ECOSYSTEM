@@ -3,11 +3,12 @@ from django.db import transaction
 
 from apps.core.rls import set_rls_context
 from apps.evidence.models import Evidence, WorkDeclaration
-from apps.organizations.models import Organization
+from apps.organizations.models import Membership, Organization
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
 
-from .models import Inspection, InspectionOutcome, Reserve, ReserveCorrection
+from .models import Inspection, InspectionMission, InspectionOutcome, Reserve, ReserveCorrection
+from .permissions import INSPECTEUR_ROLE_CODE
 
 
 class IndependenceRuleViolation(Exception):
@@ -259,3 +260,161 @@ OPEN_RESERVE_STATUSES = {'ouverte', 'correction_proposee', 'nouvelle_inspection'
 
 def is_reserve_open(reserve):
     return get_reserve_status(reserve) in OPEN_RESERVE_STATUSES
+
+
+class NotAnInspectorError(Exception):
+    """L'utilisateur assigné ne détient le rôle `inspecteur` dans aucune de
+    ses organisations — ticket 012, scope explicite : un `User` avec ce
+    rôle suffit pour ce MVP, aucune matrice de compétences/certification.
+    """
+
+
+def _read_inspector_memberships(inspector, *, restore_user_id):
+    """Lit TOUTES les `Membership` de `inspector`, quelle que soit
+    l'organisation cible active — nécessaire pour la règle d'indépendance
+    (savoir si `inspector` appartient à l'organisation cible) et le
+    contrôle de rôle ci-dessous.
+
+    `organizations_membership.membership_select` (ticket 001) n'autorise
+    QUE la lecture de ses PROPRES lignes (`user_id = current_user`) —
+    bascule donc temporairement `app.current_user_id` sur `inspector`, le
+    temps de CETTE lecture seule, restaurée dans un `finally`. Même schéma,
+    pour la même raison, que `apps.backoffice.services.get_user_memberships`
+    (ticket 011) — dupliqué ici plutôt qu'importé : `apps.inspections` est
+    un domaine fondateur, `apps.backoffice` en dépend, jamais l'inverse.
+    """
+    set_rls_context(user_id=inspector.id)
+    try:
+        return list(Membership.objects.filter(user=inspector).select_related('organization', 'role'))
+    finally:
+        set_rls_context(user_id=restore_user_id)
+
+
+def create_mission(
+    *, assigned_by, assigned_by_organization_id, target_organization_id,
+    work_declaration_id, assigned_inspector,
+):
+    """Point d'entrée unique pour affecter une mission — ticket 012.
+    L'appelant (`apps.backoffice.views.CreateMissionView`) a déjà vérifié
+    que `assigned_by` détient le rôle `admin_keyimmo` (`IsAdminKeyimmo`,
+    ticket 011) ; cette fonction ne revérifie pas ce rôle, mais revalide
+    la règle d'indépendance du contrôle (V3.0 §2.3) **à l'affectation**,
+    pas seulement à l'inspection elle-même (`create_inspection`) — sans
+    cela, une affectation invalide pourrait exister en base, silencieusement
+    inutilisable, jusqu'à l'échec tardif de la première tentative
+    d'inspection.
+
+    Même schéma de bascule RLS que `create_inspection` : contexte basculé
+    vers l'organisation cible pour la durée de l'écriture, restauré dans un
+    `finally` vers celle de l'appelant.
+    """
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            mission = _create_mission_row(
+                assigned_by=assigned_by,
+                target_organization_id=target_organization_id,
+                work_declaration_id=work_declaration_id,
+                assigned_inspector=assigned_inspector,
+            )
+        finally:
+            set_rls_context(organization_id=assigned_by_organization_id)
+
+    # Notification en effet de bord — exactement le même rôle que `Task`
+    # pour `Reserve` (ticket 006) : `InspectionMission` reste l'objet
+    # métier, `Task` n'est jamais sa source de vérité. Import différé :
+    # même raison que `_open_new_reserve` (évite un cycle au chargement des
+    # tasks Celery).
+    from apps.tasks.tasks import process_mission_assigned
+
+    process_mission_assigned.delay(
+        mission_id=str(mission.id),
+        organization_id=str(target_organization_id),
+        actor_user_id=str(assigned_by.id),
+    )
+
+    return mission
+
+
+def _create_mission_row(*, assigned_by, target_organization_id, work_declaration_id, assigned_inspector):
+    target_organization = Organization.objects.filter(id=target_organization_id).first()
+    if target_organization is None:
+        raise ValidationError("organization cible introuvable.")
+
+    work_declaration = WorkDeclaration.objects.filter(
+        id=work_declaration_id, organization=target_organization,
+    ).first()
+    if work_declaration is None:
+        raise ValidationError("work_declaration introuvable dans l'organisation cible.")
+
+    inspector_memberships = _read_inspector_memberships(assigned_inspector, restore_user_id=assigned_by.id)
+
+    if any(membership.organization_id == target_organization.id for membership in inspector_memberships):
+        raise IndependenceRuleViolation(
+            "L'inspecteur assigné ne peut pas appartenir à l'organisation cible "
+            "(règle d'indépendance du contrôle).",
+        )
+    if not any(membership.role.code == INSPECTEUR_ROLE_CODE for membership in inspector_memberships):
+        raise NotAnInspectorError(
+            "L'utilisateur assigné ne détient le rôle inspecteur dans aucune organisation.",
+        )
+
+    return InspectionMission.objects.create(
+        organization=target_organization,
+        work_declaration=work_declaration,
+        assigned_inspector=assigned_inspector,
+        assigned_by=assigned_by,
+    )
+
+
+def list_missions_for_inspector(*, inspector, caller_organization_id):
+    """Les missions affectées à `inspector`, avec un statut « faite / à
+    faire » dérivé — jamais stocké (voir `InspectionMission`, doctrine
+    Visible Trust). Une mission est faite si une `Inspection` existe déjà
+    pour son `work_declaration`, créée par CET inspecteur précis.
+
+    `Inspection` est scopée RLS par l'organisation CIBLE (pattern standard,
+    ticket 005) — jamais lisible depuis l'organisation active de
+    l'inspecteur. Bascule donc, PAR MISSION, vers l'organisation cible le
+    temps de cette lecture, restaurée après chaque itération — même
+    principe que `_read_inspector_memberships` ci-dessus, appliqué ici à
+    `Inspection` plutôt qu'à `Membership`.
+
+    Piège rencontré en écrivant le test bout-en-bout : la requête initiale
+    ne doit PAS utiliser `select_related('work_declaration__...')`. Un
+    `select_related` compile un INNER JOIN — `work_declaration`/`lot` sont
+    eux-mêmes protégés par RLS avec la policy standard SEULE
+    (`organization_id = current_org`, sans la branche `assigned_inspector`
+    ajoutée à `InspectionMission`). Sous le contexte de l'inspecteur (son
+    organisation active, jamais celle de la cible), ces tables jointes
+    deviennent invisibles à RLS et le JOIN élimine la ligne entière —
+    alors même que `InspectionMission` aurait été visible seule. D'où la
+    traversée lot/bien/programme faite ICI, dans la boucle, sous le
+    contexte de l'organisation CIBLE déjà basculé pour lire `Inspection` —
+    jamais dans la requête initiale.
+    """
+    missions = list(
+        InspectionMission.objects.filter(assigned_inspector=inspector).order_by('-created_at')
+    )
+
+    rows = []
+    for mission in missions:
+        set_rls_context(organization_id=mission.organization_id)
+        try:
+            completed = Inspection.objects.filter(
+                work_declaration_id=mission.work_declaration_id, inspector=inspector,
+            ).exists()
+            lot = mission.work_declaration.milestone.lot
+            rows.append({
+                'id': str(mission.id),
+                'lot_name': lot.name,
+                'asset_name': lot.asset.name,
+                'program_name': lot.asset.program.name,
+                'milestone_label': mission.work_declaration.milestone.label,
+                'organization_id': str(mission.organization_id),
+                'work_declaration_id': str(mission.work_declaration_id),
+                'completed': completed,
+            })
+        finally:
+            set_rls_context(organization_id=caller_organization_id)
+    return rows

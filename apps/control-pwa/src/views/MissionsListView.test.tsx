@@ -1,36 +1,37 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { MOCK_MISSIONS } from '../db/missions';
 import { createEmptyDraft, saveDraft } from '../db/repository';
+import { clearIndexedDB } from '../testUtils/clearIndexedDB';
+import { FIXTURE_MISSIONS, seedFixtureMissions } from '../testUtils/missionFixtures';
 import { MissionsListView } from './MissionsListView';
 
 beforeEach(async () => {
-  const databases = await indexedDB.databases();
-  for (const database of databases) {
-    if (database.name) indexedDB.deleteDatabase(database.name);
-  }
+  await clearIndexedDB();
+  // Ticket 012 : la liste vient désormais du cache local (`getCachedMissions`),
+  // jamais de `MOCK_MISSIONS` (retiré) — peuplé ici pour chaque test.
+  await seedFixtureMissions();
 });
 
 describe('MissionsListView', () => {
-  it('affiche toutes les missions', () => {
+  it('affiche toutes les missions', async () => {
     render(<MissionsListView onSelectMission={() => {}} />);
-    for (const mission of MOCK_MISSIONS) {
-      expect(screen.getByText(mission.lotName)).toBeInTheDocument();
+    for (const mission of FIXTURE_MISSIONS) {
+      expect(await screen.findByText(mission.lotName)).toBeInTheDocument();
     }
   });
 
-  it('sélectionner une mission déclenche onSelectMission avec son id', () => {
+  it('sélectionner une mission déclenche onSelectMission avec son id', async () => {
     const onSelectMission = vi.fn();
     render(<MissionsListView onSelectMission={onSelectMission} />);
 
-    fireEvent.click(screen.getByText(MOCK_MISSIONS[0].lotName));
+    fireEvent.click(await screen.findByText(FIXTURE_MISSIONS[0].lotName));
 
-    expect(onSelectMission).toHaveBeenCalledWith(MOCK_MISSIONS[0].id);
+    expect(onSelectMission).toHaveBeenCalledWith(FIXTURE_MISSIONS[0].id);
   });
 
   it('affiche le statut de synchronisation d\'une mission déjà entamée', async () => {
-    const draft = createEmptyDraft(MOCK_MISSIONS[0].id, [{ id: 'x', label: 'X', checked: false }]);
+    const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, [{ id: 'x', label: 'X', checked: false }]);
     await saveDraft(draft);
 
     render(<MissionsListView onSelectMission={() => {}} />);
@@ -41,7 +42,13 @@ describe('MissionsListView', () => {
   it('n\'affiche aucun statut pour une mission jamais entamée', async () => {
     render(<MissionsListView onSelectMission={() => {}} />);
 
-    await screen.findByText(MOCK_MISSIONS[0].lotName);
+    await screen.findByText(FIXTURE_MISSIONS[0].lotName);
     expect(screen.queryByText('En attente de synchronisation')).not.toBeInTheDocument();
+  });
+
+  it('affiche un état vide explicite quand aucune mission n\'est en cache', async () => {
+    await clearIndexedDB();
+    render(<MissionsListView onSelectMission={() => {}} />);
+    expect(await screen.findByText('Aucune mission pour le moment.')).toBeInTheDocument();
   });
 });

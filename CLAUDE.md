@@ -817,11 +817,95 @@ coup.
 `apps/backoffice/tests.py::TestBackofficeNeverExposesATrustEventShortcut` scanne le code
 source réel de `views.py`/`services.py` (pas seulement une revue manuelle) — absence de
 `apps.trust`, d'appel `trust_repository.create`/`TrustEvent.objects.create`, ET vérifie que
-les 3 routes de `apps/backoffice/urls.py` sont EXACTEMENT celles documentées (toute
-quatrième route future ferait échouer ce test, obligeant une décision consciente). Même
-famille de test que la garde anti-attribution KEYIMMO (ticket 006) et la garde de
-gouvernance StatusBadge (ticket 007) : scanner le code, pas seulement le comportement
-actuel.
+les routes de `apps/backoffice/urls.py` sont EXACTEMENT celles documentées (toute route
+supplémentaire future fait échouer ce test, obligeant une décision consciente — exercé
+une première fois au ticket 012, qui a ajouté `backoffice-mission-create` : le test a
+correctement forcé sa propre mise à jour explicite plutôt que de laisser passer l'ajout
+silencieusement). Même famille de test que la garde anti-attribution KEYIMMO (ticket 006)
+et la garde de gouvernance StatusBadge (ticket 007) : scanner le code, pas seulement le
+comportement actuel.
+
+## Affectation de mission à un inspecteur (ticket 012)
+
+Comble l'angle mort révélé par le test bout-en-bout du vertical slice (doctrine V3.0
+§22.4) : `CONTROL PWA` n'avait jamais consommé de vraie liste de missions
+(`MOCK_MISSIONS`, ticket 010, retiré). Résout au passage la limite documentée dès le
+ticket 005 : « l'inspecteur ne peut pas relire ses inspections passées via l'API —
+nécessiterait une requête cross-organisation dédiée ».
+
+**`InspectionMission`** (`apps/inspections/models.py`) — modèle SÉPARÉ, pas une
+réutilisation de `Task` (ticket 006). `Task` reste utilisée, mais uniquement comme effet
+de bord de notification, exactement le rôle qu'elle joue déjà pour `Reserve`. Trois
+décisions de conception, validées par l'utilisateur avant implémentation (voir
+`012-affectation-mission-inspecteur.md`, section « Décisions de conception ») :
+1. Seul `admin_keyimmo` peut créer une affectation — laisser le constructeur choisir
+   (même indirectement) son propre inspecteur affaiblirait la règle d'indépendance dès
+   l'affectation, avant même la première inspection.
+2. Modèle séparé de `Task`, dans `apps.inspections` (le domaine qui possède déjà la règle
+   d'indépendance) — `Task` n'a pas vocation à arbitrer une règle métier aussi spécifique.
+3. `GET /api/control/missions/`, scopé sur `assigned_inspector_id = current_user`.
+
+**Aucun champ statut stocké** (contrairement à `Task`) : une mission est « faite » si une
+`Inspection` existe déjà pour son `work_declaration`, créée par l'inspecteur assigné —
+entièrement dérivé (`services.py::list_missions_for_inspector`), la doctrine Visible
+Trust appliquée sans exception cette fois.
+
+**Policy RLS par comparaison de colonne, pas de sous-requête** (migration 0006) :
+`organization_id = current_org OR assigned_inspector_id = current_user`. Décidé et
+validé AVANT implémentation, précisément pour éviter le piège du ticket 011 (une
+sous-requête `OR EXISTS (SELECT ... FROM organizations_membership ...)` référençant sa
+propre table avait déclenché une récursion infinie sous `FORCE ROW LEVEL SECURITY`) — une
+simple comparaison de colonne n'a jamais ce problème, structurellement identique à la
+policy `membership_select` d'origine (`user_id = current_user`, ticket 001), qui a
+toujours fonctionné. La CRÉATION reste stricte (`organization_id = current_org` seul,
+INSERT non élargi) : `admin_keyimmo` écrit en empruntant explicitement le contexte RLS de
+l'organisation cible (`create_mission`), même schéma que `create_inspection`.
+
+**Piège rencontré en écrivant le test bout-en-bout** (`apps/control/tests.py::
+TestMissionListView`) : `list_missions_for_inspector` faisait initialement
+`InspectionMission.objects.filter(...).select_related('work_declaration__milestone__lot__
+asset__program')`. `select_related` compile un INNER JOIN — `work_declaration`/`lot` sont
+protégés par la policy RLS STANDARD SEULE (`organization_id = current_org`, sans la
+branche `assigned_inspector` ajoutée à `InspectionMission`). Sous le contexte de
+l'inspecteur (son organisation active, jamais celle de la cible), ces tables jointes
+deviennent invisibles à RLS et le JOIN élimine la ligne entière — alors même que
+`InspectionMission` aurait été visible seule. Corrigé : la requête initiale ne charge que
+`InspectionMission` ; la traversée lot/bien/programme se fait dans la boucle, sous le
+contexte de l'organisation CIBLE déjà basculé pour lire `Inspection` (même bascule
+explicite, réutilisée pour les deux lectures). **Leçon générale, au-delà de ce ticket** :
+`select_related`/toute jointure implicite sur une table RLS-élargie doit être vérifiée
+contre les policies des tables JOINTES, pas seulement celle de la table de départ.
+
+**Côté `CONTROL PWA`** — `MOCK_MISSIONS` intégralement retiré du code de production.
+`GET /api/control/missions/` consommé par `sync/syncEngine.ts::refreshMissions`,
+déclenché avant chaque cycle de synchronisation (`runIfOnline`), résultat mis en cache
+IndexedDB (`db.ts` passé en version 2, nouvel object store `missions` — `upgrade()`
+étendu avec des branches `if (oldVersion < N)`, jamais un remplacement, pour ne pas
+recréer `inspection_drafts` sur une base déjà en v1). `MissionsListView`/
+`InspectionFormView` lisent ce cache (`getCachedMissions`/`getCachedMission`), jamais un
+fetch direct — même principe « local d'abord » que les brouillons.
+
+**Deux pièges d'outillage réels trouvés en réécrivant les tests frontend** (`MOCK_MISSIONS`
+retiré cassait plusieurs fichiers de test, remplacés par une fixture partagée
+`src/testUtils/missionFixtures.ts`) :
+- `repository.ts::saveMissions` attendait `tx.store.clear()` individuellement avant les
+  `put()` suivants — une transaction IndexedDB se termine automatiquement dès que la
+  boucle d'événements se vide sans nouvelle requête en attente sur elle ; attendre `clear()`
+  seul laissait le temps à la transaction de se clôturer avant les `put()`, le cache
+  restant silencieusement vide. Corrigé en lançant `clear()` et tous les `put()` dans le
+  même tick (sans `await` individuel), puis en n'attendant qu'une fois sur `tx.done` —
+  pattern `idb` standard.
+- `testUtils/clearIndexedDB.ts` (nouveau, remplace le motif `deleteDatabase` fire-and-forget
+  jusque-là dupliqué dans chaque fichier de test) résolvait à tort sur l'événement
+  `onblocked` — une connexion IndexedDB tenue par un composant démonté ENTRE deux tests
+  (`MissionsListView`, dont l'effet ne bloque volontairement pas son rendu sur sa
+  résolution complète) bloque la suppression ; résoudre immédiatement dessus laissait la
+  VRAIE suppression s'exécuter plus tard, en arrière-plan — parfois APRÈS que le test
+  suivant ait déjà reseedé ses données, les faisant disparaître silencieusement (flaky,
+  reproduit de façon déterministe en isolant la séquence de tests en cause). Corrigé en ne
+  résolvant que sur le VRAI `onsuccess` — nos fonctions de `repository.ts` ferment
+  toujours leur connexion dans un `finally`, donc le blocage se résout naturellement en
+  quelques ticks, sans qu'aucun minuteur ne soit nécessaire.
 
 ## Tickets
 

@@ -29,3 +29,20 @@ def process_reserve_opened(self, reserve_id, organization_id, actor_user_id=None
 
         reserve = Reserve.objects.get(id=reserve_id)
         services.create_task_for_reserve_opened(reserve)
+
+
+@shared_task(bind=True)
+def process_mission_assigned(self, mission_id, organization_id, actor_user_id=None):
+    """Déclenchée par `apps.inspections.services.create_mission` via
+    `.delay()` — même schéma exact que `process_reserve_opened` ci-dessus
+    (ticket 012 réutilise le pattern déjà validé, ne le réinvente pas).
+    """
+    with transaction.atomic():
+        set_rls_context(organization_id=organization_id, user_id=actor_user_id)
+
+        from apps.inspections.models import InspectionMission  # import différé, même raison que ci-dessus
+
+        from . import services
+
+        mission = InspectionMission.objects.get(id=mission_id)
+        services.create_task_for_mission_assigned(mission)

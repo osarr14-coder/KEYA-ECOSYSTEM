@@ -50,12 +50,10 @@ export interface LocalPhoto {
   nextRetryAt: string | null;
 }
 
-/** Une mission = une inspection à mener, telle que proposée à l'inspecteur.
- * Mock statique en passe 1 (voir `missions.ts`) — aucun fetch réseau. Passe
- * 2 y ajoute `organizationId`/`workDeclarationId` : cible RÉELLE côté
- * backend nécessaire pour synchroniser quoi que ce soit (une mission sans
- * ces deux identifiants reste un pur mock, non synchronisable — voir
- * CLAUDE.md, addendum passe 2, pour la limite connue de cette approche). */
+/** Une mission = une inspection à mener, telle qu'affectée à l'inspecteur
+ * courant. Ticket 012 : liste RÉELLE issue de `GET /api/control/missions/`
+ * (`MOCK_MISSIONS`, ticket 010, a été retiré) — mise en cache localement
+ * pour l'usage hors ligne (voir `db.ts`, object store `missions`). */
 export interface Mission {
   id: string;
   lotName: string;
@@ -64,6 +62,10 @@ export interface Mission {
   milestoneLabel: string;
   organizationId: string;
   workDeclarationId: string;
+  /** Dérivé côté serveur (jamais stocké tel quel) : une Inspection
+   * existe-t-elle déjà pour ce work_declaration, créée par cet inspecteur ?
+   * Voir apps.inspections.services.list_missions_for_inspector. */
+  completed: boolean;
 }
 
 /**

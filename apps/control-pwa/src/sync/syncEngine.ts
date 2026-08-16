@@ -1,6 +1,5 @@
 import { createApiClient, type ApiClient } from '../api/client';
-import { MOCK_MISSIONS } from '../db/missions';
-import { getAllDrafts, patchDraft } from '../db/repository';
+import { getAllDrafts, getCachedMission, patchDraft, saveMissions } from '../db/repository';
 import type { InspectionDraft, LocalPhoto } from '../db/types';
 import { compressImage } from '../media/compressImage';
 import { computeNextRetryAt } from './backoff';
@@ -11,8 +10,14 @@ function isDue(nextRetryAt: string | null): boolean {
   return !nextRetryAt || new Date(nextRetryAt).getTime() <= Date.now();
 }
 
-function findMission(missionId: string) {
-  return MOCK_MISSIONS.find((mission) => mission.id === missionId) ?? null;
+/** Ticket 012 : lit le cache local (`missions`, alimenté par
+ * `refreshMissions` ci-dessous), jamais `MOCK_MISSIONS` (retiré). Une
+ * mission pas encore vue par ce cycle réseau — ou jamais reçue par le
+ * serveur — retourne simplement `null` : `syncDraft` n'a alors rien à
+ * synchroniser pour ce brouillon tant que la liste réelle n'est pas connue.
+ */
+async function findMission(missionId: string) {
+  return (await getCachedMission(missionId)) ?? null;
 }
 
 function formatNote(draft: InspectionDraft): string {
@@ -107,7 +112,7 @@ async function syncEvidenceIfReady(
  * bloqué indéfiniment dans cet état serait, de fait, un abandon silencieux.
  */
 export async function syncDraft(draft: InspectionDraft, apiClient: ApiClient): Promise<InspectionDraft> {
-  const mission = findMission(draft.missionId);
+  const mission = await findMission(draft.missionId);
   if (!mission) return draft;
 
   const { photos, changed: photosChanged } = await syncPhotos(draft, mission.organizationId, apiClient);
@@ -183,6 +188,23 @@ export async function runSyncCycle(apiClient: ApiClient): Promise<void> {
   }
 }
 
+/**
+ * Récupère la vraie liste de missions (`GET /api/control/missions/`,
+ * ticket 012) et la met en cache localement — remplace `MOCK_MISSIONS`
+ * (ticket 010). Échec silencieux ici (pas de compteur/backoff dédié,
+ * contrairement à `syncDraft`) : le sondage périodique de `startSyncEngine`
+ * retentera naturellement au cycle suivant, la liste de missions n'ayant
+ * pas la même urgence qu'une saisie d'inspecteur à ne jamais perdre.
+ */
+export async function refreshMissions(apiClient: ApiClient): Promise<void> {
+  try {
+    const missions = await apiClient.listMissions();
+    await saveMissions(missions);
+  } catch {
+    // Retenté au prochain passage de `runIfOnline` — voir docstring.
+  }
+}
+
 /** Même convention que `apps/build`/`apps/home` (ticket 008/009) : aucune UI
  * de connexion frontend n'existe encore, jeton lu depuis `localStorage` en
  * attendant un futur ticket d'authentification. */
@@ -207,7 +229,11 @@ export function startSyncEngine(apiClient: ApiClient): () => void {
 
   function runIfOnline() {
     if (stopped || !navigator.onLine) return;
-    void runSyncCycle(apiClient);
+    // Missions rafraîchies AVANT le cycle de synchronisation des
+    // brouillons : un brouillon dont la mission vient d'apparaître au
+    // cache (jamais vue avant ce cycle) doit pouvoir se synchroniser dans
+    // la MÊME passe, pas seulement à la suivante.
+    void refreshMissions(apiClient).then(() => runSyncCycle(apiClient));
   }
 
   window.addEventListener('online', runIfOnline);

@@ -138,3 +138,49 @@ class ReserveCorrection(models.Model):
 
     def __str__(self):
         return f'Correction — {self.reserve} ({self.created_at:%Y-%m-%d})'
+
+
+class InspectionMission(models.Model):
+    """Affecte un inspecteur à un `WorkDeclaration` à contrôler — ticket 012.
+    `organization` est celle du `WorkDeclaration` ciblé (le constructeur),
+    JAMAIS celle de l'inspecteur assigné, qui n'en est jamais membre par
+    construction (règle d'indépendance du contrôle, V3.0 §2.3, ticket 005) —
+    même raisonnement que `Inspection.organization`/`Reserve.organization`.
+    Écrire cette ligne exige donc de basculer explicitement le contexte RLS
+    vers l'organisation cible (voir `apps/inspections/services.py::
+    create_mission`), même schéma que `create_inspection`.
+
+    Contrairement à `Task` (ticket 006, exception documentée à la doctrine),
+    AUCUN champ statut n'est stocké ici : une mission est « faite » si une
+    `Inspection` existe déjà pour ce `work_declaration`, créée par
+    l'inspecteur assigné — entièrement dérivable (voir
+    `services.py::list_missions_for_inspector`), la doctrine Visible Trust
+    appliquée sans exception cette fois.
+
+    Policy RLS volontairement distincte du pattern standard (`organization_id
+    = current_org` seul) : la lecture autorise EN PLUS `assigned_inspector_id
+    = current_user`, une comparaison de colonne — pas une sous-requête sur
+    cette même table, qui aurait déclenché la récursion RLS rencontrée et
+    documentée au ticket 011 (voir migration 0005).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='inspection_missions',
+    )
+    work_declaration = models.ForeignKey(
+        WorkDeclaration, on_delete=models.PROTECT, related_name='inspection_missions',
+    )
+    assigned_inspector = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='assigned_missions',
+    )
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='missions_assigned_by',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'inspections_mission'
+
+    def __str__(self):
+        return f'Mission — {self.work_declaration} → {self.assigned_inspector.email}'

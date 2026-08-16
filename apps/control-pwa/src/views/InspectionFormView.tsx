@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 import { AlertBanner } from '@keya/design-system';
 
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
-import { CHECKLIST_TEMPLATE, MOCK_MISSIONS } from '../db/missions';
-import { createEmptyDraft, deleteDraft, getDraftForMission, saveDraft } from '../db/repository';
-import type { Decision, InspectionDraft, LocalPhoto } from '../db/types';
+import { CHECKLIST_TEMPLATE } from '../db/missions';
+import { createEmptyDraft, deleteDraft, getCachedMission, getDraftForMission, saveDraft } from '../db/repository';
+import type { Decision, InspectionDraft, LocalPhoto, Mission } from '../db/types';
 
 export interface InspectionFormViewProps {
   missionId: string;
@@ -43,7 +43,7 @@ function PhotoThumbnail({ photo, onRemove }: { photo: LocalPhoto; onRemove: () =
  * passe du ticket 010).
  */
 export function InspectionFormView({ missionId, onBack }: InspectionFormViewProps) {
-  const mission = MOCK_MISSIONS.find((item) => item.id === missionId);
+  const [mission, setMission] = useState<Mission | null>(null);
   const [draft, setDraft] = useState<InspectionDraft | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -51,10 +51,17 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const existing = await getDraftForMission(missionId);
+      // Ticket 012 : la mission vient désormais du cache local
+      // (`getCachedMission`), jamais de `MOCK_MISSIONS` (retiré) — chargée
+      // en parallèle du brouillon, pas de dépendance entre les deux.
+      const [existing, cachedMission] = await Promise.all([
+        getDraftForMission(missionId),
+        getCachedMission(missionId),
+      ]);
       const initial = existing ?? createEmptyDraft(missionId, CHECKLIST_TEMPLATE);
       if (!cancelled) {
         setDraft(initial);
+        setMission(cachedMission ?? null);
         setLoading(false);
       }
     })();

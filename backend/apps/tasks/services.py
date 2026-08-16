@@ -45,8 +45,24 @@ def _reserve_opened_label(reserve, assignee):
 # `TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo` (apps/tasks/tests.py,
 # ticket 006), qui scanne le CODE SOURCE de chaque générateur enregistré —
 # pas seulement le texte produit par celui qui existe aujourd'hui.
+def _mission_assigned_label(mission, assignee):
+    """Nomme explicitement l'inspecteur assigné — cette Task n'annonce
+    qu'une affectation déjà décidée par admin_keyimmo (le rôle qui possède
+    cette action, ticket 012), jamais une décision d'inspection elle-même
+    (ce que l'inspecteur constatera sur le terrain reste entièrement le
+    sien) : aucun risque d'attribution implicite à couvrir ici, mais le
+    générateur reste soumis au même registre par discipline.
+    """
+    lot = mission.work_declaration.milestone.lot
+    return (
+        f'Nouvelle mission — inspection à mener sur « {lot.name} » '
+        f'({assignee.email})'
+    )
+
+
 LABEL_GENERATORS = [
     _reserve_opened_label,
+    _mission_assigned_label,
 ]
 
 
@@ -69,6 +85,40 @@ def create_task_for_reserve_opened(reserve):
         assignee=assignee,
         source=RESERVE_OPENED_SOURCE,
         label=_reserve_opened_label(reserve, assignee),
+        priority=TaskPriority.NORMAL,
+    )
+
+
+MISSION_ASSIGNED_SOURCE = 'mission_assigned'
+
+
+def create_task_for_mission_assigned(mission):
+    """Logique métier pure, séparée de la tâche Celery
+    (`apps/tasks/tasks.py::process_mission_assigned`) qui l'appelle sous le
+    bon contexte RLS — même schéma que `create_task_for_reserve_opened`.
+
+    `Task.organization` = celle de la mission (l'organisation CIBLE, pas
+    celle de l'inspecteur assigné, qui n'en est jamais membre par
+    construction — règle d'indépendance, ticket 005). Limite connue,
+    assumée : `GET /api/me/tasks/` reste scopé par l'organisation ACTIVE de
+    l'inspecteur (RLS standard sur `tasks_task`, jamais élargie par ce
+    ticket — hors scope), donc cette Task n'y apparaîtra pas pour lui tant
+    que son organisation active reste la sienne. Le vrai chemin de
+    visibilité de la mission pour l'inspecteur est
+    `GET /api/control/missions/` (ticket 012) ; cette Task ne sert que de
+    trace/notification opérationnelle, pas de source de vérité.
+    """
+    assignee = mission.assigned_inspector
+
+    return Task.objects.create(
+        organization=mission.organization,
+        type=TaskType.TASK,
+        subject_type=ContentType.objects.get_for_model(mission),
+        subject_id=mission.id,
+        program=mission.work_declaration.milestone.lot.asset.program,
+        assignee=assignee,
+        source=MISSION_ASSIGNED_SOURCE,
+        label=_mission_assigned_label(mission, assignee),
         priority=TaskPriority.NORMAL,
     )
 

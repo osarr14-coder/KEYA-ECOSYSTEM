@@ -2,6 +2,7 @@ import io
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.urls import reverse
 from PIL import Image
 from rest_framework.test import APIClient
@@ -65,6 +66,10 @@ def _setup_constructeur_org(email, organization_name):
 
 def _setup_inspecteur(email, organization_name):
     return _register(email, organization_name, role_code='inspecteur')
+
+
+def _register_admin(email, organization_name):
+    return _register(email, organization_name, role_code='admin_keyimmo')
 
 
 def _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration):
@@ -342,3 +347,178 @@ class TestInspectionsAppIsOrganizationScoped:
         outsider_client, _reserve_id, inspection_id = self._setup_chain()
         response = outsider_client.get(reverse('inspection-detail', args=[inspection_id]))
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestCreateMissionIndependenceRule:
+    """Ticket 012 — la règle d'indépendance du contrôle (V3.0 §2.3) est
+    revalidée À L'AFFECTATION, pas seulement à l'inspection elle-même
+    (`create_inspection`) : critère d'acceptation explicite du ticket.
+    """
+
+    def test_rejects_when_assigned_inspector_also_belongs_to_the_target_organization(self):
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'mission-indep-constructeur@example.com', 'Org Mission Indep Constructeur',
+        )
+        _inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'mission-indep-inspecteur@example.com', 'Org Mission Indep Inspecteur',
+        )
+        # L'inspecteur devient AUSSI membre de l'organisation cible — exactement
+        # le cas que la règle d'indépendance doit interdire, même s'il détient
+        # par ailleurs le rôle inspecteur ailleurs.
+        extra_role, _ = Role.objects.get_or_create(code='sponsor', defaults={'label': 'Sponsor'})
+        set_rls_context(organization_id=organization.id)
+        Membership.objects.create(user=inspecteur_user, organization=organization, role=extra_role)
+
+        _admin_client, admin_org, admin_user = _register_admin(
+            'mission-indep-admin@example.com', 'Org Mission Indep Admin',
+        )
+
+        with pytest.raises(services.IndependenceRuleViolation):
+            services.create_mission(
+                assigned_by=admin_user, assigned_by_organization_id=admin_org.id,
+                target_organization_id=organization.id, work_declaration_id=declaration.id,
+                assigned_inspector=inspecteur_user,
+            )
+
+    def test_rejects_when_assigned_user_has_no_inspecteur_role_anywhere(self):
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'mission-notinspector-constructeur@example.com', 'Org Mission NotInspector Constructeur',
+        )
+        _other_client, _other_org, other_user = _register(
+            'mission-notinspector-other@example.com', 'Org Mission NotInspector Other',
+        )
+        _admin_client, admin_org, admin_user = _register_admin(
+            'mission-notinspector-admin@example.com', 'Org Mission NotInspector Admin',
+        )
+
+        with pytest.raises(services.NotAnInspectorError):
+            services.create_mission(
+                assigned_by=admin_user, assigned_by_organization_id=admin_org.id,
+                target_organization_id=organization.id, work_declaration_id=declaration.id,
+                assigned_inspector=other_user,
+            )
+
+    def test_succeeds_for_a_genuinely_independent_inspector_and_notifies_via_task_not_trustevent(self):
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'mission-success-constructeur@example.com', 'Org Mission Success Constructeur',
+        )
+        _inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'mission-success-inspecteur@example.com', 'Org Mission Success Inspecteur',
+        )
+        _admin_client, admin_org, admin_user = _register_admin(
+            'mission-success-admin@example.com', 'Org Mission Success Admin',
+        )
+
+        mission = services.create_mission(
+            assigned_by=admin_user, assigned_by_organization_id=admin_org.id,
+            target_organization_id=organization.id, work_declaration_id=declaration.id,
+            assigned_inspector=inspecteur_user,
+        )
+        assert mission.organization_id == organization.id
+        assert mission.assigned_inspector_id == inspecteur_user.id
+        assert mission.assigned_by_id == admin_user.id
+
+        # Effet de bord : une Task de notification (ticket 006), JAMAIS un
+        # TrustEvent — une mission n'affirme aucune confiance sur son sujet
+        # (doctrine Visible Trust, voir InspectionMission).
+        set_rls_context(organization_id=organization.id)
+        from apps.tasks.models import Task
+
+        task = Task.objects.get(subject_id=mission.id)
+        assert task.assignee_id == inspecteur_user.id
+        assert task.source == 'mission_assigned'
+        assert inspecteur_user.email in task.label
+
+        assert not TrustEvent.objects.filter(subject_id=mission.id).exists()
+
+
+@pytest.mark.django_db
+class TestInspectionMissionRLS:
+    """Ticket 012 — la policy RLS de `inspections_mission` autorise
+    `assigned_inspector_id = current_user` EN PLUS de `organization_id =
+    current_org` : une comparaison de COLONNE, jamais une sous-requête sur
+    cette même table (voir migration 0006, leçon du ticket 011 — récursion
+    infinie détectée par Postgres sous FORCE ROW LEVEL SECURITY pour un
+    pattern différent). Vérifié en SQL brut, pas seulement via l'API.
+    """
+
+    def _setup_mission(self, suffix):
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            f'mission-rls-constructeur-{suffix}@example.com', f'Org Mission RLS Constructeur {suffix}',
+        )
+        _inspecteur_client, inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            f'mission-rls-inspecteur-{suffix}@example.com', f'Org Mission RLS Inspecteur {suffix}',
+        )
+        _admin_client, admin_org, admin_user = _register_admin(
+            f'mission-rls-admin-{suffix}@example.com', f'Org Mission RLS Admin {suffix}',
+        )
+        mission = services.create_mission(
+            assigned_by=admin_user, assigned_by_organization_id=admin_org.id,
+            target_organization_id=organization.id, work_declaration_id=declaration.id,
+            assigned_inspector=inspecteur_user,
+        )
+        return organization, inspecteur_organization, inspecteur_user, mission
+
+    def test_assigned_inspector_can_read_their_own_mission_via_column_comparison(self):
+        _organization, inspecteur_organization, inspecteur_user, mission = self._setup_mission('select')
+
+        # Contexte de l'inspecteur : SA PROPRE organisation active, JAMAIS
+        # celle du lot inspecté par construction — seule la comparaison
+        # `assigned_inspector_id = current_user` peut rendre cette ligne
+        # visible ici.
+        set_rls_context(user_id=inspecteur_user.id, organization_id=inspecteur_organization.id)
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT id FROM inspections_mission WHERE id = %s', [str(mission.id)])
+            rows = cursor.fetchall()
+        assert len(rows) == 1
+
+    def test_a_genuine_outsider_cannot_read_the_mission(self):
+        _organization, _inspecteur_organization, _inspecteur_user, mission = self._setup_mission('outsider')
+        _outsider_client, outsider_organization, outsider_user = _register(
+            'mission-rls-outsider@example.com', 'Org Mission RLS Outsider',
+        )
+        set_rls_context(user_id=outsider_user.id, organization_id=outsider_organization.id)
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT id FROM inspections_mission WHERE id = %s', [str(mission.id)])
+            rows = cursor.fetchall()
+        assert rows == []
+
+    def test_insert_still_requires_the_target_organization_as_active_context(self):
+        """L'élargissement ne touche QUE le SELECT (voir migration 0006) —
+        l'INSERT garde sa policy stricte, inchangée : même admin_keyimmo ne
+        peut écrire qu'en empruntant explicitement le contexte de
+        l'organisation cible (voir `create_mission`), jamais par un
+        élargissement de la policy d'écriture elle-même.
+        """
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'mission-rls-insert-constructeur@example.com', 'Org Mission RLS Insert Constructeur',
+        )
+        _inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'mission-rls-insert-inspecteur@example.com', 'Org Mission RLS Insert Inspecteur',
+        )
+        _admin_client, admin_org, admin_user = _register_admin(
+            'mission-rls-insert-admin@example.com', 'Org Mission RLS Insert Admin',
+        )
+
+        import uuid
+
+        from django.db.utils import ProgrammingError
+
+        # Contexte de l'admin, PAS celui de l'organisation cible — tentative
+        # d'insertion directe en SQL brut, contournant complètement
+        # `create_mission`.
+        set_rls_context(user_id=admin_user.id, organization_id=admin_org.id)
+        with pytest.raises(ProgrammingError):
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO inspections_mission
+                        (id, organization_id, work_declaration_id, assigned_inspector_id, assigned_by_id, created_at)
+                    VALUES (%s, %s, %s, %s, %s, now())
+                    """,
+                    [
+                        str(uuid.uuid4()), str(organization.id), str(declaration.id),
+                        str(inspecteur_user.id), str(admin_user.id),
+                    ],
+                )

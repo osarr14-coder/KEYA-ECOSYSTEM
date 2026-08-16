@@ -2,12 +2,15 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+import { clearIndexedDB } from './testUtils/clearIndexedDB';
+import { seedFixtureMissions } from './testUtils/missionFixtures';
 
 beforeEach(async () => {
-  const databases = await indexedDB.databases();
-  for (const database of databases) {
-    if (database.name) indexedDB.deleteDatabase(database.name);
-  }
+  await clearIndexedDB();
+  // Ticket 012 : la liste de missions vient désormais du cache local
+  // (jamais `MOCK_MISSIONS`, retiré) — peuplé ici pour que « Lot 12 » reste
+  // cliquable dans ces scénarios, comme avant.
+  await seedFixtureMissions();
 });
 
 function setOffline() {

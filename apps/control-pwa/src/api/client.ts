@@ -1,3 +1,5 @@
+import type { Mission } from '../db/types';
+
 export class ApiError extends Error {
   status: number;
 
@@ -124,7 +126,36 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
     return { status: 'applied', inspection: data.inspection };
   }
 
-  return { syncDocument, syncEvidence, syncInspection };
+  /**
+   * `GET /api/control/missions/` — ticket 012, remplace `MOCK_MISSIONS`
+   * (ticket 010). Le backend renvoie déjà des clés `snake_case`
+   * (`apps.inspections.services.list_missions_for_inspector`) : conversion
+   * ICI vers le `camelCase` attendu par `Mission`, jamais côté composant.
+   */
+  async function listMissions(): Promise<Mission[]> {
+    const response = await fetch(`${baseUrl}/api/control/missions/`, {
+      method: 'GET', headers: authHeaders(),
+    });
+    if (!response.ok) {
+      throw new ApiError(response.status, `Échec de récupération des missions (${response.status})`);
+    }
+    const data = (await response.json()) as Array<{
+      id: string; lot_name: string; asset_name: string; program_name: string; milestone_label: string;
+      organization_id: string; work_declaration_id: string; completed: boolean;
+    }>;
+    return data.map((row) => ({
+      id: row.id,
+      lotName: row.lot_name,
+      assetName: row.asset_name,
+      programName: row.program_name,
+      milestoneLabel: row.milestone_label,
+      organizationId: row.organization_id,
+      workDeclarationId: row.work_declaration_id,
+      completed: row.completed,
+    }));
+  }
+
+  return { syncDocument, syncEvidence, syncInspection, listMissions };
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;

@@ -140,3 +140,25 @@ class SyncInspectionView(APIView):
             {'status': 'applied', 'inspection': InspectionSerializer(outcome.inspection).data},
             status=201,
         )
+
+
+class MissionListView(APIView):
+    """`GET /api/control/missions/` — ticket 012 : les missions RÉELLEMENT
+    affectées à l'inspecteur courant, remplaçant `MOCK_MISSIONS` côté
+    `CONTROL PWA`. Réservé au rôle inspecteur (`IsInspecteur`, même
+    permission que les 3 routes de synchronisation ci-dessus).
+
+    Corps déjà dans la forme attendue par `CONTROL PWA` (voir
+    `apps.inspections.services.list_missions_for_inspector`) : aucun
+    serializer supplémentaire, comme `apps.build`/`apps.home` pour leurs
+    payloads déjà calculés côté service.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+
+    def get(self, request):
+        missions = inspections_services.list_missions_for_inspector(
+            inspector=request.user,
+            caller_organization_id=request.organization.id if request.organization else None,
+        )
+        return Response(missions)

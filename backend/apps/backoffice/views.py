@@ -1,13 +1,20 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import permissions
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import User
+from apps.inspections import services as inspections_services
 
 from . import services
 from .permissions import IsAdminKeyimmo
-from .serializers import UserDetailSerializer, UserSummarySerializer
+from .serializers import (
+    MissionAdminSerializer,
+    MissionCreateSerializer,
+    UserDetailSerializer,
+    UserSummarySerializer,
+)
 
 
 class UserSearchView(APIView):
@@ -57,3 +64,43 @@ class DeactivateUserView(APIView):
             raise NotFound('Utilisateur introuvable.')
         services.deactivate_user(target_user)
         return Response(UserSummarySerializer(target_user).data)
+
+
+class CreateMissionView(APIView):
+    """`POST /api/backoffice/missions/` — ticket 012 : affecte un
+    inspecteur à un `WorkDeclaration` à contrôler. Réservé à
+    `admin_keyimmo` (voir `IsAdminKeyimmo`) — décision de conception
+    validée : laisser le constructeur choisir (même indirectement) son
+    propre inspecteur affaiblirait la règle d'indépendance dès
+    l'affectation. La validation métier elle-même (règle d'indépendance,
+    rôle inspecteur) vit dans `apps.inspections.services.create_mission` —
+    cette vue ne fait que vérifier le rôle admin et déléguer.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def post(self, request):
+        serializer = MissionCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        assigned_inspector = User.objects.filter(id=data['assigned_inspector']).first()
+        if assigned_inspector is None:
+            raise ValidationError({'assigned_inspector': 'Utilisateur introuvable.'})
+
+        try:
+            mission = inspections_services.create_mission(
+                assigned_by=request.user,
+                assigned_by_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=data['organization'],
+                work_declaration_id=data['work_declaration'],
+                assigned_inspector=assigned_inspector,
+            )
+        except inspections_services.IndependenceRuleViolation as exc:
+            raise PermissionDenied(str(exc))
+        except inspections_services.NotAnInspectorError as exc:
+            raise ValidationError({'assigned_inspector': str(exc)})
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'messages', [str(exc)]))
+
+        return Response(MissionAdminSerializer(mission).data, status=201)

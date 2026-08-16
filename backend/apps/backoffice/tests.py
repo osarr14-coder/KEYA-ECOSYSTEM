@@ -42,6 +42,21 @@ def _register_admin(email, organization_name):
     return _register(email, organization_name, role_code='admin_keyimmo')
 
 
+def _setup_constructeur_org(email, organization_name):
+    client, organization, user = _register(email, organization_name, role_code='constructeur')
+    program = Program.objects.create(organization=organization, name='Programme')
+    asset = Asset.objects.create(organization=organization, program=program, name='Bien')
+    lot = Lot.objects.create(organization=organization, asset=asset, name='Lot')
+    instantiate_milestones_for_lot(lot)
+    milestone = lot.milestones.first()
+    declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=user)
+    return client, organization, user, lot, declaration
+
+
+def _setup_inspecteur(email, organization_name):
+    return _register(email, organization_name, role_code='inspecteur')
+
+
 @pytest.mark.django_db
 class TestBackofficeAccessIsReservedToAdminKeyimmo:
     def test_non_admin_is_rejected_from_all_three_endpoints(self):
@@ -62,6 +77,90 @@ class TestBackofficeAccessIsReservedToAdminKeyimmo:
         anonymous_client = APIClient()
         response = anonymous_client.get(reverse('backoffice-user-search') + '?q=a')
         assert response.status_code in (401, 403)
+
+
+@pytest.mark.django_db
+class TestMissionCreationIsReservedToAdminKeyimmo:
+    """Ticket 012 — critère d'acceptation : seul un membre `admin_keyimmo`
+    peut créer une affectation, testé comme une tentative explicite refusée
+    pour tout autre rôle, pas une simple absence de bouton côté UI.
+    """
+
+    def test_non_admin_cannot_create_a_mission(self):
+        constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'mission-perm-constructeur@example.com', 'Org Mission Perm Constructeur',
+        )
+        _inspecteur_client, _inspecteur_org, inspecteur_user = _setup_inspecteur(
+            'mission-perm-inspecteur@example.com', 'Org Mission Perm Inspecteur',
+        )
+
+        response = constructeur_client.post(
+            reverse('backoffice-mission-create'),
+            {
+                'organization': str(organization.id),
+                'work_declaration': str(declaration.id),
+                'assigned_inspector': str(inspecteur_user.id),
+            },
+            format='json',
+        )
+        assert response.status_code == 403
+
+    def test_admin_keyimmo_can_create_a_mission(self):
+        admin_client, admin_org, _admin_user = _register_admin(
+            'mission-perm-admin@example.com', 'Org Mission Perm Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'mission-perm-admin-constructeur@example.com', 'Org Mission Perm Admin Constructeur',
+        )
+        _inspecteur_client, _inspecteur_org, inspecteur_user = _setup_inspecteur(
+            'mission-perm-admin-inspecteur@example.com', 'Org Mission Perm Admin Inspecteur',
+        )
+
+        response = admin_client.post(
+            reverse('backoffice-mission-create'),
+            {
+                'organization': str(organization.id),
+                'work_declaration': str(declaration.id),
+                'assigned_inspector': str(inspecteur_user.id),
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert response.data['organization'] == str(organization.id)
+        assert response.data['assigned_inspector'] == str(inspecteur_user.id)
+
+    def test_independence_violation_is_rejected_through_the_full_endpoint(self):
+        """Pas seulement testé au niveau service (voir apps/inspections/
+        tests.py) — la chaîne complète vue→service→exception→403 doit
+        fonctionner de bout en bout.
+        """
+        admin_client, admin_org, _admin_user = _register_admin(
+            'mission-perm-indep-admin@example.com', 'Org Mission Perm Indep Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'mission-perm-indep-constructeur@example.com', 'Org Mission Perm Indep Constructeur',
+        )
+        _inspecteur_client, _inspecteur_org, inspecteur_user = _setup_inspecteur(
+            'mission-perm-indep-inspecteur@example.com', 'Org Mission Perm Indep Inspecteur',
+        )
+        extra_role, _ = Role.objects.get_or_create(code='sponsor', defaults={'label': 'Sponsor'})
+        set_rls_context(organization_id=organization.id)
+        Membership.objects.create(user=inspecteur_user, organization=organization, role=extra_role)
+
+        response = admin_client.post(
+            reverse('backoffice-mission-create'),
+            {
+                'organization': str(organization.id),
+                'work_declaration': str(declaration.id),
+                'assigned_inspector': str(inspecteur_user.id),
+            },
+            format='json',
+        )
+        assert response.status_code == 403
+
+        from apps.inspections.models import InspectionMission
+        set_rls_context(organization_id=organization.id)
+        assert not InspectionMission.objects.filter(work_declaration=declaration).exists()
 
 
 @pytest.mark.django_db
@@ -216,10 +315,21 @@ class TestBackofficeNeverExposesATrustEventShortcut:
     projet (attribution KEYIMMO, gouvernance StatusBadge).
     """
 
-    def test_backoffice_urls_expose_exactly_the_three_documented_actions(self):
+    def test_backoffice_urls_expose_exactly_the_documented_actions(self):
+        """4 routes désormais (ticket 012 a ajouté `backoffice-mission-create`,
+        consciemment — voir apps/backoffice/urls.py) : ce test a fait
+        exactement son travail en forçant cette mise à jour explicite plutôt
+        que de laisser une route de plus se glisser sans qu'on la remarque.
+        `CreateMissionView` délègue toute la validation métier (règle
+        d'indépendance, rôle inspecteur) à `apps.inspections.services.
+        create_mission` — aucun raccourci TrustEvent n'y est ajouté non plus.
+        """
         from apps.backoffice.urls import urlpatterns
         names = {pattern.name for pattern in urlpatterns}
-        assert names == {'backoffice-user-search', 'backoffice-user-detail', 'backoffice-user-deactivate'}
+        assert names == {
+            'backoffice-user-search', 'backoffice-user-detail', 'backoffice-user-deactivate',
+            'backoffice-mission-create',
+        }
 
     def test_backoffice_module_never_imports_or_references_the_trust_module(self):
         """Vérifie l'absence d'USAGE réel de `apps.trust` — pas une simple
