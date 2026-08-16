@@ -723,6 +723,106 @@ passe 1, non résolue ici) : `MOCK_MISSIONS` porte désormais `organizationId`/
 de les remplacer temporairement par de vrais identifiants backend (jamais commité tel quel).
 Les tests automatisés n'en ont pas besoin : l'API est mockée (`vi.stubGlobal('fetch', ...)`).
 
+## Messagerie & Back-office (ticket 011)
+
+**`Message`** (`apps/messaging`) — toujours rattaché à un objet métier existant (Lot,
+Reserve, Document), jamais une messagerie libre. Référence polymorphe exactement comme
+`TrustEvent`/`Task` (`subject_type`/`subject_id` via `contenttypes`), restreinte en
+pratique par `services.py::ALLOWED_SUBJECT_MODELS = (Lot, Reserve, Document)` — vérifiée
+explicitement dans `create_message`, pas seulement présumée par construction des appelants.
+`organization` dénormalisé depuis le sujet (même pattern que `Asset.organization`), policy
+RLS standard par colonne (`organization_id = current_org`, migration 0002).
+
+**Aucune route propre à `apps/messaging`** : les endpoints vivent en `@action(detail=True,
+methods=['get','post'])` directement sur `LotViewSet`/`ReserveViewSet`/`DocumentViewSet`
+existants (`GET/POST /api/{lots,reserves,documents}/{id}/messages/`), via
+`MessageThreadMixin` (`apps/messaging/mixins.py`) — c'est ce qui permet d'hériter des
+permissions déjà en place (`get_object()` de chaque ViewSet) **sans écrire de nouvelle
+logique de permission**, critère d'acceptation explicite du ticket. Un membre qui ne peut
+pas lire un Lot/une Reserve/un Document (organisation active, RLS) ne peut, par
+construction, ni lire ni écrire ses messages.
+
+**Nuance `Document` — point d'extension du mixin** : `get_object()` seul ne suffit PAS pour
+un `Document` : un document `confidentiel` doit rester exclu de tout membre qui n'en est ni
+le propriétaire ni `admin_keyimmo` (`apps.evidence.access.user_can_access_document`, ticket
+004). `MessageThreadMixin.get_message_subject()` est le point d'extension prévu pour ça —
+`DocumentViewSet` le surcharge pour appeler cette fonction EXISTANTE (jamais une seconde
+règle), tout en laissant `get_object()` lui-même inchangé : `RetrieveModelMixin`/
+`signed_url` gardent leur comportement du ticket 004, hors scope de ce ticket.
+
+**Piège rencontré : `DocumentViewSet.parser_classes = [MultiPartParser]`** (fixé au niveau
+CLASSE, nécessaire pour `create` qui reçoit un fichier) est hérité par TOUTE action montée
+dessus, y compris `messages` — un corps JSON `{"body": "..."}` y était rejeté en 415.
+Corrigé en déclarant `parser_classes` explicitement sur l'action elle-même (`@action(...,
+parser_classes=[JSONParser, FormParser, MultiPartParser])`), dans `MessageThreadMixin` —
+robuste quel que soit le ViewSet hôte.
+
+**Limite héritée, pas résolue par ce ticket** : un inspecteur n'étant jamais membre de
+l'organisation cible (règle d'indépendance, ticket 005), il ne peut ni lire ni écrire de
+message sur une Reserve cross-organisation via cette route — exactement la même limite déjà
+documentée par `create_inspection` pour la relecture de ses propres inspections. Ticket 011
+hérite cette limite plutôt que de la résoudre (aurait exigé une nouvelle logique de
+permission cross-org, explicitement hors de ce que le ticket demande).
+
+**Back-office** (`apps/backoffice`, réservé à `admin_keyimmo`) — `IsAdminKeyimmo` diffère
+volontairement d'`IsInspecteur`/`IsConstructeur` (ticket 005) : ces derniers vérifient le
+rôle DANS l'organisation ACTIVE de la requête, alors qu'un back-office est par nature une
+capacité transverse à toutes les organisations — `IsAdminKeyimmo` vérifie que l'utilisateur
+détient `admin_keyimmo` dans N'IMPORTE LAQUELLE de ses organisations
+(`Membership.objects.filter(user=request.user, role__code='admin_keyimmo')` — passe sans
+problème la policy RLS existante, ticket 001, puisque c'est une lecture de SES PROPRES
+lignes).
+
+**Tentative abandonnée, documentée pour ne pas être retentée à l'identique** : élargir
+`membership_select` (ticket 001, `user_id = current_user` strictement) avec une branche `OR
+EXISTS (SELECT ... FROM organizations_membership ...)` pour qu'un `admin_keyimmo` lise
+n'importe quelle ligne. Postgres détecte une **récursion infinie** dans une policy qui
+référence sa propre table sous `FORCE ROW LEVEL SECURITY` (`InvalidObjectDefinition`,
+« récursion infinie détectée dans la politique »). La parade usuelle (fonction
+`SECURITY DEFINER` + `SET row_security = off`) échoue elle aussi pour la MÊME raison
+structurelle : `FORCE ROW LEVEL SECURITY` interdit explicitement de désactiver la RLS par ce
+biais, même pour le propriétaire de la table (`InsufficientPrivilege` : « la requête
+pourrait être affectée par une politique de sécurité »). Cassait TOUTE requête sur
+`organizations_membership`, testée ou non — retrouvé et corrigé en local avant tout commit,
+jamais poussé en l'état.
+
+**Solution retenue** (`apps/backoffice/services.py::get_user_memberships`) : basculer
+temporairement `app.current_user_id` sur l'utilisateur CIBLE, le temps de CETTE lecture
+seule — ses propres lignes deviennent visibles sous la policy EXISTANTE, INCHANGÉE, sans
+élargissement. Restauré dans un `finally`, même schéma que
+`apps.inspections.services.create_inspection` (ticket 005) : une exception étroite et
+documentée par appel, jamais un contournement général de RLS, et aucune migration touchant
+`organizations_membership` n'a été nécessaire.
+
+**Désactivation de compte** (`services.py::deactivate_user`) : `User.is_active = False`,
+rien d'autre — aucune donnée (`TrustEvent`, `Message`, `Document`, `Membership`) n'est
+touchée. Bloque l'accès IMMÉDIATEMENT parce que `JWTAuthentication.get_user`
+(`rest_framework_simplejwt`) revérifie `is_active` à CHAQUE requête authentifiée (pas
+seulement à l'émission du token) — aucun mécanisme de révocation/blacklist de token n'a été
+nécessaire, le comportement existe déjà dans la bibliothèque.
+
+**Bug réel trouvé en écrivant le test de désactivation avec un JWT déjà émis** :
+`apps.core.middleware.OrganizationScopeMiddleware._authenticate` ne rattrapait QUE
+`(InvalidToken, TokenError)` — pas `AuthenticationFailed`, que `JWTAuthentication.get_user`
+lève pourtant pour un utilisateur `is_active=False` (jeton par ailleurs valide). Un jeton
+émis avant une désactivation provoquait une 500 non gérée à la requête suivante (l'exception
+remontait telle quelle depuis le middleware, avant même la gestion d'exceptions de DRF, qui
+ne s'exécute qu'à l'intérieur d'une vue), au lieu du 401 attendu. Corrigé en ajoutant
+`AuthenticationFailed` au tuple rattrapé — bug préexistant (aucun ticket avant le 011 n'avait
+de scénario qui l'exerçait), révélé uniquement parce que le critère d'acceptation exigeait de
+prouver le blocage AVEC un jeton déjà émis, pas seulement une tentative de connexion après
+coup.
+
+**Garde anti-court-circuit TrustEvent** (critère d'acceptation explicite du ticket) :
+`apps/backoffice/tests.py::TestBackofficeNeverExposesATrustEventShortcut` scanne le code
+source réel de `views.py`/`services.py` (pas seulement une revue manuelle) — absence de
+`apps.trust`, d'appel `trust_repository.create`/`TrustEvent.objects.create`, ET vérifie que
+les 3 routes de `apps/backoffice/urls.py` sont EXACTEMENT celles documentées (toute
+quatrième route future ferait échouer ce test, obligeant une décision consciente). Même
+famille de test que la garde anti-attribution KEYIMMO (ticket 006) et la garde de
+gouvernance StatusBadge (ticket 007) : scanner le code, pas seulement le comportement
+actuel.
+
 ## Tickets
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un

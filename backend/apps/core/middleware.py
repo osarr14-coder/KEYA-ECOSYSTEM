@@ -1,4 +1,5 @@
 from django.db import transaction
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
@@ -48,7 +49,19 @@ class OrganizationScopeMiddleware:
     def _authenticate(self, request):
         try:
             result = self.jwt_authenticator.authenticate(request)
-        except (InvalidToken, TokenError):
+        except (InvalidToken, TokenError, AuthenticationFailed):
+            # `AuthenticationFailed` (pas seulement `InvalidToken`/`TokenError`)
+            # : `JWTAuthentication.get_user` la lève pour un jeton par
+            # ailleurs valide (signature/expiration OK) mais dont
+            # l'utilisateur est introuvable OU `is_active=False` — piège
+            # réel découvert au ticket 011 (back-office, désactivation de
+            # compte) : sans cette branche, un jeton déjà émis avant une
+            # désactivation provoquait une 500 non gérée ici (l'exception
+            # remontait telle quelle depuis le middleware, avant même
+            # d'atteindre la gestion d'exceptions de DRF), au lieu d'un 401
+            # propre — DRF, lui, gère nativement cette exception dans une
+            # vue, mais ce middleware s'exécute EN AMONT, hors de ce
+            # mécanisme (voir docstring de la classe).
             return None
         if result is None:
             return None

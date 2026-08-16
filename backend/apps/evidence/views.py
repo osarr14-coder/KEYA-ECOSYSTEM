@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.viewsets import OrganizationScopedMixin
+from apps.messaging.mixins import MessageThreadMixin
 
 from . import access, services
 from .models import Document, Evidence, WorkDeclaration
@@ -22,6 +23,7 @@ from .serializers import (
 
 
 class DocumentViewSet(
+    MessageThreadMixin,
     OrganizationScopedMixin,
     mixins.CreateModelMixin,
     mixins.ListModelMixin,
@@ -46,6 +48,21 @@ class DocumentViewSet(
         serializer.is_valid(raise_exception=True)
         document = serializer.save()
         return Response(DocumentSerializer(document).data, status=201)
+
+    def get_message_subject(self):
+        """Ticket 011 — `get_object()` seul (organisation active) ne
+        suffit PAS pour un `Document` : un document `confidentiel` doit
+        rester exclu de tout membre qui n'en est ni le propriétaire ni
+        `admin_keyimmo`, exactement la même règle déjà appliquée par
+        `signed_url` (ticket 004) — réutilisée ici telle quelle, jamais
+        redéfinie. Volontairement une surcharge de CETTE seule méthode
+        (pas de `get_object()`) : `RetrieveModelMixin`/`signed_url` gardent
+        leur comportement du ticket 004 inchangé, hors scope de ce ticket.
+        """
+        document = self.get_object()
+        if not access.user_can_access_document(self.request.user, document, self.request.organization):
+            raise PermissionDenied('Ce document confidentiel ne vous est pas accessible.')
+        return document
 
     @action(detail=True, methods=['get'])
     def signed_url(self, request, pk=None):

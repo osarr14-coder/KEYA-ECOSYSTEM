@@ -28,6 +28,8 @@ INSTALLED_APPS = [
     'apps.home',
     'apps.build',
     'apps.control',
+    'apps.messaging',
+    'apps.backoffice',
     'apps.core',
 ]
 

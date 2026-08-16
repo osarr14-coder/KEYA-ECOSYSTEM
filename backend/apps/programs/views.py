@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.core.viewsets import OrganizationScopedMixin
+from apps.messaging.mixins import MessageThreadMixin
 from apps.organizations.models import Organization
 
 from .models import Asset, Lot, Program
@@ -36,7 +37,7 @@ class AssetViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
     serializer_class = AssetSerializer
 
 
-class LotViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
+class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelViewSet):
     queryset = Lot.objects.all()
     serializer_class = LotSerializer
 
@@ -69,3 +70,8 @@ class LotViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
         lot.assigned_organization = organization
         lot.save(update_fields=['assigned_organization'])
         return Response(LotSerializer(lot).data)
+
+    # Action `messages` (GET/POST) fournie par `MessageThreadMixin` — voir
+    # apps/messaging/mixins.py. Aucune surcharge nécessaire ici :
+    # `get_object()` du ViewSet ci-dessus EST le filtre de permission
+    # complet pour un Lot (organisation active).

@@ -5,6 +5,7 @@ from rest_framework.response import Response
 
 from apps.core.viewsets import OrganizationScopedMixin
 from apps.evidence.permissions import IsConstructeur
+from apps.messaging.mixins import MessageThreadMixin
 
 from . import services
 from .models import Inspection, Reserve, ReserveCorrection
@@ -69,6 +70,7 @@ class InspectionViewSet(
 
 
 class ReserveViewSet(
+    MessageThreadMixin,
     OrganizationScopedMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -81,6 +83,15 @@ class ReserveViewSet(
     `ReserveCorrectionViewSet.create`. Une tentative de `PATCH`/`PUT`/
     `DELETE` ici renvoie 405 (méthode non autorisée) — il n'existe
     littéralement aucun code qui pourrait l'honorer.
+
+    L'action `messages` (GET/POST, ticket 011, voir `MessageThreadMixin`)
+    hérite du même filtre par organisation que `list`/`retrieve` ci-dessus
+    — un inspecteur n'étant jamais membre de l'organisation cible (règle
+    d'indépendance, ticket 005), il ne peut, comme pour la relecture de ses
+    propres inspections, ni lire ni écrire de message sur une réserve
+    cross-organisation via cette route (limite déjà documentée par
+    `apps.inspections.services.create_inspection`, pas quelque chose que ce
+    ticket doit résoudre).
     """
 
     queryset = Reserve.objects.all()
