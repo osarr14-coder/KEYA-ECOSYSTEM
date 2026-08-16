@@ -18,6 +18,10 @@ export interface SyncInspectionResult {
   status: 'applied' | 'conflict';
   inspection?: { id: string; created_at: string; client_correlation_id: string | null };
   currentEvent?: { id: string | null; level: string | null; source: string | null; createdAt: string | null } | null;
+  /** Ticket 013 (bug 2) : présent uniquement quand `status === 'applied'` —
+   * à reporter dans `InspectionDraft.knownLatestEventId` pour que toute
+   * synchro suivante légitime sur cette même cible ne soit plus rejetée. */
+  latestEventId?: string;
 }
 
 /**
@@ -122,8 +126,9 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
     const data = (await response.json()) as {
       status: 'applied';
       inspection: { id: string; created_at: string; client_correlation_id: string | null };
+      latest_event_id: string;
     };
-    return { status: 'applied', inspection: data.inspection };
+    return { status: 'applied', inspection: data.inspection, latestEventId: data.latest_event_id };
   }
 
   /**
@@ -142,6 +147,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
     const data = (await response.json()) as Array<{
       id: string; lot_name: string; asset_name: string; program_name: string; milestone_label: string;
       organization_id: string; work_declaration_id: string; completed: boolean;
+      reserve_id: string | null; reserve_latest_event_id: string | null;
     }>;
     return data.map((row) => ({
       id: row.id,
@@ -152,6 +158,8 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
       organizationId: row.organization_id,
       workDeclarationId: row.work_declaration_id,
       completed: row.completed,
+      reserveId: row.reserve_id,
+      reserveLatestEventId: row.reserve_latest_event_id,
     }));
   }
 

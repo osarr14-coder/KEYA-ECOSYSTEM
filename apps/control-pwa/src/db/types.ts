@@ -66,6 +66,20 @@ export interface Mission {
    * existe-t-elle déjà pour ce work_declaration, créée par cet inspecteur ?
    * Voir apps.inspections.services.list_missions_for_inspector. */
   completed: boolean;
+  /** Ticket 013 : identifiant de la `Reserve` actuellement ouverte sur ce
+   * lot, `null` s'il n'y en a aucune (mission de première inspection).
+   * Dérivé côté serveur (voir `list_missions_for_inspector`) — sans ce
+   * champ, une inspection de suivi n'a structurellement aucun moyen de
+   * transmettre `reserve` à `syncInspection` (voir `sync/syncEngine.ts`). */
+  reserveId: string | null;
+  /** Ticket 013 : dernier `TrustEvent` connu de CETTE réserve (`null` si
+   * `reserveId` l'est aussi) — sert à amorcer `InspectionDraft.
+   * knownLatestEventId` d'un brouillon neuf sur une mission de suivi (voir
+   * `db/repository.ts::createEmptyDraft`). Sans lui, le tout premier essai
+   * de synchronisation d'un brouillon neuf partirait de `null`, alors que
+   * la réserve a déjà un historique réel — un conflit (409) garanti dès la
+   * première tentative, quel que soit l'outcome envoyé. */
+  reserveLatestEventId: string | null;
 }
 
 /**

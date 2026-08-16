@@ -161,17 +161,40 @@ def _create_inspection_row(*, inspector, target_organization_id, work_declaratio
     )
 
     inspection_level = TrustLevel.VERIFIE if outcome == InspectionOutcome.CONFORME else TrustLevel.CONTROLE
-    trust_repository.create(
+    inspection_event = trust_repository.create(
         subject=inspection, organization=target_organization, level=inspection_level,
         actor=inspector, source=f'inspection_{outcome}',
     )
 
     if reserve is not None:
-        _advance_existing_reserve(
+        # La cible d'un futur conflit sur CETTE réserve est la réserve
+        # elle-même (voir la comparaison `expected_latest_event_id`
+        # ci-dessus) — c'est donc SON dernier événement (`levee`/`rejetee`),
+        # jamais celui de l'inspection de suivi, qu'il faut rendre au client.
+        latest_event = _advance_existing_reserve(
             reserve=reserve, outcome=outcome, inspector=inspector, organization=target_organization,
         )
-    elif outcome == InspectionOutcome.AVEC_RESERVE:
-        _open_new_reserve(inspection=inspection, inspector=inspector, organization=target_organization, lot=lot)
+    else:
+        if outcome == InspectionOutcome.AVEC_RESERVE:
+            _open_new_reserve(inspection=inspection, inspector=inspector, organization=target_organization, lot=lot)
+        # Sans réserve (ouverture ou simple « conforme »), la cible d'un
+        # futur conflit reste le work_declaration/evidence lui-même — dérivé
+        # comme « sa dernière Inspection », qui EST celle-ci (voir
+        # `_NOT_CHECKING_CONFLICT` ci-dessus, même logique dupliquée ici
+        # plutôt que requêtée à nouveau : l'événement vient d'être créé,
+        # dans la même transaction).
+        latest_event = inspection_event
+
+    # Ticket 013 (bug 2 du rapport bout-en-bout) : sans cette valeur, un
+    # client n'a AUCUN moyen légitime de resynchroniser cette même cible —
+    # `knownLatestEventId` restait figé à sa valeur d'origine indéfiniment,
+    # provoquant un conflit permanent dès la tentative suivante. Attribut
+    # transitoire (jamais persisté, jamais un champ du modèle) : seul
+    # `apps.control.services.sync_inspection` le lit ; tout appelant
+    # préexistant de `create_inspection` (InspectionViewSet direct, fixtures
+    # de test) continue de ne recevoir que `inspection`, comportement
+    # inchangé.
+    inspection.latest_event_id = latest_event.id
 
     return inspection
 
@@ -201,20 +224,22 @@ def _open_new_reserve(*, inspection, inspector, organization, lot):
 
 
 def _advance_existing_reserve(*, reserve, outcome, inspector, organization):
+    """Retourne le DERNIER `TrustEvent` créé (`levee`/`rejetee`) — c'est lui
+    qui devient le nouveau `expected_latest_event_id` de cette réserve pour
+    tout appelant suivant, jamais l'intermédiaire `nouvelle_inspection`."""
     trust_repository.create(
         subject=reserve, organization=organization, level=TrustLevel.CONTROLE,
         actor=inspector, source='nouvelle_inspection',
     )
     if outcome == InspectionOutcome.CONFORME:
-        trust_repository.create(
+        return trust_repository.create(
             subject=reserve, organization=organization, level=TrustLevel.VALIDE,
             actor=inspector, source='levee',
         )
-    else:
-        trust_repository.create(
-            subject=reserve, organization=organization, level=TrustLevel.CONTROLE,
-            actor=inspector, source='rejetee',
-        )
+    return trust_repository.create(
+        subject=reserve, organization=organization, level=TrustLevel.CONTROLE,
+        actor=inspector, source='rejetee',
+    )
 
 
 def create_reserve_correction(*, organization, reserve, evidence, submitted_by):
@@ -367,6 +392,21 @@ def _create_mission_row(*, assigned_by, target_organization_id, work_declaration
     )
 
 
+def _find_open_reserve_for_lot(lot):
+    """La réserve actuellement ouverte de ce lot, `None` s'il n'y en a
+    aucune — ticket 013. Plusieurs `Reserve` peuvent exister dans l'absolu
+    pour un même lot (une par cycle ouverture/résolution) ; seule LA plus
+    récente peut être encore ouverte à un instant donné dans ce MVP (une
+    nouvelle mission de suivi n'est affectée qu'après ouverture, jamais en
+    parallèle) — d'où le tri par date et le premier match, plutôt qu'une
+    contrainte d'unicité en base qui sortirait du scope de ce ticket.
+    """
+    for candidate in Reserve.objects.filter(lot=lot).order_by('-created_at'):
+        if is_reserve_open(candidate):
+            return candidate
+    return None
+
+
 def list_missions_for_inspector(*, inspector, caller_organization_id):
     """Les missions affectées à `inspector`, avec un statut « faite / à
     faire » dérivé — jamais stocké (voir `InspectionMission`, doctrine
@@ -405,6 +445,7 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
                 work_declaration_id=mission.work_declaration_id, inspector=inspector,
             ).exists()
             lot = mission.work_declaration.milestone.lot
+            open_reserve = _find_open_reserve_for_lot(lot)
             rows.append({
                 'id': str(mission.id),
                 'lot_name': lot.name,
@@ -414,6 +455,17 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
                 'organization_id': str(mission.organization_id),
                 'work_declaration_id': str(mission.work_declaration_id),
                 'completed': completed,
+                # Ticket 013 (bug 3 du rapport bout-en-bout) : sans ces deux
+                # champs, une mission de suivi n'a AUCUN moyen légitime de
+                # savoir quelle réserve elle concerne, ni quel
+                # `known_latest_event_id` envoyer pour son tout premier essai
+                # (voir `apps.control.sync.syncEngine.ts::syncDraft`, qui les
+                # utilise respectivement pour `reserve` et pour amorcer
+                # `InspectionDraft.knownLatestEventId` d'un brouillon neuf).
+                'reserve_id': str(open_reserve.id) if open_reserve else None,
+                'reserve_latest_event_id': (
+                    str(trust_repository.get_current_status(open_reserve).id) if open_reserve else None
+                ),
             })
         finally:
             set_rls_context(organization_id=caller_organization_id)

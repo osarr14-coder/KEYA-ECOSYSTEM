@@ -127,6 +127,15 @@ export async function syncDraft(draft: InspectionDraft, apiClient: ApiClient): P
 
   const shouldAttemptData = (
     (next.syncStatus === 'pending' || next.syncStatus === 'syncing') && isDue(next.nextRetryAt)
+    // Ticket 013 (bug 1) : `decision` reste `null` tant que l'inspecteur n'a
+    // pas explicitement choisi Conforme/Réserve — un brouillon dans cet état
+    // ne doit JAMAIS être envoyé, sous peine de soumettre une décision que
+    // personne n'a prise (le `null` tombait silencieusement dans la branche
+    // « conforme » avant cette correction). La checklist/le commentaire/les
+    // photos restent synchronisables indépendamment (voir `syncPhotos`/
+    // `syncEvidenceIfReady` ci-dessus, non gatées ici) — seule la création
+    // de l'Inspection elle-même attend une décision explicite.
+    && next.decision !== null
   );
   if (!shouldAttemptData) return next;
 
@@ -137,6 +146,14 @@ export async function syncDraft(draft: InspectionDraft, apiClient: ApiClient): P
       workDeclarationId: mission.workDeclarationId,
       outcome: next.decision === 'reserve' ? 'avec_reserve' : 'conforme',
       note: formatNote(next),
+      // Ticket 013 (bug 3) : sans ce champ, aucune inspection de suivi
+      // soumise depuis l'app réelle n'était jamais liée à une réserve — elle
+      // restait ouverte indéfiniment quel que soit l'outcome envoyé. Vient
+      // du cache de missions (`mission.reserveId`, voir
+      // `apps.inspections.services.list_missions_for_inspector`), jamais du
+      // brouillon lui-même : c'est la MISSION affectée qui porte cette
+      // information, pas une saisie de l'inspecteur.
+      reserveId: mission.reserveId,
       correlationId: next.correlationId,
       knownLatestEventId: next.knownLatestEventId,
     });
@@ -157,6 +174,11 @@ export async function syncDraft(draft: InspectionDraft, apiClient: ApiClient): P
         serverTimestamp: result.inspection?.created_at ?? new Date().toISOString(),
         retryCount: 0,
         nextRetryAt: null,
+        // Ticket 013 (bug 2) : sans cette ligne, `knownLatestEventId`
+        // restait figé à sa valeur d'origine (souvent `null`) pour
+        // toujours — toute tentative suivante légitime sur cette même
+        // cible se faisait alors rejeter en conflit à tort, indéfiniment.
+        knownLatestEventId: result.latestEventId ?? next.knownLatestEventId,
       });
     }
   } catch {

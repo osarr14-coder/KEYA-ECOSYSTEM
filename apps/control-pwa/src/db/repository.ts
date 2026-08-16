@@ -9,7 +9,11 @@ import type { ChecklistItemState, InspectionDraft, Mission } from './types';
  * pour la traçabilité de bout en bout côté serveur (passe 2), même si rien
  * n'est encore synchronisé cette passe.
  */
-export function createEmptyDraft(missionId: string, checklistTemplate: ChecklistItemState[]): InspectionDraft {
+export function createEmptyDraft(
+  missionId: string,
+  checklistTemplate: ChecklistItemState[],
+  knownLatestEventId: string | null = null,
+): InspectionDraft {
   const correlationId = crypto.randomUUID();
   return {
     id: correlationId,
@@ -22,7 +26,14 @@ export function createEmptyDraft(missionId: string, checklistTemplate: Checklist
     deviceTimestamp: new Date().toISOString(),
     serverTimestamp: null,
     syncStatus: 'pending',
-    knownLatestEventId: null,
+    // Ticket 013 (bug 3) : `null` reste le défaut normal pour une mission de
+    // première inspection (rien n'existe encore côté serveur). Pour une
+    // mission de suivi (voir `mission.reserveLatestEventId`), l'appelant
+    // (`InspectionFormView`) doit fournir la vraie valeur — sans elle, le
+    // tout premier essai de synchro comparerait `null` à un historique réel
+    // et échouerait systématiquement en conflit (409), quel que soit
+    // l'outcome envoyé.
+    knownLatestEventId,
     retryCount: 0,
     nextRetryAt: null,
     conflict: null,

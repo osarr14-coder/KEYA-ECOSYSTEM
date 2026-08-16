@@ -104,6 +104,124 @@ class TestSyncInspectionApplied:
         inspection = Inspection.objects.get(id=response.data['inspection']['id'])
         assert str(inspection.client_correlation_id) == correlation_id
 
+    def test_applied_response_includes_latest_event_id_so_a_legitimate_resync_is_never_rejected(self):
+        """Ticket 013 (bug 2 du rapport) : avant correction, `known_latest_
+        event_id` n'était jamais rafraîchi côté client après un succès —
+        toute tentative suivante, même légitime, se faisait rejeter en
+        conflit indéfiniment. La réponse `applied` doit exposer
+        `latest_event_id` pour que le client puisse s'en resservir.
+        """
+        _constructeur_client, constructeur_organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'sync-latest-event-constructeur@example.com', 'Org Sync Latest Event Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, _i_user = _setup_inspecteur(
+            'sync-latest-event-inspecteur@example.com', 'Org Sync Latest Event Inspecteur',
+        )
+
+        first_response = inspecteur_client.post(
+            reverse('control-sync-inspection'),
+            {
+                'organization': str(constructeur_organization.id),
+                'work_declaration': str(declaration.id),
+                'outcome': InspectionOutcome.CONFORME,
+                'correlation_id': '44444444-4444-4444-4444-444444444441',
+                'known_latest_event_id': None,
+            },
+            format='json',
+        )
+        assert first_response.status_code == 201, first_response.data
+        latest_event_id = first_response.data.get('latest_event_id')
+        assert latest_event_id, "la réponse 'applied' doit exposer l'identifiant du dernier événement"
+
+        set_rls_context(organization_id=constructeur_organization.id)
+        inspection = Inspection.objects.get(id=first_response.data['inspection']['id'])
+        actual_event = trust_repository.get_current_status(inspection)
+        assert latest_event_id == str(actual_event.id)
+
+        # Deuxième inspection légitime sur la MÊME cible (ex : re-contrôle),
+        # portant le `known_latest_event_id` reçu ci-dessus — exactement ce
+        # qu'un client corrigé enverrait. Avant correction du bug 2, aucun
+        # client ne pouvait jamais produire cette valeur : elle restait
+        # `null` pour toujours après le premier succès.
+        second_response = inspecteur_client.post(
+            reverse('control-sync-inspection'),
+            {
+                'organization': str(constructeur_organization.id),
+                'work_declaration': str(declaration.id),
+                'outcome': InspectionOutcome.CONFORME,
+                'note': 'Second passage, légitime — pas une écriture concurrente.',
+                'correlation_id': '44444444-4444-4444-4444-444444444442',
+                'known_latest_event_id': latest_event_id,
+            },
+            format='json',
+        )
+        assert second_response.status_code == 201, second_response.data
+
+    def test_latest_event_id_reflects_the_reserve_itself_when_resolving_a_follow_up(self):
+        """Scénario exact du parcours manuel (étape 7) : ouverture d'une
+        réserve, puis suivi qui la lève. `latest_event_id` doit alors
+        pointer vers le DERNIER événement de la RÉSERVE (`levee`), pas vers
+        l'événement propre de l'inspection de suivi — c'est cette valeur
+        précise que le client devra fournir pour toute action suivante sur
+        cette réserve.
+        """
+        _constructeur_client, constructeur_organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'sync-latest-event-reserve-constructeur@example.com', 'Org Sync Latest Event Reserve Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, i_user = _setup_inspecteur(
+            'sync-latest-event-reserve-inspecteur@example.com', 'Org Sync Latest Event Reserve Inspecteur',
+        )
+
+        open_response = inspecteur_client.post(
+            reverse('control-sync-inspection'),
+            {
+                'organization': str(constructeur_organization.id),
+                'work_declaration': str(declaration.id),
+                'outcome': InspectionOutcome.AVEC_RESERVE,
+                'correlation_id': '55555555-5555-5555-5555-555555555551',
+                'known_latest_event_id': None,
+            },
+            format='json',
+        )
+        assert open_response.status_code == 201, open_response.data
+        reserve_id = open_response.data['inspection']['opened_reserve']
+        # La cible d'un futur conflit pour CET APPEL (sans `reserve` fourni)
+        # reste le work_declaration lui-même — sa dernière Inspection étant
+        # celle-ci. Un suivi ciblant la RÉSERVE (ci-dessous) compare contre
+        # l'événement `ouverte` de la réserve, pas contre cette valeur — les
+        # deux cibles sont distinctes par construction (voir
+        # `_create_inspection_row`).
+        opened_event_id = open_response.data.get('latest_event_id')
+        assert opened_event_id
+
+        set_rls_context(user_id=i_user.id, organization_id=constructeur_organization.id)
+        reserve = Reserve.objects.get(id=reserve_id)
+        reserve_opened_event_id = str(trust_repository.get_current_status(reserve).id)
+
+        follow_up_response = inspecteur_client.post(
+            reverse('control-sync-inspection'),
+            {
+                'organization': str(constructeur_organization.id),
+                'work_declaration': str(declaration.id),
+                'reserve': reserve_id,
+                'outcome': InspectionOutcome.CONFORME,
+                'note': 'Bornage corrigé, conforme.',
+                'correlation_id': '55555555-5555-5555-5555-555555555552',
+                'known_latest_event_id': reserve_opened_event_id,
+            },
+            format='json',
+        )
+        assert follow_up_response.status_code == 201, follow_up_response.data
+        levee_event_id = follow_up_response.data.get('latest_event_id')
+        assert levee_event_id
+        assert levee_event_id != reserve_opened_event_id
+
+        set_rls_context(organization_id=constructeur_organization.id)
+        reserve.refresh_from_db()
+        actual_current_event = trust_repository.get_current_status(reserve)
+        assert levee_event_id == str(actual_current_event.id)
+        assert actual_current_event.source == 'levee'
+
 
 @pytest.mark.django_db
 class TestSyncInspectionConflict:
@@ -503,6 +621,140 @@ class TestMissionListView:
         response = inspecteur_client.get(reverse('control-mission-list'))
         assert response.status_code == 200
         assert response.data[0]['completed'] is True
+
+    def test_mission_row_reserve_id_is_null_without_any_open_reserve(self):
+        """Ticket 013 (bug 3 du rapport) — cas de base : une mission de
+        première inspection, sans aucune réserve encore ouverte sur ce lot.
+        """
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-reserve-none-admin@example.com', 'Org MissionList Reserve None Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'missionlist-reserve-none-constructeur@example.com', 'Org MissionList Reserve None Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'missionlist-reserve-none-inspecteur@example.com', 'Org MissionList Reserve None Inspecteur',
+        )
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        response = inspecteur_client.get(reverse('control-mission-list'))
+        assert response.status_code == 200
+        assert response.data[0]['reserve_id'] is None
+
+    def test_mission_row_exposes_reserve_id_when_the_lot_has_an_open_reserve(self):
+        """Sans ce champ, `CONTROL PWA` n'a structurellement aucun moyen de
+        savoir quelle réserve une mission de suivi concerne — c'est la cause
+        directe de la friction 2 du rapport (un inspecteur ne peut jamais
+        lever une réserve depuis l'app réelle).
+        """
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-reserve-open-admin@example.com', 'Org MissionList Reserve Open Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'missionlist-reserve-open-constructeur@example.com', 'Org MissionList Reserve Open Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'missionlist-reserve-open-inspecteur@example.com', 'Org MissionList Reserve Open Inspecteur',
+        )
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        open_response = inspecteur_client.post(
+            reverse('control-sync-inspection'),
+            {
+                'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                'outcome': InspectionOutcome.AVEC_RESERVE,
+                'correlation_id': '77777777-7777-7777-7777-777777777771',
+                'known_latest_event_id': None,
+            },
+            format='json',
+        )
+        assert open_response.status_code == 201, open_response.data
+        reserve_id = open_response.data['inspection']['opened_reserve']
+
+        # Mission de suivi, affectée APRÈS l'ouverture de la réserve — le
+        # scénario réel du rapport (étape 7).
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        response = inspecteur_client.get(reverse('control-mission-list'))
+        assert response.status_code == 200
+        assert len(response.data) == 2
+        for mission_row in response.data:
+            assert mission_row['reserve_id'] == str(reserve_id)
+
+    def test_mission_row_reserve_id_is_null_once_the_reserve_is_resolved(self):
+        """Une fois la réserve levée/rejetée (état terminal, jamais
+        « ouvert »), une mission ne doit plus jamais la référencer — sans
+        quoi une nouvelle mission de suivi mal affectée pointerait vers une
+        réserve déjà close.
+        """
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-reserve-resolved-admin@example.com', 'Org MissionList Reserve Resolved Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'missionlist-reserve-resolved-constructeur@example.com', 'Org MissionList Reserve Resolved Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'missionlist-reserve-resolved-inspecteur@example.com', 'Org MissionList Reserve Resolved Inspecteur',
+        )
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        open_response = inspecteur_client.post(
+            reverse('control-sync-inspection'),
+            {
+                'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                'outcome': InspectionOutcome.AVEC_RESERVE,
+                'correlation_id': '88888888-8888-8888-8888-888888888881',
+                'known_latest_event_id': None,
+            },
+            format='json',
+        )
+        reserve_id = open_response.data['inspection']['opened_reserve']
+
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        # Scénario réel (bug 3, corrigé) : le brouillon de la mission de
+        # suivi amorce `known_latest_event_id` depuis `reserve_latest_event_
+        # id`, jamais depuis `latest_event_id` de l'ouverture (une cible
+        # différente — voir `test_latest_event_id_reflects_the_reserve_
+        # itself...`).
+        # Missions triées par `-created_at` (voir `list_missions_for_inspector`)
+        # — l'index 0 est donc la mission de suivi tout juste affectée.
+        follow_up_mission_row = inspecteur_client.get(reverse('control-mission-list')).data[0]
+        assert follow_up_mission_row['reserve_id'] == str(reserve_id)
+        reserve_latest_event_id = follow_up_mission_row['reserve_latest_event_id']
+        assert reserve_latest_event_id
+
+        follow_up_response = inspecteur_client.post(
+            reverse('control-sync-inspection'),
+            {
+                'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                'reserve': reserve_id, 'outcome': InspectionOutcome.CONFORME,
+                'correlation_id': '88888888-8888-8888-8888-888888888882',
+                'known_latest_event_id': reserve_latest_event_id,
+            },
+            format='json',
+        )
+        assert follow_up_response.status_code == 201, follow_up_response.data
+
+        response = inspecteur_client.get(reverse('control-mission-list'))
+        assert response.status_code == 200
+        for mission_row in response.data:
+            assert mission_row['reserve_id'] is None
 
     def test_non_inspector_role_is_rejected(self):
         admin_client, admin_org, admin_user = _register_admin(

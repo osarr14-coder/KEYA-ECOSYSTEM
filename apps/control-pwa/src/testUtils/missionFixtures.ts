@@ -17,6 +17,8 @@ export const FIXTURE_MISSIONS: Mission[] = [
     organizationId: '00000000-0000-0000-0000-0000000000a1',
     workDeclarationId: '00000000-0000-0000-0000-0000000000b1',
     completed: false,
+    reserveId: null,
+    reserveLatestEventId: null,
   },
   {
     id: 'mission-2', lotName: 'Lot 07', assetName: 'Résidence Ker',
@@ -24,6 +26,8 @@ export const FIXTURE_MISSIONS: Mission[] = [
     organizationId: '00000000-0000-0000-0000-0000000000a1',
     workDeclarationId: '00000000-0000-0000-0000-0000000000b2',
     completed: false,
+    reserveId: null,
+    reserveLatestEventId: null,
   },
   {
     id: 'mission-3', lotName: 'Lot 03', assetName: 'Villa Almadies',
@@ -31,6 +35,8 @@ export const FIXTURE_MISSIONS: Mission[] = [
     organizationId: '00000000-0000-0000-0000-0000000000a2',
     workDeclarationId: '00000000-0000-0000-0000-0000000000b3',
     completed: false,
+    reserveId: null,
+    reserveLatestEventId: null,
   },
 ];
 

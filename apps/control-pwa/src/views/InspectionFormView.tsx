@@ -58,7 +58,9 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
         getDraftForMission(missionId),
         getCachedMission(missionId),
       ]);
-      const initial = existing ?? createEmptyDraft(missionId, CHECKLIST_TEMPLATE);
+      const initial = existing ?? createEmptyDraft(
+        missionId, CHECKLIST_TEMPLATE, cachedMission?.reserveLatestEventId ?? null,
+      );
       if (!cancelled) {
         setDraft(initial);
         setMission(cachedMission ?? null);

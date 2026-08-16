@@ -137,7 +137,15 @@ class SyncInspectionView(APIView):
             }, status=409)
 
         return Response(
-            {'status': 'applied', 'inspection': InspectionSerializer(outcome.inspection).data},
+            {
+                'status': 'applied',
+                'inspection': InspectionSerializer(outcome.inspection).data,
+                # Ticket 013 (bug 2) : le client doit renvoyer cette valeur
+                # comme `known_latest_event_id` pour toute synchro suivante
+                # légitime sur cette même cible — sans elle, un conflit
+                # permanent (409) apparaît dès la tentative suivante.
+                'latest_event_id': outcome.latest_event_id,
+            },
             status=201,
         )
 

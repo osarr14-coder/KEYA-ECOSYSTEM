@@ -94,10 +94,14 @@ class SyncOutcome:
     forme de l'appel.
     """
 
-    def __init__(self, *, status, inspection=None, current_event=None):
+    def __init__(self, *, status, inspection=None, current_event=None, latest_event_id=None):
         self.status = status
         self.inspection = inspection
         self.current_event = current_event
+        # Ticket 013 (bug 2) : ce que le client doit renvoyer comme
+        # `known_latest_event_id` pour toute synchro suivante légitime sur
+        # cette même cible — voir `inspections_services._create_inspection_row`.
+        self.latest_event_id = latest_event_id
 
 
 def sync_inspection(
@@ -143,4 +147,4 @@ def sync_inspection(
         'control_sync_inspection_applied correlation_id=%s inspection_id=%s',
         correlation_id, inspection.id,
     )
-    return SyncOutcome(status='applied', inspection=inspection)
+    return SyncOutcome(status='applied', inspection=inspection, latest_event_id=str(inspection.latest_event_id))
