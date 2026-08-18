@@ -907,6 +907,66 @@ retiré cassait plusieurs fichiers de test, remplacés par une fixture partagée
   toujours leur connexion dans un `finally`, donc le blocage se résout naturellement en
   quelques ticks, sans qu'aucun minuteur ne soit nécessaire.
 
+## Correction des bugs bloquants CONTROL PWA (ticket 013)
+
+Pas une nouvelle fonctionnalité — correction de bugs sur du code déjà livré aux tickets
+010 et 012, révélés par le test bout-en-bout du vertical slice MVP 1 (doctrine V3.0
+§22.4). Documenté rétroactivement (voir `013-correction-bugs-control-pwa.md`) : cette
+section et le fichier ticket n'existaient pas au moment du commit initial (`e6f1127`) —
+rupture ponctuelle de la discipline documentaire suivie depuis le ticket 001, rattrapée
+lors d'un état des lieux du projet après une pause.
+
+**Trois bugs corrigés dans le parcours CONTROL PWA** : 1) un brouillon sans décision
+explicite tombait silencieusement dans la branche « conforme » de `syncDraft`
+(`apps/control-pwa/src/sync/syncEngine.ts`) — reste désormais en `pending` indéfiniment,
+jamais synchronisé automatiquement ; 2) `InspectionDraft.knownLatestEventId` n'était
+jamais rafraîchi après une synchronisation réussie (le backend n'exposait pas
+`latest_event_id` sur une réponse "applied") — provoquait un conflit permanent dès la
+tentative suivante, même légitime ; 3) `list_missions_for_inspector`
+(`apps/inspections/services.py`) ne calculait ni `reserve_id` ni
+`reserve_latest_event_id` par mission — un inspecteur ne pouvait structurellement jamais
+lever une réserve via l'app réelle, faute de savoir quelle réserve une mission de suivi
+concernait. Les trois sont désormais couverts par un test qui reproduisait le bug avant
+correction (`syncEngine.test.ts`, `apps/control/tests.py`).
+
+**Quatrième bug, trouvé en relançant la suite complète après coup** : le test introduit
+avec le bug 3 (`apps/control/tests.py::TestMissionListView::
+test_mission_row_reserve_id_is_null_once_the_reserve_is_resolved`) était committé rouge —
+`apps.trust.repository.get_current_status` triait uniquement par `-created_at`, sans
+tie-break. `_advance_existing_reserve` (`apps/inspections/services.py`) crée coup sur
+coup deux `TrustEvent` sur la même réserve dans la même transaction
+(`nouvelle_inspection` puis `levee`/`rejetee`, sans commit intermédiaire) — un
+`created_at` trop proche pouvait faire remonter `nouvelle_inspection` (encore dans
+`OPEN_RESERVE_STATUSES`) au lieu de l'événement terminal réel, laissant
+`list_missions_for_inspector` exposer un `reserve_id` pour une réserve pourtant résolue.
+
+**Correctif — `TrustEvent.sequence`** (migration `apps/trust/migrations/
+0004_trustevent_sequence.py`) : PAS un `AutoField` — Django exige `primary_key=True` sur
+tout `AutoField` (`fields.E100`), incompatible avec la pk UUID de `TrustEvent`. C'est un
+`BigIntegerField` alimenté explicitement dans `TrustEvent.save()` via `nextval()` sur une
+séquence Postgres dédiée (`trust_event_sequence_seq`), posée aussi comme `DEFAULT` de la
+colonne côté DB pour tout insert hors ORM (même esprit que les trois couches de défense
+déjà documentées pour l'append-only lui-même) — garantit un ordre d'insertion strict,
+jamais recalculable après coup. `get_current_status`/`list_for_subject`
+(`apps/trust/repository.py`) trient désormais par `(-created_at, -sequence)`, jamais
+`-created_at` seul.
+
+**Piège de migration** : `trust_event` porte le trigger append-only (migration 0002) ET
+aucune policy RLS `UPDATE` — les deux bloquent normalement tout `UPDATE`, y compris pour
+le rôle propriétaire de la table (voir section Append-only ci-dessus). Le backfill de
+`sequence` sur des lignes existantes (`UPDATE trust_event SET sequence = ...`) aurait donc
+été silencieusement bloqué (RLS) ou aurait levé l'exception du trigger — les deux ont dû
+être levées explicitement (`ALTER TABLE ... NO FORCE ROW LEVEL SECURITY` +
+`DISABLE TRIGGER trust_event_no_update`) puis restaurées avant la fin de la même
+transaction de migration, jamais un affaiblissement permanent de l'invariant.
+
+**Limite connue, non corrigée par ce ticket** : le même défaut de tri (`-created_at`
+seul) existe aussi dans trois lectures directes de `TrustEvent` qui ne passent pas par
+`apps.trust.repository` — `apps/build/services.py::_bulk_open_reserves` et
+`apps/home/services.py::compute_milestone_status`/`get_latest_notable_event`. Même
+classe de bug, non exercée par un test existant aujourd'hui, laissée pour un futur
+ticket.
+
 ## Tickets
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un

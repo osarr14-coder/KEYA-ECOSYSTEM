@@ -25,11 +25,20 @@ def create(*, subject, organization, level, actor, source, scope='', previous_ev
 
 
 def list_for_subject(subject):
-    """Tous les événements d'un sujet, du plus récent au plus ancien."""
+    """Tous les événements d'un sujet, du plus récent au plus ancien.
+
+    Tri par `(-created_at, -sequence)`, jamais `-created_at` seul : deux
+    événements du même sujet créés dans la même transaction (ex.
+    `_advance_existing_reserve`, qui enchaîne `nouvelle_inspection` puis
+    `levee`/`rejetee` sans commit intermédiaire) peuvent partager un
+    `created_at` trop proche pour être départagé de façon fiable.
+    `sequence` (migration 0004) est une séquence Postgres dédiée, alimentée
+    à l'insertion — ordre strict, jamais ambigu, même quand `created_at` l'est.
+    """
     content_type = ContentType.objects.get_for_model(subject)
     return TrustEvent.objects.filter(
         subject_type=content_type, subject_id=subject.pk,
-    ).order_by('-created_at')
+    ).order_by('-created_at', '-sequence')
 
 
 def get_current_status(subject):

@@ -106,6 +106,20 @@ class TrustEvent(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Départage `get_current_status` (apps/trust/repository.py) quand deux
+    # événements du même sujet sont créés dans la même transaction avec un
+    # `created_at` trop proche pour être fiable seul (ex :
+    # `_advance_existing_reserve`, qui enchaîne `nouvelle_inspection` puis
+    # `levee`/`rejetee` sans commit intermédiaire) — bug réel trouvé lors de
+    # l'audit qui a suivi le ticket 013. Pas un `AutoField` : Django exige
+    # `primary_key=True` sur tout AutoField (fields.E100), incompatible avec
+    # la pk UUID de ce modèle. `sequence` est donc un entier alimenté
+    # explicitement dans `save()` via `nextval()` sur une séquence Postgres
+    # dédiée (migration 0004) — même garantie qu'un BIGSERIAL (ordre
+    # d'insertion strict, jamais recalculable après coup), la colonne porte
+    # aussi ce `nextval()` comme DEFAULT côté DB pour tout insert hors ORM.
+    sequence = models.BigIntegerField(unique=True, editable=False)
+
     objects = TrustEventManager()
 
     class Meta:
@@ -124,6 +138,17 @@ class TrustEvent(models.Model):
                 'append-only. Créez un nouvel événement via '
                 'apps.trust.repository.create(..., previous_event=...).',
             )
+        if self.sequence is None:
+            # `nextval()` explicite plutôt que de compter sur le DEFAULT
+            # côté DB (migration 0004) : le DEFAULT reste un filet pour tout
+            # insert hors ORM, mais Django envoie toujours une valeur
+            # explicite pour ce champ (ce n'est pas un AutoField), donc ne
+            # pas la poser ici enverrait NULL et écraserait le DEFAULT.
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT nextval('trust_event_sequence_seq')")
+                self.sequence = cursor.fetchone()[0]
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
