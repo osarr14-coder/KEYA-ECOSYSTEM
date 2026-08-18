@@ -982,6 +982,45 @@ StatusBadge (ticket 007) : empêche cette classe de bug de réapparaître silenc
 même ailleurs dans le projet, plutôt que de compter sur la vigilance d'une revue
 manuelle. Vérifié qu'il détectait bien les 3 violations réelles avant le refactor.
 
+## Deux races de concurrence dans CONTROL PWA (ticket 015)
+
+Découvertes en documentant/relisant le parcours du ticket 013 — aucune des deux n'est le
+bug qu'il corrigeait, mais le même code (`syncEngine.ts`/`InspectionFormView.tsx`) les
+rendait possibles. Chacune reproduite par un test déterministe AVANT correction (jamais
+un `sleep`), voir `015-races-control-pwa.md` pour le détail complet.
+
+**Cycles de synchro périodiques qui se chevauchent** : `startSyncEngine` déclenche
+`runSyncCycle` toutes les 15s sans jamais attendre la fin d'un cycle précédent — un cycle
+réseau qui dépasse cet intervalle laissait le sondage suivant resynchroniser le MÊME
+brouillon en parallèle, potentiellement avec un instantané périmé. Corrigé par un verrou
+PAR BROUILLON (`draftsInFlight`, `Set<string>` module-level) dans `syncDraft` — vérifié et
+posé EN TOUT PREMIER, avant tout `await` : deux appels synchrones pour le même
+`draft.id` (ex. `Promise.all([syncDraft(draft, a), syncDraft(draft, b)])`) voient donc
+TOUJOURS ce verrou déjà posé, aucune fenêtre de course possible pour le vérifier. Jamais
+un verrou global : d'autres brouillons continuent de se synchroniser normalement.
+
+**`persist()` concurrents dans `InspectionFormView`** (upload photo vs choix de
+décision) : cause DOUBLE, confirmée en reproduisant le bug — 1) état React non atomique
+(chaque gestionnaire construisait son "next" à partir du `draft` figé dans SA propre
+fermeture de rendu) ET 2) écritures IndexedDB non sérialisées (`saveDraft` remplace
+intégralement l'enregistrement, `db.put`, jamais une fusion — rien ne garantissait qu'une
+écriture lancée plus TÔT ne se termine pas plus TARD qu'une autre, l'écrasant
+silencieusement). Corrigé par `draftRef` (toujours la dernière valeur RÉELLEMENT connue,
+mise à jour SYNCHRONE — résout 1) et `persistChainRef` (chaîne de promesses, l'écriture
+IndexedDB de chaque `persist` n'est lancée qu'une fois la précédente terminée — résout 2),
+plus une comparaison de référence qui ignore le résultat d'une écriture devenue périmée
+entre-temps. La mise à jour optimiste (`setDraft`) reste SYNCHRONE, jamais différée
+derrière la file d'écriture — le critère « chaque saisie est écrite immédiatement »
+(ticket 010, passe 1) reste intact.
+
+**Vérifié aussi manuellement dans un vrai navigateur** (backend + CONTROL PWA en local,
+données réelles) : upload d'une vraie photo puis clic immédiat sur une décision sans rien
+attendre entre les deux — IndexedDB relu directement confirme les deux changements
+présents ; un brouillon reposé à `pending` puis deux évènements `online` déclenchés
+dos-à-dos (`window.dispatchEvent`) ne produisent qu'un seul `POST
+/api/control/sync/inspection/`, jamais deux, malgré le chevauchement réel des deux
+cycles.
+
 ## Tickets
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un

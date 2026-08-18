@@ -98,6 +98,18 @@ async function syncEvidenceIfReady(
 }
 
 /**
+ * Verrou PAR BROUILLON (ticket 015) : un cycle de synchro périodique qui
+ * dépasse l'intervalle de sondage (15s, voir `startSyncEngine`) peut
+ * chevaucher un cycle encore en cours pour ce MÊME brouillon — sans ce
+ * verrou, les deux enverraient chacun leur propre instantané au serveur,
+ * potentiellement périmé l'un par rapport à l'autre (le second envoi peut
+ * avoir lu le brouillon AVANT que le premier n'ait fini de le faire
+ * progresser). Jamais un verrou global : d'autres brouillons continuent de
+ * se synchroniser normalement pendant qu'un seul est retenu ici.
+ */
+const draftsInFlight = new Set<string>();
+
+/**
  * Synchronise UN brouillon : file média puis file de données — la cible de
  * l'Inspection est TOUJOURS `work_declaration` (jamais `evidence`),
  * précisément pour que la checklist/le commentaire/la décision ne dépendent
@@ -112,6 +124,24 @@ async function syncEvidenceIfReady(
  * bloqué indéfiniment dans cet état serait, de fait, un abandon silencieux.
  */
 export async function syncDraft(draft: InspectionDraft, apiClient: ApiClient): Promise<InspectionDraft> {
+  // Vérifié et posé EN TOUT PREMIER, avant tout `await` : un appel qui
+  // chevauche un appel déjà en cours pour ce brouillon (voir `runSyncCycle`,
+  // qui peut en déclencher un par cycle qui se chevauche) trouve donc
+  // TOUJOURS ce verrou déjà posé — aucune fenêtre de course possible pour
+  // le vérifier, deux appels synchrones voient l'un l'autre de façon fiable
+  // (JS n'exécute jamais deux appels de fonction en parallèle). Ce
+  // brouillon est déjà pris en charge ailleurs : ne rien faire, jamais une
+  // resynchro fantôme — le prochain sondage périodique retentera si besoin.
+  if (draftsInFlight.has(draft.id)) return draft;
+  draftsInFlight.add(draft.id);
+  try {
+    return await syncDraftUnlocked(draft, apiClient);
+  } finally {
+    draftsInFlight.delete(draft.id);
+  }
+}
+
+async function syncDraftUnlocked(draft: InspectionDraft, apiClient: ApiClient): Promise<InspectionDraft> {
   const mission = await findMission(draft.missionId);
   if (!mission) return draft;
 

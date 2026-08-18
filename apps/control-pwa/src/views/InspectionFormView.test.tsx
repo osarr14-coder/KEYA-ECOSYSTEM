@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CHECKLIST_TEMPLATE } from '../db/missions';
+import * as repository from '../db/repository';
 import { createEmptyDraft, getDraftForMission, saveDraft } from '../db/repository';
 import { InspectionFormView } from './InspectionFormView';
 
@@ -146,5 +147,72 @@ describe(
       const draft = await getDraftForMission('mission-1');
       expect(draft).toBeUndefined();
     });
+  },
+);
+
+describe(
+  'InspectionFormView — persist() concurrents (ticket 015) : deux saisies presque simultanées '
+  + 'ne doivent jamais s\'écraser mutuellement',
+  () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it(
+      'ajouter une photo puis choisir une décision sans attendre la première persistance '
+      + 'conservent bien les DEUX changements, même si l\'écriture IndexedDB la plus ancienne '
+      + 'se termine APRÈS la plus récente',
+      async () => {
+        // `saveDraft` réel (`db.put`, remplacement intégral de l'objet) est
+        // capturé AVANT le mock — chaque appel intercepté est mis en attente
+        // ici, résolu manuellement plus bas, plutôt que d'écrire tout de
+        // suite : c'est ce qui permet de forcer déterministe­ment le pire
+        // ordre de résolution (le plus ancien appel qui se termine en
+        // dernier), sans dépendre d'un quelconque délai/sleep.
+        const realSaveDraft = repository.saveDraft;
+        const pending: Array<() => void> = [];
+        let totalCalls = 0;
+        vi.spyOn(repository, 'saveDraft').mockImplementation((draft) => (
+          new Promise((resolve) => {
+            totalCalls += 1;
+            pending.push(() => { void realSaveDraft(draft).then(resolve); });
+          })
+        ));
+
+        render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+        const file = new File(['contenu-photo'], 'photo.jpg', { type: 'image/jpeg' });
+        // Les deux interactions sont déclenchées SANS rien attendre entre
+        // les deux — reproduit le scénario réel (upload photo pendant que
+        // l'inspecteur choisit déjà sa décision) sans sleep : c'est le
+        // véritable chevauchement des deux `persist()`, pas une simulation.
+        fireEvent.change(await screen.findByLabelText('Ajouter une photo'), { target: { files: [file] } });
+        fireEvent.click(screen.getByLabelText('Réserve'));
+
+        // Draine les écritures interceptées, en ordre INVERSE de leur
+        // arrivée, jusqu'à ce que les deux mutations logiques (photo +
+        // décision) aient bien été émises — reproduit le pire ordre de
+        // résolution possible pour une implémentation qui ne sérialise pas
+        // ses écritures, sans présumer combien seront concurrentes à un
+        // instant donné (une implémentation corrigée peut très bien les
+        // sérialiser une par une).
+        while (totalCalls < 2 || pending.length > 0) {
+          if (pending.length === 0) {
+            // eslint-disable-next-line no-await-in-loop
+            await waitFor(() => expect(pending.length).toBeGreaterThan(0));
+          }
+          const toResolve = pending.splice(0).reverse();
+          toResolve.forEach((resolve) => resolve());
+          // eslint-disable-next-line no-await-in-loop
+          await Promise.resolve();
+        }
+
+        await waitFor(async () => {
+          const draft = await getDraftForMission('mission-1');
+          expect(draft?.photos).toHaveLength(1);
+          expect(draft?.decision).toBe('reserve');
+        });
+      },
+    );
   },
 );

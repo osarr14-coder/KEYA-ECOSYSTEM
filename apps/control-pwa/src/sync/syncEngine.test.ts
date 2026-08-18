@@ -5,7 +5,7 @@ import { CHECKLIST_TEMPLATE } from '../db/missions';
 import { createEmptyDraft, getDraft, saveDraft } from '../db/repository';
 import { clearIndexedDB } from '../testUtils/clearIndexedDB';
 import { FIXTURE_MISSIONS, seedFixtureMissions } from '../testUtils/missionFixtures';
-import { runSyncCycle } from './syncEngine';
+import { runSyncCycle, syncDraft } from './syncEngine';
 
 beforeEach(async () => {
   await clearIndexedDB();
@@ -436,3 +436,85 @@ describe('runSyncCycle — file média indépendante de la file de données', ()
     vi.unstubAllGlobals();
   });
 });
+
+describe(
+  'syncDraft — deux cycles qui se chevauchent (ticket 015) : jamais deux envois concurrents '
+  + 'du même brouillon',
+  () => {
+    it(
+      'un second appel démarré sans attendre la fin du premier (chevauchement de cycles, jamais '
+      + 'un sleep) ne déclenche qu\'un seul envoi réseau pour ce brouillon',
+      async () => {
+        // Reproduit exactement ce qui arrive quand un cycle réseau dépasse
+        // l'intervalle de sondage périodique (15s, voir `startSyncEngine`) :
+        // un second cycle démarre alors que le premier traite encore ce
+        // MÊME brouillon. Déterministe SANS aucun délai artificiel : les
+        // deux appels sont construits dans le même argument de
+        // `Promise.all`, donc évalués séquentiellement et synchrone­ment
+        // par le moteur JS jusqu'au premier `await` de chacun — le premier
+        // appel a donc TOUJOURS posé son verrou avant que le second ne
+        // commence, quel que soit le comportement interne d'IndexedDB.
+        const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+        draft.decision = 'conforme';
+        await saveDraft(draft);
+
+        const fetchMock = vi.fn(async (url: string) => {
+          expect(String(url)).toContain('/control/sync/inspection/');
+          return jsonResponse(201, {
+            status: 'applied',
+            inspection: {
+              id: 'insp-overlap', created_at: '2026-08-18T10:00:00.000Z',
+              client_correlation_id: draft.correlationId,
+            },
+          });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const [first, second] = await Promise.all([
+          syncDraft(draft, apiClient()),
+          syncDraft(draft, apiClient()),
+        ]);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(first.syncStatus).toBe('synced');
+        // Le second appel, verrouillé, n'a strictement rien fait — jamais
+        // une resynchro fantôme du même brouillon avec un instantané qui
+        // pourrait être périmé par rapport à celui déjà en vol.
+        expect(second).toEqual(draft);
+
+        const updated = await getDraft(draft.id);
+        expect(updated?.syncStatus).toBe('synced');
+
+        vi.unstubAllGlobals();
+      },
+    );
+
+    it('deux brouillons DIFFÉRENTS continuent de se synchroniser normalement en parallèle', async () => {
+      const draftA = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+      draftA.decision = 'conforme';
+      await saveDraft(draftA);
+      const draftB = createEmptyDraft(FIXTURE_MISSIONS[1].id, CHECKLIST_TEMPLATE);
+      draftB.decision = 'reserve';
+      await saveDraft(draftB);
+
+      const fetchMock = vi.fn(async () => jsonResponse(201, {
+        status: 'applied',
+        inspection: { id: 'insp-parallel', created_at: '2026-08-18T10:00:00.000Z' },
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const [resultA, resultB] = await Promise.all([
+        syncDraft(draftA, apiClient()),
+        syncDraft(draftB, apiClient()),
+      ]);
+
+      // Le verrou est PAR BROUILLON, jamais global : les deux, distincts,
+      // se synchronisent chacun réellement.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(resultA.syncStatus).toBe('synced');
+      expect(resultB.syncStatus).toBe('synced');
+
+      vi.unstubAllGlobals();
+    });
+  },
+);

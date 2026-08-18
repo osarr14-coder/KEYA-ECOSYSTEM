@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { AlertBanner } from '@keya/design-system';
 
@@ -47,6 +47,30 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   const [draft, setDraft] = useState<InspectionDraft | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Ticket 015 — cause du bug confirmée en le reproduisant AVANT ce
+  // correctif (`InspectionFormView.test.tsx`) : DOUBLE, les deux se
+  // combinant pour perdre une saisie.
+  // 1) État React non atomique : deux gestionnaires presque simultanés (ex.
+  //    upload photo pendant que l'inspecteur choisit sa décision)
+  //    construisaient chacun leur propre "next" à partir du MÊME `draft`
+  //    figé dans la fermeture de leur rendu, sans savoir que l'autre venait
+  //    aussi de le modifier.
+  // 2) Écritures IndexedDB non sérialisées : `saveDraft` remplace
+  //    intégralement l'enregistrement (jamais une fusion), et rien ne
+  //    garantissait qu'un `saveDraft` lancé plus TÔT ne se termine pas plus
+  //    TARD qu'un autre — l'écriture la plus ancienne pouvait alors écraser
+  //    silencieusement la plus récente.
+  //
+  // `draftRef` (toujours la dernière valeur RÉELLEMENT connue, mise à jour
+  // de façon SYNCHRONE par `persist`, jamais via une fermeture de rendu)
+  // résout (1). `persistChainRef` (chaque écriture IndexedDB n'est lancée
+  // qu'une fois la précédente terminée) résout (2) : un `saveDraft` ne peut
+  // plus jamais en écraser un autre plus récent, quel que soit l'ordre dans
+  // lequel IndexedDB les termine en interne.
+  const draftRef = useRef<InspectionDraft | null>(null);
+  draftRef.current = draft;
+  const persistChainRef = useRef<Promise<InspectionDraft> | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -63,8 +87,10 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       );
       if (!cancelled) {
         setDraft(initial);
+        draftRef.current = initial;
         setMission(cachedMission ?? null);
         setLoading(false);
+        persistChainRef.current = Promise.resolve(initial);
       }
     })();
     return () => {
@@ -72,34 +98,58 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     };
   }, [missionId]);
 
-  async function persist(next: InspectionDraft) {
+  function persist(mutate: (current: InspectionDraft) => InspectionDraft): Promise<InspectionDraft> | undefined {
+    const current = draftRef.current;
+    if (!current) return undefined;
+
+    // Mise à jour optimiste SYNCHRONE — jamais différée derrière la file
+    // d'écriture ci-dessous, sous peine de régresser le critère
+    // d'acceptation central de la passe 1 (« chaque saisie est écrite
+    // immédiatement, jamais différée jusqu'à... »), y compris à l'écran.
+    const next = mutate(current);
+    draftRef.current = next;
     setDraft(next);
-    const saved = await saveDraft(next);
-    setDraft(saved);
+
+    const queue = persistChainRef.current ?? Promise.resolve(next);
+    const nextInChain = queue.then(() => saveDraft(next)).then((saved) => {
+      // Une écriture plus RÉCENTE a pu être lancée entre-temps (donc
+      // `draftRef.current` a déjà avancé au-delà de `next`) : le résultat
+      // de CETTE écriture (horodatage device de SA propre saisie) serait
+      // alors périmé — l'appliquer régresserait l'affichage et la donnée
+      // en mémoire vers un état antérieur. On ignore silencieusement ce
+      // résultat dans ce cas ; la donnée déjà écrite en IndexedDB reste
+      // correcte car les écritures elles-mêmes restent, elles, strictement
+      // sérialisées ci-dessus.
+      if (draftRef.current === next) {
+        draftRef.current = saved;
+        setDraft(saved);
+      }
+      return saved;
+    });
+    persistChainRef.current = nextInChain;
+    return nextInChain;
   }
 
   function toggleChecklistItem(itemId: string) {
-    if (!draft) return;
-    void persist({
-      ...draft,
-      checklist: draft.checklist.map((item) => (
+    void persist((current) => ({
+      ...current,
+      checklist: current.checklist.map((item) => (
         item.id === itemId ? { ...item, checked: !item.checked } : item
       )),
-    });
+    }));
   }
 
   function handleCommentBlur(event: React.FocusEvent<HTMLTextAreaElement>) {
-    if (!draft) return;
-    void persist({ ...draft, comment: event.target.value });
+    const { value } = event.target;
+    void persist((current) => ({ ...current, comment: value }));
   }
 
   function handleDecisionChange(decision: Decision) {
-    if (!draft) return;
-    void persist({ ...draft, decision });
+    void persist((current) => ({ ...current, decision }));
   }
 
   async function handlePhotoAdd(event: React.ChangeEvent<HTMLInputElement>) {
-    if (!draft || !event.target.files || event.target.files.length === 0) return;
+    if (!event.target.files || event.target.files.length === 0) return;
     const files = Array.from(event.target.files);
     const newPhotos: LocalPhoto[] = files.map((file) => ({
       id: crypto.randomUUID(),
@@ -111,14 +161,15 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       retryCount: 0,
       nextRetryAt: null,
     }));
-    await persist({ ...draft, photos: [...draft.photos, ...newPhotos] });
+    await persist((current) => ({ ...current, photos: [...current.photos, ...newPhotos] }));
     // Permet de recapturer/resélectionner le même fichier ensuite.
     event.target.value = '';
   }
 
   function handlePhotoRemove(photoId: string) {
-    if (!draft) return;
-    void persist({ ...draft, photos: draft.photos.filter((photo) => photo.id !== photoId) });
+    void persist((current) => ({
+      ...current, photos: current.photos.filter((photo) => photo.id !== photoId),
+    }));
   }
 
   /**
@@ -134,7 +185,11 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   async function resolveConflictByDiscarding() {
     if (!draft) return;
     await deleteDraft(draft.id);
-    setDraft(createEmptyDraft(missionId, CHECKLIST_TEMPLATE));
+    const fresh = createEmptyDraft(missionId, CHECKLIST_TEMPLATE);
+    setDraft(fresh);
+    // Repart d'une file neuve sur ce brouillon neuf — jamais chaînée sur la
+    // file de l'ancien brouillon abandonné (voir `persist` ci-dessus).
+    persistChainRef.current = Promise.resolve(fresh);
   }
 
   if (loading || !draft) {
