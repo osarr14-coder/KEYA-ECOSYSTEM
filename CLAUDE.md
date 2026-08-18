@@ -982,6 +982,53 @@ StatusBadge (ticket 007) : empêche cette classe de bug de réapparaître silenc
 même ailleurs dans le projet, plutôt que de compter sur la vigilance d'une revue
 manuelle. Vérifié qu'il détectait bien les 3 violations réelles avant le refactor.
 
+## Frictions UX du rapport bout-en-bout (ticket 014)
+
+Trois frictions UX/correction réelles identifiées par le même test bout-en-bout du
+vertical slice MVP 1 (doctrine V3.0 §22.4) que le ticket 013, laissées de côté à
+l'époque — voir `014-frictions-ux-vertical-slice.md` pour le détail complet. Chacune
+corrigée avec un test qui reproduisait le problème AVANT correction.
+
+**Missions indistinguables dans CONTROL PWA** : `MissionsListView.tsx` n'affichait ni
+`reserve_id` ni aucun moyen de distinguer une première inspection d'une mission de suivi
+— deux entrées de liste strictement identiques. Corrigé par `MissionTypeIndicator`, un
+composant LOCAL à cette app — PAS `StatusBadge` du design system (le type de mission
+n'est pas un `TrustLevel`, même raisonnement que `SyncStatusIndicator`/`AlertBanner`,
+tickets 007/008/010) : « Première inspection » ou « Mission de suivi — Réserve
+#<8 premiers caractères de l'UUID> », dérivé de `mission.reserveId` (exposé depuis le
+ticket 013). Référence courte de l'UUID plutôt que `Reserve.description` : ce champ
+n'est **en pratique jamais renseigné** nulle part dans le code actuel — l'exposer aurait
+été trompeur.
+
+**Statut `completed` mal dérivé pour une mission de suivi** : `apps.inspections.services.
+list_missions_for_inspector` filtrait `Inspection` par `work_declaration_id`+`inspector`
+SEULS, sans borne par mission — une mission de suivi fraîchement affectée, créée APRÈS
+qu'une première inspection ait déjà eu lieu sur ce même `work_declaration`, retrouvait
+cette ancienne `Inspection` et s'affichait déjà « faite » avant même que l'inspecteur n'y
+touche (limite documentée, non résolue, au ticket 013). Corrigé en ajoutant
+`created_at__gt=mission.created_at` au filtre — seule une `Inspection` VRAIMENT
+postérieure à CETTE mission peut légitimement l'avoir accomplie (aucun champ `reserve` ne
+vit sur `InspectionMission` elle-même, doctrine Visible Trust : rien n'est stocké qui
+puisse se dériver). Le test bout-en-bout (`test_vertical_slice_mvp1.py`), qui documentait
+explicitement cette limite comme acceptée, a été mis à jour pour vérifier le comportement
+CORRECT plutôt que de continuer à figer l'ancien bug comme attendu.
+
+**Dropdown de preuves illisible dans BUILD** : le formulaire "Documenter une correction"
+affichait chaque preuve comme `{milestone_label} — {date}` seul — plusieurs preuves du
+même jalon le même jour apparaissaient identiques, sans moyen de savoir laquelle
+sélectionner. Corrigé en ajoutant l'auteur (`Evidence.added_by.email`) au libellé, plus
+l'heure en plus de la date. Backend (`apps/build/services.py::_bulk_work_declarations`) :
+`.select_related('added_by')` ajouté à la requête déjà groupée — un JOIN, jamais une
+requête supplémentaire par preuve, le critère de requêtes BORNÉ du ticket 009
+(`TestAllLotsScalesToTwoHundredLots`) reste intact.
+
+**Plugin UI/UX (`ui-ux-pro-max`) consulté, non utilisé** : rien de directement applicable
+trouvé au-delà d'un principe d'accessibilité déjà respecté (ne jamais distinguer par la
+couleur seule). Les trois corrections restent sur les composants du design system déjà en
+place, aucun composant créé hors de `packages/design-system` — `apps/control-pwa`
+n'utilise de toute façon ni Tailwind ni shadcn/ui, contrairement à l'hypothèse par défaut
+de plusieurs skills de ce plugin.
+
 ## Deux races de concurrence dans CONTROL PWA (ticket 015)
 
 Découvertes en documentant/relisant le parcours du ticket 013 — aucune des deux n'est le

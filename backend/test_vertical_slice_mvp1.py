@@ -293,20 +293,24 @@ class TestVerticalSliceMVP1:
         missions_with_followup_response = inspecteur_client.get(reverse('control-mission-list'))
         assert missions_with_followup_response.status_code == 200
         assert len(missions_with_followup_response.data) == 2
-        # Limite connue, non corrigée par le ticket 013 (hors scope —
-        # renvoyée au ticket 014) : les DEUX missions sont dérivées
-        # « faites », `completed` ne distinguant pas la mission #1
-        # (réellement faite) de la mission #2 (le suivi, pas encore fait).
-        assert all(row['completed'] is True for row in missions_with_followup_response.data), (
-            'Documente la limite actuelle (ticket 014) : `completed` ne distingue pas une nouvelle '
-            'mission de suivi (jamais traitée) d\'une mission déjà réalisée sur le même work_declaration.'
-        )
+        # Missions triées par -created_at (list_missions_for_inspector) :
+        # l'index 0 est la mission de suivi tout juste affectée, l'index 1
+        # la première mission (déjà réalisée à l'étape 4).
+        followup_mission_row, first_mission_row = missions_with_followup_response.data
+        # Ticket 014 (corrige la limite documentée au ticket 013) :
+        # `completed` distingue désormais correctement la mission de suivi
+        # — jamais traitée à ce stade — de la première mission, déjà
+        # réalisée sur ce même work_declaration. Avant correction,
+        # `completed` était dérivé par work_declaration+inspecteur SEULS
+        # (sans borne temporelle par mission), donc les DEUX lignes
+        # ressortaient à tort « faites ».
+        assert followup_mission_row['completed'] is False
+        assert first_mission_row['completed'] is True
         # Ticket 013 (bug 3, corrigé) : les DEUX lignes exposent désormais la
         # réserve réellement ouverte sur ce lot — c'est ce que
         # `apps/control-pwa` lit pour amorcer `InspectionDraft.
         # knownLatestEventId` d'un brouillon neuf (voir
         # `db/repository.ts::createEmptyDraft`).
-        followup_mission_row = missions_with_followup_response.data[0]
         assert followup_mission_row['reserve_id'] == str(reserve_id)
         known_latest_event_id = followup_mission_row['reserve_latest_event_id']
         assert known_latest_event_id, (

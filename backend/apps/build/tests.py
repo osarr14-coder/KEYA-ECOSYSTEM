@@ -305,6 +305,32 @@ class TestReservesOuvertes:
         evidence_ids = [item['id'] for item in reserve_row['available_evidence']]
         assert str(evidence.id) in evidence_ids
 
+    def test_available_evidence_rows_expose_the_author_to_differentiate_entries(self):
+        """Ticket 014 (friction du rapport bout-en-bout) : plusieurs preuves
+        du même jalon soumises le même jour étaient strictement
+        indiscernables dans le dropdown "Documenter une correction" de
+        BUILD (« Foncier — 16/08/2026 » répété 5 fois). L'auteur permet de
+        les différencier immédiatement, sans requête supplémentaire.
+        """
+        client, organization, user, _program, _asset, lot = _setup_org_with_lot(
+            'reserve-evidence-author@example.com', 'Org Reserve Evidence Author', role_code='constructeur',
+        )
+        declaration, evidence = _declare_and_document_first_milestone(organization, lot, user)
+        inspecteur_client, inspecteur_organization, inspecteur = _register_inspecteur(
+            'reserve-evidence-author-inspecteur@example.com', 'Org Reserve Evidence Author Inspecteur',
+        )
+        create_inspection(
+            inspector=inspecteur, inspector_organization=inspecteur_organization,
+            target_organization_id=organization.id, evidence_id=evidence.id,
+            outcome=InspectionOutcome.AVEC_RESERVE, note='Fissure',
+        )
+
+        response = client.get(reverse('build-exceptions'))
+
+        reserve_row = response.data['reserves_ouvertes'][0]
+        evidence_row = next(item for item in reserve_row['available_evidence'] if item['id'] == str(evidence.id))
+        assert evidence_row['added_by_email'] == user.email
+
     def test_a_resolved_reserve_is_not_flagged(self):
         client, organization, user, _program, _asset, lot = _setup_org_with_lot(
             'reserve2@example.com', 'Org Reserve 2', role_code='constructeur',

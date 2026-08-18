@@ -103,7 +103,10 @@ describe('ExceptionsView — réserves ouvertes : StatusBadge + AlertBanner + ac
       scope: '', created_at: '2026-03-05T10:30:00Z',
     },
     available_evidence: [
-      { id: 'evidence-1', milestone_label: 'Fondations', created_at: '2026-03-04T10:00:00Z' },
+      {
+        id: 'evidence-1', milestone_label: 'Fondations', created_at: '2026-03-04T10:00:00Z',
+        added_by_email: 'constructeur@example.com',
+      },
     ],
   };
 
@@ -141,6 +144,38 @@ describe('ExceptionsView — réserves ouvertes : StatusBadge + AlertBanner + ac
     await screen.findByText(/ajoutez une preuve/i);
     expect(screen.queryByRole('button', { name: 'Documenter une correction' })).not.toBeInTheDocument();
   });
+
+  it(
+    'différencie deux preuves du même jalon et du même jour par leur auteur (ticket 014 — '
+    + 'friction du rapport bout-en-bout : 5 entrées "Foncier — 16/08/2026" indiscernables)',
+    async () => {
+      renderView({
+        getExceptions: async () => ({
+          ...EMPTY_EXCEPTIONS,
+          reserves_ouvertes: [{
+            ...RESERVE_ROW,
+            available_evidence: [
+              {
+                id: 'evidence-1', milestone_label: 'Foncier', created_at: '2026-08-16T09:00:00Z',
+                added_by_email: 'alice@example.com',
+              },
+              {
+                id: 'evidence-2', milestone_label: 'Foncier', created_at: '2026-08-16T14:00:00Z',
+                added_by_email: 'bob@example.com',
+              },
+            ],
+          }],
+        }),
+      });
+
+      await screen.findByText('Lot Réserve', { exact: false });
+      const options = screen.getAllByRole('option') as HTMLOptionElement[];
+      const labels = options.map((option) => option.textContent);
+      expect(labels[0]).toContain('alice@example.com');
+      expect(labels[1]).toContain('bob@example.com');
+      expect(labels[0]).not.toBe(labels[1]);
+    },
+  );
 
   it(
     'ne propose JAMAIS de bouton permettant de changer directement le statut de la réserve (critère de sécurité)',

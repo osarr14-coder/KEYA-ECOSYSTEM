@@ -121,7 +121,7 @@ function ReserveCorrectionForm({
         >
           {row.available_evidence.map((evidence: EvidenceSummary) => (
             <option key={evidence.id} value={evidence.id}>
-              {evidence.milestone_label} — {new Date(evidence.created_at).toLocaleDateString('fr-FR')}
+              {evidence.milestone_label} — {evidence.added_by_email} — {new Date(evidence.created_at).toLocaleString('fr-FR')}
             </option>
           ))}
         </select>

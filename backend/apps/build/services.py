@@ -75,7 +75,13 @@ def _bulk_work_declarations(lot_ids):
     )
     declaration_ids = [declaration.id for declaration in declarations]
 
-    evidences = list(Evidence.objects.filter(work_declaration_id__in=declaration_ids))
+    # `select_related('added_by')` : ticket 014 (friction du rapport
+    # bout-en-bout) — le dropdown "Documenter une correction" de BUILD a
+    # besoin de l'auteur pour différencier plusieurs preuves du même jalon
+    # le même jour. Un JOIN, jamais une requête supplémentaire par preuve —
+    # reste dans le nombre de requêtes BORNÉ exigé par ce ticket (voir
+    # `TestAllLotsScalesToTwoHundredLots`).
+    evidences = list(Evidence.objects.filter(work_declaration_id__in=declaration_ids).select_related('added_by'))
     evidence_ids_by_declaration = defaultdict(list)
     for evidence in evidences:
         evidence_ids_by_declaration[evidence.work_declaration_id].append(evidence.id)
@@ -152,6 +158,13 @@ def get_exceptions(organization):
             'id': str(evidence.id),
             'milestone_label': declaration.milestone.label,
             'created_at': evidence.created_at.isoformat(),
+            # Ticket 014 (friction du rapport bout-en-bout) : plusieurs
+            # preuves du même jalon soumises le même jour étaient
+            # strictement indiscernables dans le dropdown de BUILD (« Foncier
+            # — 16/08/2026 » répété 5 fois). L'auteur différencie
+            # immédiatement, sans requête supplémentaire (voir
+            # `select_related('added_by')` ci-dessus).
+            'added_by_email': evidence.added_by.email,
         })
 
     # --- Lots en retard ---

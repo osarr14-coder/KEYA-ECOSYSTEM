@@ -19,6 +19,10 @@ export interface EvidenceSummary {
   id: string;
   milestone_label: string;
   created_at: string;
+  /** Ticket 014 (friction du rapport bout-en-bout) : plusieurs preuves du
+   * même jalon soumises le même jour sont sinon strictement indiscernables
+   * dans le dropdown "Documenter une correction". */
+  added_by_email: string;
 }
 
 export interface LotExceptionRow {

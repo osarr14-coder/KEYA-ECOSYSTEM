@@ -51,4 +51,30 @@ describe('MissionsListView', () => {
     render(<MissionsListView onSelectMission={() => {}} />);
     expect(await screen.findByText('Aucune mission pour le moment.')).toBeInTheDocument();
   });
+
+  it(
+    'distingue visuellement une mission de suivi (réserve) d\'une première inspection '
+    + '(ticket 014 — friction du rapport bout-en-bout : les deux étaient strictement '
+    + 'identiques dans la liste)',
+    async () => {
+      const reserveId = 'aaaaaaaa-1111-2222-3333-444444444444';
+      await seedFixtureMissions([
+        { ...FIXTURE_MISSIONS[0], reserveId, reserveLatestEventId: 'evt-x' },
+        FIXTURE_MISSIONS[1],
+      ]);
+
+      render(<MissionsListView onSelectMission={() => {}} />);
+      await screen.findByText(FIXTURE_MISSIONS[0].lotName);
+
+      const followUpItem = screen.getByText(FIXTURE_MISSIONS[0].lotName).closest('li');
+      const firstMissionItem = screen.getByText(FIXTURE_MISSIONS[1].lotName).closest('li');
+
+      expect(followUpItem).toHaveTextContent('Mission de suivi');
+      // Référence courte de la réserve concernée — pas juste "mission de
+      // suivi" sans plus de détail.
+      expect(followUpItem).toHaveTextContent(reserveId.slice(0, 8));
+      expect(firstMissionItem).toHaveTextContent('Première inspection');
+      expect(firstMissionItem).not.toHaveTextContent('Mission de suivi');
+    },
+  );
 });

@@ -441,8 +441,20 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
     for mission in missions:
         set_rls_context(organization_id=mission.organization_id)
         try:
+            # Ticket 014 (friction du rapport bout-en-bout) : filtrer
+            # seulement par work_declaration+inspecteur trouvait n'IMPORTE
+            # QUELLE Inspection déjà soumise sur ce work_declaration — y
+            # compris une, plus ANCIENNE, qui appartenait à une mission
+            # PRÉCÉDENTE (ex. la première inspection, avant qu'une mission
+            # de suivi ne soit affectée). Une mission de suivi fraîchement
+            # créée s'affichait donc déjà « faite » avant même que
+            # l'inspecteur n'y touche. `created_at__gt=mission.created_at`
+            # borne la recherche aux Inspection VRAIMENT postérieures à
+            # CETTE mission — la seule InspectionMission qui peut
+            # légitimement l'avoir accomplie.
             completed = Inspection.objects.filter(
                 work_declaration_id=mission.work_declaration_id, inspector=inspector,
+                created_at__gt=mission.created_at,
             ).exists()
             lot = mission.work_declaration.milestone.lot
             open_reserve = _find_open_reserve_for_lot(lot)

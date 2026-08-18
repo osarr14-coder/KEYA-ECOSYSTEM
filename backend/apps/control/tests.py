@@ -622,6 +622,56 @@ class TestMissionListView:
         assert response.status_code == 200
         assert response.data[0]['completed'] is True
 
+    def test_a_follow_up_mission_is_not_completed_before_its_own_inspection_exists(self):
+        """Friction UX du rapport bout-en-bout (ticket 013 → ticket 014) :
+        `completed` se dérivait par `work_declaration`+`inspecteur` SEULS,
+        pas par mission — une mission de suivi fraîchement affectée, créée
+        APRÈS qu'une première inspection ait déjà eu lieu sur ce même
+        `work_declaration`, s'affichait déjà « faite » avant même que
+        l'inspecteur n'y touche (la requête trouvait l'ancienne Inspection,
+        sans savoir qu'elle datait d'AVANT cette mission-ci).
+        """
+        admin_client, admin_org, admin_user = _register_admin(
+            'missionlist-followup-completed-admin@example.com', 'Org MissionList Followup Completed Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'missionlist-followup-completed-constructeur@example.com',
+            'Org MissionList Followup Completed Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'missionlist-followup-completed-inspecteur@example.com', 'Org MissionList Followup Completed Inspecteur',
+        )
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        open_response = inspecteur_client.post(
+            reverse('control-sync-inspection'),
+            {
+                'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                'outcome': InspectionOutcome.AVEC_RESERVE,
+                'correlation_id': '99999999-9999-9999-9999-999999999991',
+                'known_latest_event_id': None,
+            },
+            format='json',
+        )
+        assert open_response.status_code == 201, open_response.data
+
+        # Mission de suivi, affectée APRÈS la première inspection — jamais
+        # touchée par l'inspecteur à ce stade.
+        self._create_mission(
+            admin_user=admin_user, admin_org=admin_org, organization=organization,
+            declaration=declaration, inspector=inspecteur_user,
+        )
+
+        response = inspecteur_client.get(reverse('control-mission-list'))
+        assert response.status_code == 200
+        # Missions triées par -created_at (list_missions_for_inspector) —
+        # l'index 0 est donc la mission de suivi tout juste affectée.
+        follow_up_row = response.data[0]
+        assert follow_up_row['completed'] is False
+
     def test_mission_row_reserve_id_is_null_without_any_open_reserve(self):
         """Ticket 013 (bug 3 du rapport) — cas de base : une mission de
         première inspection, sans aucune réserve encore ouverte sur ce lot.
