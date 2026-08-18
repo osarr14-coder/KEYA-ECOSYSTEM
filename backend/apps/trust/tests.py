@@ -1,3 +1,6 @@
+import ast
+import os
+
 import pytest
 from django.db import connection
 
@@ -277,3 +280,119 @@ class TestTrustEventIsOrganizationScoped:
 
         assert repository.get_current_status(milestone_a) is None
         assert not TrustEvent.objects.filter(organization=organization_a).exists()
+
+
+def _functions_referencing_trust_event(tree):
+    """Noms des fonctions (à tout niveau) dont le CORPS référence
+    `TrustEvent` — sert à repérer les fonctions locales de type
+    `_lot_trust_events_queryset` (apps/home/services.py) : un `.order_by(...)`
+    chaîné sur LEUR appel doit être traité comme un `.order_by(...)` sur
+    TrustEvent, même si `TrustEvent` n'apparaît pas littéralement dans
+    l'expression de l'appel lui-même.
+    """
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Name) and sub.id == 'TrustEvent':
+                    names.add(node.name)
+                    break
+    return names
+
+
+def _order_by_created_at_without_sequence_violations(tree, trust_helper_names):
+    """Repère tout `.order_by(...)` appliqué (directement ou via une
+    fonction locale qui référence `TrustEvent`) à un queryset TrustEvent,
+    dont les arguments littéraux contiennent `created_at` sans `sequence`
+    — exactement le défaut de tri corrigé au ticket 013 bis
+    (apps.build.services._bulk_open_reserves,
+    apps.home.services.compute_milestone_status/get_latest_notable_event).
+    """
+    violations = []
+    for node in ast.walk(tree):
+        is_order_by_call = (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == 'order_by'
+        )
+        if not is_order_by_call:
+            continue
+
+        receiver = node.func.value
+        references_trust_event = any(
+            (isinstance(sub, ast.Name) and sub.id == 'TrustEvent')
+            or (
+                isinstance(sub, ast.Call)
+                and isinstance(sub.func, ast.Name)
+                and sub.func.id in trust_helper_names
+            )
+            for sub in ast.walk(receiver)
+        )
+        if not references_trust_event:
+            continue
+
+        string_args = [
+            arg.value for arg in node.args
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+        ]
+        has_created_at = any('created_at' in value for value in string_args)
+        has_sequence = any('sequence' in value for value in string_args)
+        if has_created_at and not has_sequence:
+            violations.append(node.lineno)
+    return violations
+
+
+class TestNoDirectTrustEventOrderingOutsideRepository:
+    """Ticket 013 bis — `apps.trust.repository` (`LATEST_FIRST_ORDERING`,
+    `list_for_subject`, `get_current_status`) est le SEUL endroit qui doit
+    connaître comment départager deux `TrustEvent` (`-created_at` seul est
+    ambigu entre deux événements créés dans la même transaction, voir
+    `sequence`, migration 0004). Un futur `.order_by('-created_at')` sur un
+    queryset TrustEvent ailleurs dans le projet réintroduirait
+    silencieusement la même classe de bug que celle trouvée et corrigée
+    dans `apps.build.services._bulk_open_reserves` et
+    `apps.home.services.compute_milestone_status`/`get_latest_notable_event`.
+
+    Scanne le CODE SOURCE réel de chaque fichier de `apps/` (hors
+    migrations/tests/`apps/trust/repository.py` lui-même), pas seulement le
+    comportement actuel — même famille de test que
+    `TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo` (ticket 006) et le
+    test de gouvernance StatusBadge (ticket 007, `governance.test.ts`). Un
+    accès direct à TrustEvent qui a réellement besoin de dupliquer ce tri
+    (raison de performance ou autre) doit malgré tout importer et utiliser
+    `apps.trust.repository.LATEST_FIRST_ORDERING`, jamais réécrire
+    `'-created_at'` en dur — ce test ne fait aucune exception nommée.
+    """
+
+    EXEMPT_RELATIVE_PATH = os.path.join('trust', 'repository.py')
+
+    def test_no_order_by_created_at_alone_on_trust_event_outside_repository(self):
+        apps_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        violations = []
+
+        for root, dirs, files in os.walk(apps_dir):
+            dirs[:] = [d for d in dirs if d not in ('migrations', '__pycache__')]
+            for filename in files:
+                if not filename.endswith('.py'):
+                    continue
+                if filename == 'tests.py' or filename.startswith('test_'):
+                    continue
+
+                path = os.path.join(root, filename)
+                if os.path.relpath(path, apps_dir) == self.EXEMPT_RELATIVE_PATH:
+                    continue
+
+                with open(path, encoding='utf-8') as source_file:
+                    source = source_file.read()
+                tree = ast.parse(source, filename=path)
+
+                trust_helpers = _functions_referencing_trust_event(tree)
+                for lineno in _order_by_created_at_without_sequence_violations(tree, trust_helpers):
+                    violations.append(f'{os.path.relpath(path, apps_dir)}:{lineno}')
+
+        assert violations == [], (
+            'TrustEvent trié par -created_at sans le tie-break sequence, en dehors de '
+            'apps.trust.repository : ' + ', '.join(violations) + '. Utilisez '
+            'apps.trust.repository.LATEST_FIRST_ORDERING (ou list_for_subject/'
+            'get_current_status) plutôt que de dupliquer le tri.'
+        )

@@ -21,6 +21,7 @@ from apps.evidence.models import Evidence, WorkDeclaration
 from apps.inspections.models import Inspection, Reserve
 from apps.inspections.services import OPEN_RESERVE_STATUSES
 from apps.programs.models import Lot, Milestone
+from apps.trust import repository as trust_repository
 from apps.trust.models import TrustEvent, TrustLevel
 from apps.trust.services import LEVEL_PROGRESS_FRACTION
 
@@ -107,7 +108,7 @@ def _bulk_open_reserves(organization):
     latest_events = (
         TrustEvent.objects.filter(subject_type=reserve_content_type, subject_id__in=reserve_ids)
         .select_related('actor')
-        .order_by('subject_id', '-created_at')
+        .order_by('subject_id', *trust_repository.LATEST_FIRST_ORDERING)
         .distinct('subject_id')
     )
     latest_event_by_reserve_id = {event.subject_id: event for event in latest_events}

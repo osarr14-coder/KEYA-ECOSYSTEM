@@ -1,16 +1,22 @@
+from unittest.mock import patch
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_document, create_evidence, create_work_declaration
+from apps.home.services import compute_milestone_status, get_latest_notable_event
 from apps.inspections.models import InspectionOutcome
 from apps.inspections.services import create_inspection, get_reserve_status
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, LotClient, Program
 from apps.programs.services import instantiate_milestones_for_lot
+from apps.trust import repository as trust_repository
+from apps.trust.models import TrustLevel
 
 PASSWORD = 'strongpass123'
 
@@ -258,6 +264,67 @@ class TestLotOverviewContent:
 
         assert response.data['latest_notable_event'] is None
         assert response.data['open_reserve'] is None
+
+
+@pytest.mark.django_db
+class TestTrustEventOrderingTieBreak:
+    """Ticket 013 bis — `compute_milestone_status`/`get_latest_notable_event`
+    lisent `TrustEvent` directement (pas via `apps.trust.repository`), donc
+    ne bénéficiaient pas du tie-break `sequence` ajouté au ticket 013 bis.
+    Reproduit le même défaut de tri (`-created_at` seul) que celui trouvé
+    dans `apps.build.services._bulk_open_reserves` : deux `TrustEvent`
+    créés avec un `created_at` identique doivent quand même être départagés
+    par leur ordre d'insertion réel (`sequence`), jamais par un ordre
+    arbitraire côté Postgres.
+    """
+
+    def test_compute_milestone_status_breaks_a_created_at_tie_by_insertion_order(self):
+        constructeur_client, organization, constructeur, asset, lot = _setup_constructeur_lot(
+            'home-tiebreak-milestone-constructeur@example.com', 'Org Home Tiebreak Milestone',
+        )
+        milestone = lot.milestones.order_by('order').first()
+        declaration = create_work_declaration(
+            organization=organization, milestone=milestone, declared_by=constructeur,
+        )
+
+        frozen_now = timezone.now()
+        with patch('django.utils.timezone.now', return_value=frozen_now):
+            trust_repository.create(
+                subject=declaration, organization=organization, level=TrustLevel.CONTROLE,
+                actor=constructeur, source='tiebreak_first',
+            )
+            latest = trust_repository.create(
+                subject=declaration, organization=organization, level=TrustLevel.VERIFIE,
+                actor=constructeur, source='tiebreak_second',
+            )
+
+        status = compute_milestone_status(milestone)
+
+        assert status.id == latest.id
+
+    def test_get_latest_notable_event_breaks_a_created_at_tie_by_insertion_order(self):
+        constructeur_client, organization, constructeur, asset, lot = _setup_constructeur_lot(
+            'home-tiebreak-lot-constructeur@example.com', 'Org Home Tiebreak Lot',
+        )
+        milestone = lot.milestones.order_by('order').first()
+        declaration = create_work_declaration(
+            organization=organization, milestone=milestone, declared_by=constructeur,
+        )
+
+        frozen_now = timezone.now()
+        with patch('django.utils.timezone.now', return_value=frozen_now):
+            trust_repository.create(
+                subject=declaration, organization=organization, level=TrustLevel.CONTROLE,
+                actor=constructeur, source='tiebreak_first',
+            )
+            latest = trust_repository.create(
+                subject=declaration, organization=organization, level=TrustLevel.VERIFIE,
+                actor=constructeur, source='tiebreak_second',
+            )
+
+        event = get_latest_notable_event(lot)
+
+        assert event.id == latest.id
 
 
 @pytest.mark.django_db

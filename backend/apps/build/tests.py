@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -323,6 +324,42 @@ class TestReservesOuvertes:
             target_organization_id=organization.id, work_declaration_id=declaration.id,
             outcome=InspectionOutcome.CONFORME, reserve_id=reserve.id,
         )
+
+        response = client.get(reverse('build-exceptions'))
+
+        reserve_ids = [row['reserve_id'] for row in response.data['reserves_ouvertes']]
+        assert str(reserve.id) not in reserve_ids
+
+    def test_a_resolved_reserve_is_not_flagged_even_when_its_two_closing_events_share_a_timestamp(self):
+        """Ticket 013 bis — reproduit le bug de tri de TrustEvent :
+        `_advance_existing_reserve` crée coup sur coup `nouvelle_inspection`
+        puis `levee` sur la même réserve, dans la même transaction. Sans
+        tie-break (`sequence`), un `created_at` identique entre les deux
+        peut faire remonter `nouvelle_inspection` (encore « ouvert ») au
+        lieu de l'événement terminal réel — `_bulk_open_reserves`
+        continuerait alors à exposer cette réserve comme ouverte.
+        """
+        client, organization, user, _program, _asset, lot = _setup_org_with_lot(
+            'reserve-tiebreak@example.com', 'Org Reserve Tiebreak', role_code='constructeur',
+        )
+        declaration = _declare_first_milestone(organization, lot, user)
+        inspecteur_client, inspecteur_organization, inspecteur = _register_inspecteur(
+            'reserve-tiebreak-inspecteur@example.com', 'Org Reserve Tiebreak Inspecteur',
+        )
+        inspection = create_inspection(
+            inspector=inspecteur, inspector_organization=inspecteur_organization,
+            target_organization_id=organization.id, work_declaration_id=declaration.id,
+            outcome=InspectionOutcome.AVEC_RESERVE, note='Fissure',
+        )
+        reserve = inspection.opened_reserve
+
+        frozen_now = timezone.now()
+        with patch('django.utils.timezone.now', return_value=frozen_now):
+            create_inspection(
+                inspector=inspecteur, inspector_organization=inspecteur_organization,
+                target_organization_id=organization.id, work_declaration_id=declaration.id,
+                outcome=InspectionOutcome.CONFORME, reserve_id=reserve.id,
+            )
 
         response = client.get(reverse('build-exceptions'))
 

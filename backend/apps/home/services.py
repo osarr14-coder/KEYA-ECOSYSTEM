@@ -90,7 +90,12 @@ def compute_milestone_status(milestone):
     """Le dernier `TrustEvent` parmi tout ce qui se rattache à ce jalon —
     `None` si le jalon n'a encore reçu aucune déclaration/preuve/inspection.
     """
-    return _milestone_trust_events_queryset(milestone).select_related('actor').order_by('-created_at').first()
+    return (
+        _milestone_trust_events_queryset(milestone)
+        .select_related('actor')
+        .order_by(*trust_repository.LATEST_FIRST_ORDERING)
+        .first()
+    )
 
 
 def compute_lot_progress(lot):
@@ -141,7 +146,12 @@ def get_latest_notable_event(lot):
     """L'événement le plus récent, tous types confondus, parmi tout ce qui
     se rattache à ce lot — « dernier événement notable » du ticket 008.
     """
-    return _lot_trust_events_queryset(lot).select_related('actor').order_by('-created_at').first()
+    return (
+        _lot_trust_events_queryset(lot)
+        .select_related('actor')
+        .order_by(*trust_repository.LATEST_FIRST_ORDERING)
+        .first()
+    )
 
 
 def get_open_reserve(lot):

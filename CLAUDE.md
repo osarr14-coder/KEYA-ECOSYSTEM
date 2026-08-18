@@ -960,12 +960,27 @@ le rôle propriétaire de la table (voir section Append-only ci-dessus). Le back
 `DISABLE TRIGGER trust_event_no_update`) puis restaurées avant la fin de la même
 transaction de migration, jamais un affaiblissement permanent de l'invariant.
 
-**Limite connue, non corrigée par ce ticket** : le même défaut de tri (`-created_at`
-seul) existe aussi dans trois lectures directes de `TrustEvent` qui ne passent pas par
+**Même défaut de tri dupliqué, trouvé et éliminé à la source** : le même problème
+existait aussi dans trois lectures directes de `TrustEvent` qui ne passaient pas par
 `apps.trust.repository` — `apps/build/services.py::_bulk_open_reserves` et
-`apps/home/services.py::compute_milestone_status`/`get_latest_notable_event`. Même
-classe de bug, non exercée par un test existant aujourd'hui, laissée pour un futur
-ticket.
+`apps/home/services.py::compute_milestone_status`/`get_latest_notable_event`. Corrigé en
+centralisant l'ordre plutôt qu'en le corrigeant trois fois : `apps.trust.repository.
+LATEST_FIRST_ORDERING` (nouveau tuple public `('-created_at', '-sequence')`) est
+désormais le SEUL endroit qui définit cet ordre — `list_for_subject` l'utilise en
+interne, les trois lectures directes l'importent plutôt que de dupliquer `'-created_at'`
+en dur (`_bulk_open_reserves`, qui a besoin de `subject_id` en tête pour son `DISTINCT
+ON`, fait `.order_by('subject_id', *trust_repository.LATEST_FIRST_ORDERING)`).
+
+**Test de garde** (`apps/trust/tests.py::TestNoDirectTrustEventOrderingOutsideRepository`)
+: scanne via `ast` le code source réel de chaque fichier de `apps/` (hors
+migrations/tests/`apps/trust/repository.py` lui-même) et détecte tout futur
+`.order_by(...)` appliqué à un queryset `TrustEvent` — directement, ou via une fonction
+locale dont le corps référence `TrustEvent` (ex. `_lot_trust_events_queryset`) — dont les
+arguments contiennent `created_at` sans `sequence`. Même famille de test que
+`TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo` (ticket 006) et la gouvernance
+StatusBadge (ticket 007) : empêche cette classe de bug de réapparaître silencieusement,
+même ailleurs dans le projet, plutôt que de compter sur la vigilance d'une revue
+manuelle. Vérifié qu'il détectait bien les 3 violations réelles avant le refactor.
 
 ## Tickets
 

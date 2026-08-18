@@ -86,15 +86,42 @@ levées explicitement (`NO FORCE ROW LEVEL SECURITY` + `DISABLE TRIGGER`)
 puis restaurées dans la même migration, jamais un affaiblissement
 permanent.
 
-**Limite connue, non corrigée par ce ticket** : le même défaut de tri
-(`-created_at` seul, sans tie-break) existe aussi dans trois lectures
-directes de `TrustEvent` qui ne passent pas par
-`apps.trust.repository` — `apps/build/services.py::_bulk_open_reserves`
+### 5. Même défaut de tri dupliqué dans trois lectures directes de `TrustEvent`
+Trouvé en corrigeant le bug 4 : `apps/build/services.py::_bulk_open_reserves`
 et `apps/home/services.py::compute_milestone_status`/
-`get_latest_notable_event`. Même classe de bug, non exercée par un test
-existant, laissée pour un futur ticket (nécessiterait de les faire
-transiter par `apps.trust.repository` plutôt que de dupliquer le tri, ou
-d'ajouter `-sequence` localement à chacune).
+`get_latest_notable_event` lisent `TrustEvent` directement, sans passer par
+`apps.trust.repository` — elles ne bénéficiaient donc PAS du tie-break
+`sequence`, même défaut potentiel que le bug 4, non exercé par un test
+existant à ce moment-là.
+
+Corrigé en éliminant la classe de bug plutôt qu'en la corrigeant trois
+fois : `apps.trust.repository.LATEST_FIRST_ORDERING` (nouveau tuple public
+`('-created_at', '-sequence')`) devient le SEUL endroit qui définit cet
+ordre ; `list_for_subject` l'utilise en interne, et les trois lectures
+directes l'importent (`.order_by(*trust_repository.LATEST_FIRST_ORDERING)`,
+ou `.order_by('subject_id', *trust_repository.LATEST_FIRST_ORDERING)`
+pour `_bulk_open_reserves`, qui a besoin de `subject_id` en tête pour son
+`DISTINCT ON`) plutôt que de dupliquer `'-created_at'` en dur.
+
+**Test de garde ajouté** (`apps/trust/tests.py::
+TestNoDirectTrustEventOrderingOutsideRepository`) : scanne le code source
+réel de chaque fichier de `apps/` (hors migrations/tests/
+`apps/trust/repository.py` lui-même) via `ast`, et détecte tout futur
+`.order_by(...)` appliqué à un queryset `TrustEvent` (directement ou via
+une fonction locale qui référence `TrustEvent`) dont les arguments
+contiennent `created_at` sans `sequence` — même famille de test que
+`TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo` (ticket 006) et la
+gouvernance StatusBadge (ticket 007). Vérifié qu'il détectait bien les 3
+violations réelles avant le refactor (`build/services.py:108`,
+`home/services.py:93`, `home/services.py:144`), puis qu'il passe après.
+
+Chaque correctif (bugs 4 et 5) est couvert par un test qui reproduisait le
+problème AVANT correction — deux `TrustEvent` créés dans la même
+transaction avec un `created_at` identique (`timezone.now()` figé via
+`unittest.mock.patch` le temps de l'appel) — puis vérifié vert après
+(`apps/build/tests.py::TestReservesOuvertes::
+test_a_resolved_reserve_is_not_flagged_even_when_its_two_closing_events_share_a_timestamp`,
+`apps/home/tests.py::TestTrustEventOrderingTieBreak`).
 
 ## Critères d'acceptation
 - [x] Un brouillon sans décision n'est jamais synchronisé automatiquement
@@ -109,12 +136,15 @@ d'ajouter `-sequence` localement à chacune).
       de la liste de missions ne la référence
       (`apps/control/tests.py::TestMissionListView::
       test_mission_row_reserve_id_is_null_once_the_reserve_is_resolved`)
-- [x] Suite complète backend (176 tests) et frontend (119 tests, 4
+- [x] Aucune lecture de `TrustEvent` ailleurs dans le projet ne trie par
+      `-created_at` sans le tie-break `sequence` — vérifié par un test de
+      garde qui scanne le code source
+      (`apps/trust/tests.py::TestNoDirectTrustEventOrderingOutsideRepository`),
+      pas seulement une revue manuelle des trois lectures connues
+- [x] Suite complète backend (180 tests) et frontend (119 tests, 4
       workspaces) intégralement vertes, pas seulement par lots
 
 ## Explicitement hors scope
-- Le tri par tie-break des trois lectures directes de `TrustEvent`
-  listées ci-dessus (« limite connue »)
 - Fusion/arbitrage lors d'un conflit de synchronisation (ADR 0002,
   décision déjà actée au ticket 010 passe 2)
 
