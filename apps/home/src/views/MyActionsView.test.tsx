@@ -18,7 +18,7 @@ describe('MyActionsView', () => {
       ],
     });
 
-    render(withApiClient(api, <MyActionsView />));
+    render(withApiClient(api, <MyActionsView activeOrganizationId={null} />));
 
     expect(await screen.findByText(/Réserve ouverte sur le lot/)).toBeInTheDocument();
   });
@@ -26,7 +26,7 @@ describe('MyActionsView', () => {
   it("affiche un message explicite quand la liste est vide (aucune Task ne cible encore un client)", async () => {
     const api = createMockApiClient({ getMyTasks: async () => [] });
 
-    render(withApiClient(api, <MyActionsView />));
+    render(withApiClient(api, <MyActionsView activeOrganizationId={null} />));
 
     expect(await screen.findByText(/aucune action en attente/i)).toBeInTheDocument();
   });

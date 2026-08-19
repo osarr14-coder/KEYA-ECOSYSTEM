@@ -21,7 +21,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getMyTasks: NO_PENDING_TASKS,
     });
 
-    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     expect(await screen.findByText('37% d\'avancement')).toBeInTheDocument();
   });
@@ -36,7 +36,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getMyTasks: NO_PENDING_TASKS,
     });
 
-    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     const hero = await screen.findByTestId('hero');
     expect(hero).toHaveTextContent('Résidence Ker');
@@ -60,7 +60,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getMyTasks: NO_PENDING_TASKS,
     });
 
-    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     expect(await screen.findByText('Documenté')).toBeInTheDocument();
     // Popover fermé par défaut — seul le libellé du badge est visible avant clic.
@@ -78,7 +78,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getMyTasks: NO_PENDING_TASKS,
     });
 
-    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     const problem = await screen.findByTestId('open-reserve');
     expect(problem).toHaveTextContent('Réserve ouverte');
@@ -100,7 +100,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getMyTasks: NO_PENDING_TASKS,
     });
 
-    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     await screen.findByText("60% d'avancement");
     expect(screen.queryByTestId('open-reserve')).not.toBeInTheDocument();
@@ -126,7 +126,7 @@ describe('OverviewView — résumé de la tâche prioritaire (« prochaine actio
       ],
     });
 
-    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     expect(await screen.findByText('Action à traiter en priorité')).toBeInTheDocument();
   });
@@ -141,7 +141,7 @@ describe('OverviewView — résumé de la tâche prioritaire (« prochaine actio
       getMyTasks: NO_PENDING_TASKS,
     });
 
-    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     expect(await screen.findByText("Rien à faire pour l'instant.")).toBeInTheDocument();
   });
@@ -165,7 +165,7 @@ describe('OverviewView — résumé de la tâche prioritaire (« prochaine actio
       ],
     });
 
-    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={onSeeAllActions} />));
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={onSeeAllActions} activeOrganizationId={null} />));
 
     const button = await screen.findByRole('button', { name: 'Voir toutes mes actions' });
     button.click();

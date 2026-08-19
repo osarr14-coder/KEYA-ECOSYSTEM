@@ -1,4 +1,4 @@
-import type { EvidenceFeedItem, LotOverview, MyLot, Task } from './types';
+import type { EvidenceFeedItem, LotOverview, Me, MyLot, Task } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -12,6 +12,13 @@ export class ApiError extends Error {
 export interface ApiClientConfig {
   baseUrl: string;
   getAccessToken: () => string | null;
+  /** Ticket 019 — organisation active choisie via l'App Switcher (`GET
+   * /me`, `apps.core.middleware.OrganizationScopeMiddleware`, ticket 001) :
+   * transmise sur CHAQUE requête dès qu'elle est connue. `null` = pas
+   * encore résolue (avant le premier `getMe()`) — le backend retombe alors
+   * sur la membership la plus ancienne, son propre comportement par
+   * défaut, jamais recalculé ici. */
+  getActiveOrganizationId?: () => string | null;
 }
 
 export interface TaskFilters {
@@ -32,12 +39,15 @@ export interface TaskFilters {
  * un passage direct du JSON reçu — critère d'acceptation central du
  * ticket 008.
  */
-export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
+export function createApiClient({ baseUrl, getAccessToken, getActiveOrganizationId }: ApiClientConfig) {
   async function request<T>(path: string): Promise<T> {
     const token = getAccessToken();
-    const response = await fetch(`${baseUrl}${path}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const organizationId = getActiveOrganizationId?.();
+    if (organizationId) headers['X-Organization-Id'] = organizationId;
+
+    const response = await fetch(`${baseUrl}${path}`, { headers });
     if (!response.ok) {
       throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`);
     }
@@ -45,6 +55,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
   }
 
   return {
+    getMe: () => request<Me>('/api/me/'),
     getMyLots: () => request<MyLot[]>('/api/me/lots/'),
     getLotOverview: (lotId: string) => request<LotOverview>(`/api/me/lots/${lotId}/overview/`),
     getLotEvidenceFeed: (lotId: string) => request<EvidenceFeedItem[]>(`/api/me/lots/${lotId}/evidence/`),

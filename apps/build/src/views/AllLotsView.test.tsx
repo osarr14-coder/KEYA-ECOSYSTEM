@@ -24,7 +24,7 @@ describe('AllLotsView — tableau, pas de version simplifiée (critère d\'accep
     const api = createMockApiClient({
       getAllLots: async () => makePage([makeRow({ assigned_organization_name: 'Org Constructeur' })]),
     });
-    render(withApiClient(api, <AllLotsView />));
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
 
     expect(await screen.findByText('Lot 12')).toBeInTheDocument();
     expect(screen.getByText('Résidence Ker')).toBeInTheDocument();
@@ -35,7 +35,7 @@ describe('AllLotsView — tableau, pas de version simplifiée (critère d\'accep
 
   it('affiche « — » pour un lot sans organisation affectée, pas une cellule vide silencieuse', async () => {
     const api = createMockApiClient({ getAllLots: async () => makePage([makeRow()]) });
-    render(withApiClient(api, <AllLotsView />));
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
 
     await screen.findByText('Lot 12');
     expect(screen.getByText('—')).toBeInTheDocument();
@@ -44,7 +44,7 @@ describe('AllLotsView — tableau, pas de version simplifiée (critère d\'accep
   it('transmet la recherche, le tri et le filtre au backend (aucun tri/filtre local)', async () => {
     const getAllLots = vi.fn().mockResolvedValue(makePage([makeRow()]));
     const api = createMockApiClient({ getAllLots });
-    render(withApiClient(api, <AllLotsView />));
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
 
     await screen.findByText('Lot 12');
 
@@ -67,7 +67,7 @@ describe('AllLotsView — tableau, pas de version simplifiée (critère d\'accep
   it('préremplit la recherche depuis initialSearch (lien "Voir dans Tous les lots")', async () => {
     const getAllLots = vi.fn().mockResolvedValue(makePage([makeRow()]));
     const api = createMockApiClient({ getAllLots });
-    render(withApiClient(api, <AllLotsView initialSearch="Lot Retard" />));
+    render(withApiClient(api, <AllLotsView initialSearch="Lot Retard" activeOrganizationId={null} />));
 
     await waitFor(() => expect(getAllLots).toHaveBeenLastCalledWith(
       expect.objectContaining({ q: 'Lot Retard' }),
@@ -79,7 +79,7 @@ describe('AllLotsView — tableau, pas de version simplifiée (critère d\'accep
 describe('AllLotsView — densité réglable (tokens du ticket 007)', () => {
   it('bascule la densité au clic, sans redéfinir de nouveaux styles ad hoc', async () => {
     const api = createMockApiClient({ getAllLots: async () => makePage([makeRow()]) });
-    render(withApiClient(api, <AllLotsView />));
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
 
     const row = await screen.findByTestId('lot-row');
     const denseButton = screen.getByRole('button', { name: 'Dense' });
@@ -100,7 +100,7 @@ describe('AllLotsView — pagination', () => {
     const api = createMockApiClient({
       getAllLots: async () => makePage([makeRow()], { count: 42, next: null, previous: 'http://x/?page=1' }),
     });
-    render(withApiClient(api, <AllLotsView />));
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
 
     expect(await screen.findByText('42 lot(s)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Suivant' })).toBeDisabled();
@@ -112,7 +112,7 @@ describe('AllLotsView — pagination', () => {
       makePage([makeRow()], { count: 100, next: 'http://x/?page=2' }),
     );
     const api = createMockApiClient({ getAllLots });
-    render(withApiClient(api, <AllLotsView />));
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Suivant' }));
 
@@ -123,7 +123,7 @@ describe('AllLotsView — pagination', () => {
 
   it('affiche un message explicite quand aucun lot ne correspond aux filtres', async () => {
     const api = createMockApiClient({ getAllLots: async () => makePage([]) });
-    render(withApiClient(api, <AllLotsView />));
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
 
     expect(await screen.findByText('Aucun lot ne correspond à ces critères.')).toBeInTheDocument();
   });

@@ -1,8 +1,14 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createMockApiClient, withApiClient } from './testUtils';
 import { App } from './App';
+
+beforeEach(() => {
+  // Ticket 019 : l'organisation active persiste en localStorage — jamais
+  // laisser une valeur d'un test précédent contaminer le suivant.
+  localStorage.clear();
+});
 
 const LOTS = [
   { id: 'lot-1', name: 'Lot 12', asset_name: 'Résidence Ker', asset_location: 'Almadies, Dakar', program_name: 'Programme Keur Massar' },
@@ -19,8 +25,19 @@ const OVERVIEW = {
   open_reserve: { id: 'reserve-1', status: 'ouverte', description: 'Fissure en façade' },
 };
 
+// Ticket 019 : une seule membership par défaut — le sélecteur d'organisation
+// (AppShell) ne doit alors jamais apparaître, voir le describe dédié
+// ci-dessous pour le cas à plusieurs organisations.
+const SINGLE_MEMBERSHIP_ME = {
+  id: 'user-1', email: 'client@example.com', full_name: 'Client Test',
+  memberships: [
+    { organization_id: 'org-1', organization_name: 'Org Client', role_code: 'client', role_label: 'Client' },
+  ],
+};
+
 function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
+    getMe: async () => SINGLE_MEMBERSHIP_ME,
     getMyLots: async () => LOTS,
     getLotOverview: async () => OVERVIEW,
     getLotEvidenceFeed: async () => [],
@@ -140,3 +157,89 @@ describe('App — sélection du bien', () => {
     expect(await screen.findByText(/aucun bien ne vous est encore associé/i)).toBeInTheDocument();
   });
 });
+
+describe(
+  'App — App Switcher multi-rôle (ticket 019) : bascule entre organisations réelles, '
+  + 'jamais un rôle codé en dur',
+  () => {
+    const TWO_MEMBERSHIPS_ME = {
+      id: 'user-1', email: 'multi@example.com', full_name: 'Multi Org',
+      memberships: [
+        { organization_id: 'org-1', organization_name: 'Org Client', role_code: 'client', role_label: 'Client' },
+        {
+          organization_id: 'org-2', organization_name: 'Org Constructeur',
+          role_code: 'constructeur', role_label: 'Constructeur',
+        },
+      ],
+    };
+
+    it("n'affiche aucun sélecteur d'organisation quand l'utilisateur n'a qu'une seule membership", async () => {
+      renderApp();
+
+      await screen.findByText('Résidence Ker');
+      expect(screen.queryByLabelText('Organisation active')).not.toBeInTheDocument();
+    });
+
+    it('affiche un sélecteur listant CHAQUE organisation quand il y en a plusieurs', async () => {
+      renderApp({ getMe: async () => TWO_MEMBERSHIPS_ME });
+
+      const select = await screen.findByLabelText('Organisation active');
+      const optionLabels = Array.from(select.querySelectorAll('option')).map((option) => option.textContent);
+      expect(optionLabels).toEqual(['Org Client', 'Org Constructeur']);
+    });
+
+    it(
+      'changer d\'organisation redéclenche un vrai appel réseau (getMyLots), persiste le choix en '
+      + 'localStorage, et met à jour les modules visibles selon le RÔLE de la nouvelle organisation',
+      async () => {
+        // Organisation déjà résolue au chargement (utilisateur de retour) :
+        // isole le comportement du SWITCH lui-même d'un éventuel double
+        // appel de démarrage à froid (couvert par les tests dédiés
+        // ci-dessous), pour ne compter ici que les appels dus au switch.
+        localStorage.setItem('keya_active_organization_id', 'org-1');
+        const getMyLots = vi.fn().mockResolvedValue(LOTS);
+        renderApp({ getMe: async () => TWO_MEMBERSHIPS_ME, getMyLots });
+
+        await screen.findByText('Résidence Ker');
+        expect(getMyLots).toHaveBeenCalledTimes(1);
+        // Rôle 'client' actif au départ : aucun module professionnel visible.
+        expect(screen.queryByText('BUILD')).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText('Organisation active'), { target: { value: 'org-2' } });
+
+        // Un VRAI second appel réseau, pas seulement un changement d'affichage.
+        await waitFor(() => expect(getMyLots).toHaveBeenCalledTimes(2));
+        expect(localStorage.getItem('keya_active_organization_id')).toBe('org-2');
+        // Rôle 'constructeur' de la nouvelle organisation active : BUILD
+        // devient visible — preuve que `userRoles` reflète la organisation
+        // RÉELLEMENT active, jamais une valeur figée au montage.
+        expect(await screen.findAllByText('BUILD')).not.toHaveLength(0);
+      },
+    );
+
+    it(
+      'reprend l\'organisation persistée en localStorage au chargement, sans attendre une '
+      + 'interaction de l\'utilisateur',
+      async () => {
+        localStorage.setItem('keya_active_organization_id', 'org-2');
+        renderApp({ getMe: async () => TWO_MEMBERSHIPS_ME });
+
+        // Rôle 'constructeur' (org-2) actif dès le premier rendu.
+        expect(await screen.findAllByText('BUILD')).not.toHaveLength(0);
+        expect(await screen.findByLabelText('Organisation active')).toHaveValue('org-2');
+      },
+    );
+
+    it(
+      'retombe sur la première membership si la valeur persistée ne correspond à aucune '
+      + 'membership réelle (ex. session précédente sur le même navigateur), et la re-persiste',
+      async () => {
+        localStorage.setItem('keya_active_organization_id', 'org-perimee');
+        renderApp({ getMe: async () => TWO_MEMBERSHIPS_ME });
+
+        await waitFor(() => expect(localStorage.getItem('keya_active_organization_id')).toBe('org-1'));
+        expect(await screen.findByLabelText('Organisation active')).toHaveValue('org-1');
+      },
+    );
+  },
+);

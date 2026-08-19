@@ -10,12 +10,19 @@ const EMPTY_EXCEPTIONS: ExceptionsPayload = {
   reserves_ouvertes: [], documents_manquants: [],
 };
 
-function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}, onViewLotInTable = vi.fn()) {
+function renderView(
+  overrides: Parameters<typeof createMockApiClient>[0] = {},
+  onViewLotInTable = vi.fn(),
+  activeOrganizationId: string | null = 'org-1',
+) {
   const api = createMockApiClient({
     getExceptions: async () => EMPTY_EXCEPTIONS,
     ...overrides,
   });
-  render(withApiClient(api, <ExceptionsView onViewLotInTable={onViewLotInTable} />));
+  render(withApiClient(
+    api,
+    <ExceptionsView onViewLotInTable={onViewLotInTable} activeOrganizationId={activeOrganizationId} />,
+  ));
   return { api, onViewLotInTable };
 }
 
@@ -80,12 +87,10 @@ describe('ExceptionsView — capacités manquantes : action réelle "Affecter"',
       })
       .mockResolvedValueOnce(EMPTY_EXCEPTIONS);
     const assignLotOrganization = vi.fn().mockResolvedValue({});
-    const getMe = vi.fn().mockResolvedValue({
-      id: 'u1', email: 'c@example.com', full_name: 'C',
-      memberships: [{ organization_id: 'org-1', organization_name: 'Org', role_code: 'constructeur', role_label: 'Constructeur' }],
-    });
 
-    renderView({ getExceptions, assignLotOrganization, getMe });
+    // Ticket 019 : l'organisation active vient désormais de `App.tsx` (App
+    // Switcher), passée en prop — plus un `getMe()` propre à cette action.
+    renderView({ getExceptions, assignLotOrganization }, vi.fn(), 'org-1');
 
     fireEvent.click(await screen.findByRole('button', { name: 'Affecter à mon organisation' }));
 

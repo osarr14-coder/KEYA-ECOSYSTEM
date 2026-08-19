@@ -10,6 +10,12 @@ export interface ExceptionsViewProps {
   /** Bascule vers l'onglet "Tous les lots" en filtrant sur ce lot — action
    * réelle de navigation, jamais un lien mort. */
   onViewLotInTable: (lotName: string) => void;
+  /** Ticket 019 — organisation active résolue par `App.tsx` (App Switcher).
+   * Dans les deps de `useApiResource` ci-dessous, ET transmise à
+   * `CapaciteManquanteRow` pour « Affecter à mon organisation », qui
+   * n'appelle plus `getMe()` lui-même (une seule résolution de
+   * l'organisation active, au niveau App, jamais dupliquée). */
+  activeOrganizationId: string | null;
 }
 
 function LotRowList({
@@ -39,10 +45,11 @@ function LotRowList({
 }
 
 function CapaciteManquanteRow({
-  row, onAssigned,
+  row, onAssigned, activeOrganizationId,
 }: {
   row: LotExceptionRow;
   onAssigned: () => void;
+  activeOrganizationId: string | null;
 }) {
   const api = useApiClient();
   const [assigning, setAssigning] = useState(false);
@@ -52,13 +59,15 @@ function CapaciteManquanteRow({
     setAssigning(true);
     setError(null);
     try {
-      const me = await api.getMe();
-      const myOrganizationId = me.memberships[0]?.organization_id;
-      if (!myOrganizationId) {
+      // Ticket 019 : l'organisation active vient de `App.tsx` (App
+      // Switcher), plus d'un `getMe()` propre qui prenait aveuglément
+      // `memberships[0]` — même angle mort que celui corrigé ailleurs par
+      // ce ticket, déjà présent en production avant cette correction.
+      if (!activeOrganizationId) {
         setError('Aucune organisation active.');
         return;
       }
-      await api.assignLotOrganization(row.lot_id, myOrganizationId);
+      await api.assignLotOrganization(row.lot_id, activeOrganizationId);
       onAssigned();
     } catch {
       setError("Échec de l'affectation.");
@@ -189,10 +198,10 @@ function DocumentManquantRow({ row, onAdded }: { row: LotExceptionRow; onAdded: 
   );
 }
 
-export function ExceptionsView({ onViewLotInTable }: ExceptionsViewProps) {
+export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: ExceptionsViewProps) {
   const api = useApiClient();
   const [reloadKey, setReloadKey] = useState(0);
-  const state = useApiResource(() => api.getExceptions(), [reloadKey]);
+  const state = useApiResource(() => api.getExceptions(), [reloadKey, activeOrganizationId]);
   const reload = () => setReloadKey((key) => key + 1);
 
   if (state.status === 'loading') {
@@ -242,7 +251,12 @@ export function ExceptionsView({ onViewLotInTable }: ExceptionsViewProps) {
         ) : (
           <ul style={{ listStyle: 'none', padding: 0 }}>
             {exceptions.capacites_manquantes.map((row) => (
-              <CapaciteManquanteRow key={row.lot_id} row={row} onAssigned={reload} />
+              <CapaciteManquanteRow
+                key={row.lot_id}
+                row={row}
+                onAssigned={reload}
+                activeOrganizationId={activeOrganizationId}
+              />
             ))}
           </ul>
         )}

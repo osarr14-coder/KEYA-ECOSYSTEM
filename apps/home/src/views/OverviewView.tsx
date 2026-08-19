@@ -21,9 +21,13 @@ export interface OverviewViewProps {
   /** Bascule vers l'onglet "Mes actions" — transmis tel quel au résumé de
    * la tâche prioritaire (`PriorityTaskSummary`). */
   onSeeAllActions: () => void;
+  /** Ticket 019 — transmis tel quel à `PriorityTaskSummary`, qui n'a pas de
+   * `lotId` pour déclencher son propre refetch lors d'un changement
+   * d'organisation. */
+  activeOrganizationId: string | null;
 }
 
-export function OverviewView({ lotId, onSeeAllActions }: OverviewViewProps) {
+export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: OverviewViewProps) {
   const api = useApiClient();
   const state = useApiResource(() => api.getLotOverview(lotId), [lotId]);
 
@@ -76,7 +80,7 @@ export function OverviewView({ lotId, onSeeAllActions }: OverviewViewProps) {
         </div>
       )}
 
-      <PriorityTaskSummary onSeeAllActions={onSeeAllActions} />
+      <PriorityTaskSummary onSeeAllActions={onSeeAllActions} activeOrganizationId={activeOrganizationId} />
     </section>
   );
 }

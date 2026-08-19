@@ -10,6 +10,10 @@ export interface AllLotsViewProps {
   /** Préremplit la recherche — utilisé par le lien "Voir dans Tous les
    * lots" des exceptions (navigation réelle, pas un lien mort). */
   initialSearch?: string;
+  /** Ticket 019 — dans les deps de `useApiResource` ci-dessous : cette vue
+   * n'a pas d'autre signal pour déclencher un refetch lors d'un changement
+   * d'organisation (App Switcher). */
+  activeOrganizationId: string | null;
 }
 
 const ORDERING_OPTIONS: { value: string; label: string }[] = [
@@ -31,7 +35,7 @@ const PAGE_SIZE = 25;
  * `GET /api/build/lots/`, entièrement appliqués côté backend (voir
  * apps/build/views.py) — ce composant ne fait qu'afficher la page reçue.
  */
-export function AllLotsView({ initialSearch = '' }: AllLotsViewProps) {
+export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLotsViewProps) {
   const api = useApiClient();
   const [search, setSearch] = useState(initialSearch);
   const [ordering, setOrdering] = useState('name');
@@ -53,7 +57,7 @@ export function AllLotsView({ initialSearch = '' }: AllLotsViewProps) {
   };
   const state = useApiResource(
     () => api.getAllLots(query),
-    [ordering, search, assignedFilter, page],
+    [ordering, search, assignedFilter, page, activeOrganizationId],
   );
 
   const tokens = densityTokens[density];

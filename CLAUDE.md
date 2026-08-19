@@ -1209,6 +1209,54 @@ d'événements plusieurs tours réels (`setTimeout(0)` en boucle, jamais une dur
 devinée — rien ne concurrence cette chaîne, donc pas de risque de flakiness). Avant
 correction : 2 appels réseau observés ; après : 1.
 
+## App Switcher multi-rôle — HOME + BUILD (ticket 019)
+
+Referme le point laissé hors scope au ticket 007 (« App Switcher multi-rôle complet —
+dépend de plusieurs rôles réels en usage »), condition remplie depuis la clôture de
+MVP 1. Tout ce qu'il fallait existait déjà côté backend, jamais consommé côté
+frontend : `GET /api/me/` (ticket 001) renvoie déjà TOUTES les memberships de
+l'utilisateur, et `apps.core.middleware.OrganizationScopeMiddleware` accepte déjà un
+header `X-Organization-Id` pour choisir l'organisation active (sinon, la membership la
+plus ancienne). `AppShell` (ticket 007) avait déjà les props du switcher
+(`organizationOptions`/`activeOrganizationId`/`onOrganizationChange`), jamais
+alimentées. `userRoles` était un prop codé en dur (`['client']`/`['constructeur']`) —
+et comme `main.tsx` rend `<App />` sans prop dans les deux apps, cette valeur par
+défaut était la SEULE jamais utilisée en production : le filtrage de modules par rôle
+ne reflétait jamais le rôle réel de l'utilisateur connecté.
+
+**Corrigé** en dérivant `activeOrganizationId`/`userRoles`/`organizationOptions` de
+`/me`, jamais d'une valeur par défaut : organisation active persistée en localStorage
+(`keya_active_organization_id`, même mécanisme que le token), envoyée en header
+`X-Organization-Id` sur CHAQUE requête dès qu'elle est connue. Le sélecteur
+(`AppShell`) n'apparaît que si l'utilisateur a RÉELLEMENT plusieurs memberships.
+`ExceptionsView.tsx::handleAssign` (BUILD) utilisait déjà `getMe()` mais prenait
+`memberships[0]` sans jamais laisser choisir — même angle mort, déjà en production,
+corrigé en même temps (utilise désormais l'organisation active résolue par `App.tsx`).
+
+**`activeOrganizationId` est dérivé PENDANT LE RENDU, jamais via un `useEffect`
+séparé** : un `useEffect` qui recalcule cette valeur après coup (`setState` différé)
+cascade sur plusieurs cycles de rendu, suffisant pour rendre `App.test.tsx`
+intermittemment flaky (~20 % des exécutions). La valeur persistée sert de valeur
+OPTIMISTE tant que `/me` n'a pas répondu ; une fois répondu, la correction (retombée
+sur la première membership si la valeur persistée ne correspond à aucune membership
+réelle) se fait en UNE SEULE passe de rendu — un `useEffect` séparé ne sert plus qu'à
+la PERSISTANCE localStorage, jamais à recalculer la valeur.
+
+**Les vues ne fetchent RÉELLEMENT qu'une fois `/me` résolu** : au tout premier
+chargement (rien encore en localStorage), `activeOrganizationId` démarre à `null`
+avant que `/me` réponde — sans garde, ça déclenchait un premier appel réseau réel avec
+une organisation inconnue, immédiatement suivi d'un second une fois `/me` résolu (un
+vrai gaspillage réseau en production, pas seulement un artefact de test). Corrigé en
+gatant `getMyLots`/`ExceptionsView`/`AllLotsView` derrière `meState.status ===
+'success'`.
+
+**`activeOrganizationId` threading jusque dans les vues « feuilles »** : certaines
+vues (`MyActionsView`/`PriorityTaskSummary` côté HOME) appellent leur propre
+`getMyTasks()` sans `lotId` pour déclencher un refetch naturel lors d'un changement
+d'organisation — `activeOrganizationId` leur est donc transmis en prop explicite,
+inclus dans les deps de leur `useApiResource`, pour que le critère « CHAQUE endpoint »
+tienne vraiment.
+
 ## Tickets
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un

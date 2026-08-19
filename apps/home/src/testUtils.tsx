@@ -11,6 +11,7 @@ import { ApiClientProvider } from './api/ApiClientContext';
 export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClient {
   const notMocked = () => Promise.reject(new Error('not mocked'));
   return {
+    getMe: vi.fn(notMocked),
     getMyLots: vi.fn(notMocked),
     getLotOverview: vi.fn(notMocked),
     getLotEvidenceFeed: vi.fn(notMocked),

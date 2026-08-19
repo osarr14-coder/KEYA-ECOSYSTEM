@@ -18,6 +18,12 @@ export class ApiError extends Error {
 export interface ApiClientConfig {
   baseUrl: string;
   getAccessToken: () => string | null;
+  /** Ticket 019 — organisation active choisie via l'App Switcher (`GET
+   * /me`, `apps.core.middleware.OrganizationScopeMiddleware`, ticket 001) :
+   * transmise sur CHAQUE requête dès qu'elle est connue. `null` = pas
+   * encore résolue — le backend retombe alors sur la membership la plus
+   * ancienne, son propre comportement par défaut, jamais recalculé ici. */
+  getActiveOrganizationId?: () => string | null;
 }
 
 interface RequestOptions {
@@ -43,11 +49,13 @@ function toQueryString(params: Record<string, string | number | undefined>): str
  * de « Tous les lots »). Ce fichier ne fait AUCUN calcul, uniquement des
  * requêtes et un passage direct du JSON reçu.
  */
-export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
+export function createApiClient({ baseUrl, getAccessToken, getActiveOrganizationId }: ApiClientConfig) {
   async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const token = getAccessToken();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
+    const organizationId = getActiveOrganizationId?.();
+    if (organizationId) headers['X-Organization-Id'] = organizationId;
 
     let body: BodyInit | undefined;
     if (options.formData) {

@@ -5,6 +5,11 @@ export interface PriorityTaskSummaryProps {
   /** Bascule vers l'onglet "Mes actions" — le détail complet vit là,
    * jamais dupliqué ici (ce résumé n'affiche que titre + échéance). */
   onSeeAllActions: () => void;
+  /** Ticket 019 — dans les deps de `useApiResource` ci-dessous : ce résumé
+   * n'a pas de `lotId` pour déclencher un refetch naturellement lors d'un
+   * changement d'organisation (contrairement à `OverviewView`), il lui faut
+   * donc son propre signal explicite. */
+  activeOrganizationId: string | null;
 }
 
 function formatDueDate(dueDate: string | null): string {
@@ -23,11 +28,11 @@ function formatDueDate(dueDate: string | null): string {
  * recalculé ici : ce composant ne fait que prendre le premier élément du
  * tableau déjà trié, aucune logique de sélection dupliquée.
  */
-export function PriorityTaskSummary({ onSeeAllActions }: PriorityTaskSummaryProps) {
+export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: PriorityTaskSummaryProps) {
   const api = useApiClient();
   const state = useApiResource(
     () => api.getMyTasks({ status: 'pending', ordering: 'priority' }),
-    [],
+    [activeOrganizationId],
   );
 
   if (state.status === 'loading') {

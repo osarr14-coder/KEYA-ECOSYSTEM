@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { AppShell, type AppModule } from '@keya/design-system';
 
@@ -10,8 +10,8 @@ import { OverviewView } from './views/OverviewView';
 
 // Réutilise AppShell tel quel (ticket 007) — aucune redéfinition. Les
 // modules professionnels (BUILD/FINANCE/NOTARY) restent masqués tant que
-// `userRoles` (typiquement `['client']` pour cette app) ne contient pas le
-// rôle correspondant — comportement générique d'AppShell, pas recodé ici.
+// `userRoles` (dérivé de `/me`, ticket 019) ne contient pas le rôle
+// correspondant — comportement générique d'AppShell, pas recodé ici.
 const MODULES: AppModule[] = [
   { id: 'home', label: 'Accueil', href: '/' },
   { id: 'build', label: 'BUILD', href: '/build', requiredRoles: ['constructeur', 'inspecteur'] },
@@ -27,15 +27,80 @@ const TABS: { id: ViewId; label: string }[] = [
   { id: 'actions', label: 'Mes actions' },
 ];
 
-export interface AppProps {
-  userRoles?: string[];
-}
+const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';
 
-export function App({ userRoles = ['client'] }: AppProps) {
+export function App() {
   const api = useApiClient();
-  const lotsState = useApiResource(() => api.getMyLots(), []);
+  const meState = useApiResource(() => api.getMe(), []);
+
+  // Ticket 019 — App Switcher multi-rôle. `userRoles` (codé en dur avant ce
+  // ticket, jamais utilisé en production puisque `main.tsx` rend `<App />`
+  // sans prop) est désormais dérivé de la membership ACTIVE, jamais d'une
+  // valeur par défaut.
+  //
+  // `activeOrganizationId` est dérivé PENDANT LE RENDU, jamais recalculé
+  // dans un `useEffect` séparé : un choix explicite (switcher) prend le
+  // dessus ; sinon, tant que `/me` n'a pas encore répondu, la valeur
+  // persistée sert de valeur OPTIMISTE (évite un premier fetch inutile avec
+  // `null` pour l'utilisateur courant, le cas le plus fréquent) ; une fois
+  // `/me` répondu, elle n'est retenue que si elle correspond à une
+  // membership RÉELLE (jamais une valeur périmée d'une session précédente
+  // sur le même navigateur), sinon la première membership connue prend le
+  // relais — dans TOUS les cas calculé en une seule passe de rendu, pas une
+  // cascade d'effets qui retarderait la stabilisation de plusieurs cycles.
+  const [manualOrganizationId, setManualOrganizationId] = useState<string | null>(null);
+  const persistedOrganizationIdRef = useRef<string | null>(
+    localStorage.getItem(ACTIVE_ORGANIZATION_STORAGE_KEY),
+  );
+
+  const memberships = meState.status === 'success' ? meState.data.memberships : [];
+  const persistedIsValidMembership = memberships.some(
+    (membership) => membership.organization_id === persistedOrganizationIdRef.current,
+  );
+  const resolvedOrganizationId = meState.status === 'success'
+    ? (persistedIsValidMembership ? persistedOrganizationIdRef.current : memberships[0]?.organization_id ?? null)
+    : persistedOrganizationIdRef.current;
+  const activeOrganizationId = manualOrganizationId ?? resolvedOrganizationId;
+
+  // Persistance en effet de bord SEUL (n'influence jamais `activeOrganizationId`
+  // lui-même, qui reste dérivé pendant le rendu ci-dessus) — dès que la
+  // résolution change, qu'il s'agisse d'un choix explicite ou de la
+  // correction du fallback initial.
+  useEffect(() => {
+    if (activeOrganizationId) localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, activeOrganizationId);
+  }, [activeOrganizationId]);
+
+  function handleOrganizationChange(organizationId: string) {
+    setManualOrganizationId(organizationId);
+  }
+
+  const activeMembership = memberships.find((membership) => membership.organization_id === activeOrganizationId);
+  const userRoles = activeMembership ? [activeMembership.role_code] : [];
+  // AppShell n'affiche son sélecteur que si `organizationOptions` est
+  // renseigné (`organizationOptions.length > 0`) — ne le peupler que s'il y
+  // a RÉELLEMENT plusieurs organisations, jamais pour une seule.
+  const organizationOptions = memberships.length > 1
+    ? memberships.map((membership) => ({ id: membership.organization_id, label: membership.organization_name }))
+    : [];
+
+  // Ne fetch RÉELLEMENT qu'une fois `/me` résolu (`activeOrganizationId`
+  // alors déjà correctement dérivé, ci-dessus, dans la MÊME passe de rendu)
+  // — jamais un premier appel réseau gaspillé avec une organisation encore
+  // inconnue (`null`), pur artefact du chargement initial de `/me`.
+  const lotsState = useApiResource(
+    () => (meState.status === 'success' ? api.getMyLots() : Promise.resolve([])),
+    [meState.status, activeOrganizationId],
+  );
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ViewId>('overview');
+
+  // Un lot sélectionné manuellement dans une organisation devient invalide
+  // après un changement d'organisation — jamais le laisser survivre au
+  // switch, sous peine de tenter de charger un lot qui n'appartient plus à
+  // l'organisation active.
+  useEffect(() => {
+    setSelectedLotId(null);
+  }, [activeOrganizationId]);
 
   const lots = lotsState.status === 'success' ? lotsState.data : [];
   const currentLotId = selectedLotId ?? lots[0]?.id ?? null;
@@ -47,14 +112,21 @@ export function App({ userRoles = ['client'] }: AppProps) {
       userRoles={userRoles}
       activeModuleId="home"
       breadcrumbs={[{ label: 'Accueil' }]}
+      organizationOptions={organizationOptions}
+      activeOrganizationId={activeOrganizationId ?? undefined}
+      onOrganizationChange={handleOrganizationChange}
     >
-      {lotsState.status === 'loading' && <p>Chargement…</p>}
-      {lotsState.status === 'error' && <p role="alert">Impossible de charger vos biens.</p>}
-      {lotsState.status === 'success' && lots.length === 0 && (
+      {meState.status === 'loading' && <p>Chargement…</p>}
+      {meState.status === 'error' && <p role="alert">Impossible de charger votre profil.</p>}
+      {meState.status === 'success' && lotsState.status === 'loading' && <p>Chargement…</p>}
+      {meState.status === 'success' && lotsState.status === 'error' && (
+        <p role="alert">Impossible de charger vos biens.</p>
+      )}
+      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && (
         <p>Aucun bien ne vous est encore associé.</p>
       )}
 
-      {currentLotId && (
+      {meState.status === 'success' && currentLotId && (
         <>
           {lots.length > 1 && (
             <label>
@@ -87,10 +159,14 @@ export function App({ userRoles = ['client'] }: AppProps) {
           </nav>
 
           {activeTab === 'overview' && (
-            <OverviewView lotId={currentLotId} onSeeAllActions={() => setActiveTab('actions')} />
+            <OverviewView
+              lotId={currentLotId}
+              onSeeAllActions={() => setActiveTab('actions')}
+              activeOrganizationId={activeOrganizationId}
+            />
           )}
           {activeTab === 'evidence' && <EvidenceFeedView lotId={currentLotId} />}
-          {activeTab === 'actions' && <MyActionsView />}
+          {activeTab === 'actions' && <MyActionsView activeOrganizationId={activeOrganizationId} />}
         </>
       )}
     </AppShell>

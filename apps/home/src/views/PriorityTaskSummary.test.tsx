@@ -9,7 +9,7 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
     const getMyTasks = vi.fn(async () => []);
     const api = createMockApiClient({ getMyTasks });
 
-    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     await screen.findByText("Rien à faire pour l'instant.");
     expect(getMyTasks).toHaveBeenCalledWith({ status: 'pending', ordering: 'priority' });
@@ -35,7 +35,7 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
       ],
     });
 
-    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     expect(await screen.findByText('Réserve ouverte sur le lot « Lot 12 »')).toBeInTheDocument();
     expect(screen.getByText('Échéance : 01/04/2026')).toBeInTheDocument();
@@ -57,7 +57,7 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
       ],
     });
 
-    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     expect(await screen.findByText('Échéance : Aucune échéance')).toBeInTheDocument();
   });
@@ -65,7 +65,7 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
   it('affiche un état vide explicite quand aucune tâche n\'est en attente', async () => {
     const api = createMockApiClient({ getMyTasks: async () => [] });
 
-    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} />));
+    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     expect(await screen.findByText("Rien à faire pour l'instant.")).toBeInTheDocument();
   });
@@ -84,7 +84,7 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
       ],
     });
 
-    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={onSeeAllActions} />));
+    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={onSeeAllActions} activeOrganizationId={null} />));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Voir toutes mes actions' }));
     expect(onSeeAllActions).toHaveBeenCalledOnce();

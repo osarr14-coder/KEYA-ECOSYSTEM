@@ -69,6 +69,24 @@ export interface EvidenceFeedItem {
   status: ApiTrustEvent | null;
 }
 
+/** Ticket 019 — miroir de `apps.accounts.serializers.MembershipSummarySerializer`. */
+export interface MeMembership {
+  organization_id: string;
+  organization_name: string;
+  role_code: string;
+  role_label: string;
+}
+
+/** Ticket 019 — miroir de `apps.accounts.serializers.MeSerializer`
+ * (`GET /api/me/`) : TOUTES les memberships de l'utilisateur, pas
+ * seulement celle de l'organisation active. */
+export interface Me {
+  id: string;
+  email: string;
+  full_name: string;
+  memberships: MeMembership[];
+}
+
 export interface Task {
   id: string;
   type: 'task' | 'notification' | 'alert' | 'exception';
