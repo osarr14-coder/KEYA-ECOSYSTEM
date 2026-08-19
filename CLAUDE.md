@@ -1380,6 +1380,70 @@ anticiper un ticket suivant dans l'implémentation d'un ticket en cours, même s
 tentation existe (ex : ne pas ajouter de `status` stocké en ticket 001/002 alors que
 ticket 003 pose la doctrine append-only).
 
+## Verrouillage de devis / mise en concurrence (ticket 022)
+
+Nouvelle app `apps/procurement` (label `procurement`) — première app dédiée à la mise
+en concurrence entre organisations constructeurs candidates sur un `Lot`. Voir
+`022-verrouillage-devis-mise-en-concurrence.md` pour le détail complet (décisions de
+conception, notes de conception, notes d'implémentation).
+
+**`Devis`, création exclusive par `admin_keyimmo`** — même restriction que
+`InspectionMission` (ticket 012) : aucun endpoint d'écriture pour le rôle
+constructeur candidat, décision validée avant implémentation. Une ligne `Devis` PAR
+couple (lot, organisation candidate) — plusieurs lignes pour un même lot sont
+attendues, c'est la mise en concurrence elle-même ; « candidature » et « devis » ne
+sont PAS deux tables séparées, fusion volontaire documentée dans le ticket (aucun
+consommateur réel, dans ce ticket, d'une candidature sans montant encore connu).
+
+**Aucun montant jamais exposé au rôle constructeur, y compris le sien** — décision de
+conception directement dépendante de la précédente (aucun candidat ne soumet lui-même
+son montant, donc rien à distinguer). `DevisAdminSerializer` (avec `amount`) et
+`DevisCandidateSerializer` (sans, liste `fields` EXPLICITE plutôt qu'une exclusion) ne
+sont JAMAIS interchangeables. Garde anti-fuite testée à deux niveaux
+(`apps/procurement/tests.py::TestDevisAmountNeverLeaksToConstructeurRole`) : test
+direct sur les deux endpoints candidat, et balayage large de tous les autres
+endpoints déjà accessibles à ce rôle, complété par un test de la liste EXACTE des
+routes GET enregistrées PROJET ENTIER (`get_resolver()`) — même famille que le test
+de garde back-office (ticket 011), élargi ici au-delà d'un seul module pour que le
+balayage reste une preuve valable dans le temps.
+
+**Statut (`candidat`/`verrouille`) dérivé d'un `TrustEvent`, jamais stocké** — même
+doctrine que `Reserve`/`InspectionMission`. Verrouiller (`lock_devis`) empêche toute
+nouvelle candidature ou tout second verrouillage sur le même lot (409, pas 400 — même
+sémantique que `SyncInspectionView`, ticket 010 : le corps de la requête est valide,
+c'est l'ÉTAT du lot qui rend l'opération impossible).
+
+**Bug réel trouvé en écrivant les tests — statut dérivé silencieusement faux juste
+après l'écriture qui vient de le poser** : `TrustEvent.organization` vaut toujours
+l'organisation du LOT, jamais celle de qui lit. Trois lectures se trouvaient, par
+construction, dans le mauvais contexte RLS au moment de dériver le statut : la
+réponse de verrouillage elle-même (contexte déjà restauré vers l'admin AVANT
+sérialisation), la liste admin, et — le cas le plus grave — un candidat lisant SA
+PROPRE candidature (sous `candidate_organization`, jamais `organization`) n'aurait
+**structurellement jamais pu voir** qu'il avait gagné un appel d'offres : son statut
+restait bloqué à `candidat` pour toujours. Détecté par un test qui échouait dès la
+première exécution, pas par relecture. Corrigé en rendant
+`apps.procurement.services.get_devis_status(devis, *, restore_organization_id)` sûr
+par construction : bascule elle-même vers `devis.organization_id` (toujours connu)
+le temps de cette lecture, restaure vers l'organisation RÉELLE de l'appelant (fournie
+explicitement, jamais devinée — même discipline que `create_devis`/`lock_devis`).
+Les deux serializers reçoivent désormais `context={'request': request}` pour cette
+raison précise.
+
+**Piège de test, distinct du bug ci-dessus** : une relecture Django ORM directe
+(`Devis.objects.filter(...)`) juste après un appel API admin échoue silencieusement
+(résultat vide, jamais une exception) — le contexte RLS de la connexion du PROCESS DE
+TEST reste celui où la vue l'a laissé après sa propre restauration, pas celui qu'un
+test naïf suppose. Un test ne doit donc jamais revérifier l'état par une requête ORM
+non basculée après ce type d'appel — soit la réponse HTTP fait foi seule (même
+discipline que `apps.backoffice.tests.py`, ticket 012), soit une bascule RLS
+explicite précède la relecture de vérification.
+
+**Isolation git** : implémenté dans un `git worktree` dédié
+(`feature/ticket-022-verrouillage-devis`), pas dans le dossier partagé avec l'autre
+session active (`feature/frontend-round-2`) — discipline posée au ticket 021, reprise
+ici avant d'écrire le moindre code.
+
 ## Polish visuel — HOME, BUILD, CONTROL PWA, back-office (ticket 023)
 
 Aucune des 4 apps n'avait de feuille de style nulle part dans ce monorepo (uniquement
