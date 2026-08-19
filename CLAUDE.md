@@ -1184,6 +1184,31 @@ Corrigées en variant `source` par tâche de test : ces `Task` synthétiques ne
 représentaient jamais le même événement métier rejoué, juste plusieurs éléments de test
 distincts ancrés sur un même objet pour vérifier filtrage/tri.
 
+## Chaîne asynchrone non annulée dans `startSyncEngine` (ticket 018)
+
+Premier ticket de la branche `feature/frontend-improvements` (post-MVP1) — dette
+repérée mais volontairement laissée de côté au ticket 016 (« sans impact démontré »).
+`runIfOnline` (`apps/control-pwa/src/sync/syncEngine.ts`) vérifiait `stopped` avant de
+LANCER un cycle, jamais après : si `stop()` était appelé pendant que
+`refreshMissions(...)` était encore en vol (composant démonté en plein cycle réseau),
+le `.then(() => runSyncCycle(apiClient))` s'exécutait quand même une fois la réponse
+arrivée, malgré l'arrêt déjà demandé.
+
+**Corrigé** en revérifiant `stopped` DANS le `.then(...)` lui-même, avant d'appeler
+`runSyncCycle` — pas de nouveau mécanisme (`AbortController`...), juste relire la même
+source de vérité au bon moment.
+
+**Test de reproduction** (`syncEngine.test.ts`) : un brouillon `pending` seedé (preuve
+observable — s'il se synchronise, il déclenche un vrai second appel réseau), `stop()`
+appelé alors que le fetch `listMissions` est encore en attente (promesse tenue
+manuellement), puis résolu APRÈS. Piège rencontré en l'écrivant : un simple
+`await Promise.resolve()` ne suffit pas à laisser la chaîne se dérouler — IndexedDB
+(même via le polyfill de test) résout ses requêtes via de vraies tâches de la file
+d'attente, pas seulement des microtasks ; corrigé en rendant la main à la boucle
+d'événements plusieurs tours réels (`setTimeout(0)` en boucle, jamais une durée
+devinée — rien ne concurrence cette chaîne, donc pas de risque de flakiness). Avant
+correction : 2 appels réseau observés ; après : 1.
+
 ## Tickets
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un

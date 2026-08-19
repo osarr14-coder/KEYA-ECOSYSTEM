@@ -297,7 +297,17 @@ export function startSyncEngine(apiClient: ApiClient): () => void {
     // brouillons : un brouillon dont la mission vient d'apparaître au
     // cache (jamais vue avant ce cycle) doit pouvoir se synchroniser dans
     // la MÊME passe, pas seulement à la suivante.
-    void refreshMissions(apiClient).then(() => runSyncCycle(apiClient));
+    //
+    // `stopped` revérifié dans le `.then(...)` (ticket 016/dette repérée,
+    // corrigée ici) : `stop()` peut être appelé PENDANT que
+    // `refreshMissions` est encore en vol (ex. composant démonté en plein
+    // cycle réseau) — sans cette seconde vérification, `runSyncCycle`
+    // s'exécuterait quand même une fois la réponse arrivée, malgré l'arrêt
+    // déjà demandé.
+    void refreshMissions(apiClient).then(() => {
+      if (stopped) return undefined;
+      return runSyncCycle(apiClient);
+    });
   }
 
   window.addEventListener('online', runIfOnline);

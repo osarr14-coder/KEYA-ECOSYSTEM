@@ -5,7 +5,7 @@ import { CHECKLIST_TEMPLATE } from '../db/missions';
 import { createEmptyDraft, getDraft, saveDraft } from '../db/repository';
 import { clearIndexedDB } from '../testUtils/clearIndexedDB';
 import { FIXTURE_MISSIONS, seedFixtureMissions } from '../testUtils/missionFixtures';
-import { runSyncCycle, syncDraft } from './syncEngine';
+import { runSyncCycle, startSyncEngine, syncDraft } from './syncEngine';
 
 beforeEach(async () => {
   await clearIndexedDB();
@@ -599,6 +599,96 @@ describe(
         expect(updated?.photos).toHaveLength(1);
         expect(updated?.photos[0].mediaSyncStatus).toBe('synced');
         expect(updated?.syncStatus).toBe('synced');
+
+        vi.unstubAllGlobals();
+      },
+    );
+  },
+);
+
+describe(
+  'startSyncEngine — la chaîne asynchrone d\'un cycle en vol ne doit jamais se poursuivre '
+  + 'après stop() (dette repérée au ticket 016, corrigée ici)',
+  () => {
+    it(
+      'stop() appelé pendant que refreshMissions() est encore en vol empêche runSyncCycle '
+      + 'de s\'exécuter une fois la promesse résolue',
+      async () => {
+        Object.defineProperty(window.navigator, 'onLine', { value: true, writable: true, configurable: true });
+
+        // Un brouillon en attente : si `runSyncCycle` s'exécute malgré
+        // `stop()`, il tente un vrai appel réseau supplémentaire
+        // (`/control/sync/inspection/`) — c'est ce second appel, ou son
+        // absence, qui PROUVE le comportement, jamais une supposition sur
+        // l'état interne du moteur.
+        const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+        draft.decision = 'conforme';
+        await saveDraft(draft);
+
+        let resolveMissionsFetch: ((response: Response) => void) | undefined;
+        const missionsFetchPromise = new Promise<Response>((resolve) => {
+          resolveMissionsFetch = resolve;
+        });
+        const fetchMock = vi.fn(async (url: string) => {
+          if (String(url).includes('/control/missions/')) return missionsFetchPromise;
+          // Si ce mock est atteint, `runSyncCycle` a bien été invoqué malgré
+          // `stop()` — l'assertion finale sur `fetchMock` le révèle de toute
+          // façon, mais un throw explicite ici rend l'échec plus lisible.
+          throw new Error(`Appel réseau inattendu après stop() : ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const stop = startSyncEngine(apiClient());
+        // `runIfOnline()` a démarré synchrone­ment au montage (déjà en
+        // ligne) : le fetch `listMissions` est en vol, jamais encore résolu.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        // Arrêté PENDANT que le cycle est en vol — exactement le
+        // chevauchement visé : `stopped` passe à `true` alors que
+        // `refreshMissions(...).then(() => runSyncCycle(...))` est déjà
+        // lancé et attend toujours sa réponse réseau (ex. composant démonté
+        // pendant un cycle réseau lent).
+        stop();
+
+        // La réponse n'arrive qu'APRÈS `stop()` — la mission reste connue
+        // (même fixture) pour que `runSyncCycle`, s'il s'exécutait quand
+        // même, trouve bien un brouillon à synchroniser et tente réellement
+        // un second appel réseau, jamais un faux négatif dû à un cache de
+        // missions vidé entre-temps.
+        resolveMissionsFetch!(jsonResponse(200, [{
+          id: FIXTURE_MISSIONS[0].id,
+          lot_name: FIXTURE_MISSIONS[0].lotName,
+          asset_name: FIXTURE_MISSIONS[0].assetName,
+          program_name: FIXTURE_MISSIONS[0].programName,
+          milestone_label: FIXTURE_MISSIONS[0].milestoneLabel,
+          organization_id: FIXTURE_MISSIONS[0].organizationId,
+          work_declaration_id: FIXTURE_MISSIONS[0].workDeclarationId,
+          completed: FIXTURE_MISSIONS[0].completed,
+          reserve_id: FIXTURE_MISSIONS[0].reserveId,
+          reserve_latest_event_id: FIXTURE_MISSIONS[0].reserveLatestEventId,
+        }]));
+        await missionsFetchPromise;
+        // Laisse la chaîne (`.then(...)`, puis plusieurs lectures/écritures
+        // IndexedDB réelles côté `runSyncCycle`/`syncDraft`) se dérouler
+        // intégralement avant de vérifier — un simple `await Promise.
+        // resolve()` ne suffit pas ici : IndexedDB (même via le polyfill de
+        // test) résout ses requêtes via de VRAIES tâches de la file
+        // d'attente, pas seulement des microtasks. Rendre la main à la
+        // boucle d'événements plusieurs fois (`setTimeout(0)`, jamais une
+        // DURÉE devinée) laisse cette chaîne UNIQUE — rien ne la concurrence
+        // — se terminer complètement, sans dépendre d'un minutage précis.
+        for (let turn = 0; turn < 10; turn += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((resolve) => { setTimeout(resolve, 0); });
+        }
+
+        // Un seul appel réseau au total (`listMissions`) : `runSyncCycle`
+        // n'a jamais été invoqué après l'arrêt, malgré un brouillon en
+        // attente qui aurait sinon déclenché un second appel.
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        const stillPending = await getDraft(draft.id);
+        expect(stillPending?.syncStatus).toBe('pending');
 
         vi.unstubAllGlobals();
       },
