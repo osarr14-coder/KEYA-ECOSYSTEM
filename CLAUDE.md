@@ -57,13 +57,16 @@ confondre les deux statuts en relisant cette section.
   — retire l'input client `marge_estimee` du ticket 024 au profit d'une dérivation
   exclusive depuis `PricingConfig`, ticket 025).
 - **Invariant 25.14** : la structure des paliers légaux de paiement vit entièrement
-  dans le `CountryPack`, jamais codée en dur. *Pas encore applicable* : aucun
-  mécanisme de palier de paiement n'existe dans ce projet à ce jour (voir
-  `docs/gate3-classement-angles-morts.md`, item 1 — paiements réels classés RESEARCH
-  REQUIRED) — règle de conception à respecter par le futur ticket qui l'introduira,
-  cohérente avec le traitement déjà appliqué à `MilestoneTemplate` (ticket 002 : la
-  structure des jalons de CONSTRUCTION, un sujet voisin mais distinct, vit déjà dans
-  `CountryPack`, jamais en dur).
+  dans le `CountryPack`, jamais codée en dur. *En cours d'application* :
+  `LegalPaymentTierTemplate` (ticket B-027) construit cette structure — versionnée
+  par `CountryPack`, plafonds cumulés validés statiquement (strictement croissants,
+  dernier = 100 exact). Reste *pas encore applicable* pour tout ce qui dépend d'un
+  VRAI mouvement de fonds (voir invariant 25.17 ci-dessous) : B-027 pose
+  explicitement la configuration, jamais un appel de fonds
+  (`docs/gate3-classement-angles-morts.md`, item 1 — paiements réels classés RESEARCH
+  REQUIRED). Cohérent avec le traitement déjà appliqué à `MilestoneTemplate` (ticket
+  002 : la structure des jalons de CONSTRUCTION, un sujet voisin mais distinct, vit
+  déjà dans `CountryPack`, jamais en dur).
 - **Invariant 25.15** : la marge KEYIMMO sur un devis est fixée/dérivée au moment de
   la création, jamais recalculée après verrouillage. *Déjà appliqué* :
   `Devis.marge_estimee` est immuable après création (ticket 022/024 — aucune policy
@@ -1875,6 +1878,69 @@ vue candidat de « encore Candidat » à « Gagnant », un ajustement délibér�
 excessif refusé avec le message backend EXACT, une seconde candidature sur le
 lot déjà verrouillé refusée avec le message backend exact. 254 tests frontend
 (5 packages), zéro régression, `tsc --noEmit` propre.
+
+## LegalPaymentTierTemplate (ticket B-027, `apps/pricing`)
+
+Voir `B-027-legal-payment-tier-template.md` pour le détail complet — premier ticket
+sous la nouvelle convention `B-`/`F-`. Structure versionnée par `CountryPack` des
+paliers légaux de paiement (nombre de paliers, plafonds cumulés en %, jalon associé
+en référence libre, règle de versement progressif par palier) — section 5 du modèle
+économique. **Aucun mouvement de fonds réel** : validation STATIQUE de cohérence
+uniquement (plafonds strictement croissants, dernier = 100 exact).
+
+**`LegalPaymentTierTemplate`/`LegalPaymentTierStep`, même pattern que
+`MilestoneTemplate`/`Step` (ticket 002), jamais couplés par FK** (décision C) — un
+pays peut changer sa loi de paiement sans toucher sa séquence de jalons de
+construction. `allows_progressive_payments` porté PAR PALIER, pas par template
+(décision B) : un même régime légal autorise des versements progressifs sur
+certains paliers et exige un versement unique sur d'autres.
+
+**`created_by`/`created_at` (brouillon) séparés de `activated_by`/`activated_at`
+(activation) — l'activation est un fait historique PERMANENT, jamais réécrit, même
+une fois le template supplanté** (décision D). L'« actif » courant se lit dans un
+modèle POINTEUR séparé, `ActiveLegalPaymentTierTemplate`
+(`country_pack` en `OneToOneField`) — pas un tri sur `activated_at`.
+
+**Garantie DB, pas seulement applicative, pour « au plus un actif par
+`country_pack` » (décision D-bis)** — la contrainte `UNIQUE` réelle posée par
+`OneToOneField` est ce qui empêche deux pointeurs, sous accès concurrent, pas une
+vérification côté service. Question posée explicitement par l'utilisateur avant
+implémentation (même bar que le ticket 017) : la conception initiale ne dérivait
+« l'actif » que d'un tri applicatif sur `activated_at`, sans contrainte DB — corrigée
+avant tout code écrit. `apps.pricing.services._upsert_active_pointer` reprend
+`_get_or_create_task` (ticket 017) **à l'identique** : `get()` initial,
+`create()` sous `transaction.atomic()`, rattrapage explicite d'`IntegrityError`, second
+`get()` — jamais `get_or_create()`/`update_or_create()` Django (une première version
+utilisait `get_or_create()`, corrigée en préparant le test de race pour rester
+cohérente avec la discipline déjà établie). Testé par une race RÉELLE (deux threads,
+`threading.Barrier`, `django_db(transaction=True)`), même schéma que
+`TestTaskCreationRaceUnderConcurrency`. **Piège rencontré en écrivant ce test** :
+`django_db(transaction=True)` n'enveloppe PAS le test dans une transaction implicite
+(contrairement à `@pytest.mark.django_db` simple) — `set_rls_context` (`SET LOCAL`)
+n'a d'effet réel qu'à l'intérieur d'un `transaction.atomic()` explicite ; le setup du
+test doit donc être posé dans son propre bloc `atomic()`, même piège déjà résolu par
+`_build_open_reserve_with_real_commits` (ticket 017).
+
+**RLS appliqué SEULEMENT à `LegalPaymentTierStep` (migration
+`0004_legal_payment_tier_step_rls.py`), pas à `LegalPaymentTierTemplate` ni
+`ActiveLegalPaymentTierTemplate`** — contrairement à `PricingConfig` (ticket 025),
+`LegalPaymentTierTemplate` a un besoin de mutation LÉGITIME (l'activation) ; un
+verrou RLS `UPDATE` total casserait ce chemin, une policy permissive n'offrirait
+aucune protection réelle. `LegalPaymentTierStep`, lui, n'est JAMAIS modifié en place
+(nouvelle version = nouveaux paliers) — reçoit donc le même verrou complet que
+`PricingConfig`/`Devis`/`TrustEvent`. Les deux autres tables reposent sur la
+discipline applicative seule (aucune fonction `update`/`delete` exposée), même
+raisonnement déjà assumé pour `organizations_country_pack`/`organizations_role`.
+
+**Deux flakiness préexistantes découvertes en lançant la suite complète pour ce
+ticket, non causées par lui, non corrigées ici** : (1) `TestPricingConfigCurrentAndHistory`
+(ticket 025) peut échouer par collision d'horodatage `-created_at` entre créations
+rapprochées (résolution d'horloge Windows) — même classe de piège que le tie-break
+déjà corrigé pour `TrustEvent` au ticket 013bis, `PricingConfig` n'a pas de colonne
+`sequence` équivalente ; (2) les tests `test_celery_integration.py` (vrai worker
+Celery) sont flaky quand plusieurs fixtures `real_celery_worker` de modules
+différents s'exécutent proches dans le temps, fiables en isolation. Signalé à
+l'utilisateur, candidat à un ticket dédié si nécessaire.
 
 ## Conventions de code
 

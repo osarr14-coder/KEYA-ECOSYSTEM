@@ -72,3 +72,138 @@ class PricingConfig(models.Model):
 
     def __str__(self):
         return f'{self.country_pack.code} — {self.get_canal_display()} : {self.rate}%'
+
+
+class LegalPaymentTierTemplate(models.Model):
+    """Structure versionnée de paliers légaux de paiement pour un
+    `CountryPack` — ticket B-027 (section 5 du modèle économique,
+    `docs/economie/KEYIMMO_Modele_Economique_Consolide.md`). Même pattern
+    structurel que `MilestoneTemplate` (ticket 002, `apps/programs/models.py`)
+    — parent versionné + enfants ordonnés (`LegalPaymentTierStep`) — mais
+    JAMAIS couplé par FK à `MilestoneTemplate` (décision de conception C) :
+    les deux structures évoluent indépendamment, un pays peut faire changer
+    sa loi de paiement sans toucher sa séquence de jalons de construction.
+
+    `created_by`/`created_at` (rédaction du brouillon) sont des champs
+    SÉPARÉS de `activated_by`/`activated_at` (l'activation — décision D) :
+    le modèle économique distingue explicitement « validé JURIDIQUEMENT »
+    (hors plateforme, par un avocat) et « activé EXPLICITEMENT » (sur la
+    plateforme, par `admin_keyimmo`) — deux événements, jamais confondus.
+    `activated_by`/`activated_at` restent `NULL` tant que ce template est un
+    BROUILLON, et surtout : une fois posés, ne sont PLUS JAMAIS réécrits,
+    même si ce template est supplanté par une activation plus récente — la
+    preuve « ce template a été activé par X le Y » reste vraie pour
+    toujours, quel que soit son statut d'actif COURANT (voir
+    `ActiveLegalPaymentTierTemplate` ci-dessous pour cette notion séparée).
+
+    Aucun champ `is_active` (contrairement à `MilestoneTemplate`) : le
+    template actuellement actif se lit dans `ActiveLegalPaymentTierTemplate`,
+    jamais dérivé d'un tri sur `activated_at` ici.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    country_pack = models.ForeignKey(
+        CountryPack, on_delete=models.PROTECT, related_name='legal_payment_tier_templates',
+    )
+    version = models.PositiveIntegerField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='legal_payment_tier_templates_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    activated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='legal_payment_tier_templates_activated',
+    )
+    activated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'pricing_legal_payment_tier_template'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['country_pack', 'version'], name='unique_tier_template_version_per_country_pack',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.country_pack.code} — paliers v{self.version}'
+
+
+class LegalPaymentTierStep(models.Model):
+    """Un palier légal ordonné d'un `LegalPaymentTierTemplate` — même
+    pattern que `MilestoneTemplateStep` (ticket 002).
+
+    `cumulative_cap_percent` est un plafond CUMULÉ (décision A) — ex.
+    Sénégal : 35, 70, 95, 100 pour le dernier palier, jamais un incrément
+    (35, 35, 25, 5). `allows_progressive_payments` est porté PAR PALIER
+    (décision B), pas par le template : un même régime légal peut autoriser
+    des versements progressifs sur certains paliers et exiger un versement
+    unique sur d'autres.
+
+    `code` est un `CharField` LIBRE (décision C), comme
+    `MilestoneTemplateStep.code` — AUCUNE FK vers `MilestoneTemplateStep`.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    template = models.ForeignKey(
+        LegalPaymentTierTemplate, on_delete=models.CASCADE, related_name='steps',
+    )
+    order = models.PositiveIntegerField()
+    code = models.CharField(max_length=50)
+    label = models.CharField(max_length=100)
+    cumulative_cap_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    allows_progressive_payments = models.BooleanField()
+
+    class Meta:
+        db_table = 'pricing_legal_payment_tier_step'
+        ordering = ['order']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['template', 'order'], name='unique_tier_step_order_per_template',
+            ),
+            models.UniqueConstraint(
+                fields=['template', 'code'], name='unique_tier_step_code_per_template',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.template} — {self.order}. {self.label} ({self.cumulative_cap_percent}%)'
+
+
+class ActiveLegalPaymentTierTemplate(models.Model):
+    """Pointeur MUTABLE vers le `LegalPaymentTierTemplate` actuellement
+    actif d'un `country_pack` — ticket B-027, décision D-bis.
+
+    Distinct à dessein de `LegalPaymentTierTemplate.activated_at` (un fait
+    historique permanent, jamais réécrit) : ce modèle-ci ne porte AUCUN
+    historique, seulement l'état COURANT — sa mise à jour est un vrai
+    `UPDATE`, assumé, pas une violation de la doctrine append-only (qui ne
+    s'applique qu'aux enregistrements qui AFFIRMENT un fait dans le temps,
+    pas à un pointeur d'état courant — même distinction que `Task.status`,
+    exception documentée à cette doctrine, ticket 006).
+
+    `country_pack` en `OneToOneField` : Django pose une contrainte `UNIQUE`
+    réelle en base sur ce champ — c'est CETTE contrainte, pas une
+    vérification applicative, qui garantit « au plus un actif par
+    country_pack », même sous accès concurrent (voir
+    `apps.pricing.services._upsert_active_pointer`, qui reprend la
+    discipline anti-race EXPLICITE de `apps.tasks.services.
+    _get_or_create_task`, ticket 017 : `get()`, tentative de `create()`,
+    rattrapage explicite d'`IntegrityError`, second `get()` — jamais un
+    `get_or_create()`/`update_or_create()` nu).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    country_pack = models.OneToOneField(
+        CountryPack, on_delete=models.PROTECT, related_name='active_legal_payment_tier_template',
+    )
+    template = models.ForeignKey(
+        LegalPaymentTierTemplate, on_delete=models.PROTECT, related_name='active_pointers',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'pricing_active_legal_payment_tier_template'
+
+    def __str__(self):
+        return f'{self.country_pack.code} → {self.template}'
