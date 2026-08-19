@@ -15,4 +15,5 @@ urlpatterns = [
     path('api/', include('apps.build.urls')),
     path('api/', include('apps.control.urls')),
     path('api/', include('apps.backoffice.urls')),
+    path('api/', include('apps.procurement.urls')),
 ]
