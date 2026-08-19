@@ -22,12 +22,14 @@ export interface MissionsListViewProps {
  * `Reserve.description`, qui n'est en pratique jamais renseigné nulle part
  * dans le code actuel (toujours vide) — l'exposer aurait été trompeur.
  */
+const MISSION_TYPE_STYLE = { fontSize: '13px', color: '#6B7280' };
+
 function MissionTypeIndicator({ mission }: { mission: Mission }) {
   if (!mission.reserveId) {
-    return <span data-testid="mission-type" data-mission-type="first">Première inspection</span>;
+    return <span data-testid="mission-type" data-mission-type="first" style={MISSION_TYPE_STYLE}>Première inspection</span>;
   }
   return (
-    <span data-testid="mission-type" data-mission-type="follow-up">
+    <span data-testid="mission-type" data-mission-type="follow-up" style={MISSION_TYPE_STYLE}>
       Mission de suivi — Réserve #{mission.reserveId.slice(0, 8)}
     </span>
   );
@@ -73,13 +75,24 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
     <section aria-label="Mes missions">
       <h1>Mes missions</h1>
       {missions.length === 0 && <p>Aucune mission pour le moment.</p>}
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {missions.map((mission) => (
           <li key={mission.id}>
             <button
               type="button"
               onClick={() => onSelectMission(mission.id)}
-              style={{ width: '100%', textAlign: 'left', padding: '12px', minHeight: '44px' }}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                padding: '12px',
+                minHeight: '44px',
+                border: '1px solid #E5E7EB',
+                borderRadius: '8px',
+                background: 'white',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}
             >
               <strong>{mission.lotName}</strong> — {mission.assetName}
               <div>{mission.programName} · {mission.milestoneLabel}</div>

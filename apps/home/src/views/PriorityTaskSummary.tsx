@@ -1,3 +1,5 @@
+import { AlertBanner } from '@keya/design-system';
+
 import { useApiClient } from '../api/ApiClientContext';
 import { useApiResource } from '../api/useApiResource';
 
@@ -39,14 +41,14 @@ export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: P
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <p role="alert">Impossible de charger vos actions.</p>;
+    return <AlertBanner title="Impossible de charger vos actions." />;
   }
 
   const priorityTask = state.data[0] ?? null;
 
   return (
     <section aria-label="Prochaine action" data-testid="priority-task-summary">
-      <h2>Prochaine action</h2>
+      <h2 style={{ marginBottom: '8px' }}>Prochaine action</h2>
       {priorityTask ? (
         <div>
           <strong>{priorityTask.label}</strong>

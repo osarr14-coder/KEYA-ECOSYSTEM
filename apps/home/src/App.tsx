@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { AppShell, type AppModule } from '@keya/design-system';
+import { AppShell, TabBar, type AppModule } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
 import { useApiResource } from './api/useApiResource';
@@ -145,18 +145,7 @@ export function App() {
             </label>
           )}
 
-          <nav aria-label="Sections HOME">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                aria-current={activeTab === tab.id ? 'page' : undefined}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
+          <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as ViewId)} aria-label="Sections HOME" />
 
           {activeTab === 'overview' && (
             <OverviewView

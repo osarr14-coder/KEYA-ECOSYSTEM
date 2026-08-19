@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { GlobalStyles } from '@keya/design-system';
+
 import { ApiClientProvider } from './api/ApiClientContext';
 import { createApiClient } from './api/client';
 import { App } from './App';
@@ -20,6 +22,7 @@ const apiClient = createApiClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <GlobalStyles />
     <ApiClientProvider client={apiClient}>
       <App />
     </ApiClientProvider>

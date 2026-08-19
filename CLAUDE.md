@@ -1497,6 +1497,71 @@ accepté PUIS un écart défavorable qui aurait été refusé contre `marge_esti
 doit passer une fois l'économie précédente prise en compte — preuve qu'aucune somme de
 valeurs absolues n'est utilisée par erreur.
 
+## Polish visuel — HOME, BUILD, CONTROL PWA, back-office (ticket 023)
+
+Aucune des 4 apps n'avait de feuille de style nulle part dans ce monorepo (uniquement
+des styles inline React) — source de la plupart des incohérences visuelles entre
+écrans : aucune `font-family` déclarée, `aria-current="page"` posé partout pour
+l'accessibilité mais SANS AUCUN traitement visuel associé, couleurs dupliquées en dur
+indépendamment (`#E5E7EB`, `#34D399`) dans `AppShell.tsx` et `OverviewView.tsx`, une
+même donnée (`progress_percentage`) présentée en barre colorée dans HOME mais en texte
+brut dans BUILD.
+
+**`GlobalStyles`** (`packages/design-system/src/components/GlobalStyles`) — reset
+minimal (police partagée, `box-sizing`, marges `<body>`, `a`/`button`/`input` sans
+chrome navigateur par défaut), monté UNE FOIS par app à sa racine (`main.tsx`), jamais
+injecté à l'intérieur d'`AppShell` (qui ne couvre ni l'écran de connexion d'apps/web ni
+CONTROL PWA, qui n'utilise pas `AppShell`, voir section CONTROL PWA ci-dessus). Aucun
+reset de bordure/padding de bouton en CSS globale — risque de clutter visuel sur des
+boutons non individuellement revus, délibérément hors scope de ce ticket.
+
+**`ProgressBar` et `TabBar`, nouveaux composants partagés du design system** — même
+principe de source unique déjà appliqué à `AppShell`/`StatusBadge`/`AlertBanner`
+(gouvernance ticket 007). `TabBar` remplace deux implémentations `<nav><button
+aria-current>` strictement dupliquées entre `apps/home/src/App.tsx` et
+`apps/build/src/App.tsx`, sans AUCUN style d'état actif dans les deux cas avant ce
+ticket. `ProgressBar` unifie HOME (`OverviewView`, barre déjà existante) et BUILD
+(`AllLotsView`, texte brut avant ce ticket) sur un seul composant — même valeur
+`progress_percentage` transmise telle quelle, aucun recalcul.
+
+**Nouveaux tokens** (`packages/design-system/src/tokens`) : `typography.fontFamily` ;
+`semanticColors.neutral` (border/background/surface/text/textMuted, remplace les
+`#E5E7EB` dupliqués) et `semanticColors.progress` (track/fill — `fill` reprend la MÊME
+valeur que `TrustLevel.verifie` par coïncidence de goût visuel uniquement, token
+SÉPARÉ : une progression de lot n'est pas un `TrustLevel`, même raisonnement que
+StatusBadge vs AlertBanner).
+
+**État actif (onglets `TabBar`, module sidebar `AppShell`) distingué par poids de
+police + bordure, jamais la couleur seule** — principe d'accessibilité déjà respecté
+ailleurs dans ce projet (ticket 014, « ne jamais distinguer par la seule couleur »).
+Couleur "ink" neutre (`#111827`), pas une couleur de marque inventée — aucune couleur
+de marque n'existe nulle part dans ce projet, en choisir une pour un ticket de polish
+aurait été une décision produit, pas de présentation ; choisie aussi pour être
+visuellement distincte des 5 teintes `TrustLevel` (gris/bleu/orange/vert/violet).
+
+**Toute erreur de chargement (`role="alert"`) réutilise systématiquement
+`AlertBanner`**, plus jamais un `<p role="alert">` brut — règle simple appliquée
+uniformément dans les 4 apps, jamais une distinction arbitraire "petite erreur inline"
+vs "grande erreur pleine page".
+
+**Extension de périmètre actée avant implémentation** : le périmètre exclusif de cette
+branche (`apps/web`, `apps/control-pwa`, `packages/design-system`) a été élargi, avec
+accord explicite préalable, à `apps/home` et `apps/build` — strictement des
+changements de présentation (styles inline, classNames, imports), jamais de logique
+métier ni de calcul. Liste exhaustive des fichiers concernés dans
+`023-polish-visuel.md`.
+
+**`SyncStatusIndicator`/`MissionTypeIndicator` (CONTROL PWA) gardent leur statut de
+composants LOCAUX** (décision déjà actée tickets 010/014, non remise en cause) — une
+pastille colorée y a été ajoutée, teintes délibérément différentes des 5 `TrustLevel`
+(dont un rouge, qu'aucun `TrustLevel` n'utilise).
+
+**231 tests frontend, tous verts, zéro régression** — aucun test snapshot introduit
+(ce projet n'en a jamais eu la pratique). Vérifié aussi dans un vrai navigateur avec un
+vrai backend (compte constructeur réel, redirection réelle vers BUILD) : police
+appliquée, état actif des onglets/module sidebar visuellement distinct, liens de
+navigation sans soulignement bleu par défaut, zéro erreur console.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

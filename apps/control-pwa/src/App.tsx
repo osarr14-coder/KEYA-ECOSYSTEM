@@ -48,9 +48,11 @@ export function App() {
   return (
     <div style={{ maxWidth: '430px', minWidth: '360px', margin: '0 auto', padding: '12px' }}>
       {!isOnline && (
-        <AlertBanner title="Hors ligne">
-          Vos saisies sont enregistrées sur cet appareil et seront synchronisées à la reconnexion.
-        </AlertBanner>
+        <div style={{ marginBottom: '12px' }}>
+          <AlertBanner title="Hors ligne">
+            Vos saisies sont enregistrées sur cet appareil et seront synchronisées à la reconnexion.
+          </AlertBanner>
+        </div>
       )}
 
       {selectedMissionId === null ? (

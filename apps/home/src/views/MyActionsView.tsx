@@ -1,3 +1,5 @@
+import { AlertBanner, semanticColors } from '@keya/design-system';
+
 import { useApiClient } from '../api/ApiClientContext';
 import { useApiResource } from '../api/useApiResource';
 
@@ -16,7 +18,7 @@ export function MyActionsView({ activeOrganizationId }: MyActionsViewProps) {
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <p role="alert">Impossible de charger vos actions.</p>;
+    return <AlertBanner title="Impossible de charger vos actions." />;
   }
   if (state.data.length === 0) {
     return <p>Aucune action en attente pour le moment.</p>;
@@ -24,9 +26,14 @@ export function MyActionsView({ activeOrganizationId }: MyActionsViewProps) {
 
   return (
     <section aria-label="Mes actions">
-      <ul style={{ listStyle: 'none', padding: 0 }}>
+      <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {state.data.map((task) => (
-          <li key={task.id} data-type={task.type} data-status={task.status}>
+          <li
+            key={task.id}
+            data-type={task.type}
+            data-status={task.status}
+            style={{ padding: '12px', border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px' }}
+          >
             <strong>{task.label}</strong>
           </li>
         ))}

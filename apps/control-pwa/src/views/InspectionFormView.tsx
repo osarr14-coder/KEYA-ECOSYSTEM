@@ -14,6 +14,11 @@ export interface InspectionFormViewProps {
   onBack: () => void;
 }
 
+// Ticket 023 (polish visuel) — un seul style de fieldset partagé par les 3
+// sections du formulaire (checklist/photos/décision), jamais redéfini
+// séparément à chaque fois.
+const FIELDSET_STYLE = { border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px' };
+
 function PhotoThumbnail({ photo, onRemove }: { photo: LocalPhoto; onRemove: () => void }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
@@ -218,10 +223,14 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   }
 
   return (
-    <section aria-label="Inspection">
-      <button type="button" onClick={onBack}>← Missions</button>
-      <h1>{mission ? `${mission.lotName} — ${mission.assetName}` : missionId}</h1>
-      {mission && <p>{mission.programName} · {mission.milestoneLabel}</p>}
+    <section aria-label="Inspection" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div>
+        <button type="button" onClick={onBack} style={{ border: 'none', background: 'transparent', padding: 0, color: '#6B7280' }}>
+          ← Missions
+        </button>
+        <h1 style={{ margin: '8px 0 4px' }}>{mission ? `${mission.lotName} — ${mission.assetName}` : missionId}</h1>
+        {mission && <p style={{ margin: 0, color: '#6B7280' }}>{mission.programName} · {mission.milestoneLabel}</p>}
+      </div>
 
       <SyncStatusIndicator status={draft.syncStatus} />
 
@@ -238,7 +247,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
         </AlertBanner>
       )}
 
-      <fieldset>
+      <fieldset style={FIELDSET_STYLE}>
         <legend>Checklist</legend>
         {draft.checklist.map((item) => (
           <label key={item.id} style={{ display: 'block', padding: '8px 0', minHeight: '44px' }}>
@@ -252,7 +261,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
         ))}
       </fieldset>
 
-      <fieldset>
+      <fieldset style={FIELDSET_STYLE}>
         <legend>Photos</legend>
         <label>
           Ajouter une photo
@@ -265,14 +274,14 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
             onChange={handlePhotoAdd}
           />
         </label>
-        <ul style={{ listStyle: 'none', padding: 0 }}>
+        <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
           {draft.photos.map((photo) => (
             <PhotoThumbnail key={photo.id} photo={photo} onRemove={() => handlePhotoRemove(photo.id)} />
           ))}
         </ul>
       </fieldset>
 
-      <label>
+      <label style={{ display: 'block' }}>
         Commentaire
         {/* `key={draft.id}` : force un vrai remount quand le brouillon
             change d'identité (ex : abandon d'un conflit puis reprise sur un
@@ -281,12 +290,18 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
             docstring plus haut) resterait figé sur l'ancien commentaire,
             React ne réappliquant jamais `defaultValue` sur un composant déjà
             monté. */}
-        <textarea key={draft.id} defaultValue={draft.comment} onBlur={handleCommentBlur} />
+        <textarea
+          key={draft.id}
+          defaultValue={draft.comment}
+          onBlur={handleCommentBlur}
+          rows={3}
+          style={{ display: 'block', width: '100%', marginTop: '4px', resize: 'vertical' }}
+        />
       </label>
 
-      <fieldset>
+      <fieldset style={FIELDSET_STYLE}>
         <legend>Décision</legend>
-        <label style={{ minHeight: '44px', display: 'inline-block' }}>
+        <label style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', marginRight: '16px' }}>
           <input
             type="radio" name="decision" value="conforme"
             checked={draft.decision === 'conforme'}
@@ -294,7 +309,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
           />
           Conforme
         </label>
-        <label style={{ minHeight: '44px', display: 'inline-block' }}>
+        <label style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center' }}>
           <input
             type="radio" name="decision" value="reserve"
             checked={draft.decision === 'reserve'}
