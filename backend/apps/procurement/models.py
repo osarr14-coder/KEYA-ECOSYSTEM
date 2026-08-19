@@ -43,6 +43,12 @@ class Devis(models.Model):
     )
     lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name='devis_set')
     amount = models.DecimalField(max_digits=14, decimal_places=2)
+    # Ticket 023 : marge estimée par l'admin pour CE devis, saisie au même
+    # moment que `amount`, jamais dérivée d'un budget externe (aucun champ
+    # budget n'existe sur `Lot`) — donnée distincte, jamais noyée dans
+    # `amount` (voir 023-reconciliation-devis-ajustement.md, décision 1).
+    # Sert de référence de marge disponible pour `DevisAjustement`.
+    marge_estimee = models.DecimalField(max_digits=14, decimal_places=2)
     logged_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='devis_logged',
     )
@@ -53,3 +59,45 @@ class Devis(models.Model):
 
     def __str__(self):
         return f'Devis — {self.candidate_organization} → {self.lot}'
+
+
+class DevisAjustement(models.Model):
+    """Ajustement de coût (écart signé) sur le devis VERROUILLÉ d'un lot —
+    ticket 023. Enregistrement de fait séparé, jamais une modification de
+    `Devis` (`amount`/`marge_estimee` d'origine intouchables — voir le
+    ticket, critère d'acceptation dédié, même rigueur que l'append-only
+    `TrustEvent`, ticket 003). Un ajustement REFUSÉ (écart au-delà de la
+    marge disponible courante) ne crée AUCUNE ligne — même discipline que
+    `Devis` lui-même sur un lot déjà verrouillé (ticket 022) : rien n'est
+    écrit avant l'exception.
+
+    `ecart` est SIGNÉ : positif = défavorable (surcoût, réduit la marge
+    disponible pour le prochain ajustement), négatif = favorable (économie,
+    l'augmente). La marge disponible au moment d'un ajustement est
+    `devis.marge_estimee` moins la SOMME SIGNÉE de tous les
+    `DevisAjustement` déjà acceptés sur ce devis (voir
+    `apps/procurement/services.py::available_margin`) — jamais une somme de
+    valeurs absolues.
+
+    `organization` dénormalisée depuis `devis.organization` (l'organisation
+    du LOT) — même convention que `Devis` lui-même, RLS standard (voir
+    migration RLS), pas de branche candidate : aucune lecture candidate de
+    ce modèle dans ce ticket (décision de conception, point C).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='devis_ajustements',
+    )
+    devis = models.ForeignKey(Devis, on_delete=models.PROTECT, related_name='ajustements')
+    ecart = models.DecimalField(max_digits=14, decimal_places=2)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='devis_ajustements_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'procurement_devis_ajustement'
+
+    def __str__(self):
+        return f'Ajustement {self.ecart} — {self.devis}'

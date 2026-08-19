@@ -91,9 +91,23 @@ def _mission_assigned_label(mission, assignee):
     )
 
 
+def _devis_ajustement_refuse_label(devis, admin):
+    """Ticket 023 — cette Task s'auto-assigne à `admin_keyimmo` (l'acteur
+    qui vient de tenter l'ajustement refusé), jamais à un tiers : aucun
+    risque d'attribution KEYIMMO à couvrir ici (l'assigné EST l'acteur dont
+    c'est la décision), mais le générateur reste soumis au même registre
+    par discipline, comme les deux précédents.
+    """
+    return (
+        f'Ajustement refusé — écart au-delà de la marge disponible sur le devis de '
+        f'« {devis.candidate_organization.name} » (lot « {devis.lot.name} »)'
+    )
+
+
 LABEL_GENERATORS = [
     _reserve_opened_label,
     _mission_assigned_label,
+    _devis_ajustement_refuse_label,
 ]
 
 
@@ -157,6 +171,49 @@ def create_task_for_mission_assigned(mission):
         'assignee': assignee,
         'label': _mission_assigned_label(mission, assignee),
         'priority': TaskPriority.NORMAL,
+    }
+    task, _created = _get_or_create_task(lookup, defaults)
+    return task
+
+
+DEVIS_AJUSTEMENT_REFUSE_SOURCE = 'devis_ajustement_refuse'
+
+
+def create_task_for_devis_ajustement_refuse(devis, admin):
+    """Ticket 023 : notifie `admin_keyimmo` (l'acteur qui vient de tenter
+    l'ajustement) qu'un ajustement a été refusé — écart au-delà de la marge
+    disponible sur le devis verrouillé. Contrairement aux deux générateurs
+    précédents (assignés à un AUTRE acteur que l'appelant), celui-ci
+    s'auto-assigne : `assignee=admin` est déjà connu du contexte de la
+    requête, aucun résolveur à écrire (contrairement à
+    `resolve_constructeur_for_reserve`).
+
+    Appelée SYNCHRONEMENT depuis `apps.procurement.services.create_ajustement`
+    — PAS via une tâche Celery/`.delay()` comme les deux générateurs
+    précédents. Déviation documentée et assumée : le refus a lieu DANS la
+    même requête que la tentative de l'admin (qui reçoit déjà un 409
+    immédiat en réponse) — cette Task n'est qu'une trace durable de
+    l'événement dans son inbox, pas un traitement qui bénéficierait d'un
+    découplage réseau comme la compression média (ticket 004) ou la
+    notification d'un AUTRE acteur (ticket 006), qui doivent survivre
+    indépendamment de la requête qui les déclenche.
+
+    `_get_or_create_task` (déduplication par `(subject_type, subject_id,
+    source)`, ticket 017) évite qu'une seconde tentative refusée sur le
+    MÊME devis ne duplique l'alerte tant que la première reste `pending`.
+    """
+    lookup = {
+        'subject_type': ContentType.objects.get_for_model(devis),
+        'subject_id': devis.id,
+        'source': DEVIS_AJUSTEMENT_REFUSE_SOURCE,
+    }
+    defaults = {
+        'organization': devis.organization,
+        'type': TaskType.ALERT,
+        'program': devis.lot.asset.program,
+        'assignee': admin,
+        'label': _devis_ajustement_refuse_label(devis, admin),
+        'priority': TaskPriority.HIGH,
     }
     task, _created = _get_or_create_task(lookup, defaults)
     return task

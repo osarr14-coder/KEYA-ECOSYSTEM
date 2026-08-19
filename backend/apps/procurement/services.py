@@ -1,5 +1,8 @@
+from decimal import Decimal
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Sum
 
 from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
@@ -7,7 +10,7 @@ from apps.programs.models import Lot
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
 
-from .models import Devis
+from .models import Devis, DevisAjustement
 
 # Source de TrustEvent qui marque LE devis retenu pour un lot — un devis
 # sans TrustEvent de ce type est un simple candidat (voir get_devis_status).
@@ -23,6 +26,20 @@ class LotAlreadyLockedError(Exception):
     """Un devis est déjà verrouillé pour ce lot — la mise en concurrence est
     close. Ni une nouvelle candidature (create_devis) ni un second
     verrouillage (lock_devis) ne sont acceptés une fois ce cas atteint.
+    """
+
+
+class DevisNotLockedError(Exception):
+    """Ticket 023 : un ajustement ne peut porter que sur le devis
+    VERROUILLÉ d'un lot (l'offre gagnante) — jamais un simple candidat.
+    """
+
+
+class MarginExceededError(Exception):
+    """Ticket 023 : l'écart proposé dépasse la marge disponible COURANTE du
+    devis (marge_estimee moins la somme signée des ajustements déjà
+    acceptés) — aucun `DevisAjustement` n'est créé quand cette exception
+    est levée, même discipline que `LotAlreadyLockedError`.
     """
 
 
@@ -60,6 +77,41 @@ def get_devis_status(devis, *, restore_organization_id):
     return current_event.source if current_event else DEVIS_CANDIDATE_STATUS
 
 
+def get_candidate_visible_devis_status(devis, *, restore_organization_id):
+    """Ticket 023 — statut EXPOSÉ AU CANDIDAT, distinct de `get_devis_status`
+    (qui reste inchangée, utilisée par le serializer admin et par la
+    logique interne `create_devis`/`lock_devis`/`is_lot_locked`, qui ont
+    besoin du statut RÉEL immédiatement, y compris pour empêcher un second
+    verrouillage sur le même lot avant toute réconciliation).
+
+    **Bug réel trouvé au ticket 022, corrigé ici** : sans cette fonction, un
+    candidat voyait `status: "devis_verrouille"` dès l'INSTANT où
+    `admin_keyimmo` verrouillait son devis (`lock_devis`) — avant même
+    qu'une seule réconciliation n'ait eu lieu. Un devis verrouillé mais
+    jamais réconcilié pouvait donc afficher « gagnant » à tort au candidat,
+    alors que rien ne garantissait encore que l'écart tiendrait dans la
+    marge disponible.
+
+    Retourne le statut RÉEL, SAUF s'il vaut `DEVIS_LOCKED_SOURCE` et
+    qu'aucun `DevisAjustement` n'existe encore pour ce devis — dans ce cas,
+    retourne `DEVIS_CANDIDATE_STATUS` : le candidat ne voit « gagnant »
+    qu'une fois AU MOINS une réconciliation réussie enregistrée (un
+    ajustement refusé ne crée jamais de ligne, donc ne peut jamais, à tort,
+    faire apparaître ce statut plus tôt).
+    """
+    raw_status = get_devis_status(devis, restore_organization_id=restore_organization_id)
+    if raw_status != DEVIS_LOCKED_SOURCE:
+        return raw_status
+
+    set_rls_context(organization_id=devis.organization_id)
+    try:
+        has_successful_reconciliation = DevisAjustement.objects.filter(devis=devis).exists()
+    finally:
+        set_rls_context(organization_id=restore_organization_id)
+
+    return DEVIS_LOCKED_SOURCE if has_successful_reconciliation else DEVIS_CANDIDATE_STATUS
+
+
 def is_lot_locked(lot_id):
     """Vrai si un devis de ce lot est déjà verrouillé — la mise en
     concurrence est close. Itère les devis du lot (quelques candidats par
@@ -83,7 +135,7 @@ def is_lot_locked(lot_id):
 
 def create_devis(
     *, logged_by, logged_by_organization_id, target_organization_id,
-    lot_id, candidate_organization_id, amount,
+    lot_id, candidate_organization_id, amount, marge_estimee,
 ):
     """Point d'entrée unique pour enregistrer un devis reçu — ticket 022.
     L'appelant (`apps.procurement.views.DevisCreateView`) a déjà vérifié
@@ -107,13 +159,16 @@ def create_devis(
                 lot_id=lot_id,
                 candidate_organization_id=candidate_organization_id,
                 amount=amount,
+                marge_estimee=marge_estimee,
             )
         finally:
             set_rls_context(organization_id=logged_by_organization_id)
     return devis
 
 
-def _create_devis_row(*, logged_by, target_organization_id, lot_id, candidate_organization_id, amount):
+def _create_devis_row(
+    *, logged_by, target_organization_id, lot_id, candidate_organization_id, amount, marge_estimee,
+):
     target_organization = Organization.objects.filter(id=target_organization_id).first()
     if target_organization is None:
         raise ValidationError("organization cible introuvable.")
@@ -136,6 +191,7 @@ def _create_devis_row(*, logged_by, target_organization_id, lot_id, candidate_or
         candidate_organization=candidate_organization,
         lot=lot,
         amount=amount,
+        marge_estimee=marge_estimee,
         logged_by=logged_by,
     )
 
@@ -194,3 +250,116 @@ def lock_devis(*, admin, admin_organization_id, target_organization_id, devis_id
         finally:
             set_rls_context(organization_id=admin_organization_id)
     return devis
+
+
+def available_margin(devis):
+    """Marge disponible COURANTE pour un nouvel ajustement sur ce devis —
+    `marge_estimee` moins la somme SIGNÉE de tous les `DevisAjustement`
+    déjà acceptés (ticket 023, point A) : un écart favorable (négatif)
+    AUGMENTE cette marge pour l'ajustement suivant, un écart défavorable
+    (positif) la RÉDUIT — jamais une somme de valeurs absolues, qui
+    traiterait les deux sens de la même façon à tort.
+
+    Lecture DIRECTE, sans bascule : appelée uniquement depuis
+    `create_ajustement`, déjà basculé sur l'organisation du devis au moment
+    de l'appel — même discipline que `is_lot_locked`.
+    """
+    total_ecarts = devis.ajustements.aggregate(total=Sum('ecart'))['total'] or Decimal('0')
+    return devis.marge_estimee - total_ecarts
+
+
+def create_ajustement(*, admin, admin_organization_id, target_organization_id, devis_id, ecart):
+    """Point d'entrée unique pour enregistrer un ajustement de coût sur le
+    devis VERROUILLÉ d'un lot — ticket 023. L'appelant
+    (`apps.procurement.views.DevisAjustementCreateView`) a déjà vérifié que
+    `admin` détient `admin_keyimmo` ; cette fonction ne revérifie pas ce
+    rôle. Même schéma de bascule RLS explicite que `create_devis`/
+    `lock_devis` : `target_organization_id` fourni par l'appelant.
+
+    **Refusé (`MarginExceededError`) si `ecart` dépasse la marge disponible
+    COURANTE — AUCUNE ligne `DevisAjustement` créée** (même discipline que
+    `LotAlreadyLockedError`).
+
+    **Piège de transaction évité, pas seulement documenté** : la Task
+    `ALERT` créée sur refus (`apps.tasks.services.
+    create_task_for_devis_ajustement_refuse`) ne doit JAMAIS être écrite à
+    l'intérieur du même bloc `transaction.atomic()` que celui qui lève
+    ensuite `MarginExceededError` — une exception qui se propage hors d'un
+    `with transaction.atomic():` fait ROLLBACK de TOUT ce qui a été écrit
+    DANS ce bloc, Task incluse, la faisant disparaître silencieusement
+    malgré un 409 renvoyé au client. Corrigé en structurant la fonction en
+    étapes séquentielles DISTINCTES : (1) lecture seule (devis, statut,
+    marge disponible), sans `atomic()` propre — même discipline que
+    `list_devis_for_lot_as_admin` (ticket 022), qui s'appuie déjà sur la
+    transaction ouverte par le middleware RLS ; (2) SI refusé, écriture de
+    la Task dans sa PROPRE portée, PUIS le `raise` — hors de toute portée
+    encore capable de l'annuler ; (3) SI accepté, écriture du
+    `DevisAjustement` dans son propre `with transaction.atomic():`, comme
+    `create_devis`/`lock_devis`.
+    """
+    set_rls_context(organization_id=target_organization_id)
+    try:
+        devis = Devis.objects.filter(id=devis_id, organization_id=target_organization_id).first()
+        if devis is None:
+            raise ValidationError("devis introuvable dans l'organisation cible.")
+
+        current_event = _read_current_devis_event(devis)
+        if current_event is None or current_event.source != DEVIS_LOCKED_SOURCE:
+            raise DevisNotLockedError(
+                "Seul le devis verrouillé (l'offre gagnante) peut recevoir un ajustement.",
+            )
+
+        disponible = available_margin(devis)
+        margin_exceeded = ecart > disponible
+    finally:
+        set_rls_context(organization_id=admin_organization_id)
+
+    if margin_exceeded:
+        # Import différé : même raison que `create_mission`/
+        # `_open_new_reserve` (évite un cycle au chargement des tasks
+        # Celery) — même si CET appel-ci est synchrone (voir docstring de
+        # `create_task_for_devis_ajustement_refuse`), le module
+        # `apps.tasks.services` importe des éléments liés à Celery en
+        # cascade.
+        from apps.tasks.services import create_task_for_devis_ajustement_refuse
+
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            create_task_for_devis_ajustement_refuse(devis, admin)
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+        raise MarginExceededError(
+            f"Écart ({ecart}) au-delà de la marge disponible ({disponible}).",
+        )
+
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            ajustement = DevisAjustement.objects.create(
+                organization=devis.organization,
+                devis=devis,
+                ecart=ecart,
+                created_by=admin,
+            )
+            # Recalculée APRÈS création (pas `disponible - ecart`, pour ne
+            # dépendre d'aucune hypothèse d'arithmétique dupliquée) — encore
+            # sous la bascule correcte, contrairement à un calcul fait plus
+            # tard côté vue (voir le piège RLS déjà rencontré et corrigé au
+            # ticket 022 pour `get_devis_status`).
+            marge_resultante = available_margin(devis)
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return ajustement, marge_resultante
+
+
+def list_ajustements_for_devis_as_admin(*, admin, admin_organization_id, target_organization_id, devis_id):
+    """Tous les ajustements d'un devis, montants inclus — même bascule que
+    `list_devis_for_lot_as_admin` (ticket 022), pas de
+    `transaction.atomic()` explicite pour la même raison (middleware RLS
+    ouvre déjà une transaction englobant toute la requête).
+    """
+    set_rls_context(organization_id=target_organization_id)
+    try:
+        return list(DevisAjustement.objects.filter(devis_id=devis_id).order_by('created_at'))
+    finally:
+        set_rls_context(organization_id=admin_organization_id)

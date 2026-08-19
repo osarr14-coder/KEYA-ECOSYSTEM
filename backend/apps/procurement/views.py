@@ -9,7 +9,13 @@ from apps.evidence.permissions import IsConstructeur
 
 from . import services
 from .models import Devis
-from .serializers import DevisAdminSerializer, DevisCandidateSerializer, DevisCreateSerializer
+from .serializers import (
+    DevisAdminSerializer,
+    DevisAjustementAdminSerializer,
+    DevisAjustementCreateSerializer,
+    DevisCandidateSerializer,
+    DevisCreateSerializer,
+)
 
 
 class DevisCreateView(APIView):
@@ -37,6 +43,7 @@ class DevisCreateView(APIView):
                 lot_id=data['lot'],
                 candidate_organization_id=data['candidate_organization'],
                 amount=data['amount'],
+                marge_estimee=data['marge_estimee'],
             )
         except services.LotAlreadyLockedError as exc:
             # 409, pas 400 : le corps de la requête était valide, c'est
@@ -145,3 +152,63 @@ class MyCandidaturesDetailView(APIView):
         if devis is None:
             raise NotFound()
         return Response(DevisCandidateSerializer(devis, context={'request': request}).data)
+
+
+class DevisAjustementView(APIView):
+    """`POST/GET /api/procurement/devis/{devis_id}/ajustements/` — ticket
+    023, réservé à `admin_keyimmo`. Une seule vue pour les deux méthodes
+    (convention REST standard sur une même URL de collection), plutôt que
+    deux classes sur des chemins distincts.
+
+    **POST** : enregistre un ajustement de coût sur le devis VERROUILLÉ
+    d'un lot — voir `apps.procurement.services.create_ajustement` pour la
+    validation métier complète (devis verrouillé, marge disponible
+    courante, signe de l'écart). `organization` (l'organisation du lot)
+    fourni dans le corps — même conséquence assumée que `DevisCreateView`.
+
+    **GET** : historique complet des ajustements de ce devis, montants
+    inclus — `organization_id` en paramètre de requête, même conséquence
+    assumée. Aucune lecture candidate de ce modèle dans ce ticket (décision
+    de conception, point C).
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def post(self, request, devis_id):
+        serializer = DevisAjustementCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            ajustement, marge_resultante = services.create_ajustement(
+                admin=request.user,
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=data['organization'],
+                devis_id=devis_id,
+                ecart=data['ecart'],
+            )
+        except (services.DevisNotLockedError, services.MarginExceededError) as exc:
+            # 409 dans les deux cas : le corps de la requête est valide,
+            # c'est l'ÉTAT du devis (pas verrouillé, ou marge insuffisante)
+            # qui rend l'opération impossible — même sémantique que
+            # DevisCreateView/DevisLockView (ticket 022).
+            return Response({'detail': str(exc)}, status=409)
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+
+        response_data = DevisAjustementAdminSerializer(ajustement).data
+        response_data['marge_resultante'] = marge_resultante
+        return Response(response_data, status=201)
+
+    def get(self, request, devis_id):
+        target_organization_id = request.query_params.get('organization_id')
+        if not target_organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+
+        ajustements = services.list_ajustements_for_devis_as_admin(
+            admin=request.user,
+            admin_organization_id=request.organization.id if request.organization else None,
+            target_organization_id=target_organization_id,
+            devis_id=devis_id,
+        )
+        return Response(DevisAjustementAdminSerializer(ajustements, many=True).data)
