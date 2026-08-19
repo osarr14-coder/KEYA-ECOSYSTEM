@@ -1942,6 +1942,66 @@ Celery) sont flaky quand plusieurs fixtures `real_celery_worker` de modules
 différents s'exécutent proches dans le temps, fiables en isolation. Signalé à
 l'utilisateur, candidat à un ticket dédié si nécessaire.
 
+## Recherche de Lot/Organisation pour admin_keyimmo (ticket B-028, `apps/procurement`)
+
+Voir `B-028-recherche-lots-organisations.md` pour le détail complet. Découvert par
+la session frontend en préparant F-027 (`DevisView`) : `POST /api/procurement/devis/`
+exige `organization`/`candidate_organization`, mais aucun endpoint ne permettait à
+`admin_keyimmo` de les découvrir en dehors de ses propres memberships.
+
+**Obstacle central — pourquoi ce n'est pas un simple endpoint de plus** : vérifié
+directement en base (`pg_class.relrowsecurity`/`relforcerowsecurity`) avant
+conception — `organizations_organization` n'a AUCUNE RLS (recherche triviale,
+même schéma que `search_users`, ticket 011), mais `programs_lot` est sous `FORCE
+ROW LEVEL SECURITY`, policy stricte `organization_id = current_org`. Différence avec
+TOUS les cas de bascule RLS précédents de ce projet (`create_inspection`/`create_
+mission`/`create_devis`/`get_user_memberships`) : l'organisation cible n'est jamais
+connue à l'avance ici, c'est justement ce qu'on cherche — la bascule « vers une
+cible déjà connue » ne s'applique pas telle quelle. Une policy alternative
+référençant `organizations_membership` pour vérifier le rôle recréerait la
+récursion déjà rencontrée et abandonnée au ticket 011.
+
+**Solution retenue** : `apps.procurement.services.search_lots_as_admin` énumère les
+organisations existantes (table libre de RLS), puis bascule le contexte RLS UNE
+ORGANISATION À LA FOIS pour y chercher les lots correspondants, en cumulant les
+résultats — extension EN BOUCLE du même mécanisme de bascule déjà établi, jamais un
+bypass RLS global, jamais une nouvelle policy.
+
+**Coût — limite MVP assumée et documentée explicitement (décision A)** :
+`MAX_SEARCH_RESULTS` (= 50, redéfini localement dans `apps/procurement`, pas
+importé de `apps/backoffice` — même choix que `LATEST_FIRST_ORDERING`, par app,
+jamais partagé) borne le nombre de RÉSULTATS retournés, PAS le nombre de requêtes
+exécutées : une recherche qui ne trouve rien ou peu de correspondances continue
+d'itérer TOUTES les organisations existantes avant de répondre — le pire cas reste
+O(nombre d'organisations) requêtes SQL. Prouvé par un test dédié (espionnage de
+`set_rls_context` via `mock.patch(..., wraps=...)`, vérifie que toutes les
+organisations créées pour l'occasion ont bien été basculées).
+
+**Exclusion des lots déjà verrouillés (décision D)** — `is_lot_locked` (ticket 022)
+réutilisé TEL QUEL, sans modification : sa précondition documentée (« déjà basculé
+sur l'organisation du lot au moment de l'appel ») correspond exactement à ce dont
+`search_lots_as_admin` a besoin à l'intérieur de sa propre boucle. Prouvé par un
+test avec DEUX organisations différentes portant un lot du MÊME nom, un seul
+verrouillé — preuve que l'exclusion s'applique lot par lot, pas organisation par
+organisation.
+
+**Piège UUID rencontré en écrivant le premier test** : un `SerializerMethodField`
+qui construit un dict Python à la main (`{'id': lot.organization_id, ...}`) ne
+passe par AUCUNE conversion de champ DRF — `response.data` exposait un objet
+`uuid.UUID` brut là où un champ `UUIDField()` déclaré normalement le convertit
+automatiquement en chaîne dès `to_representation`. Corrigé par un `str(...)`
+explicite. À surveiller pour tout futur `SerializerMethodField` retournant un objet
+imbriqué construit à la main dans ce projet.
+
+**Erreur d'édition trouvée et corrigée avant de lancer la suite, non liée au code
+métier** : l'insertion des tests a d'abord coupé en deux le dernier test préexistant
+du fichier (ticket 026), laissant sa seconde assertion orpheline en toute fin de
+fichier — détecté immédiatement par un `NameError` à la première exécution, jamais
+par relecture silencieuse. Corrigé, aucune perte de couverture.
+
+12 tests dédiés, suite `procurement` 49 tests, suite complète du projet 270 tests,
+tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

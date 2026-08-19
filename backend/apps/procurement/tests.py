@@ -1,4 +1,5 @@
 from decimal import ROUND_HALF_UP, Decimal
+from unittest import mock
 
 import pytest
 from django.db import connection
@@ -109,6 +110,28 @@ def _setup_lot_up_for_bid(suffix, seed_pricing=True):
         admin_client, admin_org, admin_user, sponsor_org, lot,
         (candidate_a_client, candidate_a_org), (candidate_b_client, candidate_b_org),
     )
+
+
+def _create_sponsor_org_with_lot(suffix, lot_name):
+    """Organisation sponsor avec un seul Lot, SANS passer par l'API de
+    registration (pas d'utilisateur nécessaire pour ces tests de
+    recherche B-028) — beaucoup plus rapide que `_register`/`_setup_lot_
+    up_for_bid` (pas de hachage de mot de passe) quand le test crée un
+    grand nombre d'organisations (ex. `TestAdminLotSearch::
+    test_more_than_max_search_results_matches_are_capped`).
+    `organizations_organization` n'a aucune RLS (recherche libre) : la
+    création de l'`Organization` elle-même ne nécessite aucune bascule.
+    `programs_program`/`programs_asset`/`programs_lot`, eux, exigent une
+    bascule RLS AVANT toute écriture (policy `organization_id =
+    current_org`, `FOR ALL`, migration `0002_programs_rls.py`).
+    """
+    senegal = CountryPack.objects.get(code='SN')
+    organization = Organization.objects.create(name=f'Org Sponsor Bare {suffix}', country_pack=senegal)
+    set_rls_context(organization_id=organization.id)
+    program = Program.objects.create(organization=organization, name=f'Programme {suffix}')
+    asset = Asset.objects.create(organization=organization, program=program, name=f'Bien {suffix}')
+    lot = Lot.objects.create(organization=organization, asset=asset, name=lot_name)
+    return organization, program, asset, lot
 
 
 AMOUNT_A = Decimal('123456.78')
@@ -710,6 +733,12 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # routes.
             'legal-payment-tier-template-create', 'legal-payment-tier-template-activate',
             'legal-payment-tier-template-active', 'legal-payment-tier-template-history',
+            # Ticket B-028 — ajout conscient : recherche de Lot/Organisation
+            # pour `admin_keyimmo`, en préparation de
+            # `POST /api/procurement/devis/` (jamais accessible au rôle
+            # constructeur, mêmes principes que toutes les autres routes
+            # admin de ce module).
+            'procurement-admin-lot-search', 'procurement-admin-organization-search',
         }
         assert actual == expected
 
@@ -1244,3 +1273,209 @@ class TestPricingConfigWiring:
         devis.refresh_from_db()
         assert devis.marge_estimee == original_marge
         assert devis.marge_estimee == _expected_marge(AMOUNT_A)
+
+
+@pytest.mark.django_db
+class TestAdminOrganizationSearch:
+    """`GET /api/procurement/admin/organizations/?q=` — ticket B-028.
+    Aucune RLS sur `organizations_organization` : même schéma que
+    `apps.backoffice.tests.py::TestUserSearch` (ticket 011), pas de
+    bascule à tester ici.
+    """
+
+    def test_admin_keyimmo_can_search_organizations_by_name(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'org-search-admin@example.com', 'Org Search Admin',
+        )
+        Organization.objects.create(name='Constructeur Zébulon', country_pack=CountryPack.objects.get(code='SN'))
+        Organization.objects.create(name='Constructeur Autre', country_pack=CountryPack.objects.get(code='SN'))
+
+        response = admin_client.get(reverse('procurement-admin-organization-search'), {'q': 'zébulon'})
+        assert response.status_code == 200
+        names = [row['name'] for row in response.data]
+        assert names == ['Constructeur Zébulon']
+
+    def test_empty_query_returns_an_empty_list_never_a_dump(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'org-search-empty-admin@example.com', 'Org Search Empty Admin',
+        )
+        Organization.objects.create(name='Une Organisation', country_pack=CountryPack.objects.get(code='SN'))
+
+        response = admin_client.get(reverse('procurement-admin-organization-search'))
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_a_constructeur_cannot_search_organizations(self):
+        constructeur_client, _org, _user = _register(
+            'org-search-forbidden@example.com', 'Org Search Forbidden', role_code='constructeur',
+        )
+        response = constructeur_client.get(reverse('procurement-admin-organization-search'), {'q': 'a'})
+        assert response.status_code == 403
+
+    def test_more_than_max_search_results_matches_are_capped(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'org-search-cap-admin@example.com', 'Org Search Cap Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+        total_matching = services.MAX_SEARCH_RESULTS + 5
+        Organization.objects.bulk_create([
+            Organization(name=f'Org Plafond Recherche {i}', country_pack=senegal)
+            for i in range(total_matching)
+        ])
+
+        response = admin_client.get(reverse('procurement-admin-organization-search'), {'q': 'Plafond Recherche'})
+        assert response.status_code == 200
+        assert len(response.data) == services.MAX_SEARCH_RESULTS
+
+
+@pytest.mark.django_db
+class TestAdminLotSearch:
+    """`GET /api/procurement/admin/lots/?q=` — ticket B-028. Cœur du
+    ticket : boucle de bascule RLS par organisation (voir
+    `apps.procurement.services.search_lots_as_admin`).
+    """
+
+    def test_admin_keyimmo_can_find_a_lot_in_an_organization_he_is_not_a_member_of(self):
+        admin_client, admin_org, _admin_user = _register_admin(
+            'lot-search-admin@example.com', 'Org Lot Search Admin',
+        )
+        sponsor_org, program, _asset, lot = _create_sponsor_org_with_lot('discovery', 'Lot Découverte Unique')
+        assert sponsor_org.id != admin_org.id
+
+        response = admin_client.get(reverse('procurement-admin-lot-search'), {'q': 'Découverte'})
+        assert response.status_code == 200
+        assert len(response.data) == 1
+        row = response.data[0]
+        assert row['id'] == str(lot.id)
+        assert row['name'] == 'Lot Découverte Unique'
+        assert row['organization'] == {'id': str(sponsor_org.id), 'name': sponsor_org.name}
+        assert row['program'] == {'id': str(program.id), 'name': program.name}
+
+    def test_empty_query_returns_an_empty_list_never_a_dump(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'lot-search-empty-admin@example.com', 'Org Lot Search Empty Admin',
+        )
+        _create_sponsor_org_with_lot('empty-query', 'Un Lot Quelconque')
+
+        response = admin_client.get(reverse('procurement-admin-lot-search'))
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_a_lot_whose_name_does_not_match_is_never_returned(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'lot-search-nomatch-admin@example.com', 'Org Lot Search Nomatch Admin',
+        )
+        _create_sponsor_org_with_lot('nomatch', 'Lot Sans Rapport')
+
+        response = admin_client.get(reverse('procurement-admin-lot-search'), {'q': 'Introuvable'})
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_a_constructeur_cannot_search_lots(self):
+        constructeur_client, _org, _user = _register(
+            'lot-search-forbidden@example.com', 'Org Lot Search Forbidden', role_code='constructeur',
+        )
+        response = constructeur_client.get(reverse('procurement-admin-lot-search'), {'q': 'a'})
+        assert response.status_code == 403
+
+    def test_locked_lots_are_excluded_across_the_multi_organization_loop(self):
+        """Cœur du critère d'acceptation « exclusion des lots verrouillés » —
+        DEUX organisations différentes, un lot du MÊME nom dans chacune :
+        un seul verrouillé. Prouve que l'exclusion s'applique lot par lot,
+        PAS organisation par organisation (le lot non verrouillé de la
+        SECONDE organisation testée par la boucle doit rester visible).
+        """
+        admin_client, admin_org, admin_user = _register_admin(
+            'lot-search-locked-admin@example.com', 'Org Lot Search Locked Admin',
+        )
+        locked_org, _p1, _a1, locked_lot = _create_sponsor_org_with_lot('locked', 'Lot Commun Verrouillé')
+        open_org, _p2, _a2, open_lot = _create_sponsor_org_with_lot('open', 'Lot Commun Verrouillé')
+
+        pricing_services.create_pricing_config(
+            admin=admin_user, country_pack_id=locked_org.country_pack_id,
+            canal=PricingCanal.CANAL_1_MARGE, rate=PRICING_RATE_PERCENT,
+        )
+        _candidate_client, candidate_org, _candidate_user = _register(
+            'lot-search-locked-candidate@example.com', 'Org Lot Search Locked Candidate', role_code='constructeur',
+        )
+        _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=locked_org, lot=locked_lot,
+            candidate_org=candidate_org, amount=AMOUNT_A,
+        )
+
+        response = admin_client.get(reverse('procurement-admin-lot-search'), {'q': 'Lot Commun Verrouillé'})
+        assert response.status_code == 200
+        returned_ids = {row['id'] for row in response.data}
+        assert str(locked_lot.id) not in returned_ids
+        assert str(open_lot.id) in returned_ids
+
+    def test_more_than_max_search_results_matches_are_capped(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'lot-search-cap-admin@example.com', 'Org Lot Search Cap Admin',
+        )
+        total_matching = services.MAX_SEARCH_RESULTS + 5
+        for i in range(total_matching):
+            _create_sponsor_org_with_lot(f'cap-{i}', f'Lot Plafond Recherche {i}')
+
+        response = admin_client.get(reverse('procurement-admin-lot-search'), {'q': 'Plafond Recherche'})
+        assert response.status_code == 200
+        assert len(response.data) == services.MAX_SEARCH_RESULTS
+
+    def test_a_search_matching_nothing_still_iterates_every_organization_worst_case(self):
+        """Preuve directe du point A (ticket + CLAUDE.md) : `MAX_SEARCH_
+        RESULTS` borne les RÉSULTATS retournés, JAMAIS le nombre de
+        requêtes exécutées — une recherche sans aucune correspondance
+        continue de basculer le contexte RLS vers CHAQUE organisation
+        existante avant de répondre (pire cas O(nombre d'organisations)),
+        au lieu de s'arrêter tôt faute de résultat.
+        """
+        admin_client, admin_org, admin_user = _register_admin(
+            'lot-search-worst-case-admin@example.com', 'Org Lot Search Worst Case Admin',
+        )
+        sponsor_org_1, _p1, _a1, _lot1 = _create_sponsor_org_with_lot('worst-case-1', 'Lot Alpha')
+        sponsor_org_2, _p2, _a2, _lot2 = _create_sponsor_org_with_lot('worst-case-2', 'Lot Beta')
+        sponsor_org_3, _p3, _a3, _lot3 = _create_sponsor_org_with_lot('worst-case-3', 'Lot Gamma')
+        every_organization_id = {admin_org.id, sponsor_org_1.id, sponsor_org_2.id, sponsor_org_3.id}
+
+        with mock.patch(
+            'apps.procurement.services.set_rls_context', wraps=services.set_rls_context,
+        ) as rls_context_spy:
+            response = admin_client.get(
+                reverse('procurement-admin-lot-search'), {'q': 'AUCUNE-CORRESPONDANCE-XYZ'},
+            )
+
+        assert response.status_code == 200
+        assert response.data == []
+
+        organization_ids_switched_to = {
+            call.kwargs['organization_id']
+            for call in rls_context_spy.call_args_list
+            if 'organization_id' in call.kwargs
+        }
+        assert every_organization_id <= organization_ids_switched_to
+
+    def test_rls_context_is_restored_even_when_an_exception_interrupts_the_loop(self):
+        """Le `finally` englobe TOUTE la boucle (pas par itération) — une
+        exception levée en cours de boucle doit quand même restaurer le
+        contexte RLS de l'appelant, jamais le laisser bloqué sur la
+        dernière organisation testée.
+        """
+        _admin_client, admin_org, admin_user = _register_admin(
+            'lot-search-exception-admin@example.com', 'Org Lot Search Exception Admin',
+        )
+        _sponsor_org, _p, _a, _lot = _create_sponsor_org_with_lot('exception-case', 'Lot Exception Test')
+
+        with mock.patch('apps.procurement.services.is_lot_locked', side_effect=RuntimeError('boom')):
+            with pytest.raises(RuntimeError):
+                services.search_lots_as_admin(
+                    admin=admin_user, admin_organization_id=admin_org.id, query='Lot Exception',
+                )
+
+        # Contexte restauré vers `admin_org` malgré l'exception, SANS
+        # aucune bascule manuelle ici : une lecture RLS-scopée normale sur
+        # cette organisation ne doit PAS voir le lot du sponsor (qui
+        # appartient à une AUTRE organisation) — si la restauration
+        # automatique (le `finally` de `search_lots_as_admin`) avait
+        # échoué (contexte resté bloqué sur le sponsor), cette lecture
+        # verrait le lot à tort.
+        assert not Lot.objects.filter(name__icontains='Exception Test').exists()
