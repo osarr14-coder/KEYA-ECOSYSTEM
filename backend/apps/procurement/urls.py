@@ -1,6 +1,8 @@
 from django.urls import path
 
 from .views import (
+    AdminLotSearchView,
+    AdminOrganizationSearchView,
     DevisAdminListView,
     DevisAjustementView,
     DevisCreateView,
@@ -24,5 +26,15 @@ urlpatterns = [
     path(
         'procurement/devis/<uuid:devis_id>/ajustements/',
         DevisAjustementView.as_view(), name='procurement-devis-ajustement',
+    ),
+    # Ticket B-028 — ces deux routes n'ont pas de segment `<uuid:...>`
+    # avant leur nom final, contrairement à `procurement-admin-devis-list`
+    # ci-dessus (`.../lots/<uuid:lot_id>/devis/`) : `.../lots/` et
+    # `.../organizations/` sont des motifs DISTINCTS pour le résolveur
+    # Django, aucune collision possible.
+    path('procurement/admin/lots/', AdminLotSearchView.as_view(), name='procurement-admin-lot-search'),
+    path(
+        'procurement/admin/organizations/',
+        AdminOrganizationSearchView.as_view(), name='procurement-admin-organization-search',
     ),
 ]

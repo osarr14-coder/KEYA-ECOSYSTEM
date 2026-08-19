@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.organizations.models import Organization
+
 from . import services
 from .models import Devis, DevisAjustement
 
@@ -110,3 +112,35 @@ class DevisAjustementAdminSerializer(serializers.ModelSerializer):
         model = DevisAjustement
         fields = ['id', 'devis', 'organization', 'ecart', 'created_by', 'created_at']
         read_only_fields = fields
+
+
+class OrganizationSearchResultSerializer(serializers.ModelSerializer):
+    """Réponse de `GET /api/procurement/admin/organizations/?q=` — ticket
+    B-028. Aucun champ sensible (`Organization` n'en porte aucun).
+    """
+
+    class Meta:
+        model = Organization
+        fields = ['id', 'name']
+        read_only_fields = fields
+
+
+class LotSearchResultSerializer(serializers.Serializer):
+    """Réponse de `GET /api/procurement/admin/lots/?q=` — ticket B-028,
+    décision C : `organization`/`program` imbriqués (jamais `asset`, pas
+    demandé, pas nécessaire pour soumettre `POST /api/procurement/devis/`).
+    Objets simples (pas de `ModelSerializer` imbriqué) : seuls `id`/`name`
+    sont exposés pour chacun, aucun besoin d'un serializer dédié réutilisé
+    ailleurs.
+    """
+
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    organization = serializers.SerializerMethodField()
+    program = serializers.SerializerMethodField()
+
+    def get_organization(self, lot):
+        return {'id': str(lot.organization_id), 'name': lot.organization.name}
+
+    def get_program(self, lot):
+        return {'id': str(lot.asset.program_id), 'name': lot.asset.program.name}

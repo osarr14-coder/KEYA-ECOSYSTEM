@@ -23,6 +23,13 @@ DEVIS_LOCKED_SOURCE = 'devis_verrouille'
 # possibles du statut dérivé d'un Devis.
 DEVIS_CANDIDATE_STATUS = 'candidat'
 
+# Ticket B-028 — même valeur que apps.backoffice.services.MAX_SEARCH_RESULTS
+# (ticket 011), redéfinie ici plutôt qu'importée : chaque app possède sa
+# propre constante de recherche, pas de couplage inter-app pour une valeur
+# qui pourrait diverger légitimement (même choix déjà fait pour
+# LATEST_FIRST_ORDERING, redéfini par app plutôt que partagé).
+MAX_SEARCH_RESULTS = 50
+
 
 class LotAlreadyLockedError(Exception):
     """Un devis est déjà verrouillé pour ce lot — la mise en concurrence est
@@ -128,13 +135,14 @@ def is_lot_locked(lot_id):
     lot au plus, pas des centaines de lots comme le ticket 009) : pas de
     requête agrégée nécessaire ici, voir le ticket, section « hors scope ».
 
-    Appelée UNIQUEMENT depuis `create_devis`/`lock_devis`, déjà basculés
-    sur l'organisation du lot au moment de l'appel — lecture DIRECTE
-    (`_read_current_devis_event`), sans bascule supplémentaire : passer par
-    `get_devis_status` ici ferait une bascule vers la même organisation que
-    celle déjà active (no-op) mais complexifierait cet appel sans raison,
-    voir `get_devis_status` pour la version sûre utilisée par les
-    lectures « froides » (vues, candidats).
+    Appelée UNIQUEMENT depuis `create_devis`/`lock_devis`/
+    `search_lots_as_admin` (ticket B-028), déjà basculés sur l'organisation
+    du lot au moment de l'appel — lecture DIRECTE (`_read_current_devis_
+    event`), sans bascule supplémentaire : passer par `get_devis_status`
+    ici ferait une bascule vers la même organisation que celle déjà
+    active (no-op) mais complexifierait cet appel sans raison, voir
+    `get_devis_status` pour la version sûre utilisée par les lectures
+    « froides » (vues, candidats).
     """
     for devis in Devis.objects.filter(lot_id=lot_id):
         event = _read_current_devis_event(devis)
@@ -418,3 +426,85 @@ def list_ajustements_for_devis_as_admin(*, admin, admin_organization_id, target_
         return list(DevisAjustement.objects.filter(devis_id=devis_id).order_by('created_at'))
     finally:
         set_rls_context(organization_id=admin_organization_id)
+
+
+def search_organizations_as_admin(query):
+    """`GET /api/procurement/admin/organizations/?q=` — ticket B-028.
+    `organizations_organization` ne porte AUCUNE policy RLS (vérifié
+    directement en base avant ce ticket, `pg_class.relrowsecurity` faux) —
+    une recherche cross-organisation est donc un simple filtre applicatif,
+    même schéma que `apps.backoffice.services.search_users` (ticket 011),
+    aucune bascule RLS nécessaire. `query` vide : liste vide, jamais un
+    dump complet de la table.
+    """
+    if not query:
+        return Organization.objects.none()
+    return Organization.objects.filter(name__icontains=query).order_by('name')[:MAX_SEARCH_RESULTS]
+
+
+def search_lots_as_admin(*, admin, admin_organization_id, query):
+    """`GET /api/procurement/admin/lots/?q=` — ticket B-028. Recherche de
+    lot par nom (décision B), TOUTES organisations confondues — y compris
+    celles dont `admin` n'est membre d'AUCUNE, ce qu'aucune requête RLS
+    normale ne permet ici (`programs_lot` est sous `FORCE ROW LEVEL
+    SECURITY`, policy stricte `organization_id = current_org`, voir le
+    ticket pour le raisonnement complet sur pourquoi une policy
+    alternative n'est pas praticable — même récursion que
+    `apps.backoffice.services.get_user_memberships`, ticket 011).
+
+    **Mécanisme** : `organizations_organization` n'a aucune RLS (lecture
+    libre) — on énumère donc les organisations existantes, puis on
+    BASCULE le contexte RLS UNE ORGANISATION À LA FOIS pour y chercher les
+    lots correspondants, en cumulant les résultats. Extension EN BOUCLE du
+    même mécanisme de bascule déjà établi (`create_inspection`/
+    `create_mission`/`create_devis`, tickets 005/012/022) — jamais un
+    bypass RLS global, jamais une nouvelle policy.
+
+    **Coût — limite MVP assumée et documentée explicitement (décision A)** :
+    `MAX_SEARCH_RESULTS` borne le nombre de RÉSULTATS retournés, PAS le
+    nombre de requêtes exécutées. Une recherche qui ne trouve rien ou peu
+    de correspondances continue d'itérer TOUTES les organisations
+    existantes avant de répondre — le pire cas reste
+    **O(nombre d'organisations)** requêtes SQL. Acceptable au stade actuel
+    du projet (peu d'organisations réelles) ; deviendrait un vrai problème
+    de performance à plus grande échelle — aucune optimisation (cache,
+    index texte, dénormalisation) n'est construite dans ce ticket. La
+    boucle s'arrête tôt (`break`) dès que `MAX_SEARCH_RESULTS` est
+    atteint — seul le CAS DÉFAVORABLE (peu/pas de résultats) paie le coût
+    complet.
+
+    **Exclusion des lots déjà verrouillés (décision D)** : `is_lot_locked`
+    est appelé DANS la même bascule RLS que la lecture du lot — déjà
+    positionnée sur l'organisation de CE lot au moment de l'appel, aucune
+    bascule supplémentaire nécessaire (même précondition que documentée
+    dans `is_lot_locked` lui-même).
+
+    Restauration du contexte RLS de l'appelant dans un `finally` ENGLOBANT
+    TOUTE la boucle (pas par itération) — restaurer après CHAQUE
+    organisation testée serait un aller-retour inutile, seule la sortie
+    (normale, via le cap atteint, ou par exception) doit restaurer le
+    contexte de `admin`.
+    """
+    if not query:
+        return []
+
+    results = []
+    organization_ids = list(Organization.objects.values_list('id', flat=True))
+    try:
+        for organization_id in organization_ids:
+            if len(results) >= MAX_SEARCH_RESULTS:
+                break
+            set_rls_context(organization_id=organization_id)
+            matching_lots = Lot.objects.filter(
+                name__icontains=query,
+            ).select_related('organization', 'asset__program')
+            for lot in matching_lots:
+                if is_lot_locked(lot.id):
+                    continue
+                results.append(lot)
+                if len(results) >= MAX_SEARCH_RESULTS:
+                    break
+    finally:
+        set_rls_context(organization_id=admin_organization_id)
+
+    return results

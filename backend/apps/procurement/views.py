@@ -15,6 +15,8 @@ from .serializers import (
     DevisAjustementCreateSerializer,
     DevisCandidateSerializer,
     DevisCreateSerializer,
+    LotSearchResultSerializer,
+    OrganizationSearchResultSerializer,
 )
 
 
@@ -212,3 +214,41 @@ class DevisAjustementView(APIView):
             devis_id=devis_id,
         )
         return Response(DevisAjustementAdminSerializer(ajustements, many=True).data)
+
+
+class AdminLotSearchView(APIView):
+    """`GET /api/procurement/admin/lots/?q=<recherche>` — ticket B-028,
+    réservé à `admin_keyimmo`. Recherche de lot par nom, TOUTES
+    organisations confondues (y compris celles dont `admin_keyimmo` n'est
+    membre d'AUCUNE), en préparation de `POST /api/procurement/devis/` —
+    voir `apps.procurement.services.search_lots_as_admin` pour le
+    mécanisme complet (boucle de bascule RLS par organisation) et son
+    coût assumé au pire cas.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        query = request.query_params.get('q', '').strip()
+        lots = services.search_lots_as_admin(
+            admin=request.user,
+            admin_organization_id=request.organization.id if request.organization else None,
+            query=query,
+        )
+        return Response(LotSearchResultSerializer(lots, many=True).data)
+
+
+class AdminOrganizationSearchView(APIView):
+    """`GET /api/procurement/admin/organizations/?q=<recherche>` — ticket
+    B-028, réservé à `admin_keyimmo`. Recherche d'organisation par nom,
+    pour résoudre `candidate_organization` avant
+    `POST /api/procurement/devis/` — voir
+    `apps.procurement.services.search_organizations_as_admin`.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        query = request.query_params.get('q', '').strip()
+        organizations = services.search_organizations_as_admin(query)
+        return Response(OrganizationSearchResultSerializer(organizations, many=True).data)
