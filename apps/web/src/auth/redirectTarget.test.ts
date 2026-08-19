@@ -29,9 +29,14 @@ describe('resolveRedirectApp — mapping rôle → app (ticket 020)', () => {
     expect(resolveRedirectApp(makeMe('sponsor'))).toBe('home');
   });
 
-  it('admin_keyimmo -> home', () => {
-    expect(resolveRedirectApp(makeMe('admin_keyimmo'))).toBe('home');
-  });
+  it(
+    'admin_keyimmo -> web (ticket 021 : le back-office vit désormais dans apps/web '
+    + 'elle-même — évolution volontaire du mapping "tout autre rôle -> HOME" du ticket 020, '
+    + 'pas un oubli, voir le commentaire de resolveRedirectApp)',
+    () => {
+      expect(resolveRedirectApp(makeMe('admin_keyimmo'))).toBe('web');
+    },
+  );
 
   it('aucune membership -> home (fallback sûr, jamais une erreur bloquante)', () => {
     expect(resolveRedirectApp(makeMe(null))).toBe('home');

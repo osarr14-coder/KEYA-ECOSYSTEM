@@ -12,6 +12,9 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
   return {
     login: vi.fn(notMocked),
     getMe: vi.fn(notMocked),
+    searchUsers: vi.fn(notMocked),
+    getUserDetail: vi.fn(notMocked),
+    deactivateUser: vi.fn(notMocked),
     ...overrides,
   };
 }

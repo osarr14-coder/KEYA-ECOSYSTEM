@@ -4,12 +4,16 @@ export interface AppOrigins {
   home: string;
   build: string;
   control: string;
+  /** Ticket 021 — apps/web devient elle-même une destination possible (le
+   * back-office), pas seulement le point d'entrée qui redirige toujours
+   * ailleurs. Voir `resolveRedirectApp` ci-dessous. */
+  web: string;
 }
 
 /**
  * Lit les origines cibles depuis l'environnement (même convention que
  * `VITE_API_BASE_URL` ailleurs dans ce monorepo) — jamais codées en dur,
- * pour rester correctes quel que soit le déploiement réel (les 3 apps
+ * pour rester correctes quel que soit le déploiement réel (les 4 apps
  * n'ont, à ce jour, aucune config de déploiement partagée dans ce repo).
  */
 export function resolveAppOrigins(): AppOrigins {
@@ -17,6 +21,7 @@ export function resolveAppOrigins(): AppOrigins {
     home: import.meta.env.VITE_HOME_URL ?? 'http://localhost:5173',
     build: import.meta.env.VITE_BUILD_URL ?? 'http://localhost:5174',
     control: import.meta.env.VITE_CONTROL_URL ?? 'http://localhost:5175',
+    web: import.meta.env.VITE_WEB_URL ?? 'http://localhost:5176',
   };
 }
 
@@ -35,11 +40,23 @@ export function resolveAppOrigins(): AppOrigins {
  * `admin_keyimmo`, ou aucune membership) → HOME, l'app générale — aucun des
  * deux autres rôles n'a d'app dédiée aujourd'hui (`FINANCE`/`NOTARY`,
  * modules `AppShell` du ticket 007, jamais déployés comme apps réelles).
+ *
+ * **Mise à jour ticket 021** : `admin_keyimmo` gagne sa propre branche →
+ * `web` (apps/web héberge désormais le back-office, ticket 021 —
+ * `021-backoffice-web.md`). CE N'EST PAS UN OUBLI du ticket 020 : à ce
+ * moment-là, `apps/web` n'avait aucun écran post-connexion (uniquement le
+ * formulaire de connexion), donc aucune destination `web` ne pouvait
+ * exister — `admin_keyimmo` retombait alors, comme tout rôle sans app
+ * dédiée, sur HOME par défaut. Voir `020-ecran-connexion.md`, section
+ * « Évolution ticket 021 », pour la note explicite côté ticket d'origine.
+ * « TOUT AUTRE RÔLE → HOME » reste vrai pour chaque rôle SAUF
+ * `admin_keyimmo` désormais.
  */
 export function resolveRedirectApp(me: Me): keyof AppOrigins {
   const primaryRole = me.memberships[0]?.role_code;
   if (primaryRole === 'inspecteur') return 'control';
   if (primaryRole === 'constructeur') return 'build';
+  if (primaryRole === 'admin_keyimmo') return 'web';
   return 'home';
 }
 

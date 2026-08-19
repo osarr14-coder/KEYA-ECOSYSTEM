@@ -1,29 +1,101 @@
 import { useState } from 'react';
 
-import { AlertBanner } from '@keya/design-system';
+import { AlertBanner, AppShell, type AppModule } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
 import { ApiError } from './api/client';
+import { useApiResource } from './api/useApiResource';
+import { deriveAllRoleCodes, hasAdminKeyimmoAccess } from './auth/adminAccess';
 import { buildRedirectUrl, resolveAppOrigins, resolveRedirectApp } from './auth/redirectTarget';
+import { BackofficeView } from './views/BackofficeView';
 
-/**
- * Écran de connexion (ticket 020) — seul point d'entrée d'authentification
- * du frontend. Remplace le mécanisme manuel
- * (`localStorage.setItem('keya_access_token', '<jwt>')`, documenté depuis
- * les tickets 008/009 comme un pis-aller « en attendant ce futur ticket »)
- * par un vrai flux de connexion : formulaire → `POST /api/auth/login/` →
- * `GET /api/me/` → redirection vers l'app correspondant au RÔLE réel de
- * l'utilisateur (voir `auth/redirectTarget.ts`).
- *
- * `redirect` est injectable (test) — `window.location.assign` par défaut,
- * jamais appelé directement pour rester testable sans navigation réelle en
- * environnement jsdom.
- */
+// Ticket 021 — un seul module, toujours réservé à admin_keyimmo : cette app
+// n'héberge rien d'autre que le back-office. `requiredRoles` reste posé
+// malgré la garde déjà faite dans `AuthenticatedApp` (ci-dessous) — défense
+// en profondeur, même discipline que RLS + filtre applicatif ailleurs dans
+// ce projet (CLAUDE.md).
+const MODULES: AppModule[] = [
+  { id: 'backoffice', label: 'Back-office', href: '/', requiredRoles: ['admin_keyimmo'] },
+];
+
 export interface AppProps {
   redirect?: (url: string) => void;
 }
 
+/**
+ * Ticket 021 : apps/web n'est plus SEULEMENT un écran de connexion (ticket
+ * 020) — un `admin_keyimmo` peut désormais s'y rediriger LUI-MÊME (voir
+ * `auth/redirectTarget.ts`), auquel cas `main.tsx` a déjà posé le token en
+ * `localStorage` (via `receiveIncomingSession`) AVANT ce premier rendu. Un
+ * token présent = session de back-office active ; son absence = pas encore
+ * connecté, comportement du ticket 020 strictement inchangé (formulaire de
+ * connexion, voir `LoginView`).
+ *
+ * Lu une seule fois à l'initialisation du state (pas à chaque rendu) — la
+ * bascule connexion → back-office se fait par une VRAIE navigation
+ * (`redirect`, ticket 020), qui redémarre `main.tsx` depuis zéro, jamais par
+ * un changement d'état à l'intérieur de ce composant.
+ */
 export function App({ redirect = (url) => { window.location.assign(url); } }: AppProps) {
+  const [storedAccessToken] = useState(() => localStorage.getItem('keya_access_token'));
+
+  if (storedAccessToken) {
+    return <AuthenticatedApp />;
+  }
+
+  return <LoginView redirect={redirect} />;
+}
+
+function AuthenticatedApp() {
+  const api = useApiClient();
+  const meState = useApiResource(() => api.getMe(), []);
+
+  if (meState.status === 'loading') {
+    return <p>Chargement…</p>;
+  }
+  if (meState.status === 'error') {
+    return <p role="alert">Impossible de charger votre profil.</p>;
+  }
+
+  const me = meState.data;
+  const userRoles = deriveAllRoleCodes(me);
+
+  // Ticket 021, point 1 du scope : écran réservé à admin_keyimmo. Vérifié
+  // ici (jamais un rendu, même partiel, du back-office pour un autre rôle)
+  // EN PLUS de la garde backend (`IsAdminKeyimmo`, ticket 011) — pas à sa
+  // place. Voir `auth/adminAccess.ts` pour pourquoi cette vérification
+  // regarde TOUTES les memberships, pas seulement la première.
+  if (!hasAdminKeyimmoAccess(me)) {
+    return (
+      <main style={{ padding: '24px' }}>
+        <AlertBanner title="Accès refusé">
+          Cet écran est réservé aux membres du rôle admin_keyimmo.
+        </AlertBanner>
+      </main>
+    );
+  }
+
+  return (
+    <AppShell
+      density="dense"
+      modules={MODULES}
+      userRoles={userRoles}
+      activeModuleId="backoffice"
+      breadcrumbs={[{ label: 'Back-office' }]}
+    >
+      <BackofficeView />
+    </AppShell>
+  );
+}
+
+/**
+ * Écran de connexion (ticket 020) — formulaire → `POST /api/auth/login/` →
+ * `GET /api/me/` → redirection vers l'app correspondant au RÔLE réel de
+ * l'utilisateur (voir `auth/redirectTarget.ts`). Extrait de `App` au ticket
+ * 021 pour cohabiter avec `AuthenticatedApp` ci-dessus — comportement et
+ * markup strictement inchangés.
+ */
+function LoginView({ redirect }: { redirect: (url: string) => void }) {
   const api = useApiClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,9 +118,8 @@ export function App({ redirect = (url) => { window.location.assign(url); } }: Ap
     } catch (caught) {
       // Ticket 020, vérifié empiriquement : identifiants invalides, compte
       // désactivé (`is_active=False`, ticket 011) et email inexistant
-      // renvoient TOUS le même 401 générique côté backend (simplejwt,
-      // volontairement non distinctif — évite l'énumération de comptes).
-      // Aucun message différencié n'existe à afficher ici.
+      // renvoient TOUS le même 401 générique. Aucun message différencié
+      // n'existe à afficher ici.
       if (caught instanceof ApiError && caught.status === 401) {
         setError('Identifiants invalides.');
       } else {

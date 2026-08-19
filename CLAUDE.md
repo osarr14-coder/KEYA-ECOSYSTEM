@@ -1294,7 +1294,59 @@ ressemblant à des 503 aléatoires alors que Django ne loggait que des 200). Cor
 (`config/settings.py::CORS_ALLOW_HEADERS`), avec le port 5176 ajouté à
 `CORS_ALLOWED_ORIGINS` (`.env`/`.env.example`).
 
-## Tickets
+## Back-office web (ticket 021)
+
+Interface (`apps/web`) pour les trois endpoints livrés côté backend au ticket 011
+(recherche utilisateur, consultation organisation/rôle, désactivation de compte) —
+jusque-là utilisables uniquement via l'API navigable Django, sans aucun écran.
+
+**`apps/web` cesse d'être SEULEMENT un écran de connexion** (ticket 020) : décision
+validée avant implémentation, `admin_keyimmo` gagne sa propre branche dans
+`resolveRedirectApp` → `'web'` (auto-référence), plutôt qu'un second écran conditionnel
+avant la redirection. `apps/web` devient un point d'arrivée comme HOME/BUILD/CONTROL PWA
+— son propre `receiveIncomingSession` (même mécanisme exact, dupliqué comme
+`createApiClient` l'est déjà entre apps), `ApiClientContext`, écran post-connexion.
+**Ce changement de mapping est documenté explicitement comme une évolution volontaire,
+pas un oubli du ticket 020** — voir la note dédiée dans `020-ecran-connexion.md`, section
+« Évolution ticket 021 », et le commentaire de `resolveRedirectApp` lui-même
+(`apps/web/src/auth/redirectTarget.ts`) : « tout autre rôle → HOME » reste vrai pour
+chaque rôle SAUF `admin_keyimmo` désormais, `apps/web` n'avait simplement aucune
+destination `web` possible au moment du ticket 020.
+
+**Dérivation de rôle TRANSVERSE, distincte de l'App Switcher** (`apps/web/src/auth/
+adminAccess.ts::hasAdminKeyimmoAccess`) : contrairement à `resolveRedirectApp`/l'App
+Switcher (ticket 019), qui dérivent le rôle de la PREMIÈRE membership ou de
+l'organisation ACTIVE (modules org-scopés BUILD/FINANCE/NOTARY), l'accès au back-office
+regarde TOUTES les memberships de l'utilisateur — même raisonnement que `IsAdminKeyimmo`
+côté backend (`apps/backoffice/permissions.py`, ticket 011), qui vérifie le rôle dans
+N'IMPORTE LAQUELLE des organisations, pas l'organisation active de la requête.
+`admin_keyimmo` est une capacité transverse, pas org-scopée — utiliser la première
+membership seule aurait refusé l'accès à tort à un admin légitime dont la première
+organisation n'est pas KEYIMMO. Le gate applicatif (`AuthenticatedApp` dans `App.tsx`)
+s'ajoute à la garde backend, jamais à sa place — même discipline RLS + filtre
+applicatif que le reste du projet.
+
+**Désactivation — double confirmation obligatoire, jamais `window.confirm()`**
+(`apps/web/src/views/BackofficeView.tsx`) : un premier clic sur « Désactiver ce compte »
+n'exécute rien, il affiche seulement un `AlertBanner` + un second bouton dédié
+« Confirmer la désactivation » — seul CE second clic appelle `deactivateUser`. Après
+succès, l'UI relit l'état réel depuis le backend (`getUserDetail`), jamais une mise à
+jour optimiste locale calculée côté frontend (même doctrine « aucun calcul frontend » que
+le reste du projet).
+
+**Aucune action ne suggère un raccourci sur un `TrustEvent`** : la garde existante côté
+backend (`TestBackofficeNeverExposesATrustEventShortcut`, ticket 011) est complétée côté
+frontend par un test qui scanne TOUS les boutons rendus contre une liste de formulations
+interdites (`BackofficeView.test.tsx`) — même pattern que le scan de boutons de
+`apps/build/src/views/ExceptionsView.test.tsx` (ticket 009, « ne propose JAMAIS de bouton
+permettant de changer directement le statut de la réserve »).
+
+**Isolation git — piège d'environnement, pas de ce projet spécifiquement** : le dossier
+de travail peut être partagé entre plusieurs sessions concurrentes sans qu'aucun
+`git worktree` séparé n'existe par défaut — un `git checkout` d'une session bascule le
+HEAD de l'autre (confirmé via `git reflog` en démarrant ce ticket). Résolu en créant un
+worktree dédié (`git worktree add`) avant d'écrire du code. À refaire systématiquement
+dès qu'une autre session est annoncée comme active sur la même arborescence.
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un
 sous-dossier `tickets/`). Le ticket 001 (fondations auth/organisations/RBAC) est la

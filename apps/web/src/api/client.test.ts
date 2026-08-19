@@ -45,7 +45,7 @@ describe('createApiClient — login', () => {
 });
 
 describe('createApiClient — getMe', () => {
-  it('GET /api/me/ avec le token reçu en argument, jamais localStorage', async () => {
+  it('avec un token explicite (ticket 020, formulaire de connexion), jamais localStorage', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       expect(String(url)).toBe('http://api.test/api/me/');
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer just-obtained-token');
@@ -62,5 +62,89 @@ describe('createApiClient — getMe', () => {
     const me = await client.getMe('just-obtained-token');
 
     expect(me.memberships[0].role_code).toBe('constructeur');
+  });
+
+  it(
+    'sans argument (ticket 021, back-office déjà connecté), lit le token via getAccessToken',
+    async () => {
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer stored-token');
+        return jsonResponse(200, { id: 'user-1', email: 'a@example.com', full_name: 'A', memberships: [] });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'stored-token' });
+      await client.getMe();
+
+      expect(fetchMock).toHaveBeenCalled();
+    },
+  );
+});
+
+describe('createApiClient — back-office (ticket 011/021)', () => {
+  it('searchUsers : GET /api/backoffice/users/?q=... avec le token stocké', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(String(url)).toBe('http://api.test/api/backoffice/users/?q=alice');
+      expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer admin-token');
+      return jsonResponse(200, [
+        { id: 'user-1', email: 'alice@example.com', full_name: 'Alice', is_active: true },
+      ]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'admin-token' });
+    const results = await client.searchUsers('alice');
+
+    expect(results).toEqual([{ id: 'user-1', email: 'alice@example.com', full_name: 'Alice', is_active: true }]);
+  });
+
+  it('searchUsers : une recherche vide n\'ajoute aucun paramètre `q` (le backend décide seul du comportement)', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(String(url)).toBe('http://api.test/api/backoffice/users/');
+      return jsonResponse(200, []);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'admin-token' });
+    await client.searchUsers('');
+  });
+
+  it('getUserDetail : GET /api/backoffice/users/{id}/', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(String(url)).toBe('http://api.test/api/backoffice/users/user-1/');
+      return jsonResponse(200, {
+        user: { id: 'user-1', email: 'alice@example.com', full_name: 'Alice', is_active: true },
+        memberships: [{ organization_id: 'org-1', organization_name: 'Org', role: 'constructeur' }],
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'admin-token' });
+    const detail = await client.getUserDetail('user-1');
+
+    expect(detail.memberships[0].role).toBe('constructeur');
+  });
+
+  it('deactivateUser : POST /api/backoffice/users/{id}/deactivate/, jamais GET', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(String(url)).toBe('http://api.test/api/backoffice/users/user-1/deactivate/');
+      expect(init?.method).toBe('POST');
+      return jsonResponse(200, { id: 'user-1', email: 'alice@example.com', full_name: 'Alice', is_active: false });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'admin-token' });
+    const result = await client.deactivateUser('user-1');
+
+    expect(result.is_active).toBe(false);
+  });
+
+  it('un 403 (rôle admin_keyimmo absent) lève une ApiError, jamais silencieusement ignoré', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(403, { detail: 'Réservé aux membres du rôle admin_keyimmo.' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'not-admin-token' });
+
+    await expect(client.searchUsers('alice')).rejects.toMatchObject({ status: 403 } satisfies Partial<ApiError>);
   });
 });

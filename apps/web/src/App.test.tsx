@@ -1,10 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from './api/client';
-import type { Me } from './api/types';
+import type { BackofficeUserDetail, Me } from './api/types';
 import { App } from './App';
 import { createMockApiClient, withApiClient } from './testUtils';
+
+beforeEach(() => {
+  // Ticket 021 : un token en localStorage bascule App vers le back-office —
+  // jamais laisser un test précédent en contaminer un autre.
+  localStorage.clear();
+});
 
 function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}, redirect = vi.fn()) {
   const api = createMockApiClient(overrides);
@@ -83,6 +89,25 @@ describe('App — connexion réussie : redirection selon le rôle réel (ticket 
 
     await waitFor(() => expect(redirect).toHaveBeenCalledWith(expect.stringContaining('http://localhost:5173/#')));
   });
+
+  it(
+    'un rôle admin_keyimmo redirige vers apps/web ELLE-MÊME (ticket 021, back-office) — '
+    + 'plus vers HOME comme avant cette évolution volontaire du mapping',
+    async () => {
+      const login = vi.fn().mockResolvedValue({ access: 'access-tok', refresh: 'refresh-tok' });
+      const getMe = vi.fn().mockResolvedValue({
+        ...ME_CONSTRUCTEUR,
+        memberships: [{ ...ME_CONSTRUCTEUR.memberships[0], role_code: 'admin_keyimmo' }],
+      });
+      const { redirect } = renderApp({ login, getMe });
+
+      await fillAndSubmit();
+
+      await waitFor(() => expect(redirect).toHaveBeenCalledWith(
+        'http://localhost:5176/#access_token=access-tok&refresh_token=refresh-tok',
+      ));
+    },
+  );
 });
 
 describe(
@@ -116,6 +141,98 @@ describe(
       await fillAndSubmit();
 
       expect(await screen.findByText('Une erreur est survenue. Réessayez.')).toBeInTheDocument();
+    });
+  },
+);
+
+describe(
+  'App — session déjà active (ticket 021) : un token en localStorage bascule vers le '
+  + 'back-office, jamais le formulaire de connexion',
+  () => {
+    const ADMIN_DETAIL: BackofficeUserDetail = {
+      user: { id: 'target-1', email: 'cible@example.com', full_name: 'Cible', is_active: true },
+      memberships: [{ organization_id: 'org-1', organization_name: 'Org', role: 'constructeur' }],
+    };
+
+    function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
+      localStorage.setItem('keya_access_token', 'stored-admin-token');
+      const api = createMockApiClient(overrides);
+      render(withApiClient(api, <App />));
+      return { api };
+    }
+
+    it('un token présent affiche le back-office (AppShell dense) plutôt que le formulaire de connexion', async () => {
+      const getMe = vi.fn().mockResolvedValue({
+        id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
+        memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+      });
+      renderAuthenticated({ getMe });
+
+      expect(await screen.findByTestId('app-shell')).toHaveAttribute('data-density', 'dense');
+      expect(screen.queryByLabelText('Connexion')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Rechercher un utilisateur par email')).toBeInTheDocument();
+    });
+
+    it(
+      'un utilisateur sans membership admin_keyimmo (aucune, pas seulement pas en premier) voit un '
+      + 'message "Accès refusé", jamais le back-office',
+      async () => {
+        const getMe = vi.fn().mockResolvedValue({
+          id: 'user-1', email: 'constructeur@example.com', full_name: 'Constructeur',
+          memberships: [{ organization_id: 'org-1', organization_name: 'Org', role_code: 'constructeur', role_label: 'Constructeur' }],
+        });
+        renderAuthenticated({ getMe });
+
+        expect(await screen.findByText('Accès refusé')).toBeInTheDocument();
+        expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+      },
+    );
+
+    it(
+      'admin_keyimmo détecté même si ce n\'est PAS la première membership (capacité '
+      + 'transverse, voir auth/adminAccess.ts)',
+      async () => {
+        const getMe = vi.fn().mockResolvedValue({
+          id: 'user-1', email: 'multi@example.com', full_name: 'Multi',
+          memberships: [
+            { organization_id: 'org-1', organization_name: 'Org Client', role_code: 'client', role_label: 'Client' },
+            { organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' },
+          ],
+        });
+        renderAuthenticated({ getMe });
+
+        expect(await screen.findByTestId('app-shell')).toBeInTheDocument();
+      },
+    );
+
+    it('un échec de /me affiche une erreur, jamais un back-office vide silencieux', async () => {
+      const getMe = vi.fn().mockRejectedValue(new Error('network down'));
+      renderAuthenticated({ getMe });
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger votre profil.');
+    });
+
+    it('recherche puis affichage du profil d\'un utilisateur cible (organisation/rôle) fonctionne de bout en bout', async () => {
+      const getMe = vi.fn().mockResolvedValue({
+        id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
+        memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+      });
+      const searchUsers = vi.fn().mockResolvedValue([
+        { id: 'target-1', email: 'cible@example.com', full_name: 'Cible', is_active: true },
+      ]);
+      const getUserDetail = vi.fn().mockResolvedValue(ADMIN_DETAIL);
+      renderAuthenticated({ getMe, searchUsers, getUserDetail });
+
+      fireEvent.change(await screen.findByLabelText('Rechercher un utilisateur par email'), {
+        target: { value: 'cible' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }));
+
+      fireEvent.click(await screen.findByRole('button', { name: /cible@example.com/ }));
+
+      expect(await screen.findByText('Org — constructeur')).toBeInTheDocument();
+      expect(searchUsers).toHaveBeenCalledWith('cible');
+      expect(getUserDetail).toHaveBeenCalledWith('target-1');
     });
   },
 );

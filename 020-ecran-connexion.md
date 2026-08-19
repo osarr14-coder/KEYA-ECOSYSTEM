@@ -127,3 +127,16 @@ dev lancés :
 Ticket 001 (`POST /api/auth/login/`, `GET /api/me/`), ticket 007 (`AlertBanner`), ticket
 011 (désactivation de compte, `is_active`), ticket 019 (App Switcher — dérivation de
 rôle réutilisée, `keya_active_organization_id` à préserver).
+
+## Évolution ticket 021
+Le mapping `resolveRedirectApp` décrit au point 3 du scope livré ci-dessus (« tout autre
+rôle [...] → HOME ») a changé au ticket 021 : `admin_keyimmo` gagne sa propre branche →
+`web` (apps/web héberge désormais le back-office, voir `021-backoffice-web.md`). **Ce
+n'est PAS un oubli de CE ticket** : au moment où ce ticket 020 a été livré, `apps/web`
+n'avait strictement aucun écran post-connexion (uniquement le formulaire de connexion
+ci-dessus) — aucune destination `web` ne pouvait donc exister, et `admin_keyimmo`
+retombait légitimement, comme tout rôle sans app dédiée à l'époque, sur HOME par défaut.
+« Tout autre rôle → HOME » reste vrai pour CHAQUE rôle SAUF `admin_keyimmo` depuis le
+ticket 021. Le reste de ce ticket (formulaire, gestion des erreurs, mécanisme de
+transfert de session par fragment d'URL, remplacement du `localStorage` manuel) est
+strictement inchangé.
