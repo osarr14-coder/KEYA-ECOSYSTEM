@@ -703,6 +703,13 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # PROJET ENTIER pour continuer à forcer une décision consciente
             # sur toute route future, où qu'elle apparaisse.
             'pricing-config-create', 'pricing-config-current', 'pricing-config-history',
+            # Ticket B-027 — ajout conscient : `LegalPaymentTierTemplate`,
+            # également entièrement réservé à admin_keyimmo (même décision
+            # de conception que `PricingConfig`, ticket 025, point B) —
+            # aucune lecture candidate/constructeur sur aucune de ces 4
+            # routes.
+            'legal-payment-tier-template-create', 'legal-payment-tier-template-activate',
+            'legal-payment-tier-template-active', 'legal-payment-tier-template-history',
         }
         assert actual == expected
 
