@@ -52,7 +52,20 @@ export async function saveDraft(draft: InspectionDraft): Promise<InspectionDraft
   const toPersist: InspectionDraft = { ...draft, deviceTimestamp: new Date().toISOString() };
   const db = await openControlDatabase();
   try {
-    await db.put('inspection_drafts', toPersist);
+    // Ticket 026 (flake trouvé en relançant la suite complète) : `db.put(...)`
+    // (raccourci `idb`) résout à la réussite de la REQUÊTE, pas à la
+    // complétion de la TRANSACTION (`tx.done`) — fermer la connexion
+    // immédiatement après pouvait, sous `fake-indexeddb` en particulier,
+    // interrompre la validation de la transaction avant qu'une lecture sur
+    // une NOUVELLE connexion, ouverte juste après (ex. `InspectionFormView`
+    // qui recharge son brouillon dès son montage), ne la voie — même classe
+    // de piège que celui déjà documenté au ticket 018 (IndexedDB résout via
+    // de vraies tâches de la file d'attente, pas seulement des microtasks).
+    // Attendre explicitement `tx.done` avant `db.close()` garantit que
+    // l'écriture est réellement validée avant que la connexion ne se ferme.
+    const tx = db.transaction('inspection_drafts', 'readwrite');
+    await tx.store.put(toPersist);
+    await tx.done;
   } finally {
     db.close();
   }
@@ -102,7 +115,11 @@ export async function getAllDrafts(): Promise<InspectionDraft[]> {
 export async function patchDraft(draft: InspectionDraft): Promise<InspectionDraft> {
   const db = await openControlDatabase();
   try {
-    await db.put('inspection_drafts', draft);
+    // Ticket 026 — même raisonnement que `saveDraft` : attendre `tx.done`,
+    // pas seulement la requête, avant de fermer la connexion.
+    const tx = db.transaction('inspection_drafts', 'readwrite');
+    await tx.store.put(draft);
+    await tx.done;
   } finally {
     db.close();
   }
@@ -119,7 +136,11 @@ export async function patchDraft(draft: InspectionDraft): Promise<InspectionDraf
 export async function deleteDraft(id: string): Promise<void> {
   const db = await openControlDatabase();
   try {
-    await db.delete('inspection_drafts', id);
+    // Ticket 026 — même raisonnement que `saveDraft` : attendre `tx.done`,
+    // pas seulement la requête, avant de fermer la connexion.
+    const tx = db.transaction('inspection_drafts', 'readwrite');
+    await tx.store.delete(id);
+    await tx.done;
   } finally {
     db.close();
   }

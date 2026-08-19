@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DevisAppelOffreMockup } from './DevisAppelOffreMockup';
 
 describe(
-  'DevisAppelOffreMockup — maquette visuelle uniquement (ticket 025), aucun appel réseau',
+  'DevisAppelOffreMockup — maquette visuelle uniquement (tickets 025/026), aucun appel réseau',
   () => {
     let fetchSpy: ReturnType<typeof vi.fn>;
 
@@ -21,7 +21,7 @@ describe(
       render(<DevisAppelOffreMockup />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Voir le détail de ce qui reste à câbler' }));
-      for (const button of screen.getAllByRole('button', { name: /Verrouiller|Saisir un devis/ })) {
+      for (const button of screen.getAllByRole('button', { name: /Verrouiller|Saisir un devis|Enregistrer un ajustement/ })) {
         fireEvent.click(button);
       }
 
@@ -40,52 +40,111 @@ describe(
       expect(screen.getByText('12 500 000 FCFA')).toBeInTheDocument();
     });
 
-    it(
-      "n'affiche JAMAIS de statut « gagnant » — le comportement dépend du ticket 024, "
-      + 'non fusionné au moment de cette maquette',
-      () => {
-        render(<DevisAppelOffreMockup />);
-
-        expect(screen.queryByText(/gagnant$/i)).not.toBeInTheDocument();
-        // Seul le titre de la section "à câbler" mentionne le mot, jamais
-        // comme un statut affiché sur une ligne de devis.
-        const statusBadges = screen.getAllByTestId('devis-status');
-        for (const badge of statusBadges) {
-          expect(badge.textContent).toMatch(/^(Candidat|Verrouillé)$/);
-        }
-      },
-    );
-
-    it('marque clairement la section réconciliation comme "à câbler" (ticket 024)', () => {
-      render(<DevisAppelOffreMockup />);
-      expect(screen.getByText(/à câbler une fois le ticket 024 fusionné/i)).toBeInTheDocument();
-    });
-
-    it('le détail "à câbler" est replié par défaut, dépliable au clic', () => {
+    it('le détail "reste à câbler" est replié par défaut, dépliable au clic', () => {
       render(<DevisAppelOffreMockup />);
 
-      expect(screen.queryByText(/Séquencement du statut/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Aucun appel réseau réel nulle part/i)).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: 'Voir le détail de ce qui reste à câbler' }));
 
-      expect(screen.getByText(/Séquencement du statut/i)).toBeInTheDocument();
+      expect(screen.getByText(/Aucun appel réseau réel nulle part/i)).toBeInTheDocument();
     });
 
-    it('toutes les actions (verrouiller, saisir un devis) sont désactivées', () => {
+    it('toutes les actions (verrouiller, saisir un devis, enregistrer un ajustement) sont désactivées', () => {
       render(<DevisAppelOffreMockup />);
 
-      const actionButtons = screen.getAllByRole('button', { name: /Verrouiller|Saisir un devis|Lot déjà verrouillé/ });
+      const actionButtons = screen.getAllByRole(
+        'button',
+        { name: /Verrouiller|Saisir un devis|Lot déjà verrouillé|Enregistrer un ajustement/ },
+      );
       expect(actionButtons.length).toBeGreaterThan(0);
       for (const button of actionButtons) {
         expect(button).toBeDisabled();
       }
     });
 
-    it('un devis déjà verrouillé affiche "Verrouillé" comme statut ET comme action désactivée', () => {
+    it('un devis déjà verrouillé affiche "Verrouillé" comme statut admin ET comme action désactivée', () => {
       render(<DevisAppelOffreMockup />);
 
-      const lockedRowButton = screen.getByRole('button', { name: 'Verrouillé' });
-      expect(lockedRowButton).toBeDisabled();
+      const lockedRowButtons = screen.getAllByRole('button', { name: 'Verrouillé' });
+      expect(lockedRowButtons.length).toBeGreaterThan(0);
+      for (const button of lockedRowButtons) {
+        expect(button).toBeDisabled();
+      }
+    });
+  },
+);
+
+describe(
+  'DevisAppelOffreMockup — statut « gagnant » gaté par la réconciliation (ticket 026, '
+  + 'contrat vérifié dans apps/procurement/services.py::get_candidate_visible_devis_status '
+  + 'avant d\'écrire cette maquette)',
+  () => {
+    it(
+      'un devis VERROUILLÉ avec au moins un ajustement affiche "Gagnant" comme vue candidat '
+      + '(Lot A12)',
+      () => {
+        render(<DevisAppelOffreMockup />);
+
+        const notes = screen.getAllByTestId('candidate-visible-status');
+        const gagnantNote = notes.find((note) => note.getAttribute('data-status') === 'gagnant');
+        expect(gagnantNote).toBeDefined();
+        expect(gagnantNote).toHaveTextContent('Gagnant');
+      },
+    );
+
+    it(
+      'un devis VERROUILLÉ SANS aucun ajustement reste "Candidat" comme vue candidat, '
+      + 'jamais "Gagnant" (Lot C07 — le verrouillage seul ne suffit jamais)',
+      () => {
+        render(<DevisAppelOffreMockup />);
+
+        const notes = screen.getAllByTestId('candidate-visible-status');
+        const stillCandidateNotes = notes.filter((note) => note.getAttribute('data-status') === 'candidat');
+        expect(stillCandidateNotes.length).toBeGreaterThan(0);
+        for (const note of stillCandidateNotes) {
+          expect(note).not.toHaveTextContent('Gagnant');
+          expect(note).toHaveTextContent('encore « Candidat »');
+        }
+      },
+    );
+
+    it('un devis NON verrouillé n\'affiche aucune vue candidat (le gating ne concerne que les devis verrouillés)', () => {
+      render(<DevisAppelOffreMockup />);
+
+      // 2 devis non verrouillés dans les données mockées (Fondation Solide,
+      // Bâti Sénégal sur Lot B03) : ni l'un ni l'autre ne doit avoir de
+      // note de statut candidat.
+      const notes = screen.getAllByTestId('candidate-visible-status');
+      expect(notes.length).toBe(2); // uniquement les 2 devis verrouillés (Lot A12 + Lot C07)
+    });
+
+    it(
+      'le statut admin ("Verrouillé") et le statut candidat peuvent différer pour la MÊME '
+      + 'ligne, au même instant — jamais fusionnés en un seul indicateur',
+      () => {
+        render(<DevisAppelOffreMockup />);
+
+        // Lot C07 : l'admin voit "Verrouillé" (DevisStatusIndicator), le
+        // candidat voit encore "Candidat" (CandidateVisibleStatusNote) —
+        // les deux textes coexistent pour la même ligne.
+        const lockedBadges = screen.getAllByTestId('devis-status');
+        const lockedBadge = lockedBadges.find((badge) => badge.getAttribute('data-status') === 'verrouille');
+        expect(lockedBadge).toHaveTextContent('Verrouillé');
+      },
+    );
+
+    it('affiche l\'historique des ajustements (écart, marge résultante, favorable/défavorable) pour un devis réconcilié', () => {
+      render(<DevisAppelOffreMockup />);
+
+      expect(screen.getByText(/-200 000 FCFA \(favorable\)/)).toBeInTheDocument();
+      expect(screen.getByText(/\+300 000 FCFA \(défavorable\)/)).toBeInTheDocument();
+      expect(screen.getByText('1 400 000 FCFA')).toBeInTheDocument();
+    });
+
+    it('affiche "Aucun ajustement enregistré" pour un devis verrouillé sans réconciliation', () => {
+      render(<DevisAppelOffreMockup />);
+      expect(screen.getByText('Aucun ajustement enregistré pour l\'instant.')).toBeInTheDocument();
     });
   },
 );

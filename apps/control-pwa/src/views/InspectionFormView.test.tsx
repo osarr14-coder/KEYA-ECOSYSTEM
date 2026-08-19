@@ -4,13 +4,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHECKLIST_TEMPLATE } from '../db/missions';
 import * as repository from '../db/repository';
 import { createEmptyDraft, getDraftForMission, patchDraft, saveDraft } from '../db/repository';
+import { clearIndexedDB } from '../testUtils/clearIndexedDB';
 import { InspectionFormView } from './InspectionFormView';
 
+// Ticket 025 (audit — flake trouvé en relançant la suite complète après
+// merge) : ce fichier avait sa PROPRE boucle de nettoyage locale, jamais
+// mise à jour vers `clearIndexedDB()` (le correctif du ticket 012 pour
+// exactement ce piège — `deleteDatabase()` renvoie une requête
+// asynchrone, jamais une Promise ; ne pas attendre sa complétion réelle
+// laissait une suppression en vol interférer avec le `saveDraft` du test
+// suivant). `MissionsListView.test.tsx`/`App.test.tsx` utilisaient déjà
+// le helper partagé — seul ce fichier avait divergé. Reproduit de façon
+// non déterministe (~50 % d'échec) en relançant la suite COMPLÈTE
+// plusieurs fois ; jamais en isolant ce seul fichier (confirme une
+// interférence inter-fichiers, pas un bug du composant lui-même).
 beforeEach(async () => {
-  const databases = await indexedDB.databases();
-  for (const database of databases) {
-    if (database.name) indexedDB.deleteDatabase(database.name);
-  }
+  await clearIndexedDB();
 });
 
 describe('InspectionFormView — chaque saisie est écrite immédiatement, jamais différée', () => {
