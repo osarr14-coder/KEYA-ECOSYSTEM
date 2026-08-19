@@ -1,6 +1,7 @@
 from datetime import timedelta
 from pathlib import Path
 
+from corsheaders.defaults import default_headers
 from decouple import Csv, config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -121,6 +122,18 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
+# Trouvé en marge du ticket 020 (première vérification RÉELLE en navigateur
+# du header X-Organization-Id, ticket 019 — les tests unitaires mockent
+# `fetch`, donc n'exercent jamais un vrai préflight CORS) : django-cors-
+# headers n'autorise, par défaut, que ses `default_headers` (accept,
+# authorization, content-type...) — un header personnalisé comme
+# `X-Organization-Id` (apps.core.middleware.OrganizationScopeMiddleware)
+# fait échouer le préflight CORS SILENCIEUSEMENT dès qu'une organisation
+# active est connue côté frontend (`fetch` lève une erreur réseau générique,
+# jamais une réponse HTTP lisible) — CHAQUE requête suivante d'une app
+# HOME/BUILD échouait, dès l'instant où l'App Switcher (ticket 019) avait
+# résolu une organisation.
+CORS_ALLOW_HEADERS = list(default_headers) + ['x-organization-id']
 
 # ── Celery (ticket 004 : traitement asynchrone média) ──────────────────────
 # Broker Redis réel depuis l'ADR 0001 (docs/adr/0001-celery-eager-mode.md) :

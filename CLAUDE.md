@@ -1257,6 +1257,43 @@ d'organisation — `activeOrganizationId` leur est donc transmis en prop explici
 inclus dans les deps de leur `useApiResource`, pour que le critère « CHAQUE endpoint »
 tienne vraiment.
 
+## Écran de connexion — apps/web (ticket 020)
+
+Remplace le mécanisme manuel documenté depuis les tickets 008/009/010
+(`localStorage.setItem('keya_access_token', '<jwt>')` posé à la main) par un vrai flux
+de connexion. Nouvelle app (`apps/web`, port 5176) — formulaire email/mot de passe,
+consomme `POST /api/auth/login/` (ticket 001) puis `GET /api/me/`, redirige vers HOME,
+BUILD ou CONTROL selon le RÔLE RÉEL de l'utilisateur (réutilise la dérivation de rôle de
+l'App Switcher, ticket 019 : première membership, mapping `inspecteur`→CONTROL,
+`constructeur`→BUILD, tout le reste→HOME).
+
+**Vérifié empiriquement, pas supposé** : identifiants invalides, compte désactivé
+(`is_active=False`, ticket 011) et email inexistant renvoient EXACTEMENT le même 401
+générique côté backend (simplejwt par défaut, volontairement non distinctif) — le
+frontend affiche donc un seul message « Identifiants invalides. », jamais un message
+différencié qui n'existe pas côté backend.
+
+**HOME/BUILD/CONTROL PWA sont des origines séparées** (ports différents, aucune config
+de déploiement partagée dans ce repo) — `localStorage` n'est jamais partagé entre elles.
+Les jetons transitent donc par fragment d'URL (`#access_token=...&refresh_token=...`,
+jamais en query string) à la redirection ; chaque app réceptrice
+(`src/auth/receiveIncomingSession.ts`, dupliqué dans les 3 — pas d'infrastructure
+partagée pour un si petit bout de logique, même discipline que la duplication déjà
+assumée de `createApiClient` entre apps) le lit une seule fois au démarrage
+(`main.tsx`, avant tout le reste), le stocke sous la MÊME clé `keya_access_token` que
+le mécanisme manuel qu'il remplace, puis nettoie l'URL.
+
+**Bug réel trouvé en marge, pré-existant depuis le ticket 019** : la toute première
+vérification RÉELLE en navigateur du header `X-Organization-Id` (jamais faite au
+ticket 019, qui ne s'appuyait que sur des tests à `fetch` mocké) a révélé que
+`django-cors-headers` n'autorisait, par défaut, que ses `default_headers` — ce header
+personnalisé faisait donc échouer le préflight CORS SILENCIEUSEMENT dès qu'une
+organisation active était connue côté frontend (`fetch` lève une erreur réseau
+générique, jamais une réponse HTTP lisible — symptôme trompeur en navigateur,
+ressemblant à des 503 aléatoires alors que Django ne loggait que des 200). Corrigé
+(`config/settings.py::CORS_ALLOW_HEADERS`), avec le port 5176 ajouté à
+`CORS_ALLOWED_ORIGINS` (`.env`/`.env.example`).
+
 ## Tickets
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un
