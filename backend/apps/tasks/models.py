@@ -94,6 +94,19 @@ class Task(models.Model):
         indexes = [
             models.Index(fields=['assignee', 'status']),
         ]
+        constraints = [
+            # Ticket 017 : une seule Task par (sujet précis, raison de
+            # génération) — quel que soit le nombre de fois où le générateur
+            # qui la crée est réellement exécuté (redélivrance broker, rejeu
+            # manuel, double appel `.delay()` côté appelant). Voir
+            # `apps.tasks.services._get_or_create_task`, qui s'appuie sur
+            # CETTE contrainte pour rattraper explicitement la course entre
+            # deux transactions concurrentes.
+            models.UniqueConstraint(
+                fields=['subject_type', 'subject_id', 'source'],
+                name='unique_task_per_subject_and_source',
+            ),
+        ]
 
     def __str__(self):
         return f'[{self.type}] {self.label}'

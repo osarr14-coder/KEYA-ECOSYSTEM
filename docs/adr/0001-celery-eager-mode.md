@@ -96,8 +96,12 @@ worker. Reste spécifique à chacun, non couvert ici :
 
 - **Ticket 006 (Task Inbox)** : la génération d'une `Task` depuis un `TrustEvent` peut
   s'appuyer sur ce même pattern (propagation explicite `organization_id`/`user_id`,
-  `transaction.atomic()` dans la tâche) — l'idempotence de CETTE tâche spécifique reste à
-  concevoir et tester le moment venu.
+  `transaction.atomic()` dans la tâche). **Résolu au ticket 017** : contrainte d'unicité
+  `(subject_type, subject_id, source)` sur `Task` + `apps.tasks.services._get_or_create_task`
+  (get → create sous `transaction.atomic()` → re-get explicite si `IntegrityError`, jamais
+  un `get_or_create` nu ni un retry aveugle) — prouvé par double appel séquentiel, par
+  deux transactions RÉELLEMENT concurrentes (threads + barrière), et contre un vrai
+  worker (`process_reserve_opened.delay(...)` appelée deux fois).
 - **Ticket 010 (CONTROL mobile offline)** : la file média côté client (compression avant
   upload, retry avec backoff) est un mécanisme différent (côté navigateur/PWA, pas
   Celery) — ce ticket ne fournit qu'un exemple de test d'intégration contre un vrai

@@ -1145,6 +1145,45 @@ dans les deux cas. Le flux complet réserve → correction BUILD → mission de 
 réserve résolue (disparaît de « Réserves ouvertes » côté BUILD) a également été rejoué
 de bout en bout sans incident.
 
+## Idempotence de la génération de Task (ticket 017)
+
+Referme le point resté ouvert par `docs/adr/0001-celery-eager-mode.md` depuis avant
+l'écriture du ticket 006 : `apps.tasks.services.create_task_for_reserve_opened`/
+`create_task_for_mission_assigned` créaient une `Task` sans aucune protection contre une
+seconde exécution du générateur (redélivrance broker, rejeu manuel, double `.delay()`
+côté appelant) — chaque exécution supplémentaire aurait créé une Task en double,
+visible deux fois dans l'inbox de l'utilisateur.
+
+**Corrigé** par une contrainte d'unicité en base sur `Task` (`subject_type, subject_id,
+source`) et `apps.tasks.services._get_or_create_task`, qui gère EXPLICITEMENT la course
+sous cette contrainte plutôt que de s'appuyer sur un `get_or_create` nu : un `get()`
+initial, un `create()` sous `transaction.atomic()`, puis — seulement si `create()` lève
+`IntegrityError` — un second `get()` (jamais un retry aveugle) pour récupérer la ligne
+que l'autre transaction gagnante vient de créer. Les deux générateurs existants sont
+réécrits pour passer par cette fonction commune ; tout futur générateur de Task doit en
+faire autant plutôt que d'appeler `Task.objects.create` directement.
+
+**Trois angles de test, chacun prouvant une garantie différente** :
+- Double appel séquentiel du service (même connexion) — pas de concurrence réelle, juste
+  la logique de relecture.
+- **Deux transactions RÉELLEMENT concurrentes** (`TestTaskCreationRaceUnderConcurrency`,
+  `django_db(transaction=True)`, deux vrais threads/connexions séparées) : une barrière
+  posée sur les deux premiers `Task.objects.get(...)` observés force les deux threads à
+  constater « n'existe pas » avant qu'aucun n'écrive — jamais un `sleep` hasardeux, même
+  discipline que les tests de race du ticket 015. Confirme qu'un seul thread réussit son
+  `create()`, que l'autre rattrape bien l'`IntegrityError` sans la laisser remonter, et
+  qu'une seule `Task` existe au final.
+- Contre un vrai worker Celery (`real_celery_worker`) : `process_reserve_opened.delay(...)`
+  appelée deux fois avec les mêmes arguments — aucun échec, une seule `Task`.
+
+**Piège rencontré en écrivant les tests** : trois fixtures de test préexistantes
+(`TestFourTaskTypesAreStructurallyDistinct`, `TestPriorityOrdering`) créaient plusieurs
+`Task` de test ancrées sur la MÊME réserve avec le même `source='test_fixture'` — la
+nouvelle contrainte les a fait échouer immédiatement (confirmant qu'elle s'applique bien).
+Corrigées en variant `source` par tâche de test : ces `Task` synthétiques ne
+représentaient jamais le même événement métier rejoué, juste plusieurs éléments de test
+distincts ancrés sur un même objet pour vérifier filtrage/tri.
+
 ## Tickets
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un

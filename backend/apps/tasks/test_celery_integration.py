@@ -82,3 +82,38 @@ def test_real_worker_creates_task_for_the_declaring_constructeur(real_celery_wor
         assert task.assignee_id == constructeur.id
         assert 'constructeur' in task.label.lower()
         assert 'keyimmo' not in task.label.lower()
+
+
+@requires_real_redis
+def test_real_worker_processing_the_same_reserve_twice_never_duplicates_the_task(real_celery_worker):
+    """Ticket 017 — la protection tient aussi à travers un VRAI aller-retour
+    broker + worker, pas seulement au niveau service (voir
+    apps/tasks/tests.py::TestTaskGenerationIsIdempotent, double appel direct
+    sans worker, et TestTaskCreationRaceUnderConcurrency, vraie concurrence
+    sans worker). `process_reserve_opened.delay(...)` appelée deux fois
+    avec les mêmes arguments — la seconde exécution ne doit jamais échouer
+    ni créer une seconde Task.
+    """
+    organization, constructeur, inspecteur, reserve = _build_open_reserve_with_real_commits(
+        'Org Tasks Real Worker Idempotent', 'realworker-idem-constructeur@example.com',
+        'realworker-idem-inspecteur@example.com',
+    )
+
+    first_result = process_reserve_opened.delay(
+        reserve_id=str(reserve.id), organization_id=str(organization.id), actor_user_id=str(inspecteur.id),
+    )
+    first_result.get(timeout=TASK_RESULT_TIMEOUT_SECONDS)
+
+    second_result = process_reserve_opened.delay(
+        reserve_id=str(reserve.id), organization_id=str(organization.id), actor_user_id=str(inspecteur.id),
+    )
+    # Ne doit jamais lever : une seconde exécution doit retrouver la Task
+    # déjà créée par la première plutôt que d'échouer sur l'IntegrityError
+    # de la contrainte d'unicité, ou d'en créer une seconde.
+    second_result.get(timeout=TASK_RESULT_TIMEOUT_SECONDS)
+
+    with transaction.atomic():
+        set_rls_context(organization_id=organization.id)
+        tasks = list(Task.objects.filter(subject_id=reserve.id, source='reserve_opened'))
+        assert len(tasks) == 1
+        assert tasks[0].assignee_id == constructeur.id

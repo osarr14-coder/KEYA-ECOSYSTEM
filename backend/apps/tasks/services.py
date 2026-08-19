@@ -1,9 +1,40 @@
 from django.contrib.contenttypes.models import ContentType
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import Task, TaskPriority, TaskStatus, TaskType
 
 RESERVE_OPENED_SOURCE = 'reserve_opened'
+
+
+def _get_or_create_task(lookup, defaults):
+    """Ticket 017 : crée une Task pour ce `(subject_type, subject_id,
+    source)` si elle n'existe pas déjà — sûr sous VRAIE concurrence, pas
+    seulement en apparence.
+
+    `Task.objects.get_or_create(**lookup, defaults=defaults)` seul ne
+    suffirait pas ici, même une fois la contrainte d'unicité posée sur
+    `Task` (voir `models.py::Meta.constraints`) : deux transactions peuvent
+    toutes deux exécuter le `get()` initial et voir « n'existe pas » AVANT
+    qu'aucune des deux n'ait écrit — la contrainte empêche alors le doublon
+    en base, mais fait échouer la SECONDE écriture avec une
+    `IntegrityError`. Cette fonction rattrape explicitement ce cas : dès
+    qu'une `IntegrityError` survient à la création, la ligne qu'on cherchait
+    à créer existe forcément déjà (créée par l'autre transaction gagnante
+    entre-temps) — on la relit avec un second `get()`, jamais un nouveau
+    `create()` en aveugle (qui échouerait à nouveau ou masquerait une vraie
+    erreur d'intégrité sans rapport avec cette contrainte).
+    """
+    try:
+        return Task.objects.get(**lookup), False
+    except Task.DoesNotExist:
+        pass
+
+    try:
+        with transaction.atomic():
+            return Task.objects.create(**lookup, **defaults), True
+    except IntegrityError:
+        return Task.objects.get(**lookup), False
 
 
 def resolve_constructeur_for_reserve(reserve):
@@ -76,17 +107,21 @@ def create_task_for_reserve_opened(reserve):
     if assignee is None:
         return None
 
-    return Task.objects.create(
-        organization=reserve.organization,
-        type=TaskType.TASK,
-        subject_type=ContentType.objects.get_for_model(reserve),
-        subject_id=reserve.id,
-        program=reserve.lot.asset.program,
-        assignee=assignee,
-        source=RESERVE_OPENED_SOURCE,
-        label=_reserve_opened_label(reserve, assignee),
-        priority=TaskPriority.NORMAL,
-    )
+    lookup = {
+        'subject_type': ContentType.objects.get_for_model(reserve),
+        'subject_id': reserve.id,
+        'source': RESERVE_OPENED_SOURCE,
+    }
+    defaults = {
+        'organization': reserve.organization,
+        'type': TaskType.TASK,
+        'program': reserve.lot.asset.program,
+        'assignee': assignee,
+        'label': _reserve_opened_label(reserve, assignee),
+        'priority': TaskPriority.NORMAL,
+    }
+    task, _created = _get_or_create_task(lookup, defaults)
+    return task
 
 
 MISSION_ASSIGNED_SOURCE = 'mission_assigned'
@@ -110,17 +145,21 @@ def create_task_for_mission_assigned(mission):
     """
     assignee = mission.assigned_inspector
 
-    return Task.objects.create(
-        organization=mission.organization,
-        type=TaskType.TASK,
-        subject_type=ContentType.objects.get_for_model(mission),
-        subject_id=mission.id,
-        program=mission.work_declaration.milestone.lot.asset.program,
-        assignee=assignee,
-        source=MISSION_ASSIGNED_SOURCE,
-        label=_mission_assigned_label(mission, assignee),
-        priority=TaskPriority.NORMAL,
-    )
+    lookup = {
+        'subject_type': ContentType.objects.get_for_model(mission),
+        'subject_id': mission.id,
+        'source': MISSION_ASSIGNED_SOURCE,
+    }
+    defaults = {
+        'organization': mission.organization,
+        'type': TaskType.TASK,
+        'program': mission.work_declaration.milestone.lot.asset.program,
+        'assignee': assignee,
+        'label': _mission_assigned_label(mission, assignee),
+        'priority': TaskPriority.NORMAL,
+    }
+    task, _created = _get_or_create_task(lookup, defaults)
+    return task
 
 
 def complete_task(task):

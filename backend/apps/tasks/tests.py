@@ -1,9 +1,12 @@
 import ast
 import inspect
+import threading
 from datetime import timedelta
+from itertools import count
 from unittest import mock
 
 import pytest
+from django.db import connection, transaction
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -11,6 +14,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
+from apps.inspections import services as inspection_services
 from apps.inspections.models import InspectionOutcome, Reserve
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
@@ -19,6 +23,7 @@ from apps.trust.models import TrustEvent
 
 from . import services
 from .models import Task, TaskPriority, TaskStatus, TaskType
+from .test_celery_integration import _build_open_reserve_with_real_commits
 
 PASSWORD = 'strongpass123'
 
@@ -65,6 +70,10 @@ def _setup_constructeur_org(email, organization_name):
 
 def _setup_inspecteur(email, organization_name):
     return _register(email, organization_name, role_code='inspecteur')
+
+
+def _register_admin(email, organization_name):
+    return _register(email, organization_name, role_code='admin_keyimmo')
 
 
 def _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration):
@@ -158,7 +167,12 @@ class TestFourTaskTypesAreStructurallyDistinct:
         for task_type, label in TaskType.choices:
             tasks_by_type[task_type] = Task.objects.create(
                 organization=organization, type=task_type, subject_type=content_type,
-                subject_id=reserve.id, assignee=assignee, source='test_fixture',
+                # `source` varie par type (ticket 017, contrainte d'unicité
+                # (subject_type, subject_id, source)) : ces 4 Task ancrées
+                # sur la MÊME réserve ne représentent pas le même événement
+                # générateur rejoué 4 fois, seulement 4 éléments de test
+                # distincts pour vérifier le filtrage par type.
+                subject_id=reserve.id, assignee=assignee, source=f'test_fixture_{task_type}',
                 label=f'Élément de test — {label}',
             )
         return tasks_by_type
@@ -369,12 +383,20 @@ class TestPriorityOrdering:
     """
 
     def _create_task(self, organization, assignee, reserve, *, priority, due_date=None, label='Tâche test'):
+        import uuid
+
         from django.contrib.contenttypes.models import ContentType
 
         return Task.objects.create(
             organization=organization, type=TaskType.TASK,
             subject_type=ContentType.objects.get_for_model(reserve), subject_id=reserve.id,
-            assignee=assignee, source='test_fixture', label=label, priority=priority, due_date=due_date,
+            assignee=assignee,
+            # `source` unique par appel (ticket 017, contrainte d'unicité
+            # (subject_type, subject_id, source)) : ces tests ancrent
+            # plusieurs Task de test sur la MÊME réserve pour vérifier le
+            # tri, pas pour représenter le même événement générateur rejoué.
+            source=f'test_fixture_{uuid.uuid4().hex}',
+            label=label, priority=priority, due_date=due_date,
         )
 
     def test_ordering_priority_sorts_high_before_normal_before_low(self):
@@ -459,3 +481,138 @@ class TestPriorityOrdering:
 
         ids_in_order = [row['id'] for row in response.data]
         assert ids_in_order.index(str(newer_task.id)) < ids_in_order.index(str(older_task.id))
+
+
+@pytest.mark.django_db
+class TestTaskGenerationIsIdempotent:
+    """Ticket 017 — une même Task ne doit jamais être créée en double,
+    quel que soit le nombre de fois où son générateur est exécuté pour le
+    même sujet (redélivrance broker, rejeu manuel, double appel `.delay()`
+    côté appelant). Referme le point laissé ouvert par
+    `docs/adr/0001-celery-eager-mode.md`. Ici : deux appels SÉQUENTIELS
+    (même connexion, aucune concurrence réelle) — voir
+    `TestTaskCreationRaceUnderConcurrency` ci-dessous pour la garantie sous
+    VRAIE concurrence.
+    """
+
+    def test_calling_create_task_for_reserve_opened_twice_creates_only_one_task(self):
+        _constructeur_client, constructeur_organization, constructeur_user, _lot, declaration = (
+            _setup_constructeur_org('idempotent-reserve-constructeur@example.com', 'Org Idempotent Reserve')
+        )
+        inspecteur_client, _inspecteur_organization, _inspecteur_user = _setup_inspecteur(
+            'idempotent-reserve-inspecteur@example.com', 'Org Idempotent Reserve Inspecteur',
+        )
+        reserve_id = _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration)
+
+        set_rls_context(user_id=constructeur_user.id, organization_id=constructeur_organization.id)
+        reserve = Reserve.objects.get(id=reserve_id)
+
+        first_task = services.create_task_for_reserve_opened(reserve)
+        second_task = services.create_task_for_reserve_opened(reserve)
+
+        assert first_task.id == second_task.id
+        assert Task.objects.filter(subject_id=reserve.id, source='reserve_opened').count() == 1
+
+    def test_calling_create_task_for_mission_assigned_twice_creates_only_one_task(self):
+        _constructeur_client, constructeur_organization, _constructeur_user, _lot, declaration = (
+            _setup_constructeur_org('idempotent-mission-constructeur@example.com', 'Org Idempotent Mission')
+        )
+        _inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'idempotent-mission-inspecteur@example.com', 'Org Idempotent Mission Inspecteur',
+        )
+        _admin_client, admin_org, admin_user = _register_admin(
+            'idempotent-mission-admin@example.com', 'Org Idempotent Mission Admin',
+        )
+
+        mission = inspection_services.create_mission(
+            assigned_by=admin_user, assigned_by_organization_id=admin_org.id,
+            target_organization_id=constructeur_organization.id, work_declaration_id=declaration.id,
+            assigned_inspector=inspecteur_user,
+        )
+
+        set_rls_context(organization_id=constructeur_organization.id)
+        first_task = services.create_task_for_mission_assigned(mission)
+        second_task = services.create_task_for_mission_assigned(mission)
+
+        assert first_task.id == second_task.id
+        assert Task.objects.filter(subject_id=mission.id, source='mission_assigned').count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+class TestTaskCreationRaceUnderConcurrency:
+    """Ticket 017 — force le VRAI chevauchement entre deux transactions
+    concurrentes tentant de créer la même Task : deux connexions réelles
+    (deux threads), synchronisées par une barrière pour garantir que les
+    DEUX ont lu « n'existe pas » avant qu'aucune n'écrive — jamais un
+    `sleep` hasardeux, même discipline que les tests de race du ticket 015
+    (`apps/control-pwa/src/sync/syncEngine.test.ts`). Prouve que
+    `_get_or_create_task` (apps/tasks/services.py) rattrape bien
+    l'`IntegrityError` de la contrainte d'unicité côté DEUXIÈME transaction,
+    plutôt que de la laisser remonter.
+    """
+
+    def test_two_concurrent_transactions_creating_the_same_task_never_duplicate_it(self):
+        organization, _constructeur, _inspecteur, reserve = _build_open_reserve_with_real_commits(
+            'Org Task Race', 'race-constructeur@example.com', 'race-inspecteur@example.com',
+        )
+
+        # Barrière posée sur les deux TOUT PREMIERS `Task.objects.get(...)`
+        # observés (le "ça n'existe pas encore" initial de chaque thread,
+        # avant toute écriture) — garantit que les deux threads voient
+        # l'absence de la Task AVANT qu'aucun des deux n'ait tenté de la
+        # créer, reproduisant exactement le chevauchement visé. Un `get()`
+        # ultérieur (la relecture après `IntegrityError` rattrapée, côté
+        # thread perdant) ne doit JAMAIS réattendre : un seul des deux
+        # threads emprunte ce chemin, une seconde attente sur la barrière
+        # interbloquerait pour toujours.
+        barrier = threading.Barrier(2, timeout=5)
+        call_counter = count()
+        counter_lock = threading.Lock()
+        original_get = Task.objects.get
+
+        def get_with_barrier(*args, **kwargs):
+            with counter_lock:
+                call_index = next(call_counter)
+            if call_index < 2:
+                barrier.wait(timeout=5)
+            return original_get(*args, **kwargs)
+
+        results = []
+        errors = []
+        results_lock = threading.Lock()
+
+        def worker():
+            try:
+                with transaction.atomic():
+                    set_rls_context(organization_id=organization.id)
+                    task = services.create_task_for_reserve_opened(reserve)
+                with results_lock:
+                    results.append(task)
+            except Exception as exc:  # noqa: BLE001 — un échec ici est le bug à révéler, jamais à masquer
+                with results_lock:
+                    errors.append(exc)
+            finally:
+                connection.close()
+
+        with mock.patch.object(Task.objects, 'get', side_effect=get_with_barrier):
+            thread_a = threading.Thread(target=worker)
+            thread_b = threading.Thread(target=worker)
+            thread_a.start()
+            thread_b.start()
+            thread_a.join(timeout=10)
+            thread_b.join(timeout=10)
+
+        assert errors == [], (
+            f'Une transaction concurrente a laissé remonter une exception non rattrapée : {errors!r}'
+        )
+        assert len(results) == 2
+        assert results[0].id == results[1].id
+
+        # `SET LOCAL` (set_rls_context) ne tient que pour la transaction en
+        # cours — perdu dès que le `with transaction.atomic()` de chaque
+        # thread s'est refermé, donc reposé ici, dans sa PROPRE transaction,
+        # avant cette dernière lecture (même piège déjà documenté ailleurs
+        # dans ce projet pour tout `set_rls_context` hors bloc explicite).
+        with transaction.atomic():
+            set_rls_context(organization_id=organization.id)
+            assert Task.objects.filter(subject_id=reserve.id, source='reserve_opened').count() == 1
