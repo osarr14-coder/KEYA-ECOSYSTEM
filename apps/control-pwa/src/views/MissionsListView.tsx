@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import { semanticColors } from '@keya/design-system';
+
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { getCachedMissions, getDraftForMission } from '../db/repository';
 import type { Mission, SyncStatus } from '../db/types';
@@ -22,7 +24,10 @@ export interface MissionsListViewProps {
  * `Reserve.description`, qui n'est en pratique jamais renseigné nulle part
  * dans le code actuel (toujours vide) — l'exposer aurait été trompeur.
  */
-const MISSION_TYPE_STYLE = { fontSize: '13px', color: '#6B7280' };
+// Ticket 024 (audit accessibilite) - reprend le token partage du design
+// system plutot qu'une couleur redefinie ici en dur (meme piege deja
+// documente pour #E5E7EB, ticket 023).
+const MISSION_TYPE_STYLE = { fontSize: '13px', color: semanticColors.neutral.textMuted };
 
 function MissionTypeIndicator({ mission }: { mission: Mission }) {
   if (!mission.reserveId) {
@@ -86,7 +91,7 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
                 textAlign: 'left',
                 padding: '12px',
                 minHeight: '44px',
-                border: '1px solid #E5E7EB',
+                border: `1px solid ${semanticColors.neutral.border}`,
                 borderRadius: '8px',
                 background: 'white',
                 display: 'flex',

@@ -59,7 +59,12 @@ export const semanticColors: {
     background: '#F9FAFB',
     surface: '#FFFFFF',
     text: '#111827',
-    textMuted: '#6B7280',
+    // Ticket 024 (audit accessibilité) — `#6B7280` sur fond blanc mesurait
+    // 4,83:1, au-dessus du minimum WCAG AA texte normal (4,5:1) mais avec
+    // une marge trop faible (~7 %) pour un ton utilisé partout comme texte
+    // secondaire (dates, sous-titres, libellés muets). `#4B5563` porte ce
+    // ratio à ~7,5:1 (niveau AAA), sans changement de teinte perceptible.
+    textMuted: '#4B5563',
   },
   progress: {
     track: '#E5E7EB',

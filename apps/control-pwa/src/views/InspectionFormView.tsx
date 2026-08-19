@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { AlertBanner } from '@keya/design-system';
+import { AlertBanner, semanticColors } from '@keya/design-system';
 
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { CHECKLIST_TEMPLATE } from '../db/missions';
@@ -16,8 +16,9 @@ export interface InspectionFormViewProps {
 
 // Ticket 023 (polish visuel) — un seul style de fieldset partagé par les 3
 // sections du formulaire (checklist/photos/décision), jamais redéfini
-// séparément à chaque fois.
-const FIELDSET_STYLE = { border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px' };
+// séparément à chaque fois. Ticket 024 (audit accessibilité) : reprend le
+// token partagé plutôt qu'une couleur redéfinie ici en dur.
+const FIELDSET_STYLE = { border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px' };
 
 function PhotoThumbnail({ photo, onRemove }: { photo: LocalPhoto; onRemove: () => void }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
@@ -29,12 +30,21 @@ function PhotoThumbnail({ photo, onRemove }: { photo: LocalPhoto; onRemove: () =
   }, [photo.blob]);
 
   return (
-    <li>
+    <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
       {objectUrl && (
         <img src={objectUrl} alt={photo.fileName} width={72} height={72} style={{ objectFit: 'cover' }} />
       )}
       <span>{photo.fileName}</span>
-      <button type="button" onClick={onRemove} aria-label={`Supprimer ${photo.fileName}`}>
+      {/* Ticket 024 (audit accessibilité) — cible tactile portée à 44x44
+          (WCAG 2.5.5), app CONTROL PWA explicitement tactile (360-430px,
+          voir CLAUDE.md). Aucun bouton natif de ce fichier n'avait de taille
+          minimale garantie avant ce ticket. */}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Supprimer ${photo.fileName}`}
+        style={{ minWidth: '44px', minHeight: '44px' }}
+      >
         Supprimer
       </button>
     </li>
@@ -225,11 +235,28 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   return (
     <section aria-label="Inspection" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div>
-        <button type="button" onClick={onBack} style={{ border: 'none', background: 'transparent', padding: 0, color: '#6B7280' }}>
+        {/* Ticket 024 (audit accessibilité) — `padding: 0` (posé au ticket
+            023) réduisait la cible tactile bien en dessous de 44x44 malgré
+            un contenu textuel minimal ; `minHeight`/`display:inline-flex`
+            restaurent une cible correcte sans ajouter de bordure/fond
+            visible (toujours un bouton "fantôme"). */}
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            padding: '0 4px',
+            minHeight: '44px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            color: semanticColors.neutral.textMuted,
+          }}
+        >
           ← Missions
         </button>
         <h1 style={{ margin: '8px 0 4px' }}>{mission ? `${mission.lotName} — ${mission.assetName}` : missionId}</h1>
-        {mission && <p style={{ margin: 0, color: '#6B7280' }}>{mission.programName} · {mission.milestoneLabel}</p>}
+        {mission && <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{mission.programName} · {mission.milestoneLabel}</p>}
       </div>
 
       <SyncStatusIndicator status={draft.syncStatus} />
@@ -240,7 +267,11 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
           {draft.conflict?.currentEventSource ? ` (dernier événement serveur : ${draft.conflict.currentEventSource})` : ''}.
           Votre saisie n'a PAS été envoyée pour éviter d'écraser cette modification.
           <div>
-            <button type="button" onClick={() => void resolveConflictByDiscarding()}>
+            <button
+              type="button"
+              onClick={() => void resolveConflictByDiscarding()}
+              style={{ minHeight: '44px' }}
+            >
               Ignorer ma saisie et recommencer
             </button>
           </div>

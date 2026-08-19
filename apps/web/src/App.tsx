@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
-import { AlertBanner, AppShell, type AppModule } from '@keya/design-system';
+import {
+  AlertBanner, AppShell, TabBar, type AppModule,
+} from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
 import { ApiError } from './api/client';
@@ -10,14 +12,25 @@ import {
   buildRedirectUrl, isSameOriginRedirect, resolveAppOrigins, resolveRedirectApp,
 } from './auth/redirectTarget';
 import { BackofficeView } from './views/BackofficeView';
+import { DevisAppelOffreMockup } from './views/DevisAppelOffreMockup';
 
-// Ticket 021 — un seul module, toujours réservé à admin_keyimmo : cette app
-// n'héberge rien d'autre que le back-office. `requiredRoles` reste posé
-// malgré la garde déjà faite dans `AuthenticatedApp` (ci-dessous) — défense
-// en profondeur, même discipline que RLS + filtre applicatif ailleurs dans
-// ce projet (CLAUDE.md).
+// Ticket 021 — réservé à admin_keyimmo, `requiredRoles` reste posé malgré la
+// garde déjà faite dans `AuthenticatedApp` (ci-dessous) — défense en
+// profondeur, même discipline que RLS + filtre applicatif ailleurs dans ce
+// projet (CLAUDE.md). Ticket 025 — un second module apparaît
+// (« Devis / Appels d'offres ») : apps/web n'héberge plus un seul écran
+// depuis ce ticket, sur le MÊME schéma d'onglets déjà établi pour HOME/BUILD
+// (`TabBar`, voir ci-dessous) plutôt qu'un mécanisme parallèle.
 const MODULES: AppModule[] = [
   { id: 'backoffice', label: 'Back-office', href: '/', requiredRoles: ['admin_keyimmo'] },
+  { id: 'devis', label: 'Devis / Appels d\'offres', href: '/devis', requiredRoles: ['admin_keyimmo'] },
+];
+
+type AuthenticatedTabId = 'backoffice' | 'devis';
+
+const TABS: { id: AuthenticatedTabId; label: string }[] = [
+  { id: 'backoffice', label: 'Back-office' },
+  { id: 'devis', label: 'Devis / Appels d\'offres' },
 ];
 
 export interface AppProps {
@@ -89,7 +102,9 @@ function AuthenticatedApp() {
   // ici (jamais un rendu, même partiel, du back-office pour un autre rôle)
   // EN PLUS de la garde backend (`IsAdminKeyimmo`, ticket 011) — pas à sa
   // place. Voir `auth/adminAccess.ts` pour pourquoi cette vérification
-  // regarde TOUTES les memberships, pas seulement la première.
+  // regarde TOUTES les memberships, pas seulement la première. S'applique
+  // aussi à la maquette Devis (ticket 025) — même garde, jamais un second
+  // mécanisme d'accès parallèle.
   if (!hasAdminKeyimmoAccess(me)) {
     return (
       <main style={{ padding: '24px' }}>
@@ -100,15 +115,30 @@ function AuthenticatedApp() {
     );
   }
 
+  return <AuthenticatedTabs userRoles={userRoles} />;
+}
+
+/**
+ * Ticket 025 — bascule entre le back-office (ticket 021, fonctionnel) et la
+ * maquette Devis/Appels d'offres (ticket 025, visuelle uniquement, voir
+ * `DevisAppelOffreMockup.tsx`). Même `TabBar` déjà réutilisé par HOME/BUILD
+ * (ticket 023), jamais un second mécanisme d'onglets.
+ */
+function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
+  const [activeTab, setActiveTab] = useState<AuthenticatedTabId>('backoffice');
+
   return (
     <AppShell
       density="dense"
       modules={MODULES}
       userRoles={userRoles}
-      activeModuleId="backoffice"
-      breadcrumbs={[{ label: 'Back-office' }]}
+      activeModuleId={activeTab}
+      breadcrumbs={[{ label: TABS.find((tab) => tab.id === activeTab)!.label }]}
     >
-      <BackofficeView />
+      <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as AuthenticatedTabId)} aria-label="Sections back-office" />
+
+      {activeTab === 'backoffice' && <BackofficeView />}
+      {activeTab === 'devis' && <DevisAppelOffreMockup />}
     </AppShell>
   );
 }

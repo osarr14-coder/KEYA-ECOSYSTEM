@@ -21,3 +21,21 @@ describe('ProgressBar — affichage passthrough (ticket 023)', () => {
     expect(screen.getByTestId('progress-bar')).toHaveStyle({ width: '100%' });
   });
 });
+
+describe(
+  'ProgressBar — accessibilité (ticket 024, audit) : la barre reste '
+  + 'décorative/complémentaire, le pourcentage exact est toujours affiché en '
+  + 'texte à côté par les vues appelantes',
+  () => {
+    it('expose une bordure définissant sa frontière (contraste non textuel WCAG 1.4.11)', () => {
+      render(<ProgressBar percentage={37} />);
+      const bar = screen.getByTestId('progress-bar');
+      expect(bar.style.border).not.toBe('');
+    });
+
+    it('aria-valuetext annonce le pourcentage de façon lisible', () => {
+      render(<ProgressBar percentage={37} />);
+      expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', '37 %');
+    });
+  },
+);

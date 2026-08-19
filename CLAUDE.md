@@ -1509,6 +1509,57 @@ vrai backend (compte constructeur réel, redirection réelle vers BUILD) : polic
 appliquée, état actif des onglets/module sidebar visuellement distinct, liens de
 navigation sans soulignement bleu par défaut, zéro erreur console.
 
+## Audit d'accessibilité + maquette Devis/Appels d'offres (ticket 025)
+
+Voir `025-audit-accessibilite-maquette-devis.md` pour le détail complet (méthode,
+constats déjà conformes, correctifs, dette documentée).
+
+**Constat le plus significatif, PAS corrigé unilatéralement** : les 5 couleurs
+`TrustLevel` (`packages/design-system/.../levelMeta.ts`, doctrine ticket 003) mesurent
+entre 1,92:1 et 4,23:1 comme couleur de texte sur fond blanc — toutes en dessous du
+minimum WCAG AA (4,5:1). Différent de ce qu'a testé le ticket 007 : ce test-là vérifie
+la distinguabilité SANS couleur (forme SVG + texte, critère 1.4.1), jamais le contraste
+lui-même (critère 1.4.3), qui n'avait jamais été mesuré avant ce ticket. Non changé ici
+volontairement — c'est la palette DOCTRINE « Visible Trust », référencée dans des
+dizaines de tickets comme l'unique exception à « aucune couleur de marque dans ce
+projet » (ticket 023) : la modifier dépasse le mandat d'un audit de polish, documenté
+comme dette prioritaire nécessitant une décision produit.
+
+**Régression de cible tactile introduite au ticket 023, corrigée ici** : le bouton
+« ← Missions » (CONTROL PWA) avait reçu `padding: 0` pour un rendu "fantôme", réduisant
+sa cible tactile bien en dessous de 44×44 (WCAG 2.5.5) sur une app explicitement
+tactile. Leçon générale : un style purement visuel (`padding`) peut avoir un effet
+d'accessibilité non anticipé — à vérifier systématiquement pour toute réduction de
+padding sur un élément interactif de CONTROL PWA.
+
+**Couleurs dupliquées en dur trouvées dans `apps/control-pwa`, malgré la leçon du
+ticket 023** : 5 occurrences de `#6B7280`/`#E5E7EB` (posées par ce même ticket 023)
+plutôt que le token partagé `semanticColors` — corrigées. Le risque de divergence
+silencieuse qu'un token partagé est censé éliminer ne se referme pas tout seul : chaque
+nouveau fichier doit importer le token, jamais recopier sa valeur.
+
+**`DevisAppelOffreMockup.tsx` (`apps/web`) — maquette visuelle uniquement, aucun code
+fonctionnel** : n'importe ni `useApiClient` ni `ApiClientContext` (structurellement
+aucun appel réseau possible depuis ce fichier), données statiques, chaque bouton
+d'action rendu `disabled` avec un `title` renvoyant vers l'endpoint réel du ticket 022.
+Reflète strictement ce qui est stable et fusionné à ce ticket (création/verrouillage/
+liste des devis) — **aucun statut « gagnant » affiché**, une section dédiée marque
+explicitement cette omission comme volontaire, « à câbler une fois le ticket 024
+fusionné ». Second module `AppShell` dans apps/web (« Devis / Appels d'offres »), à
+côté de « Back-office » (ticket 021) — bascule via `TabBar` (ticket 023), même garde
+`admin_keyimmo`.
+
+**Note de contexte, pas une action de ce ticket** : le ticket 024 (réconciliation
+devis/ajustement) a été fusionné dans `origin/master` PENDANT ce ticket 025 (autre
+session/worktree) — il répond justement à la question laissée en suspens par la
+maquette (le statut « gagnant » n'est exposé au candidat qu'après au moins un
+`DevisAjustement` accepté, jamais immédiatement au verrouillage). Ce ticket 025 n'a pas
+fusionné cette avancée dans `feature/frontend-round-2` (non demandé) — la maquette
+reste donc, au moment de son commit, correcte par rapport à ce qui était réellement
+fusionné dans SA branche de base, mais un futur câblage réel de cette maquette pourra
+directement s'appuyer sur `get_candidate_visible_devis_status` sans reprendre la
+question du séquencement.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

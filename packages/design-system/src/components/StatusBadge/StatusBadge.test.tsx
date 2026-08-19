@@ -93,6 +93,29 @@ describe('StatusBadge — popover au clic (contenu au format TrustEvent, ticket 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it(
+    'la touche Echap referme le popover (ticket 024, audit accessibilite : role="dialog" '
+    + 'sans moyen clavier de le refermer avant ce correctif)',
+    () => {
+      render(<StatusBadge level="controle" event={SAMPLE_EVENT} />);
+      fireEvent.click(screen.getByRole('button'));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+      fireEvent.keyDown(document, { key: 'Escape' });
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    },
+  );
+
+  it('une autre touche que Echap ne referme pas le popover', () => {
+    render(<StatusBadge level="controle" event={SAMPLE_EVENT} />);
+    fireEvent.click(screen.getByRole('button'));
+
+    fireEvent.keyDown(document, { key: 'Enter' });
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
   it("affiche un scope absent comme « — », jamais une cellule vide silencieuse", () => {
     render(<StatusBadge level="declare" event={{ ...SAMPLE_EVENT, scope: undefined }} />);
     fireEvent.click(screen.getByRole('button'));

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { semanticColors } from '../../tokens/colors';
 import { ALL_TRUST_LEVELS, LEVEL_META, type TrustLevel } from './levelMeta';
 import { SHAPE_BY_LEVEL, ShapeIcon } from './shapes';
 
@@ -50,8 +51,21 @@ export function StatusBadge({ level, event, className }: StatusBadgeProps) {
         setOpen(false);
       }
     }
+    // Ticket 024 (audit accessibilite) - role="dialog" sans moyen clavier de
+    // le refermer (seuls le clic exterieur et un second clic sur le bouton
+    // fonctionnaient) : ajout minimal, n'affecte aucune interaction souris
+    // existante.
+    function handleEscape(keyboardEvent: KeyboardEvent) {
+      if (keyboardEvent.key === 'Escape') {
+        setOpen(false);
+      }
+    }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [open]);
 
   return (
@@ -89,7 +103,9 @@ export function StatusBadge({ level, event, className }: StatusBadgeProps) {
           aria-label={`Détail de statut : ${meta.label}`}
           style={{
             position: 'absolute', top: '100%', left: 0, marginTop: '4px', minWidth: '220px',
-            background: 'white', border: '1px solid #E5E7EB', borderRadius: '8px',
+            background: semanticColors.neutral.surface,
+            border: `1px solid ${semanticColors.neutral.border}`,
+            borderRadius: '8px',
             padding: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 10,
           }}
         >

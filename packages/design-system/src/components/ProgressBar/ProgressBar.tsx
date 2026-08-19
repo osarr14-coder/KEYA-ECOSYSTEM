@@ -11,6 +11,16 @@ import { semanticColors } from '../../tokens/colors';
  * pourcentage déjà calculé, n'en dérive ni n'en recalcule jamais aucun
  * (même discipline « aucun calcul frontend » que le reste du projet,
  * CLAUDE.md).
+ *
+ * Ticket 024 (audit accessibilite) - la piste (progress.track) sur fond de
+ * page blanc mesurait environ 1,2:1, tres en dessous du minimum WCAG 1.4.11
+ * (contraste non textuel, 3:1 requis pour la frontiere d'un composant
+ * d'interface) ; le remplissage (progress.fill) contre la piste mesurait
+ * environ 1,55:1, egalement insuffisant. Une bordure explicite definit
+ * desormais la frontiere du composant independamment du fond de page qui
+ * l'entoure. Severite limitee en pratique : le pourcentage exact reste
+ * TOUJOURS affiche en texte a cote (OverviewView/AllLotsView), jamais porte
+ * par la seule barre, qui reste decorative/complementaire.
  */
 export interface ProgressBarProps {
   /** Pourcentage déjà calculé côté backend — jamais recalculé ici. */
@@ -28,10 +38,12 @@ export function ProgressBar({ percentage, width = '100%', 'aria-label': ariaLabe
       aria-valuenow={percentage}
       aria-valuemin={0}
       aria-valuemax={100}
+      aria-valuetext={`${percentage} %`}
       aria-label={ariaLabel}
       data-testid="progress-bar"
       style={{
         background: semanticColors.progress.track,
+        border: `1px solid ${semanticColors.neutral.textMuted}`,
         borderRadius: 999,
         overflow: 'hidden',
         height: 8,

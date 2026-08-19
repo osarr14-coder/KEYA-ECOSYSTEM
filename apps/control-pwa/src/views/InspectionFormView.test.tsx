@@ -106,6 +106,30 @@ describe('InspectionFormView — chaque saisie est écrite immédiatement, jamai
 });
 
 describe(
+  'InspectionFormView — cibles tactiles (ticket 024, audit accessibilité : app '
+  + 'explicitement tactile 360-430px, WCAG 2.5.5)',
+  () => {
+    it('le bouton "← Missions" garde une hauteur minimale de 44px malgré un padding réduit', async () => {
+      render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+      const backButton = await screen.findByRole('button', { name: '← Missions' });
+
+      expect(backButton).toHaveStyle({ minHeight: '44px' });
+    });
+
+    it('le bouton "Supprimer" d\'une photo mesure au moins 44x44', async () => {
+      render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+      const file = new File(['contenu-photo'], 'photo.jpg', { type: 'image/jpeg' });
+      fireEvent.change(await screen.findByLabelText('Ajouter une photo'), { target: { files: [file] } });
+
+      const removeButton = await screen.findByLabelText('Supprimer photo.jpg');
+      expect(removeButton).toHaveStyle({ minHeight: '44px', minWidth: '44px' });
+    });
+  },
+);
+
+describe(
   'InspectionFormView — un conflit (ticket 010 passe 2) reste visible jusqu\'à une action ' +
   'explicite, jamais résolu automatiquement',
   () => {

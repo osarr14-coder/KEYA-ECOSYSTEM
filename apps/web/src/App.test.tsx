@@ -234,6 +234,27 @@ describe(
       expect(searchUsers).toHaveBeenCalledWith('cible');
       expect(getUserDetail).toHaveBeenCalledWith('target-1');
     });
+
+    it(
+      'ticket 025 : un second onglet "Devis / Appels d\'offres" bascule vers la maquette, '
+      + 'jamais affiché par défaut',
+      async () => {
+        const getMe = vi.fn().mockResolvedValue({
+          id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
+          memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+        });
+        renderAuthenticated({ getMe });
+
+        await screen.findByTestId('app-shell');
+        expect(screen.getByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
+        expect(screen.queryByText('Maquette visuelle — aucune donnée réelle')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: "Devis / Appels d'offres" }));
+
+        expect(await screen.findByText('Maquette visuelle — aucune donnée réelle')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
+      },
+    );
   },
 );
 
