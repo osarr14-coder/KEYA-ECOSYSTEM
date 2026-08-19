@@ -61,6 +61,26 @@ export function resolveRedirectApp(me: Me): keyof AppOrigins {
 }
 
 /**
+ * Ticket 021 — bug réel trouvé en vérifiant le parcours `admin_keyimmo`
+ * dans un vrai navigateur (jamais reproductible par les tests unitaires,
+ * qui injectent un `redirect` mocké) : une redirection vers HOME/BUILD/
+ * CONTROL change d'ORIGINE, donc `window.location.assign(url)` déclenche
+ * TOUJOURS un rechargement complet du document — mais une redirection
+ * `admin_keyimmo` vers apps/web ELLE-MÊME ne change que le FRAGMENT de
+ * l'URL (même origine, même chemin). Un changement de fragment seul ne
+ * recharge JAMAIS le document (comportement standard des navigateurs,
+ * identique à un simple lien d'ancre `#...`) : `main.tsx` ne rejouait donc
+ * jamais `receiveIncomingSession()`, laissant l'écran de connexion affiché
+ * indéfiniment malgré un token réel désormais dans l'URL. Voir `App.tsx`
+ * (`defaultRedirect`), qui utilise cette fonction pour forcer un vrai
+ * rechargement dans ce cas précis, jamais pour les 3 autres (déjà
+ * rechargées par la navigation cross-origine elle-même).
+ */
+export function isSameOriginRedirect(targetUrl: string, currentHref: string): boolean {
+  return new URL(targetUrl, currentHref).origin === new URL(currentHref).origin;
+}
+
+/**
  * Construit l'URL de redirection avec les jetons en fragment (`#...`),
  * jamais en query string (ticket 020) : un fragment n'est JAMAIS envoyé au
  * serveur ni journalisé par un proxy/reverse-proxy — seul le navigateur y

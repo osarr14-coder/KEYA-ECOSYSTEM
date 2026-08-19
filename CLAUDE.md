@@ -1348,6 +1348,31 @@ HEAD de l'autre (confirmé via `git reflog` en démarrant ce ticket). Résolu en
 worktree dédié (`git worktree add`) avant d'écrire du code. À refaire systématiquement
 dès qu'une autre session est annoncée comme active sur la même arborescence.
 
+**Bug réel trouvé UNIQUEMENT par vérification navigateur réelle, invisible aux tests
+unitaires** (`apps/web/src/auth/redirectTarget.ts::isSameOriginRedirect`,
+`App.tsx::defaultRedirect`) : `window.location.assign(url)` ne recharge PAS le document
+quand `url` ne diffère de la page courante que par le FRAGMENT (comportement standard
+des navigateurs, identique à un lien d'ancre) — exactement le cas d'une redirection
+`admin_keyimmo` vers apps/web ELLE-MÊME (même origine, ticket 021). Sans ce correctif,
+`receiveIncomingSession()` (`main.tsx`) n'était jamais rejouée après connexion : l'écran
+restait bloqué sur le formulaire malgré un token réel dans l'URL. Les tests unitaires ne
+pouvaient structurellement pas le détecter : ils injectent toujours un `redirect` mocké
+(`AppProps.redirect`), jamais la vraie navigation du navigateur — **leçon générale** :
+toute logique qui dépend du comportement RÉEL de `window.location`/navigation doit être
+vérifiée en navigateur réel au moins une fois, un mock de `redirect`/`fetch`, aussi
+complet soit-il, ne peut pas révéler ce type de bug par construction.
+
+**Outillage `preview_start` — bug d'environnement Windows confirmé, pas un problème de
+code** : le lancement déclaratif d'un serveur de dev via `preview_start({name})` (donc
+`.claude/launch.json`) échoue systématiquement dans cet environnement dès que le chemin
+résolu de l'exécutable contient un espace (`C:\Program Files\...`), y compris avec un
+chemin court 8.3 sans espace en `runtimeExecutable` — cinq contournements de
+configuration testés, tous infructueux avec une erreur strictement identique.
+Contournement RÉEL qui fonctionne : démarrer le serveur manuellement en arrière-plan
+puis appeler `preview_start({url: "http://localhost:<port>"})` plutôt que `{name}`.
+**Dette explicite à lever avant tout pilote réel** (voir `021-backoffice-web.md`,
+section « Vérification »), pas une limite permanente à contourner indéfiniment.
+
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un
 sous-dossier `tickets/`). Le ticket 001 (fondations auth/organisations/RBAC) est la
 dépendance de tous les autres. Respecter le scope explicite de chaque ticket — ne pas

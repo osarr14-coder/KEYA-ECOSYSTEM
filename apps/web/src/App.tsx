@@ -6,7 +6,9 @@ import { useApiClient } from './api/ApiClientContext';
 import { ApiError } from './api/client';
 import { useApiResource } from './api/useApiResource';
 import { deriveAllRoleCodes, hasAdminKeyimmoAccess } from './auth/adminAccess';
-import { buildRedirectUrl, resolveAppOrigins, resolveRedirectApp } from './auth/redirectTarget';
+import {
+  buildRedirectUrl, isSameOriginRedirect, resolveAppOrigins, resolveRedirectApp,
+} from './auth/redirectTarget';
 import { BackofficeView } from './views/BackofficeView';
 
 // Ticket 021 — un seul module, toujours réservé à admin_keyimmo : cette app
@@ -23,6 +25,25 @@ export interface AppProps {
 }
 
 /**
+ * Ticket 021 — bug réel trouvé en vérifiant ce parcours dans un vrai
+ * navigateur (voir `isSameOriginRedirect` dans `auth/redirectTarget.ts` pour
+ * le détail) : `window.location.assign(url)` seul ne recharge PAS le
+ * document quand `url` ne diffère de la page courante que par le fragment
+ * — exactement le cas d'un `admin_keyimmo` qui se redirige vers apps/web
+ * elle-même. Un rechargement explicite est donc forcé dans ce cas précis,
+ * jamais pour HOME/BUILD/CONTROL (origine différente, déjà rechargées par
+ * la navigation elle-même — un second rechargement y serait un no-op
+ * inoffensif mais inutile, évité par la condition ci-dessous).
+ */
+function defaultRedirect(url: string) {
+  const needsExplicitReload = isSameOriginRedirect(url, window.location.href);
+  window.location.assign(url);
+  if (needsExplicitReload) {
+    window.location.reload();
+  }
+}
+
+/**
  * Ticket 021 : apps/web n'est plus SEULEMENT un écran de connexion (ticket
  * 020) — un `admin_keyimmo` peut désormais s'y rediriger LUI-MÊME (voir
  * `auth/redirectTarget.ts`), auquel cas `main.tsx` a déjà posé le token en
@@ -36,7 +57,7 @@ export interface AppProps {
  * (`redirect`, ticket 020), qui redémarre `main.tsx` depuis zéro, jamais par
  * un changement d'état à l'intérieur de ce composant.
  */
-export function App({ redirect = (url) => { window.location.assign(url); } }: AppProps) {
+export function App({ redirect = defaultRedirect }: AppProps) {
   const [storedAccessToken] = useState(() => localStorage.getItem('keya_access_token'));
 
   if (storedAccessToken) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Me } from '../api/types';
-import { buildRedirectUrl, resolveRedirectApp } from './redirectTarget';
+import { buildRedirectUrl, isSameOriginRedirect, resolveRedirectApp } from './redirectTarget';
 
 function makeMe(roleCode: string | null): Me {
   return {
@@ -75,3 +75,27 @@ describe('buildRedirectUrl — jetons en fragment, jamais en query string', () =
     expect(fragment.get('refresh_token')).toBe('x&y=z');
   });
 });
+
+describe(
+  'isSameOriginRedirect (ticket 021) — bug réel trouvé en vérification navigateur : un '
+  + 'changement de fragment seul ne recharge jamais le document',
+  () => {
+    it('même origine (admin_keyimmo -> apps/web elle-même) -> true', () => {
+      expect(isSameOriginRedirect(
+        'http://localhost:5176/#access_token=a&refresh_token=b',
+        'http://localhost:5176/',
+      )).toBe(true);
+    });
+
+    it('origine différente (HOME/BUILD/CONTROL) -> false', () => {
+      expect(isSameOriginRedirect(
+        'http://localhost:5174/#access_token=a&refresh_token=b',
+        'http://localhost:5176/',
+      )).toBe(false);
+    });
+
+    it('même hôte mais port différent -> false (une origine inclut le port)', () => {
+      expect(isSameOriginRedirect('http://localhost:5177/', 'http://localhost:5176/')).toBe(false);
+    });
+  },
+);

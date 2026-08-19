@@ -38,7 +38,8 @@ system — aucun composant recréé en parallèle.
 ## Entités touchées
 - `apps/web/src/auth/redirectTarget.ts` — `AppOrigins.web` (nouvelle origine),
   `resolveRedirectApp` gagne la branche `admin_keyimmo → 'web'`, doc mise à jour
-  explicitement (voir ci-dessus).
+  explicitement (voir ci-dessus) ; `isSameOriginRedirect` (nouveau, voir bug réel trouvé
+  en vérification navigateur, section « Vérification » ci-dessous).
 - `apps/web/src/auth/receiveIncomingSession.ts` (nouveau) — même mécanisme exact que
   `apps/{home,build,control-pwa}` (ticket 020), dupliqué plutôt que partagé (même
   discipline déjà assumée pour `createApiClient` entre apps).
@@ -58,7 +59,9 @@ system — aucun composant recréé en parallèle.
   désactivation à double confirmation.
 - `apps/web/src/App.tsx` — restructuré : `App` bascule entre `LoginView` (formulaire,
   comportement du ticket 020 strictement inchangé) et `AuthenticatedApp` (back-office)
-  selon la présence d'un token en `localStorage`.
+  selon la présence d'un token en `localStorage` ; `defaultRedirect` force un
+  rechargement explicite pour une redirection vers la même origine (bug réel trouvé en
+  vérification navigateur, voir « Vérification » ci-dessous).
 - `apps/web/src/main.tsx` — appelle `receiveIncomingSession()`, fournit `getAccessToken`
   au client API.
 - Aucun fichier sous `backend/apps/` touché — lecture seule du contrat existant
@@ -104,29 +107,93 @@ system — aucun composant recréé en parallèle.
    design system pour ce ticket.
 
 ## Vérification
-- **59 tests frontend** dans `apps/web` (35 nouveaux/modifiés au-delà des 21 du ticket
+- **62 tests frontend** dans `apps/web` (38 nouveaux/modifiés au-delà des 21 du ticket
   020) : mapping de rôle (`redirectTarget.test.ts`), dérivation transverse
   (`adminAccess.test.ts`), client HTTP back-office (`client.test.ts`), réception de
   session (`receiveIncomingSession.test.ts`), bascule login/back-office et accès refusé
   (`App.test.tsx`), recherche/détail/confirmation/désactivation/garde anti-TrustEvent
   (`BackofficeView.test.tsx`). Suite complète du monorepo frontend revérifiée après coup
   (design-system, home, build, control-pwa) : aucune régression, `tsc --noEmit` propre.
-- **Vérifié dans un vrai navigateur (Chrome via l'outil de preview)** : l'écran de
-  connexion (`http://localhost:5176`, comportement du ticket 020) rendu sans erreur
-  console, formulaire email/mot de passe intact. La bascule vers le back-office
-  authentifié a été exercée via le rendu React complet des tests (jsdom + Testing
-  Library — arbre de composants réel, interactions réelles), **pas** via un aller-retour
-  Chrome complet avec un vrai backend : `preview_start` avec un `name` (lancement
-  déclaratif du serveur de dev) échoue systématiquement dans cet environnement Windows
-  dès que le chemin résolu de `npm`/`cmd` contient un espace (`C:\Program Files\...`) —
-  confirmé indépendant de ce ticket en lançant `npm run dev --workspace=@keya/web`
-  directement en Bash (démarre correctement, `EXIT:0`, aucune erreur). Contourné pour
-  l'écran de connexion en démarrant le serveur en arrière-plan puis en pointant
-  `preview_start` sur son URL directement. Un aller-retour authentifié complet aurait
-  nécessité soit un vrai backend Postgres (RLS, migrations, utilisateurs seedés — hors
-  scope, lourd à monter dans cet environnement, voir contraintes Docker déjà documentées
-  au ticket 001), soit une interception réseau que les outils de preview ne permettent
-  pas nativement. Assumé comme limite de cette vérification, pas comme un test sauté.
+
+### Outillage `preview_start` — problème d'environnement, contournement trouvé
+`preview_start` avec un `name` (lancement déclaratif du serveur de dev via
+`.claude/launch.json`) échoue systématiquement dans cet environnement Windows :
+`'C:\Program' n'est pas reconnu...` — un chemin résolu (`C:\Program Files\nodejs\...`)
+arrive visiblement non quoté quelque part dans la chaîne de spawn de l'outil. **Cinq
+contournements testés côté configuration, tous infructueux, erreur strictement
+identique à chaque fois** : `npm` nu, chemin absolu quoté vers `npm.cmd`, wrapper
+`cmd.exe /c` explicite, **chemin court 8.3 sans espace** (`C:\PROGRA~1\nodejs\npm.cmd`,
+confirmé fonctionnel en direct via Bash), et un nom de configuration neuf (exclut un
+souci de cache). `npm run dev --workspace=@keya/web` lancé directement en Bash
+démarre, lui, sans erreur (`EXIT:0`) — la config/le code ne sont pas en cause. **Bug
+d'environnement/outillage confirmé, pas un problème de ce ticket.**
+
+**Contournement RÉEL trouvé et utilisé pour toute la suite de cette vérification** :
+démarrer le serveur manuellement en arrière-plan (Bash `run_in_background`), puis
+appeler `preview_start` avec `{url: "http://localhost:5176"}` au lieu de `{name: ...}`
+— ouvre un vrai onglet Chrome pointé sur le serveur déjà démarré, sans passer par le
+lancement déclaratif cassé. Fonctionne à l'identique pour le second serveur nécessaire
+(Django). **Dette explicite à lever avant tout pilote réel** : ce contournement manuel
+fonctionne mais n'est pas le flux `preview_start({name})` prévu par l'outillage — à
+réinvestiguer si l'outil est mis à jour, ou si l'environnement change (ex. profil
+utilisateur Windows sans espace dans le nom, ou Node installé hors `Program Files`).
+
+### Vérification RÉELLE en navigateur, avec un vrai backend — pas un stub
+Le contournement ci-dessus a permis de faire le VRAI aller-retour demandé, pas une
+simulation : backend Django réel monté pour l'occasion (Postgres dédié
+`docker-compose.yml` du projet, port 5433, migrations appliquées, deux comptes réels
+créés — `admin-verif@example.com` en `admin_keyimmo` et `cible-verif@example.com` en
+`constructeur` d'une organisation distincte), serveur `apps/web` réel sur le port 5176.
+Parcours complet exécuté dans Chrome :
+1. Connexion avec les vrais identifiants `admin-verif@example.com` → `POST
+   /api/auth/login/` puis `GET /api/me/` réels (200, network réel confirmé via
+   `read_network_requests`).
+2. **Bug réel trouvé à cette étape, invisible aux tests unitaires** : après
+   connexion, l'écran restait bloqué sur le formulaire malgré un token réel désormais
+   présent dans l'URL (`window.location.href` le confirmait). Cause : une redirection
+   `admin_keyimmo` vers apps/web ELLE-MÊME ne change que le FRAGMENT de l'URL (même
+   origine, même chemin) — un changement de fragment seul ne recharge JAMAIS un
+   document (comportement standard des navigateurs, identique à un lien d'ancre),
+   donc `main.tsx` ne rejouait jamais `receiveIncomingSession()`. Les tests
+   unitaires ne pouvaient pas le voir : ils injectent un `redirect` mocké (jamais la
+   vraie navigation du navigateur) précisément pour rester déterministes — exactement
+   le genre de défaut que seul un vrai aller-retour navigateur révèle. **Corrigé**
+   (`apps/web/src/auth/redirectTarget.ts::isSameOriginRedirect` +
+   `apps/web/src/App.tsx::defaultRedirect`) : un rechargement explicite
+   (`window.location.reload()`) est désormais forcé quand la cible ne diffère de la
+   page courante que par son origine identique — jamais pour HOME/BUILD/CONTROL
+   (origine différente, déjà rechargées par la navigation cross-origine elle-même).
+   Nouveau test unitaire pour la logique pure (`isSameOriginRedirect`,
+   `redirectTarget.test.ts`) ; l'appel réel à `window.location.reload()` reste, par
+   nature, non testable sous jsdom (navigation non implémentée) — **revérifié après
+   correction par un second aller-retour navigateur complet, cette fois réussi**.
+3. Après correction : back-office rendu réellement (`AppShell` dense, sidebar
+   « Back-office », fil d'Ariane) — confirmé par `read_page`, pas une supposition.
+4. Recherche « cible » → `GET /api/backoffice/users/?q=cible` réel → résultat
+   affiché.
+5. Sélection → `GET /api/backoffice/users/{id}/` réel → organisation/rôle affichés
+   (« Org Constructeur Verif — constructeur »), « Compte actif ».
+6. Clic sur « Désactiver ce compte » → confirmation affichée (`AlertBanner` +
+   « Confirmer la désactivation » / « Annuler »), **aucun appel réseau à ce stade**
+   (vérifié via `read_network_requests` — le premier clic n'exécute rien).
+7. Clic sur « Confirmer la désactivation » → `POST
+   /api/backoffice/users/{id}/deactivate/` réel (200) → relecture réelle (`GET`) →
+   « Compte désactivé » affiché, bouton de désactivation disparu.
+8. **État réellement persisté vérifié directement en base** (`manage.py shell`,
+   hors frontend) : `User.objects.get(email='cible-verif@example.com').is_active`
+   → `False`.
+
+Console navigateur revérifiée propre après un rechargement complet (les seules
+erreurs observées pendant la session, `defaultRedirect is not defined`, sont un
+artefact transitoire du Hot Module Replacement de Vite au moment de l'édition du
+fichier — confirmé transitoire par un rechargement forcé sans aucune nouvelle erreur,
+et par la suite de tests + `tsc --noEmit` qui restent propres).
+
+**Nettoyage effectué après vérification** : `localStorage` vidé, onglet fermé,
+serveurs Django/vite arrêtés, conteneur Postgres de vérification retiré
+(`docker compose down`, volume conservé), `.env`/`venv` locaux non versionnés
+(`.gitignore`), `.claude/launch.json` (contournement infructueux) supprimé pour ne
+pas laisser une config qui ne fonctionne pas.
 
 ## Critères d'acceptation
 - [x] Écran réservé à `admin_keyimmo`, réutilisant la dérivation de rôle (adaptée en
@@ -147,8 +214,9 @@ system — aucun composant recréé en parallèle.
   sont strictement lecture seule sur ce point)
 - Pagination/tri de la recherche utilisateur (le backend renvoie une liste simple, sans
   pagination — rien à ajouter côté frontend qui n'existe pas côté backend)
-- Vérification manuelle en conditions réelles avec un vrai backend (voir « Vérification »
-  ci-dessus — limite d'environnement, pas un choix de scope)
+- Corriger l'outillage `preview_start` lui-même (bug d'environnement Windows, voir
+  « Vérification » ci-dessus) — un contournement manuel a suffi pour ce ticket, la
+  dette outillage reste à lever séparément avant tout pilote réel
 
 ## Dépendances
 Ticket 007 (`AlertBanner`, `AppShell` dense), ticket 011 (les trois endpoints
