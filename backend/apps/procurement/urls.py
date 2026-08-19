@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     DevisAdminListView,
+    DevisAjustementView,
     DevisCreateView,
     DevisLockView,
     MyCandidaturesDetailView,
@@ -19,5 +20,9 @@ urlpatterns = [
     path(
         'procurement/my-candidatures/<uuid:devis_id>/',
         MyCandidaturesDetailView.as_view(), name='procurement-my-candidature-detail',
+    ),
+    path(
+        'procurement/devis/<uuid:devis_id>/ajustements/',
+        DevisAjustementView.as_view(), name='procurement-devis-ajustement',
     ),
 ]

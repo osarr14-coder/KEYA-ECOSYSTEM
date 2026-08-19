@@ -12,10 +12,12 @@ from apps.evidence.services import create_work_declaration
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
+from apps.tasks.models import Task, TaskStatus, TaskType
+from apps.tasks.services import DEVIS_AJUSTEMENT_REFUSE_SOURCE
 from apps.trust.models import TrustEvent
 
 from . import services
-from .models import Devis
+from .models import Devis, DevisAjustement
 
 PASSWORD = 'strongpass123'
 
@@ -96,6 +98,11 @@ def _setup_lot_up_for_bid(suffix):
 
 AMOUNT_A = Decimal('123456.78')
 AMOUNT_B = Decimal('987654.32')
+# Ticket 023 : marge_estimee désormais requise à la création d'un Devis —
+# valeurs distinctes de AMOUNT_A/AMOUNT_B (jamais confondues dans un test
+# qui vérifierait par erreur la mauvaise valeur).
+MARGE_A = Decimal('10000.00')
+MARGE_B = Decimal('8000.00')
 
 
 @pytest.mark.django_db
@@ -111,6 +118,7 @@ class TestDevisCreation:
             {
                 'organization': str(sponsor_org.id), 'lot': str(lot.id),
                 'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
+                'marge_estimee': str(MARGE_A),
             },
             format='json',
         )
@@ -140,6 +148,7 @@ class TestDevisCreation:
             {
                 'organization': str(sponsor_org.id), 'lot': str(lot.id),
                 'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
+                'marge_estimee': str(MARGE_A),
             },
             format='json',
         )
@@ -155,7 +164,7 @@ class TestDevisCreation:
         winning_devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
         services.lock_devis(
             admin=admin_user, admin_organization_id=admin_org.id,
@@ -167,6 +176,7 @@ class TestDevisCreation:
             {
                 'organization': str(sponsor_org.id), 'lot': str(lot.id),
                 'candidate_organization': str(candidate_b_org.id), 'amount': str(AMOUNT_B),
+                'marge_estimee': str(MARGE_B),
             },
             format='json',
         )
@@ -195,7 +205,7 @@ class TestDevisLock:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
 
         response = admin_client.post(
@@ -226,7 +236,7 @@ class TestDevisLock:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
 
         response = candidate_a_client.post(
@@ -246,12 +256,12 @@ class TestDevisLock:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
         devis_b = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
         )
         services.lock_devis(
             admin=admin_user, admin_organization_id=admin_org.id,
@@ -295,7 +305,7 @@ class TestDevisRLS:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
 
         # Contexte du candidat : SA PROPRE organisation active, jamais
@@ -316,7 +326,7 @@ class TestDevisRLS:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
 
         _outsider_client, outsider_org, _outsider_user = _register(
@@ -338,7 +348,7 @@ class TestDevisRLS:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
 
         set_rls_context(organization_id=candidate_b_org.id)
@@ -392,12 +402,12 @@ class TestMyCandidatures:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
         )
 
         response = candidate_a_client.get(reverse('procurement-my-candidatures'))
@@ -405,15 +415,22 @@ class TestMyCandidatures:
         ids = {row['id'] for row in response.data}
         assert ids == {str(devis_a.id)}
 
-    def test_candidate_sees_the_locked_status_of_its_own_winning_candidature(self):
-        """Preuve, côté lecture CANDIDAT (jamais basculée par construction,
-        contrairement à la vue admin juste après écriture), du même bug
-        réel corrigé dans `apps.procurement.services.get_devis_status` :
-        sans la bascule RLS interne de cette fonction, le `TrustEvent`
-        `devis_verrouille` (posé sous `organization` = celle du LOT) reste
-        invisible à un candidat lisant sous SA PROPRE organisation active
-        (`candidate_organization`), et le statut retombait silencieusement
-        à `'candidat'` malgré un devis réellement verrouillé.
+    def test_candidate_sees_the_locked_status_only_after_a_successful_reconciliation(self):
+        """Ticket 022 → ticket 023 : preuve en DEUX temps, côté lecture
+        CANDIDAT (jamais basculée par construction, contrairement à la vue
+        admin juste après écriture).
+
+        **Temps 1 (bug historique du ticket 022, désormais corrigé)** :
+        verrouiller un devis SEUL ne suffit plus à le montrer « gagnant »
+        au candidat — `get_candidate_visible_devis_status` (ticket 023)
+        gate ce statut derrière au moins une réconciliation réussie. Sans
+        cette correction, le candidat aurait vu `'devis_verrouille'` ICI,
+        avant même qu'aucune marge n'ait été vérifiée.
+
+        **Temps 2** : une fois un `DevisAjustement` accepté, le statut
+        `'devis_verrouille'` apparaît enfin — preuve que le gating n'est
+        pas juste une désactivation permanente, mais bien conditionné à la
+        réconciliation.
         """
         _admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
             _setup_lot_up_for_bid('mine-locked')
@@ -423,22 +440,40 @@ class TestMyCandidatures:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
         services.lock_devis(
             admin=admin_user, admin_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, devis_id=devis_a.id,
         )
 
+        # Temps 1 : verrouillé, mais AUCUNE réconciliation encore — le
+        # candidat ne doit PAS encore voir « gagnant ».
         list_response = candidate_a_client.get(reverse('procurement-my-candidatures'))
         assert list_response.status_code == 200
-        assert list_response.data[0]['status'] == services.DEVIS_LOCKED_SOURCE
+        assert list_response.data[0]['status'] == services.DEVIS_CANDIDATE_STATUS
 
         detail_response = candidate_a_client.get(
             reverse('procurement-my-candidature-detail', args=[devis_a.id]),
         )
         assert detail_response.status_code == 200
-        assert detail_response.data['status'] == services.DEVIS_LOCKED_SOURCE
+        assert detail_response.data['status'] == services.DEVIS_CANDIDATE_STATUS
+
+        # Temps 2 : une réconciliation réussit — le statut « gagnant »
+        # devient enfin visible au candidat.
+        services.create_ajustement(
+            admin=admin_user, admin_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, devis_id=devis_a.id,
+            ecart=Decimal('0'),
+        )
+
+        list_response_after = candidate_a_client.get(reverse('procurement-my-candidatures'))
+        assert list_response_after.data[0]['status'] == services.DEVIS_LOCKED_SOURCE
+
+        detail_response_after = candidate_a_client.get(
+            reverse('procurement-my-candidature-detail', args=[devis_a.id]),
+        )
+        assert detail_response_after.data['status'] == services.DEVIS_LOCKED_SOURCE
 
     def test_candidate_cannot_read_a_rivals_candidature_by_id(self):
         _admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, candidate_b = (
@@ -450,7 +485,7 @@ class TestMyCandidatures:
         devis_b = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
         )
 
         response = candidate_a_client.get(reverse('procurement-my-candidature-detail', args=[devis_b.id]))
@@ -473,12 +508,12 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
         )
 
         response = candidate_a_client.get(reverse('procurement-my-candidatures'))
@@ -499,12 +534,12 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
         )
 
         response = candidate_a_client.get(reverse('procurement-my-candidature-detail', args=[devis_a.id]))
@@ -540,7 +575,7 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
         )
 
         # Le candidat a aussi ses propres données « normales » (lot,
@@ -618,5 +653,408 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             'procurement-devis-create', 'procurement-devis-lock',
             'procurement-admin-devis-list',
             'procurement-my-candidatures', 'procurement-my-candidature-detail',
+            # Ticket 023 — ajout conscient : `DevisAjustementView` (POST/GET
+            # sur la même URL) n'est accessible qu'à admin_keyimmo, jamais au
+            # rôle constructeur (aucune lecture candidate, décision de
+            # conception point C) — le test de garde a fait exactement son
+            # travail en forçant cette mise à jour explicite.
+            'procurement-devis-ajustement',
         }
         assert actual == expected
+
+
+def _create_and_lock_devis(*, admin_user, admin_org, sponsor_org, lot, candidate_org, amount, marge_estimee):
+    """Helper local ticket 023 : un devis créé PUIS verrouillé, prêt à
+    recevoir un ajustement — factorise la mise en place répétée dans
+    presque tous les tests de ce module.
+    """
+    devis = services.create_devis(
+        logged_by=admin_user, logged_by_organization_id=admin_org.id,
+        target_organization_id=sponsor_org.id, lot_id=lot.id,
+        candidate_organization_id=candidate_org.id, amount=amount, marge_estimee=marge_estimee,
+    )
+    services.lock_devis(
+        admin=admin_user, admin_organization_id=admin_org.id,
+        target_organization_id=sponsor_org.id, devis_id=devis.id,
+    )
+    return devis
+
+
+@pytest.mark.django_db
+class TestDevisAjustementBoundaryCase:
+    """Cœur du ticket 023, demandé explicitement comme cas limite EXACT,
+    pas seulement un cas grossièrement au-dessus — chaque test utilise des
+    `Decimal` exacts, jamais une comparaison flottante approximative.
+    """
+
+    def test_ecart_exactly_equal_to_available_margin_is_accepted_with_zero_resulting_margin(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('boundary-exact')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+
+        response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': str(MARGE_A)},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert response.data['marge_resultante'] == Decimal('0')
+
+    def test_ecart_one_cent_above_available_margin_is_rejected(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('boundary-over')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+        one_cent_over = MARGE_A + Decimal('0.01')
+
+        response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': str(one_cent_over)},
+            format='json',
+        )
+        assert response.status_code == 409
+        assert not DevisAjustement.objects.filter(devis=devis).exists()
+
+    def test_ecart_below_available_margin_is_accepted_with_positive_resulting_margin(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('boundary-under')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+        below = MARGE_A - Decimal('1000.00')
+
+        response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': str(below)},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert response.data['marge_resultante'] == Decimal('1000.00')
+
+    def test_ecart_far_above_available_margin_is_rejected(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('boundary-far-over')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+        way_over = MARGE_A + Decimal('50000.00')
+
+        response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': str(way_over)},
+            format='json',
+        )
+        assert response.status_code == 409
+        assert not DevisAjustement.objects.filter(devis=devis).exists()
+
+
+@pytest.mark.django_db
+class TestDevisAjustementCumulativeSigned:
+    def test_favorable_adjustment_then_unfavorable_adjustment_uses_the_running_margin(self):
+        """Point A du ticket : un écart favorable (négatif, économie)
+        accepté AUGMENTE la marge disponible pour l'ajustement suivant — un
+        écart défavorable qui aurait été refusé contre `marge_estimee`
+        SEULE doit passer une fois l'économie précédente prise en compte.
+        Preuve d'un calcul signé correct, pas une somme de valeurs absolues.
+        """
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('cumulative-signed')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+
+        # 1) Écart FAVORABLE (économie) : -2000. Marge disponible AVANT =
+        # MARGE_A (10000). -2000 <= 10000, accepté. Marge résultante =
+        # 10000 - (-2000) = 12000.
+        favorable = Decimal('-2000.00')
+        response_1 = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': str(favorable)},
+            format='json',
+        )
+        assert response_1.status_code == 201, response_1.data
+        assert response_1.data['marge_resultante'] == Decimal('12000.00')
+
+        # 2) Écart DÉFAVORABLE : 11000. Contre `marge_estimee` SEULE
+        # (10000), cet écart aurait été REFUSÉ (11000 > 10000). Contre la
+        # marge disponible RÉELLE après l'économie précédente (12000),
+        # il doit être ACCEPTÉ (11000 <= 12000) — c'est précisément ce
+        # qu'un calcul qui ignorerait le signe raterait.
+        defavorable = Decimal('11000.00')
+        response_2 = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': str(defavorable)},
+            format='json',
+        )
+        assert response_2.status_code == 201, response_2.data
+        assert response_2.data['marge_resultante'] == Decimal('1000.00')
+
+
+@pytest.mark.django_db
+class TestDevisAjustementRequiresLockedDevis:
+    def test_ajustement_on_a_devis_not_yet_locked_is_rejected(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('not-locked')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+
+        response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': '100.00'},
+            format='json',
+        )
+        assert response.status_code == 409
+        assert not DevisAjustement.objects.filter(devis=devis).exists()
+
+
+@pytest.mark.django_db
+class TestDevisAjustementPermissions:
+    def test_a_constructeur_cannot_create_an_ajustement(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('ajustement-forbidden')
+        )
+        candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+
+        response = candidate_a_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': '100.00'},
+            format='json',
+        )
+        assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestDevisAjustementTaskOnRejection:
+    """Point B du ticket : un ajustement refusé crée une Task ALERT
+    assignée à l'admin_keyimmo qui vient d'agir — pas de résolveur de
+    contact sponsor, `assignee` est déjà connu du contexte de la requête.
+    """
+
+    def test_rejected_ajustement_creates_an_alert_task_assigned_to_the_acting_admin(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('task-on-reject')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+        way_over = MARGE_A + Decimal('50000.00')
+
+        response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': str(way_over)},
+            format='json',
+        )
+        assert response.status_code == 409
+
+        # Lecture directe : la Task appartient à `sponsor_org` (celle du
+        # devis/lot), pas à celle de l'admin — bascule RLS nécessaire pour
+        # cette relecture de vérification, même discipline que les autres
+        # tests RLS de ce module.
+        set_rls_context(organization_id=sponsor_org.id)
+        task = Task.objects.get(
+            subject_type__model='devis', subject_id=devis.id,
+            source=DEVIS_AJUSTEMENT_REFUSE_SOURCE,
+        )
+        assert task.type == TaskType.ALERT
+        assert task.assignee_id == admin_user.id
+        assert task.status == TaskStatus.PENDING
+        # Le libellé identifie le devis concerné (candidat + lot) — Task
+        # interne à admin_keyimmo, jamais exposée au candidat (voir
+        # TestDevisAjustementAmountNeverLeaksToConstructeurRole).
+        assert candidate_a_org.name in task.label
+        assert lot.name in task.label
+
+    def test_a_second_rejected_attempt_on_the_same_devis_does_not_duplicate_the_task(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('task-dedup')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+        way_over = MARGE_A + Decimal('50000.00')
+
+        for _ in range(2):
+            response = admin_client.post(
+                reverse('procurement-devis-ajustement', args=[devis.id]),
+                {'organization': str(sponsor_org.id), 'ecart': str(way_over)},
+                format='json',
+            )
+            assert response.status_code == 409
+
+        set_rls_context(organization_id=sponsor_org.id)
+        tasks = Task.objects.filter(subject_type__model='devis', subject_id=devis.id)
+        assert tasks.count() == 1
+
+
+@pytest.mark.django_db
+class TestDevisImmutability:
+    """Critère d'acceptation central : `Devis` et son `marge_estimee`/
+    `amount` d'origine ne sont JAMAIS modifiés par ce mécanisme — même
+    rigueur que la garde append-only de `TrustEvent` (ticket 003).
+    """
+
+    def test_devis_amount_and_marge_estimee_unchanged_after_an_accepted_ajustement(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('immutable-reread')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+
+        response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': '500.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        devis.refresh_from_db()
+        assert devis.amount == AMOUNT_A
+        assert devis.marge_estimee == MARGE_A
+
+    def test_direct_sql_update_on_devis_is_blocked_by_rls_no_policy_defined(self):
+        """Aucune policy RLS `UPDATE` n'est définie sur `procurement_devis`
+        (ticket 022, migration `0002_devis_rls.py`) — sous `FORCE ROW LEVEL
+        SECURITY`, ceci bloque par défaut TOUT `UPDATE`, y compris pour le
+        rôle propriétaire de la table. Comme pour `TrustEvent` (ticket 003,
+        CLAUDE.md section Append-only) : une tentative d'UPDATE en SQL BRUT
+        affecte silencieusement 0 ligne, sans lever d'exception — un test
+        doit donc vérifier `cursor.rowcount == 0` + donnée inchangée après
+        relecture, pas s'attendre à une erreur.
+        """
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('immutable-sql-update')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+
+        set_rls_context(organization_id=sponsor_org.id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE procurement_devis SET amount = %s WHERE id = %s",
+                [str(Decimal('999999.99')), str(devis.id)],
+            )
+            assert cursor.rowcount == 0
+
+        devis.refresh_from_db()
+        assert devis.amount == AMOUNT_A
+        assert devis.marge_estimee == MARGE_A
+
+    def test_direct_sql_delete_on_devis_is_blocked_by_rls_no_policy_defined(self):
+        """Même raisonnement que le test précédent, pour DELETE."""
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('immutable-sql-delete')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+
+        set_rls_context(organization_id=sponsor_org.id)
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM procurement_devis WHERE id = %s", [str(devis.id)])
+            assert cursor.rowcount == 0
+
+        assert Devis.objects.filter(id=devis.id).exists()
+
+    def test_direct_sql_update_on_devis_ajustement_is_also_blocked(self):
+        """Le `DevisAjustement` lui-même est aussi protégé, une fois créé —
+        un ajustement accepté n'est jamais révisable après coup (cohérent
+        avec le mécanisme append-only : un nouvel ajustement est un
+        NOUVEL enregistrement, jamais une édition).
+        """
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('immutable-ajustement-sql-update')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+        response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': '500.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        ajustement_id = response.data['id']
+
+        set_rls_context(organization_id=sponsor_org.id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE procurement_devis_ajustement SET ecart = %s WHERE id = %s",
+                [str(Decimal('0.00')), str(ajustement_id)],
+            )
+            assert cursor.rowcount == 0
+
+        ajustement = DevisAjustement.objects.get(id=ajustement_id)
+        assert ajustement.ecart == Decimal('500.00')
+
+
+@pytest.mark.django_db
+class TestDevisAjustementAmountNeverLeaksToConstructeurRole:
+    """Extension de la garde du ticket 022 : `marge_estimee` (sur `Devis`)
+    et `ecart`/`marge_resultante` (sur `DevisAjustement`) ne doivent jamais
+    apparaître dans une réponse accessible au rôle constructeur, exactement
+    comme `amount`.
+    """
+
+    def test_marge_estimee_never_appears_in_candidate_responses(self):
+        _admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('leak-marge')
+        )
+        candidate_a_client, candidate_a_org = candidate_a
+        devis = services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+        )
+
+        list_response = candidate_a_client.get(reverse('procurement-my-candidatures'))
+        detail_response = candidate_a_client.get(
+            reverse('procurement-my-candidature-detail', args=[devis.id]),
+        )
+        for response in (list_response, detail_response):
+            body_text = response.content.decode()
+            assert 'marge_estimee' not in body_text
+            assert str(MARGE_A) not in body_text

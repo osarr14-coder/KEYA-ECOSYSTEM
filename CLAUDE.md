@@ -1444,6 +1444,59 @@ explicite précède la relecture de vérification.
 session active (`feature/frontend-round-2`) — discipline posée au ticket 021, reprise
 ici avant d'écrire le moindre code.
 
+## Réconciliation de devis / ajustement (ticket 024)
+
+Voir `024-reconciliation-devis-ajustement.md` pour le détail complet, y compris un
+écart de modèle corrigé avant rédaction (le ticket initial supposait `Candidature`/
+`AppelOffre`/`DevisLigne`, qui n'existent pas — le ticket 022 a fusionné volontairement
+ces notions en un seul `Devis`).
+
+**`Devis.marge_estimee`** (nouveau champ) — saisi par `admin_keyimmo` au même moment
+que `amount`, jamais dérivé d'un budget externe (aucun champ budget n'existe sur
+`Lot`). **`DevisAjustement`** (nouveau modèle, `apps/procurement`) : un écart de coût
+signé sur le devis VERROUILLÉ d'un lot — positif = défavorable (réduit la marge
+disponible), négatif = favorable (l'augmente). Marge disponible COURANTE = `marge_estimee`
+moins la somme SIGNÉE de tous les ajustements déjà acceptés — jamais une somme de
+valeurs absolues. Un écart qui dépasse cette marge (même d'un centime) est refusé
+(409), **aucune ligne créée** — `Devis`/`DevisAjustement` déjà créés ne sont eux-mêmes
+jamais modifiables après coup (aucune policy RLS `UPDATE`/`DELETE`, comme
+`procurement_devis` au ticket 022 — testé avec la même rigueur que l'append-only
+`TrustEvent`, ticket 003).
+
+**Bug réel trouvé et corrigé sur du code déjà livré au ticket 022** : le statut
+« gagnant » exposé au candidat (`DevisCandidateSerializer.get_status`) était dérivé
+IMMÉDIATEMENT au verrouillage (`lock_devis`), sans aucun lien avec une réconciliation
+— un candidat pouvait donc voir « gagnant » avant même qu'aucune marge n'ait été
+vérifiée. Corrigé par une nouvelle fonction, `get_candidate_visible_devis_status`
+(distincte de `get_devis_status`, qui reste inchangée pour l'admin et la logique
+interne) : le statut « gagnant » n'est exposé au candidat qu'après AU MOINS un
+`DevisAjustement` accepté.
+
+**Deuxième bug réel, de transaction cette fois, trouvé en écrivant `create_ajustement`
+lui-même (avant même le premier lancement des tests)** : créer la `Task` d'alerte sur
+refus PUIS lever `MarginExceededError` À L'INTÉRIEUR du même `transaction.atomic()`
+aurait fait ROLLBACK de la Task en même temps que l'exception se propage — elle aurait
+disparu silencieusement malgré un 409 réellement renvoyé. Corrigé en structurant la
+fonction en étapes séquentielles distinctes (lecture seule sans `atomic()` propre,
+comme `list_devis_for_lot_as_admin` ; écriture de la Task hors de toute portée
+annulable, PUIS le `raise` ; écriture de `DevisAjustement` dans son propre bloc
+`atomic()` pour le cas accepté).
+
+**Task sur refus assignée à l'acteur courant, pas à un tiers** — différent des deux
+générateurs précédents du ticket 006 (`_reserve_opened_label`/`_mission_assigned_label`,
+qui notifient toujours quelqu'un D'AUTRE que l'appelant) : `assignee=request.user`
+directement, aucun résolveur à écrire. Créée SYNCHRONEMENT (pas de `.delay()` Celery,
+contrairement aux deux précédents) — choix explicite et documenté
+(`apps.tasks.services.create_task_for_devis_ajustement_refuse`) : le refus a lieu dans
+la même requête que la tentative de l'admin, qui reçoit déjà un 409 immédiat.
+
+**Cas limite exact** (critère d'acceptation central du ticket, demandé explicitement) :
+écart == marge disponible → accepté, marge résultante == 0 (`Decimal` exact) ; écart ==
+marge disponible + 0,01 → refusé. Testé aussi en cumul signé : un écart favorable
+accepté PUIS un écart défavorable qui aurait été refusé contre `marge_estimee` seule
+doit passer une fois l'économie précédente prise en compte — preuve qu'aucune somme de
+valeurs absolues n'est utilisée par erreur.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
