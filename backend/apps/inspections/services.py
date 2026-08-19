@@ -458,6 +458,21 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
             ).exists()
             lot = mission.work_declaration.milestone.lot
             open_reserve = _find_open_reserve_for_lot(lot)
+            # Ticket 014 bis (friction 1 du 4e rapport bout-en-bout) :
+            # `_find_open_reserve_for_lot` est scopé au LOT, pas à la
+            # mission — une mission déjà `completed`, créée AVANT qu'une
+            # réserve n'ouvre (par la faute d'une AUTRE mission, plus
+            # récente, sur ce même lot), héritait à tort de cette réserve
+            # simplement parce qu'elle vit sur le même lot. Une réserve
+            # n'est légitimement « la sienne » que si elle existait DÉJÀ au
+            # moment où CETTE mission a été affectée — sinon la mission ne
+            # pouvait structurellement pas en avoir été la cause. Même
+            # principe de bornage temporel que `completed` ci-dessus,
+            # appliqué à `Reserve.created_at` plutôt qu'à `Inspection.
+            # created_at`.
+            mission_reserve = (
+                open_reserve if open_reserve and open_reserve.created_at <= mission.created_at else None
+            )
             rows.append({
                 'id': str(mission.id),
                 'lot_name': lot.name,
@@ -474,9 +489,9 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
                 # (voir `apps.control.sync.syncEngine.ts::syncDraft`, qui les
                 # utilise respectivement pour `reserve` et pour amorcer
                 # `InspectionDraft.knownLatestEventId` d'un brouillon neuf).
-                'reserve_id': str(open_reserve.id) if open_reserve else None,
+                'reserve_id': str(mission_reserve.id) if mission_reserve else None,
                 'reserve_latest_event_id': (
-                    str(trust_repository.get_current_status(open_reserve).id) if open_reserve else None
+                    str(trust_repository.get_current_status(mission_reserve).id) if mission_reserve else None
                 ),
             })
         finally:

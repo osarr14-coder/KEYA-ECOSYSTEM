@@ -518,3 +518,90 @@ describe(
     });
   },
 );
+
+describe(
+  'syncDraft — lecture périmée traitée après relâchement du verrou (ticket 015 ter) : jamais '
+  + 'de réupload d\'une photo déjà synchronisée',
+  () => {
+    it(
+      'un second appel construit à partir d\'un instantané lu AVANT la fin du premier, mais '
+      + 'exécuté APRÈS le relâchement de son verrou, ne réuploade jamais une photo déjà '
+      + 'synchronisée par le premier',
+      async () => {
+        // Reproduit précisément ce que le verrou `draftsInFlight` seul ne
+        // couvre PAS : `runSyncCycle` lit tous les brouillons via
+        // `getAllDrafts()` avant même d'appeler `syncDraft` — un second
+        // cycle peut donc avoir lu ce brouillon (encore `pending`) AVANT
+        // que le premier n'ait fini d'écrire son propre résultat, puis
+        // n'appeler `syncDraft` avec cet instantané périmé qu'UNE FOIS le
+        // verrou du premier déjà relâché : le verrou ne bloque alors plus
+        // rien, mais l'instantané transmis, lui, est toujours périmé.
+        // Déterministe SANS aucun délai artificiel : l'instantané périmé
+        // est capturé explicitement AVANT tout traitement, puis réutilisé
+        // APRÈS que le premier appel se soit intégralement terminé (donc
+        // après relâchement réel du verrou) — l'ordre est garanti par la
+        // structure du test, pas par un minutage hasardeux.
+        const draft = createEmptyDraft(FIXTURE_MISSIONS[0].id, CHECKLIST_TEMPLATE);
+        draft.decision = 'conforme';
+        draft.photos = [{
+          id: 'photo-1', blob: new Blob(['contenu-photo'], { type: 'image/jpeg' }), fileName: 'photo1.jpg',
+          capturedAt: '2026-08-19T09:00:00.000Z', mediaSyncStatus: 'pending', remoteDocumentId: null,
+          retryCount: 0, nextRetryAt: null,
+        }];
+        await saveDraft(draft);
+
+        // Instantané "périmé" : capturé avant tout traitement, exactement
+        // ce qu'un `getAllDrafts()` antérieur au premier cycle aurait lu.
+        const staleSnapshot = await getDraft(draft.id);
+
+        const fetchMock = vi.fn(async (url: string) => {
+          if (String(url).includes('/control/sync/documents/')) {
+            return jsonResponse(201, { id: 'doc-1' });
+          }
+          if (String(url).includes('/control/sync/evidence/')) {
+            return jsonResponse(201, { id: 'evidence-1' });
+          }
+          if (String(url).includes('/control/sync/inspection/')) {
+            return jsonResponse(201, {
+              status: 'applied',
+              inspection: {
+                id: 'insp-stale', created_at: '2026-08-19T10:00:00.000Z',
+                client_correlation_id: draft.correlationId,
+              },
+              latest_event_id: 'evt-stale',
+            });
+          }
+          throw new Error(`URL non mockée dans ce test : ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        // Premier "cycle" : traite le VRAI brouillon, se termine
+        // intégralement (verrou posé PUIS relâché) — photo synchronisée,
+        // Evidence créée, Inspection soumise.
+        await syncDraft(draft, apiClient());
+
+        // Second "cycle" : appelé avec l'instantané PÉRIMÉ (sa propre copie
+        // montre encore `mediaSyncStatus: 'pending'`), après que le premier
+        // a déjà fini et relâché son verrou — reproduit exactement le
+        // chevauchement visé.
+        await syncDraft(staleSnapshot!, apiClient());
+
+        const documentCalls = fetchMock.mock.calls.filter(
+          ([url]) => String(url).includes('/control/sync/documents/'),
+        );
+        const evidenceCalls = fetchMock.mock.calls.filter(
+          ([url]) => String(url).includes('/control/sync/evidence/'),
+        );
+        expect(documentCalls).toHaveLength(1);
+        expect(evidenceCalls).toHaveLength(1);
+
+        const updated = await getDraft(draft.id);
+        expect(updated?.photos).toHaveLength(1);
+        expect(updated?.photos[0].mediaSyncStatus).toBe('synced');
+        expect(updated?.syncStatus).toBe('synced');
+
+        vi.unstubAllGlobals();
+      },
+    );
+  },
+);

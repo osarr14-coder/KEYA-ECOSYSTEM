@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CHECKLIST_TEMPLATE } from '../db/missions';
 import * as repository from '../db/repository';
-import { createEmptyDraft, getDraftForMission, saveDraft } from '../db/repository';
+import { createEmptyDraft, getDraftForMission, patchDraft, saveDraft } from '../db/repository';
 import { InspectionFormView } from './InspectionFormView';
 
 beforeEach(async () => {
@@ -212,6 +212,66 @@ describe(
           expect(draft?.photos).toHaveLength(1);
           expect(draft?.decision).toBe('reserve');
         });
+      },
+    );
+  },
+);
+
+describe(
+  'InspectionFormView — une saisie après une synchro en arrière-plan (5e parcours) ne doit '
+  + 'jamais écraser les champs pilotés par le moteur de synchro',
+  () => {
+    it(
+      'ajouter une photo après que le moteur a marqué le brouillon "synced" en arrière-plan '
+      + 'conserve syncStatus et knownLatestEventId à jour, sans revenir à leur état avant synchro',
+      async () => {
+        render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+        // Première saisie réelle : crée le brouillon en IndexedDB (aucune
+        // écriture avant ça, voir `createEmptyDraft`).
+        fireEvent.click(await screen.findByLabelText('Réserve'));
+        const created = await waitFor(async () => {
+          const draft = await getDraftForMission('mission-1');
+          expect(draft).toBeDefined();
+          return draft!;
+        });
+
+        // Simule une synchro complète menée en arrière-plan par le moteur
+        // PENDANT que ce formulaire reste ouvert — `patchDraft` est la
+        // fonction que `syncEngine.ts` utilise réellement pour ces
+        // écritures, jamais `saveDraft` (réservée aux saisies humaines,
+        // voir son docstring) : le composant ne relit jamais ce résultat
+        // tout seul, contrairement à `syncEngine.ts` (ticket 015 ter).
+        await patchDraft({
+          ...created,
+          syncStatus: 'synced',
+          knownLatestEventId: 'server-event-after-first-sync',
+          serverTimestamp: '2026-08-18T22:45:25.000Z',
+        });
+
+        // Une saisie supplémentaire, plus tard, dans le MÊME formulaire
+        // resté ouvert (le composant n'a jamais relu l'écriture ci-dessus) :
+        // reproduit exactement le scénario du 5e parcours bout-en-bout
+        // (photo ajoutée après que l'inspection a déjà été synchronisée).
+        const file = new File(['contenu-photo'], 'photo.jpg', { type: 'image/jpeg' });
+        fireEvent.change(await screen.findByLabelText('Ajouter une photo'), { target: { files: [file] } });
+
+        await waitFor(async () => {
+          const draft = await getDraftForMission('mission-1');
+          expect(draft?.photos).toHaveLength(1);
+        });
+
+        const finalDraft = await getDraftForMission('mission-1');
+        // La photo a bien été ajoutée...
+        expect(finalDraft?.photos).toHaveLength(1);
+        // ...mais `syncStatus`/`knownLatestEventId`, écrits par le moteur
+        // de synchro pendant que ce formulaire était ouvert, ne doivent
+        // JAMAIS être écrasés vers leur état périmé d'avant synchro — sous
+        // peine de déclencher une resoumission inutile de l'inspection avec
+        // un `knownLatestEventId` obsolète, rejetée à tort en conflit (409)
+        // par le serveur alors qu'aucun conflit réel n'existe.
+        expect(finalDraft?.syncStatus).toBe('synced');
+        expect(finalDraft?.knownLatestEventId).toBe('server-event-after-first-sync');
       },
     );
   },

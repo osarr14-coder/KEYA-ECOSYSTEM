@@ -1068,6 +1068,83 @@ dos-à-dos (`window.dispatchEvent`) ne produisent qu'un seul `POST
 /api/control/sync/inspection/`, jamais deux, malgré le chevauchement réel des deux
 cycles.
 
+## Corrections des deux bugs trouvés au 4ᵉ parcours bout-en-bout (ticket 016)
+
+Trouvés en rejouant le test bout-en-bout du vertical slice MVP 1 une 4ᵉ fois, avec les
+scénarios de concurrence du ticket 015 délibérément injectés — voir
+`016-corrections-4e-parcours-mvp1.md` pour le détail complet.
+
+**`reserve_id` de mission scopé au LOT plutôt qu'à la mission (ticket 014 bis)** :
+`list_missions_for_inspector` dérivait `reserve_id` via `_find_open_reserve_for_lot(lot)`,
+scopé au lot entier — une mission déjà `completed`, affectée AVANT qu'une réserve
+n'ouvre sur ce même lot (par une autre mission, plus récente), héritait à tort du même
+`reserve_id`, affichant « Mission de suivi » côté CONTROL PWA pour une mission déjà
+accomplie. Corrigé en bornant temporellement l'attribution — une réserve n'est
+« celle de cette mission » que si elle existait DÉJÀ au moment de son affectation
+(`reserve.created_at <= mission.created_at`), même principe que `completed` (ticket 014).
+Aucun changement frontend : `MissionTypeIndicator` dérivait déjà correctement son
+libellé, seule la donnée backend était fausse.
+
+**Lecture périmée traitée après relâchement du verrou (ticket 015 ter)** : le verrou
+`draftsInFlight` empêche bien deux `syncDraft` de tourner EN PARALLÈLE sur le même
+brouillon, mais pas qu'un second cycle, ayant lu ce brouillon (`getAllDrafts()`) AVANT
+que le premier n'ait fini d'écrire son résultat, ne le traite qu'UNE FOIS le verrou du
+premier relâché — l'instantané transmis reste alors périmé (une photo déjà synchronisée
+y apparaît encore `pending`), provoquant un réupload (Document dupliqué, Evidence
+orpheline). Corrigé en relisant l'état RÉEL du brouillon depuis IndexedDB, SOUS le
+verrou, avant tout traitement dans `syncDraft` — jamais se fier au paramètre `draft`
+seul. Aucune nouvelle fenêtre de course introduite : la relecture se fait après
+l'acquisition du verrou, donc à l'abri de toute modification concurrente.
+
+**5ᵉ parcours bout-en-bout manuel** (mêmes 8 étapes, mêmes rôles réels, mêmes scénarios
+de concurrence du ticket 015 réinjectés délibérément) : a révélé un TROISIÈME bug, non
+couvert par les deux corrections ci-dessus — voir « Bug supplémentaire trouvé PENDANT le
+5ᵉ parcours » ci-dessous. Une fois corrigé, le 5ᵉ parcours a été rejoué proprement
+(missions neuves, jamais touchées auparavant) et n'a révélé aucun autre bug — MVP1
+déclaré clos à l'issue de ce passage corrigé. Voir `016-corrections-4e-parcours-mvp1.md`
+pour le détail complet des trois corrections.
+
+### Bug supplémentaire trouvé PENDANT le 5ᵉ parcours : `InspectionFormView` écrase les
+### champs pilotés par le moteur de synchro (ticket 016 ter)
+
+En rejouant le 5ᵉ parcours (missions neuves, sans aucune contamination des tentatives
+précédentes), le scénario « photo ajoutée après que la décision a déjà été synchronisée
+en arrière-plan » a fait réapparaître le même symptôme que ticket 015 ter (réupload
+inutile), MALGRÉ ce correctif déjà en place et vérifié unitairement. Cause RÉELLE,
+distincte : `InspectionFormView.persist()` fusionne chaque saisie (checklist, photo,
+décision, commentaire) sur `draftRef.current` — un état React chargé UNE SEULE FOIS au
+montage, jamais resynchronisé avec les écritures que le moteur de synchro fait
+directement en IndexedDB en arrière-plan (`syncStatus`, `knownLatestEventId`,
+`evidenceId`...). Résultat : la moindre saisie suivante (ex. ajouter une photo APRÈS que
+l'inspection a déjà été synchronisée) écrase silencieusement `syncStatus`/
+`knownLatestEventId` vers leur valeur d'AVANT synchro, déclenchant une resoumission
+inutile de l'inspection — rejetée à tort en conflit (409) par le serveur puisque le
+`knownLatestEventId` envoyé est obsolète.
+
+**Corrigé** en relisant l'état RÉEL du brouillon depuis IndexedDB juste avant chaque
+écriture réelle (dans la chaîne sérialisée de `persist()`), et en réappliquant la MÊME
+mutation sur cette base fraîche plutôt que sur `current`/`next` — même principe déjà
+appliqué au moteur de synchro lui-même (ticket 015 ter), désormais aussi côté formulaire.
+Chaque fonction `mutate` passée à `persist()` n'opère que sur son paramètre (jamais sur
+une fermeture), donc cette réapplication est sûre.
+
+**Test de reproduction** (`InspectionFormView.test.tsx`, nouveau describe block) : crée
+un brouillon réel via une vraie saisie, simule une synchro d'arrière-plan complète via
+`patchDraft` (la fonction que le moteur utilise réellement, jamais `saveDraft`), puis
+ajoute une photo dans le MÊME formulaire resté ouvert — vérifié rouge (`syncStatus`
+retombait à `pending`, `knownLatestEventId` à sa valeur d'origine) avant correction, vert
+après. Suite complète `InspectionFormView.test.tsx` (11/11) et `syncEngine.test.ts`
+(14/14) inchangés par ailleurs.
+
+**Vérifié en conditions réelles** (navigateur, backend réel, pas de contournement API) :
+rejoué le scénario exact (décision synchronisée en arrière-plan, puis photo ajoutée,
+puis deux événements `online` déclenchés dos-à-dos) sur deux missions neuves — un
+brouillon `conforme` et un brouillon `avec_reserve` — sans aucun conflit ni réupload
+dans les deux cas. Le flux complet réserve → correction BUILD → mission de suivi
+(affichée correctement grâce au ticket 016 bis) → nouvelle inspection `conforme` →
+réserve résolue (disparaît de « Réserves ouvertes » côté BUILD) a également été rejoué
+de bout en bout sans incident.
+
 ## Tickets
 
 Le backlog MVP 1 vit dans les fichiers `NNN-*.md` à la racine du projet (pas dans un

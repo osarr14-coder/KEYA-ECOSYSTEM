@@ -1,5 +1,5 @@
 import { createApiClient, type ApiClient } from '../api/client';
-import { getAllDrafts, getCachedMission, patchDraft, saveMissions } from '../db/repository';
+import { getAllDrafts, getCachedMission, getDraft, patchDraft, saveMissions } from '../db/repository';
 import type { InspectionDraft, LocalPhoto } from '../db/types';
 import { compressImage } from '../media/compressImage';
 import { computeNextRetryAt } from './backoff';
@@ -135,7 +135,19 @@ export async function syncDraft(draft: InspectionDraft, apiClient: ApiClient): P
   if (draftsInFlight.has(draft.id)) return draft;
   draftsInFlight.add(draft.id);
   try {
-    return await syncDraftUnlocked(draft, apiClient);
+    // Ticket 015 ter : le verrou ci-dessus empêche deux appels de tourner
+    // EN PARALLÈLE, mais ne dit rien de la FRAÎCHEUR du `draft` reçu en
+    // paramètre — `runSyncCycle` le lit via `getAllDrafts()` avant même
+    // d'appeler cette fonction, donc un second cycle a pu lire ce brouillon
+    // AVANT qu'un premier, déjà en cours à ce moment-là, n'ait fini d'écrire
+    // son propre résultat. Une fois le verrou du premier relâché, ce second
+    // appel n'est plus bloqué — mais son `draft` reste périmé (ex. une photo
+    // que le premier vient de synchroniser y apparaît encore `pending`),
+    // provoquant un réupload (Document dupliqué, Evidence orpheline). Relit
+    // donc l'état RÉEL depuis IndexedDB, SOUS le verrou, avant tout
+    // traitement — jamais se fier à l'instantané reçu en paramètre seul.
+    const current = (await getDraft(draft.id)) ?? draft;
+    return await syncDraftUnlocked(current, apiClient);
   } finally {
     draftsInFlight.delete(draft.id);
   }

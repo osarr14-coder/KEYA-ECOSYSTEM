@@ -737,8 +737,20 @@ class TestMissionListView:
         response = inspecteur_client.get(reverse('control-mission-list'))
         assert response.status_code == 200
         assert len(response.data) == 2
-        for mission_row in response.data:
-            assert mission_row['reserve_id'] == str(reserve_id)
+        # Ticket 014 bis (corrige la friction 1 du 4e rapport bout-en-bout) :
+        # `reserve_id` n'est plus attribué au LOT dans son ensemble, mais
+        # exactement à la mission concernée. Missions triées par
+        # -created_at — l'index 0 est la mission de suivi (créée APRÈS
+        # l'ouverture de la réserve, donc concernée), l'index 1 la première
+        # mission (créée AVANT, déjà `completed`, jamais concernée par cette
+        # réserve même si elle vit sur le même lot).
+        followup_row, first_row = response.data
+        assert followup_row['reserve_id'] == str(reserve_id)
+        assert first_row['reserve_id'] is None, (
+            'Une mission déjà terminée ne doit jamais hériter du reserve_id d\'une réserve '
+            'ouverte PAR UNE AUTRE mission sur le même lot, sous peine de s\'afficher à tort '
+            '« Mission de suivi » côté CONTROL PWA (MissionTypeIndicator).'
+        )
 
     def test_mission_row_reserve_id_is_null_once_the_reserve_is_resolved(self):
         """Une fois la réserve levée/rejetée (état terminal, jamais

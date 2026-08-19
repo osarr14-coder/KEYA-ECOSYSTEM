@@ -4,7 +4,9 @@ import { AlertBanner } from '@keya/design-system';
 
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { CHECKLIST_TEMPLATE } from '../db/missions';
-import { createEmptyDraft, deleteDraft, getCachedMission, getDraftForMission, saveDraft } from '../db/repository';
+import {
+  createEmptyDraft, deleteDraft, getCachedMission, getDraft, getDraftForMission, saveDraft,
+} from '../db/repository';
 import type { Decision, InspectionDraft, LocalPhoto, Mission } from '../db/types';
 
 export interface InspectionFormViewProps {
@@ -111,7 +113,26 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     setDraft(next);
 
     const queue = persistChainRef.current ?? Promise.resolve(next);
-    const nextInChain = queue.then(() => saveDraft(next)).then((saved) => {
+    const nextInChain = queue.then(async () => {
+      // Ticket 016 ter (5e parcours) : `current` (et donc `next`, dérivé de
+      // lui) peut être PÉRIMÉ par rapport à IndexedDB — le moteur de
+      // synchro (`syncEngine.ts`) écrit directement dans IndexedDB via
+      // `patchDraft` en arrière-plan (syncStatus, knownLatestEventId,
+      // evidenceId, statut par photo...) SANS jamais repasser par cet état
+      // React, qui ne se met à jour qu'à partir de SES PROPRES écritures
+      // (voir `.then((saved) => ...)` ci-dessous). Sans cette relecture, la
+      // moindre saisie suivante (ex. ajouter une photo APRÈS que
+      // l'inspection a déjà été synchronisée) écraserait silencieusement
+      // `syncStatus`/`knownLatestEventId` vers leur valeur d'avant synchro,
+      // provoquant une resoumission inutile rejetée à tort en conflit (409)
+      // par le serveur. Relit donc l'état RÉEL juste avant d'écrire et
+      // réapplique la MÊME mutation dessus — chaque `mutate` ci-dessus
+      // n'opère que sur son paramètre, jamais sur la fermeture, donc cette
+      // réapplication est sûre. Même principe déjà appliqué côté moteur de
+      // synchro lui-même (ticket 015 ter).
+      const freshBase = (await getDraft(current.id)) ?? current;
+      return saveDraft(mutate(freshBase));
+    }).then((saved) => {
       // Une écriture plus RÉCENTE a pu être lancée entre-temps (donc
       // `draftRef.current` a déjà avancé au-delà de `next`) : le résultat
       // de CETTE écriture (horodatage device de SA propre saisie) serait

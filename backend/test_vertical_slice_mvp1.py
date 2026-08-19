@@ -306,12 +306,19 @@ class TestVerticalSliceMVP1:
         # ressortaient à tort « faites ».
         assert followup_mission_row['completed'] is False
         assert first_mission_row['completed'] is True
-        # Ticket 013 (bug 3, corrigé) : les DEUX lignes exposent désormais la
+        # Ticket 013 (bug 3, corrigé) : la mission de suivi expose la
         # réserve réellement ouverte sur ce lot — c'est ce que
         # `apps/control-pwa` lit pour amorcer `InspectionDraft.
         # knownLatestEventId` d'un brouillon neuf (voir
         # `db/repository.ts::createEmptyDraft`).
         assert followup_mission_row['reserve_id'] == str(reserve_id)
+        # Ticket 014 bis (corrige la friction 1 du 4e rapport bout-en-bout) :
+        # la première mission, déjà réalisée AVANT que cette réserve
+        # n'ouvre, ne doit JAMAIS en hériter — `reserve_id` est exact à la
+        # mission, pas au lot entier. Avant correction, les DEUX lignes
+        # ressortaient à tort avec la même réserve, affichant « Mission de
+        # suivi » côté CONTROL PWA même pour la mission déjà terminée.
+        assert first_mission_row['reserve_id'] is None
         known_latest_event_id = followup_mission_row['reserve_latest_event_id']
         assert known_latest_event_id, (
             'Sans cette valeur, le premier essai de synchronisation d\'un brouillon neuf sur cette '
