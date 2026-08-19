@@ -36,6 +36,57 @@ ticket qui les a introduites.
   (`apps/tasks/tests.py`) — ce test scanne le code source de chaque générateur enregistré,
   pas seulement le texte produit par ceux qui existent déjà.
 
+## Invariants du modèle économique
+
+Règles transversales issues du modèle économique (décidées en discussion externe au
+repo, jamais formalisées ici avant le ticket 026) — même statut que l'Invariant 25.6
+ci-dessus : elles s'appliquent à tout ticket, présent ou futur, pas seulement celui
+qui les formalise ou les implémente. Statut d'application noté explicitement pour
+chacune : plusieurs mécanismes qu'elles décrivent (paliers de paiement, budget du
+bureau de contrôle, libération de fonds) n'existent pas encore dans ce projet — ce
+sont des règles de CONCEPTION à respecter par les tickets futurs qui les
+construiront, pas des garanties déjà vérifiées par du code aujourd'hui. Ne pas
+confondre les deux statuts en relisant cette section.
+
+- **Invariant 25.10** : aucune donnée de progression, statut, ou valeur financière
+  calculée ne doit être acceptée en entrée depuis un client — le backend calcule et
+  trace la source, jamais un input externe pour un champ dérivé. *Déjà appliqué* :
+  `progress_percentage` (ticket 008, jamais posé par le client) ; le statut dérivé de
+  tout `TrustEvent` (ticket 003, jamais un champ `status` accepté en entrée sur les
+  objets Visible Trust). *En cours d'application* : `Devis.marge_estimee` (ticket 026
+  — retire l'input client `marge_estimee` du ticket 024 au profit d'une dérivation
+  exclusive depuis `PricingConfig`, ticket 025).
+- **Invariant 25.14** : la structure des paliers légaux de paiement vit entièrement
+  dans le `CountryPack`, jamais codée en dur. *Pas encore applicable* : aucun
+  mécanisme de palier de paiement n'existe dans ce projet à ce jour (voir
+  `docs/gate3-classement-angles-morts.md`, item 1 — paiements réels classés RESEARCH
+  REQUIRED) — règle de conception à respecter par le futur ticket qui l'introduira,
+  cohérente avec le traitement déjà appliqué à `MilestoneTemplate` (ticket 002 : la
+  structure des jalons de CONSTRUCTION, un sujet voisin mais distinct, vit déjà dans
+  `CountryPack`, jamais en dur).
+- **Invariant 25.15** : la marge KEYIMMO sur un devis est fixée/dérivée au moment de
+  la création, jamais recalculée après verrouillage. *Déjà appliqué* :
+  `Devis.marge_estimee` est immuable après création (ticket 022/024 — aucune policy
+  RLS `UPDATE`/`DELETE`) ; `DevisAjustement` (ticket 024) n'existe que pour TRACER un
+  écart ultérieur, jamais recalculer ni modifier `marge_estimee` lui-même. Renforcé
+  par le ticket 026 : `marge_estimee` n'est même plus un champ d'entrée modifiable à
+  la création, il est dérivé exclusivement.
+- **Invariant 25.16** : le budget du bureau de contrôle est sanctuarisé, jamais soumis
+  à l'arbitrage de marge. *Pas encore applicable* : aucun budget de bureau de contrôle
+  n'existe dans ce projet à ce jour — règle de conception à respecter par le futur
+  ticket qui l'introduira.
+- **Invariant 25.17** : la marge KEYIMMO est libérée sur le même événement de
+  validation que les autres bénéficiaires d'un palier. *Pas encore applicable* :
+  dépend directement de l'invariant 25.14 (paliers, non construits) et d'un futur
+  module de paiement/libération de fonds — aucun des deux n'existe dans ce projet à ce
+  jour (voir Gate 3, item 1).
+- **Invariant 25.18** : les montants budgétaires détaillés ne sont jamais communiqués
+  aux candidats lors d'une mise en concurrence. *Déjà appliqué* :
+  `DevisCandidateSerializer` (ticket 022) n'expose jamais `amount`/`marge_estimee` au
+  rôle constructeur — testé explicitement
+  (`TestDevisAmountNeverLeaksToConstructeurRole`, ticket 022, balayage exhaustif de
+  tous les endpoints déjà accessibles à ce rôle).
+
 ## Stack
 
 - **Backend** : Django 4.2 + Django REST Framework, conventions alignées sur
@@ -1706,6 +1757,43 @@ différentes selon la branche. Ce ticket-ci a délibérément pris le numéro 02
 d'ajouter une TROISIÈME collision (l'autre session prévoit déjà un futur « ticket 026 »
 pour le câblage `PricingConfig`↔`Devis.marge_estimee` — les deux « 026 » désigneront
 probablement, eux aussi, des sujets différents une fois ce futur ticket écrit).
+
+## Câblage PricingConfig ↔ création de Devis (ticket 026)
+
+Voir `026-cablage-pricing-devis.md` pour le détail complet, y compris quatre
+décisions de conception actées avant implémentation (A/B/C/D). `marge_estimee`
+(`Devis`, ticket 024) n'est plus un champ d'entrée — dérivé EXCLUSIVEMENT du dernier
+`PricingConfig` `canal_1_marge` actif pour le `country_pack` du LOT (jamais celui du
+candidat) : `marge_estimee = amount × (rate / 100)`, arrondi `ROUND_HALF_UP`. Bloqué
+explicitement (409, `NoPricingConfigError`) si aucun taux actif n'existe — jamais un
+champ vide ni une valeur par défaut. Aucun override possible, même par
+`admin_keyimmo` — cohérent avec la nouvelle section « Invariants du modèle
+économique » ci-dessus (25.10/25.15).
+
+**Bug réel trouvé au tout premier lancement des tests** : la formule initiale
+(`marge_estimee = active_rate.rate`, copie directe) est dimensionnellement fausse —
+`PricingConfig.rate` est un POURCENTAGE (`max_digits=5`, ex. `12.50`), pas un
+montant. A fait échouer la toute première tentative de création (`DataError`
+PostgreSQL, débordement de champ). A aussi révélé une question de fond jamais
+tranchée : `Devis.amount` (ticket 022) n'a jamais eu de définition précise dans ce
+projet — confirmé avec l'utilisateur avant de corriger : `rate` s'applique
+DIRECTEMENT à `amount` (l'offre de construction), pas à un coût de revient total
+agrégé (foncier + BE + BC) — **limite assumée et documentée explicitement** dans le
+ticket, un futur ticket devra introduire cette agrégation pour que le canal 1
+reflète fidèlement le modèle économique de référence (marge ≈ 18 % de la valeur
+totale de transaction).
+
+**Tests de cas limite construits pour tomber sur des nombres ronds** — preuve
+INDÉPENDANTE de la formule de production, pas une tautologie :
+`BOUNDARY_TEST_AMOUNT` (100000.00) × `PRICING_RATE_PERCENT` (10 %) =
+`EXPECTED_MARGE_FOR_BOUNDARY_TESTS` (10000.00) exact, choisi pour réutiliser
+l'arithmétique de cas limite déjà écrite au ticket 023.
+
+**Conséquence assumée sur les tests du ticket 024** : `MARGE_A`/`MARGE_B`
+(constantes individuelles par devis, retirées) remplacées par `PRICING_RATE_PERCENT`
+(taux PARTAGÉ, seedé par défaut dans `_setup_lot_up_for_bid`) — chaque devis d'un
+même `country_pack` créé avant un changement de taux a désormais le MÊME
+`marge_estimee`, plus une valeur individuelle par devis comme au ticket 023.
 
 ## Conventions de code
 

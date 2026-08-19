@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
 from django.db import connection
@@ -9,7 +9,9 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
-from apps.organizations.models import Membership, Organization, Role
+from apps.organizations.models import CountryPack, Membership, Organization, Role
+from apps.pricing.models import PricingCanal
+from apps.pricing import services as pricing_services
 from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
 from apps.tasks.models import Task, TaskStatus, TaskType
@@ -66,13 +68,19 @@ def _register_admin(email, organization_name):
     return _register(email, organization_name, role_code='admin_keyimmo')
 
 
-def _setup_lot_up_for_bid(suffix):
+def _setup_lot_up_for_bid(suffix, seed_pricing=True):
     """Un lot appartenant à une organisation « sponsor », mis en
     concurrence entre deux organisations constructeurs candidates —
     scénario de base pour la plupart des tests de ce module. Retourne
     (admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a,
     candidate_b) où candidate_a/candidate_b sont des tuples
     (client, organization).
+
+    Ticket 026 : seed par défaut un `PricingConfig` `canal_1_marge` actif
+    (`PRICING_RATE_PERCENT`) pour le `country_pack` du sponsor — sans quoi
+    TOUT `create_devis` échouerait désormais (`NoPricingConfigError`,
+    marge_estimee n'est plus un input, ticket 026). `seed_pricing=False`
+    pour les tests qui vérifient explicitement ce cas de blocage.
     """
     _sponsor_client, sponsor_org, _sponsor_user = _register(
         f'sponsor-{suffix}@example.com', f'Org Sponsor {suffix}',
@@ -90,6 +98,13 @@ def _setup_lot_up_for_bid(suffix):
     admin_client, admin_org, admin_user = _register_admin(
         f'admin-{suffix}@example.com', f'Org Admin {suffix}',
     )
+
+    if seed_pricing:
+        pricing_services.create_pricing_config(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            canal=PricingCanal.CANAL_1_MARGE, rate=PRICING_RATE_PERCENT,
+        )
+
     return (
         admin_client, admin_org, admin_user, sponsor_org, lot,
         (candidate_a_client, candidate_a_org), (candidate_b_client, candidate_b_org),
@@ -98,11 +113,35 @@ def _setup_lot_up_for_bid(suffix):
 
 AMOUNT_A = Decimal('123456.78')
 AMOUNT_B = Decimal('987654.32')
-# Ticket 023 : marge_estimee désormais requise à la création d'un Devis —
-# valeurs distinctes de AMOUNT_A/AMOUNT_B (jamais confondues dans un test
-# qui vérifierait par erreur la mauvaise valeur).
-MARGE_A = Decimal('10000.00')
-MARGE_B = Decimal('8000.00')
+
+# Ticket 026 : marge_estimee n'est plus un input — dérivé exclusivement de
+# amount × (PricingConfig.rate / 100) (voir services.py::
+# _derive_marge_estimee). `PRICING_RATE_PERCENT` est le taux (POURCENTAGE,
+# jamais un montant) seedé par défaut dans `_setup_lot_up_for_bid`, PARTAGÉ
+# par tous les devis d'un même country_pack — remplace les deux anciennes
+# constantes de marge individuelle du ticket 023 (retirées, plus aucun
+# test ne passe de marge_estimee directement).
+PRICING_RATE_PERCENT = Decimal('10.00')  # 10 %
+
+
+def _expected_marge(amount, rate_percent=PRICING_RATE_PERCENT):
+    """Même formule que `services._derive_marge_estimee` — dupliquée ici
+    volontairement pour les assertions qui n'ont pas besoin d'un montant
+    « rond » (ex. relecture après création avec `AMOUNT_A`) : la
+    correction de la FORMULE elle-même est prouvée indépendamment par
+    `TestDevisAjustementBoundaryCase`/`TestDevisAjustementCumulativeSigned`
+    ci-dessous, construits pour tomber sur des nombres ronds sans dépendre
+    de cette fonction.
+    """
+    return (amount * rate_percent / Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+# Choisis pour que `BOUNDARY_TEST_AMOUNT × (PRICING_RATE_PERCENT / 100)`
+# tombe EXACTEMENT sur un nombre rond (10000.00) — préserve l'arithmétique
+# de cas limite déjà écrite pour ce ticket au 023 (+50000, -1000, +0.01,
+# etc.) sans avoir à la réécrire pour chaque test.
+BOUNDARY_TEST_AMOUNT = Decimal('100000.00')
+EXPECTED_MARGE_FOR_BOUNDARY_TESTS = Decimal('10000.00')
 
 
 @pytest.mark.django_db
@@ -118,12 +157,12 @@ class TestDevisCreation:
             {
                 'organization': str(sponsor_org.id), 'lot': str(lot.id),
                 'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
-                'marge_estimee': str(MARGE_A),
             },
             format='json',
         )
         assert response.status_code == 201, response.data
         assert Decimal(response.data['amount']) == AMOUNT_A
+        assert Decimal(response.data['marge_estimee']) == _expected_marge(AMOUNT_A)
         assert response.data['status'] == 'candidat'
         assert response.data['lot'] == lot.id
         assert response.data['candidate_organization'] == candidate_a_org.id
@@ -148,7 +187,6 @@ class TestDevisCreation:
             {
                 'organization': str(sponsor_org.id), 'lot': str(lot.id),
                 'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
-                'marge_estimee': str(MARGE_A),
             },
             format='json',
         )
@@ -164,7 +202,7 @@ class TestDevisCreation:
         winning_devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
         services.lock_devis(
             admin=admin_user, admin_organization_id=admin_org.id,
@@ -176,7 +214,6 @@ class TestDevisCreation:
             {
                 'organization': str(sponsor_org.id), 'lot': str(lot.id),
                 'candidate_organization': str(candidate_b_org.id), 'amount': str(AMOUNT_B),
-                'marge_estimee': str(MARGE_B),
             },
             format='json',
         )
@@ -205,7 +242,7 @@ class TestDevisLock:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         response = admin_client.post(
@@ -236,7 +273,7 @@ class TestDevisLock:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         response = candidate_a_client.post(
@@ -256,12 +293,12 @@ class TestDevisLock:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
         devis_b = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
         )
         services.lock_devis(
             admin=admin_user, admin_organization_id=admin_org.id,
@@ -305,7 +342,7 @@ class TestDevisRLS:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         # Contexte du candidat : SA PROPRE organisation active, jamais
@@ -326,7 +363,7 @@ class TestDevisRLS:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         _outsider_client, outsider_org, _outsider_user = _register(
@@ -348,7 +385,7 @@ class TestDevisRLS:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         set_rls_context(organization_id=candidate_b_org.id)
@@ -402,12 +439,12 @@ class TestMyCandidatures:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
         )
 
         response = candidate_a_client.get(reverse('procurement-my-candidatures'))
@@ -440,7 +477,7 @@ class TestMyCandidatures:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
         services.lock_devis(
             admin=admin_user, admin_organization_id=admin_org.id,
@@ -485,7 +522,7 @@ class TestMyCandidatures:
         devis_b = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
         )
 
         response = candidate_a_client.get(reverse('procurement-my-candidature-detail', args=[devis_b.id]))
@@ -508,12 +545,12 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
         )
 
         response = candidate_a_client.get(reverse('procurement-my-candidatures'))
@@ -534,12 +571,12 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
         devis_a = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B, marge_estimee=MARGE_B,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
         )
 
         response = candidate_a_client.get(reverse('procurement-my-candidature-detail', args=[devis_a.id]))
@@ -575,7 +612,7 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
         services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         # Le candidat a aussi ses propres données « normales » (lot,
@@ -670,15 +707,17 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
         assert actual == expected
 
 
-def _create_and_lock_devis(*, admin_user, admin_org, sponsor_org, lot, candidate_org, amount, marge_estimee):
+def _create_and_lock_devis(*, admin_user, admin_org, sponsor_org, lot, candidate_org, amount):
     """Helper local ticket 023 : un devis créé PUIS verrouillé, prêt à
     recevoir un ajustement — factorise la mise en place répétée dans
-    presque tous les tests de ce module.
+    presque tous les tests de ce module. `marge_estimee` n'est plus un
+    paramètre depuis le ticket 026 : dérivé de `amount × (PRICING_RATE_PERCENT
+    / 100)`, le `PricingConfig` seedé par `_setup_lot_up_for_bid`.
     """
     devis = services.create_devis(
         logged_by=admin_user, logged_by_organization_id=admin_org.id,
         target_organization_id=sponsor_org.id, lot_id=lot.id,
-        candidate_organization_id=candidate_org.id, amount=amount, marge_estimee=marge_estimee,
+        candidate_organization_id=candidate_org.id, amount=amount,
     )
     services.lock_devis(
         admin=admin_user, admin_organization_id=admin_org.id,
@@ -701,12 +740,12 @@ class TestDevisAjustementBoundaryCase:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
         )
 
         response = admin_client.post(
             reverse('procurement-devis-ajustement', args=[devis.id]),
-            {'organization': str(sponsor_org.id), 'ecart': str(MARGE_A)},
+            {'organization': str(sponsor_org.id), 'ecart': str(EXPECTED_MARGE_FOR_BOUNDARY_TESTS)},
             format='json',
         )
         assert response.status_code == 201, response.data
@@ -719,9 +758,9 @@ class TestDevisAjustementBoundaryCase:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
         )
-        one_cent_over = MARGE_A + Decimal('0.01')
+        one_cent_over = EXPECTED_MARGE_FOR_BOUNDARY_TESTS + Decimal('0.01')
 
         response = admin_client.post(
             reverse('procurement-devis-ajustement', args=[devis.id]),
@@ -738,9 +777,9 @@ class TestDevisAjustementBoundaryCase:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
         )
-        below = MARGE_A - Decimal('1000.00')
+        below = EXPECTED_MARGE_FOR_BOUNDARY_TESTS - Decimal('1000.00')
 
         response = admin_client.post(
             reverse('procurement-devis-ajustement', args=[devis.id]),
@@ -757,9 +796,9 @@ class TestDevisAjustementBoundaryCase:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
         )
-        way_over = MARGE_A + Decimal('50000.00')
+        way_over = EXPECTED_MARGE_FOR_BOUNDARY_TESTS + Decimal('50000.00')
 
         response = admin_client.post(
             reverse('procurement-devis-ajustement', args=[devis.id]),
@@ -785,11 +824,11 @@ class TestDevisAjustementCumulativeSigned:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
         )
 
         # 1) Écart FAVORABLE (économie) : -2000. Marge disponible AVANT =
-        # MARGE_A (10000). -2000 <= 10000, accepté. Marge résultante =
+        # EXPECTED_MARGE_FOR_BOUNDARY_TESTS (10000). -2000 <= 10000, accepté. Marge résultante =
         # 10000 - (-2000) = 12000.
         favorable = Decimal('-2000.00')
         response_1 = admin_client.post(
@@ -825,7 +864,7 @@ class TestDevisAjustementRequiresLockedDevis:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         response = admin_client.post(
@@ -846,7 +885,7 @@ class TestDevisAjustementPermissions:
         candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=AMOUNT_A,
         )
 
         response = candidate_a_client.post(
@@ -871,9 +910,9 @@ class TestDevisAjustementTaskOnRejection:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
         )
-        way_over = MARGE_A + Decimal('50000.00')
+        way_over = EXPECTED_MARGE_FOR_BOUNDARY_TESTS + Decimal('50000.00')
 
         response = admin_client.post(
             reverse('procurement-devis-ajustement', args=[devis.id]),
@@ -907,9 +946,9 @@ class TestDevisAjustementTaskOnRejection:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
         )
-        way_over = MARGE_A + Decimal('50000.00')
+        way_over = EXPECTED_MARGE_FOR_BOUNDARY_TESTS + Decimal('50000.00')
 
         for _ in range(2):
             response = admin_client.post(
@@ -938,7 +977,7 @@ class TestDevisImmutability:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=AMOUNT_A,
         )
 
         response = admin_client.post(
@@ -951,7 +990,7 @@ class TestDevisImmutability:
         set_rls_context(organization_id=sponsor_org.id)
         devis.refresh_from_db()
         assert devis.amount == AMOUNT_A
-        assert devis.marge_estimee == MARGE_A
+        assert devis.marge_estimee == _expected_marge(AMOUNT_A)
 
     def test_direct_sql_update_on_devis_is_blocked_by_rls_no_policy_defined(self):
         """Aucune policy RLS `UPDATE` n'est définie sur `procurement_devis`
@@ -970,7 +1009,7 @@ class TestDevisImmutability:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         set_rls_context(organization_id=sponsor_org.id)
@@ -983,7 +1022,7 @@ class TestDevisImmutability:
 
         devis.refresh_from_db()
         assert devis.amount == AMOUNT_A
-        assert devis.marge_estimee == MARGE_A
+        assert devis.marge_estimee == _expected_marge(AMOUNT_A)
 
     def test_direct_sql_delete_on_devis_is_blocked_by_rls_no_policy_defined(self):
         """Même raisonnement que le test précédent, pour DELETE."""
@@ -994,7 +1033,7 @@ class TestDevisImmutability:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         set_rls_context(organization_id=sponsor_org.id)
@@ -1016,7 +1055,7 @@ class TestDevisImmutability:
         _candidate_a_client, candidate_a_org = candidate_a
         devis = _create_and_lock_devis(
             admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
-            candidate_org=candidate_a_org, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_org=candidate_a_org, amount=AMOUNT_A,
         )
         response = admin_client.post(
             reverse('procurement-devis-ajustement', args=[devis.id]),
@@ -1054,7 +1093,7 @@ class TestDevisAjustementAmountNeverLeaksToConstructeurRole:
         devis = services.create_devis(
             logged_by=admin_user, logged_by_organization_id=admin_org.id,
             target_organization_id=sponsor_org.id, lot_id=lot.id,
-            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A, marge_estimee=MARGE_A,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
         )
 
         list_response = candidate_a_client.get(reverse('procurement-my-candidatures'))
@@ -1064,4 +1103,137 @@ class TestDevisAjustementAmountNeverLeaksToConstructeurRole:
         for response in (list_response, detail_response):
             body_text = response.content.decode()
             assert 'marge_estimee' not in body_text
-            assert str(MARGE_A) not in body_text
+            assert str(_expected_marge(AMOUNT_A)) not in body_text
+
+
+@pytest.mark.django_db
+class TestPricingConfigWiring:
+    """Ticket 026 — câblage PricingConfig ↔ création de Devis."""
+
+    def test_marge_estimee_is_derived_from_amount_times_the_active_rate(self):
+        """`marge_estimee = amount × (rate / 100)` — preuve indépendante de
+        la formule de production (`services._derive_marge_estimee`) : ce
+        test calcule sa propre attente EXPLICITEMENT (pas via
+        `_expected_marge`, qui appelle la MÊME formule que la production)
+        et compare le résultat effectivement persisté.
+        """
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('formula')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+
+        response = admin_client.post(
+            reverse('procurement-devis-create'),
+            {
+                'organization': str(sponsor_org.id), 'lot': str(lot.id),
+                'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        # Calcul indépendant, écrit à la main : 123456.78 × 10 % = 12345.678,
+        # arrondi commercial (ROUND_HALF_UP) à 12345.68.
+        assert Decimal(response.data['marge_estimee']) == Decimal('12345.68')
+
+    def test_creating_a_devis_without_any_active_pricing_config_is_rejected(self):
+        """Point C : bloqué explicitement (409), AUCUNE ligne créée — jamais
+        un champ vide ni une valeur par défaut silencieuse.
+        `seed_pricing=False` : `_setup_lot_up_for_bid` ne seed PAS de
+        `PricingConfig` pour ce test précis.
+        """
+        admin_client, admin_org, _admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('no-pricing', seed_pricing=False)
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+
+        response = admin_client.post(
+            reverse('procurement-devis-create'),
+            {
+                'organization': str(sponsor_org.id), 'lot': str(lot.id),
+                'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
+            },
+            format='json',
+        )
+        assert response.status_code == 409
+        assert not Devis.objects.filter(lot=lot, candidate_organization=candidate_a_org).exists()
+
+    def test_marge_estimee_sent_by_the_client_is_silently_ignored(self):
+        """Point D (version stricte, invariant 25.10/25.15 du modèle
+        économique) : AUCUN override possible, même une valeur
+        délibérément différente envoyée par le client — le taux
+        effectivement posé reste celui dérivé du `PricingConfig`, jamais
+        celui envoyé.
+        """
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('override-ignored')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+
+        response = admin_client.post(
+            reverse('procurement-devis-create'),
+            {
+                'organization': str(sponsor_org.id), 'lot': str(lot.id),
+                'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
+                'marge_estimee': str(Decimal('999999.99')),
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert Decimal(response.data['marge_estimee']) == _expected_marge(AMOUNT_A)
+        assert Decimal(response.data['marge_estimee']) != Decimal('999999.99')
+
+    def test_the_governing_country_pack_is_the_lots_not_the_candidates(self):
+        """Point A : le `country_pack` déterminant est celui de
+        `devis.organization` (le LOT/sponsor), JAMAIS celui du candidat.
+        Preuve : le candidat est réassigné à un AUTRE `country_pack`, SANS
+        aucun `PricingConfig` actif pour celui-ci — si ce country_pack
+        était utilisé par erreur, la création échouerait ici en 409. Elle
+        réussit, avec le taux du sponsor (`PRICING_RATE_PERCENT`).
+        """
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('country-pack-lot')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+
+        other_country_pack = CountryPack.objects.create(code='CI', label="Côte d'Ivoire")
+        candidate_a_org.country_pack = other_country_pack
+        candidate_a_org.save(update_fields=['country_pack'])
+
+        response = admin_client.post(
+            reverse('procurement-devis-create'),
+            {
+                'organization': str(sponsor_org.id), 'lot': str(lot.id),
+                'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert Decimal(response.data['marge_estimee']) == _expected_marge(AMOUNT_A)
+
+    def test_a_later_pricing_config_change_never_affects_an_already_created_devis(self):
+        """Non-régression directe de l'immutabilité actée au ticket 024 :
+        un `Devis` déjà créé garde son `marge_estimee` d'origine pour
+        toujours, même après un changement de taux `PricingConfig`
+        postérieur — cohérent avec l'invariant 25.15 (CLAUDE.md).
+        """
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('rate-change-after')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+
+        devis = services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+        )
+        original_marge = devis.marge_estimee
+
+        pricing_services.create_pricing_config(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            canal=PricingCanal.CANAL_1_MARGE, rate=Decimal('99.00'),
+        )
+
+        set_rls_context(organization_id=sponsor_org.id)
+        devis.refresh_from_db()
+        assert devis.marge_estimee == original_marge
+        assert devis.marge_estimee == _expected_marge(AMOUNT_A)

@@ -34,18 +34,30 @@ def create_pricing_config(*, admin, country_pack_id, canal, rate):
     )
 
 
+def get_active_rate(*, country_pack_id, canal):
+    """Le `PricingConfig` ACTUEL (dernier créé, `LATEST_FIRST_ORDERING`)
+    pour UN SEUL `(country_pack, canal)` — `None` si aucun n'existe encore.
+    Ticket 026 : extraction dédiée à la dérivation unitaire (ex.
+    `apps.procurement.services.create_devis`), distincte de
+    `get_current_rates` (pensée pour un affichage `GET .../current/`, qui
+    retourne les DEUX canaux à la fois).
+    """
+    return PricingConfig.objects.filter(
+        country_pack_id=country_pack_id, canal=canal,
+    ).order_by(*LATEST_FIRST_ORDERING).first()
+
+
 def get_current_rates(country_pack_id):
     """Le taux ACTUEL de chaque canal pour ce `CountryPack` — le dernier
     `PricingConfig` créé (`LATEST_FIRST_ORDERING`), jamais un champ
     `is_active` basculé. Retourne un dict `{canal: PricingConfig | None}` —
     `None` si aucun `PricingConfig` n'existe encore pour ce canal (pas
     d'erreur : un `CountryPack` tout juste créé n'a légitimement encore
-    aucun taux configuré).
+    aucun taux configuré). Construit sur `get_active_rate` (ticket 026),
+    jamais une requête dupliquée.
     """
     return {
-        canal: PricingConfig.objects.filter(
-            country_pack_id=country_pack_id, canal=canal,
-        ).order_by(*LATEST_FIRST_ORDERING).first()
+        canal: get_active_rate(country_pack_id=country_pack_id, canal=canal)
         for canal, _label in PricingCanal.choices
     }
 
