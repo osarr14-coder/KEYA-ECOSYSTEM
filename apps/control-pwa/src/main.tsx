@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { GlobalStyles } from '@keya/design-system';
+
 import { App } from './App';
 import { receiveIncomingSession } from './auth/receiveIncomingSession';
 
@@ -14,6 +16,7 @@ receiveIncomingSession();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <GlobalStyles />
     <App />
   </StrictMode>,
 );

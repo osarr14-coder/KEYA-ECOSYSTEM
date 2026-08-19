@@ -72,10 +72,14 @@ function AuthenticatedApp() {
   const meState = useApiResource(() => api.getMe(), []);
 
   if (meState.status === 'loading') {
-    return <p>Chargement…</p>;
+    return <p style={{ padding: '24px' }}>Chargement…</p>;
   }
   if (meState.status === 'error') {
-    return <p role="alert">Impossible de charger votre profil.</p>;
+    return (
+      <main style={{ padding: '24px' }}>
+        <AlertBanner title="Impossible de charger votre profil." />
+      </main>
+    );
   }
 
   const me = meState.data;

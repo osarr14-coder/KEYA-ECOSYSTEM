@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { densityTokens, type Density } from '@keya/design-system';
+import {
+  AlertBanner, densityTokens, ProgressBar, semanticColors, type Density,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { AllLotsQuery } from '../api/types';
@@ -125,7 +127,7 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
       </form>
 
       {state.status === 'loading' && <p>Chargement…</p>}
-      {state.status === 'error' && <p role="alert">Impossible de charger les lots.</p>}
+      {state.status === 'error' && <AlertBanner title="Impossible de charger les lots." />}
 
       {state.status === 'success' && (
         <>
@@ -134,25 +136,34 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
           ) : (
             <table style={{ fontSize: tokens.fontSize, borderCollapse: 'collapse', width: '100%' }}>
               <thead>
-                <tr>
-                  <th>Nom</th>
-                  <th>Bien</th>
-                  <th>Programme</th>
-                  <th>Organisation constructrice</th>
-                  <th>Jalons déclarés</th>
-                  <th>Avancement</th>
-                  <th>Réserves ouvertes</th>
+                <tr style={{ borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
+                  <th style={{ textAlign: 'left', padding: `${tokens.paddingBlock} ${tokens.paddingInline}` }}>Nom</th>
+                  <th style={{ textAlign: 'left' }}>Bien</th>
+                  <th style={{ textAlign: 'left' }}>Programme</th>
+                  <th style={{ textAlign: 'left' }}>Organisation constructrice</th>
+                  <th style={{ textAlign: 'left' }}>Jalons déclarés</th>
+                  <th style={{ textAlign: 'left' }}>Avancement</th>
+                  <th style={{ textAlign: 'left' }}>Réserves ouvertes</th>
                 </tr>
               </thead>
               <tbody>
                 {state.data.results.map((row) => (
-                  <tr key={row.id} data-testid="lot-row" style={{ height: tokens.rowHeight }}>
+                  <tr
+                    key={row.id}
+                    data-testid="lot-row"
+                    style={{ height: tokens.rowHeight, borderBottom: `1px solid ${semanticColors.neutral.border}` }}
+                  >
                     <td style={{ padding: `${tokens.paddingBlock} ${tokens.paddingInline}` }}>{row.name}</td>
                     <td>{row.asset_name}</td>
                     <td>{row.program_name}</td>
                     <td>{row.assigned_organization_name ?? '—'}</td>
                     <td>{row.declared_milestone_count}/{row.milestone_count}</td>
-                    <td>{row.progress_percentage}%</td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ProgressBar percentage={row.progress_percentage} width="60px" />
+                        <span>{row.progress_percentage}%</span>
+                      </div>
+                    </td>
                     <td>{row.open_reserve_count}</td>
                   </tr>
                 ))}

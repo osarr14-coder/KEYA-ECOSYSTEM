@@ -1,4 +1,6 @@
-import { AlertBanner, StatusBadge } from '@keya/design-system';
+import {
+  AlertBanner, ProgressBar, StatusBadge, semanticColors,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { toTrustEventData } from '../api/types';
@@ -35,33 +37,30 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <p role="alert">Impossible de charger votre bien.</p>;
+    return <AlertBanner title="Impossible de charger votre bien." />;
   }
 
   const overview = state.data;
 
   return (
-    <section aria-label="Vue d'ensemble">
+    <section aria-label="Vue d'ensemble" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <header data-testid="hero">
-        <h1>{overview.asset_name}</h1>
-        <p>{overview.program_name} — {overview.lot_name}</p>
-        <p>{overview.asset_location}</p>
+        <h1 style={{ marginBottom: '4px' }}>{overview.asset_name}</h1>
+        <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
+          {overview.program_name} — {overview.lot_name}
+        </p>
+        <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{overview.asset_location}</p>
       </header>
 
       <div aria-label="Progression" data-testid="progress">
-        <div style={{ background: '#E5E7EB', borderRadius: 999, overflow: 'hidden', height: 8, width: 200 }}>
-          <div
-            data-testid="progress-bar-fill"
-            style={{ width: `${overview.progress_percentage}%`, background: '#34D399', height: '100%' }}
-          />
-        </div>
+        <ProgressBar percentage={overview.progress_percentage} width="200px" />
         {/* Le pourcentage affiché est EXACTEMENT `progress_percentage` reçu
             de l'API — aucune opération arithmétique n'est faite ici. */}
-        <p>{overview.progress_percentage}% d'avancement</p>
+        <p style={{ marginBottom: 0 }}>{overview.progress_percentage}% d'avancement</p>
       </div>
 
       <div aria-label="Dernier événement notable">
-        <h2>Dernier événement</h2>
+        <h2 style={{ marginBottom: '8px' }}>Dernier événement</h2>
         {overview.latest_notable_event ? (
           <StatusBadge
             level={overview.latest_notable_event.level}

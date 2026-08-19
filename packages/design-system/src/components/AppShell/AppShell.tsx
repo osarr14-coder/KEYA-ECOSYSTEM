@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 
+import { semanticColors } from '../../tokens/colors';
 import { type Density, densityTokens } from '../../tokens/density';
 
 /**
@@ -94,34 +95,52 @@ export function AppShell({
     >
       <aside
         aria-label="Navigation des modules"
-        style={{ gridRow: '1 / span 2', borderRight: '1px solid #E5E7EB' }}
+        style={{ gridRow: '1 / span 2', borderRight: `1px solid ${semanticColors.neutral.border}` }}
       >
         <button
           type="button"
           onClick={() => setCollapsed((current) => !current)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? 'Déplier la navigation' : 'Replier la navigation'}
-          style={{ width: '100%', padding: tokens.paddingBlock }}
+          style={{
+            width: '100%', padding: tokens.paddingBlock, border: 'none', background: 'transparent',
+          }}
         >
           {collapsed ? '»' : '«'}
         </button>
         <nav>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {visibleModules.map((module) => (
-              <li key={module.id}>
-                <a
-                  href={module.href}
-                  aria-current={module.id === activeModuleId ? 'page' : undefined}
-                  style={{
-                    display: 'block',
-                    padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
-                    fontSize: tokens.fontSize,
-                  }}
-                >
-                  {collapsed ? module.label.slice(0, 1) : module.label}
-                </a>
-              </li>
-            ))}
+            {visibleModules.map((module) => {
+              const isActive = module.id === activeModuleId;
+              return (
+                <li key={module.id}>
+                  <a
+                    href={module.href}
+                    aria-current={isActive ? 'page' : undefined}
+                    style={{
+                      display: 'block',
+                      padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
+                      fontSize: tokens.fontSize,
+                      // Ticket 023 (polish visuel) — `aria-current` était déjà
+                      // posé correctement (accessibilité), mais rien ne
+                      // distinguait visuellement le module actif des autres :
+                      // seul un lecteur d'écran pouvait "voir" la page
+                      // courante. Bordure + poids de police, pas la couleur
+                      // seule (accessibilité — ne jamais distinguer par la
+                      // seule couleur, principe déjà respecté ailleurs dans
+                      // ce projet, voir CLAUDE.md ticket 014).
+                      borderLeft: isActive
+                        ? `3px solid ${semanticColors.neutral.text}`
+                        : '3px solid transparent',
+                      fontWeight: isActive ? 600 : 400,
+                      background: isActive ? semanticColors.neutral.background : 'transparent',
+                    }}
+                  >
+                    {collapsed ? module.label.slice(0, 1) : module.label}
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         </nav>
       </aside>
@@ -132,7 +151,7 @@ export function AppShell({
           alignItems: 'center',
           gap: tokens.gap,
           padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
-          borderBottom: '1px solid #E5E7EB',
+          borderBottom: `1px solid ${semanticColors.neutral.border}`,
         }}
       >
         <form

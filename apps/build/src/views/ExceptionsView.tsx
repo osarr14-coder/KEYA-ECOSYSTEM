@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { AlertBanner, StatusBadge } from '@keya/design-system';
+import { AlertBanner, StatusBadge, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { EvidenceSummary, LotExceptionRow, ReserveExceptionRow } from '../api/types';
@@ -18,6 +18,15 @@ export interface ExceptionsViewProps {
   activeOrganizationId: string | null;
 }
 
+// Ticket 023 (polish visuel) — une seule carte de ligne partagée par les 4
+// types de ligne d'exception (lot en retard, capacité manquante, réserve
+// ouverte, document manquant), jamais redéfinie séparément à chaque fois.
+const ROW_STYLE = {
+  padding: '12px',
+  border: `1px solid ${semanticColors.neutral.border}`,
+  borderRadius: '8px',
+};
+
 function LotRowList({
   rows, emptyMessage, onViewLotInTable,
 }: {
@@ -29,9 +38,9 @@ function LotRowList({
     return <p>{emptyMessage}</p>;
   }
   return (
-    <ul style={{ listStyle: 'none', padding: 0 }}>
+    <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
       {rows.map((row) => (
-        <li key={`${row.lot_id}-${row.work_declaration_id ?? ''}`}>
+        <li key={`${row.lot_id}-${row.work_declaration_id ?? ''}`} style={ROW_STYLE}>
           <strong>{row.lot_name}</strong>
           <span> — {row.asset_name} ({row.program_name})</span>
           <p>{row.label}</p>
@@ -77,14 +86,14 @@ function CapaciteManquanteRow({
   }
 
   return (
-    <li>
+    <li style={ROW_STYLE}>
       <strong>{row.lot_name}</strong>
       <span> — {row.asset_name} ({row.program_name})</span>
       <p>{row.label}</p>
       <button type="button" onClick={handleAssign} disabled={assigning}>
         Affecter à mon organisation
       </button>
-      {error && <p role="alert">{error}</p>}
+      {error && <div style={{ marginTop: '8px' }}><AlertBanner title={error} /></div>}
     </li>
   );
 }
@@ -136,18 +145,20 @@ function ReserveCorrectionForm({
         </select>
       </label>
       <button type="submit" disabled={submitting}>Documenter une correction</button>
-      {error && <p role="alert">{error}</p>}
+      {error && <div style={{ marginTop: '8px' }}><AlertBanner title={error} /></div>}
     </form>
   );
 }
 
 function ReserveOuverteRow({ row, onSubmitted }: { row: ReserveExceptionRow; onSubmitted: () => void }) {
   return (
-    <li>
+    <li style={ROW_STYLE}>
       <AlertBanner title="Réserve ouverte">
         {row.lot_name} — {row.asset_name} ({row.program_name}). {row.label}
       </AlertBanner>
-      <StatusBadge level={row.event.level} event={{ ...row.event, createdAt: row.event.created_at }} />
+      <div style={{ margin: '8px 0' }}>
+        <StatusBadge level={row.event.level} event={{ ...row.event, createdAt: row.event.created_at }} />
+      </div>
       <ReserveCorrectionForm row={row} onSubmitted={onSubmitted} />
     </li>
   );
@@ -178,7 +189,7 @@ function DocumentManquantRow({ row, onAdded }: { row: LotExceptionRow; onAdded: 
   }
 
   return (
-    <li>
+    <li style={ROW_STYLE}>
       <strong>{row.lot_name}</strong>
       <span> — {row.asset_name} ({row.program_name})</span>
       <p>{row.label}</p>
@@ -192,7 +203,7 @@ function DocumentManquantRow({ row, onAdded }: { row: LotExceptionRow; onAdded: 
           />
         </label>
         <button type="submit" disabled={submitting || !file}>Ajouter une preuve</button>
-        {error && <p role="alert">{error}</p>}
+        {error && <div style={{ marginTop: '8px' }}><AlertBanner title={error} /></div>}
       </form>
     </li>
   );
@@ -208,7 +219,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <p role="alert">Impossible de charger les exceptions.</p>;
+    return <AlertBanner title="Impossible de charger les exceptions." />;
   }
 
   const exceptions = state.data;
@@ -220,13 +231,22 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
     + exceptions.documents_manquants.length
   );
 
+  // Ticket 023 (polish visuel) — les 5 catégories n'avaient aucun
+  // espacement contrôlé entre elles (uniquement les marges par défaut de
+  // <h2>/<div>), contrairement à AllLotsView (même onglet BUILD, censé être
+  // "dense") : contraste de densité au sein d'un même écran.
+  const SECTION_STYLE = {
+    paddingBottom: '16px',
+    borderBottom: `1px solid ${semanticColors.neutral.border}`,
+  };
+
   return (
-    <section aria-label="Exceptions">
+    <section aria-label="Exceptions" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {totalCount === 0 && (
         <p data-testid="no-exceptions">Aucune exception en ce moment — tout est à jour.</p>
       )}
 
-      <div>
+      <div style={SECTION_STYLE}>
         <h2>Lots en retard</h2>
         <LotRowList
           rows={exceptions.lots_en_retard}
@@ -235,7 +255,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
         />
       </div>
 
-      <div>
+      <div style={SECTION_STYLE}>
         <h2>Contrôles à planifier</h2>
         <LotRowList
           rows={exceptions.controles_a_planifier}
@@ -244,12 +264,12 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
         />
       </div>
 
-      <div>
+      <div style={SECTION_STYLE}>
         <h2>Capacités manquantes</h2>
         {exceptions.capacites_manquantes.length === 0 ? (
           <p>Tous les lots ont une organisation constructrice affectée.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {exceptions.capacites_manquantes.map((row) => (
               <CapaciteManquanteRow
                 key={row.lot_id}
@@ -262,12 +282,12 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
         )}
       </div>
 
-      <div>
+      <div style={SECTION_STYLE}>
         <h2>Réserves ouvertes</h2>
         {exceptions.reserves_ouvertes.length === 0 ? (
           <p>Aucune réserve ouverte.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {exceptions.reserves_ouvertes.map((row) => (
               <ReserveOuverteRow key={row.reserve_id} row={row} onSubmitted={reload} />
             ))}
@@ -280,7 +300,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
         {exceptions.documents_manquants.length === 0 ? (
           <p>Aucun document manquant.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {exceptions.documents_manquants.map((row) => (
               <DocumentManquantRow
                 key={`${row.lot_id}-${row.work_declaration_id}`} row={row} onAdded={reload}
