@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'apps.messaging',
     'apps.backoffice',
     'apps.procurement',
+    'apps.pricing',
     'apps.core',
 ]
 

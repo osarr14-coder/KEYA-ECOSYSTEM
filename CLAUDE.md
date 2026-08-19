@@ -1562,6 +1562,49 @@ vrai backend (compte constructeur réel, redirection réelle vers BUILD) : polic
 appliquée, état actif des onglets/module sidebar visuellement distinct, liens de
 navigation sans soulignement bleu par défaut, zéro erreur console.
 
+## PricingConfig (ticket 025)
+
+Nouvelle app `apps/pricing` — configuration versionnée de deux taux fixes (vocabulaire
+de doctrine, comme `TrustLevel`/`TaskType`) : **canal 1 = marge**, **canal 2 =
+commission**, rattachés à un `CountryPack`. Voir `025-pricing-config.md` pour le détail
+complet, y compris les trois décisions de conception actées avant implémentation
+(A/B/C).
+
+**Aucun champ `is_active` ni `previous_rate`** : le taux ACTUEL d'un `(country_pack,
+canal)` est le DERNIER `PricingConfig` créé (`-created_at`) — dérivé, jamais stocké
+séparément, doctrine Visible Trust appliquée à une configuration système (pas un objet
+métier inspecté, mais même rigueur par analogie). L'« ancien taux » de tout changement
+se lit dans l'historique complet, jamais un champ dédié. Pas de colonne `sequence`
+(contrairement à `TrustEvent`, ticket 013 bis) : `create_pricing_config` ne crée
+jamais qu'un seul enregistrement par appel, aucun risque de deux créations dans la
+même transaction comme `_advance_existing_reserve`.
+
+**Immutabilité RLS, même rigueur que `procurement_devis`/`trust_event`** (décision C,
+justifiée explicitement par l'utilisateur : un taux mal modifié affecte
+silencieusement tous les devis créés après coup) — policies `SELECT`/`INSERT`
+permissives (`USING (true)`/`WITH CHECK (true)`, aucune colonne `organization_id`
+naturelle), **aucune policy `UPDATE`/`DELETE`**. Contrairement à `TrustEvent`, pas de
+trigger `BEFORE UPDATE/DELETE` en filet supplémentaire — un seul filet RLS, même
+niveau que `Devis` (ticket 022), pas les trois couches de la table la plus critique du
+projet. La restriction de LECTURE à `admin_keyimmo` (décision B, même principe que les
+montants de devis jamais exposés au rôle constructeur) reste une permission DRF
+(`IsAdminKeyimmo`), jamais une policy RLS.
+
+**Garde d'immutabilité vérifiée comme une tentative EXPLICITE refusée, pas seulement
+une absence de route** (demande explicite) : `PUT`/`PATCH`/`DELETE` HTTP → 405 ;
+`UPDATE`/`DELETE` SQL brut hors ORM → `rowcount == 0` sans exception ; aucune fonction
+`update_pricing_config`/`delete_pricing_config` dans `services.py` (`hasattr`).
+
+**Collision de nom évitée consciemment** : la classe `AppConfig` (`apps/pricing/apps.py`)
+est nommée `PricingAppConfig`, pas `PricingConfig` comme le voudrait la convention
+`<Nom>Config` suivie ailleurs (`ProcurementConfig`...) — collision directe avec le
+modèle métier du même nom, qui garde la priorité sur ce nom (celui du ticket).
+
+**Scope volontairement serré** : ce ticket ne câble PAS `PricingConfig` avec
+`Devis.marge_estimee` (aucun fichier `apps/procurement` touché) — pré-remplissage
+automatique laissé à un ticket 026 séparé, une fois demandé explicitement (même
+discipline que ticket 009 → ticket 022 pour `Lot.assigned_organization`).
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

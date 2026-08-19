@@ -659,6 +659,13 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # conception point C) — le test de garde a fait exactement son
             # travail en forçant cette mise à jour explicite.
             'procurement-devis-ajustement',
+            # Ticket 025 — ajout conscient : `apps/pricing`, entièrement
+            # réservé à admin_keyimmo (aucune lecture constructeur, décision
+            # de conception point B) — nouveau module sans lien de données
+            # avec `Devis`, mais le test de garde reste volontairement
+            # PROJET ENTIER pour continuer à forcer une décision consciente
+            # sur toute route future, où qu'elle apparaisse.
+            'pricing-config-create', 'pricing-config-current', 'pricing-config-history',
         }
         assert actual == expected
 
