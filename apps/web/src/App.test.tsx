@@ -236,7 +236,7 @@ describe(
     });
 
     it(
-      'ticket 025 : un second onglet "Devis / Appels d\'offres" bascule vers la maquette, '
+      'ticket 027 : un second onglet "Devis / Appels d\'offres" bascule vers l\'écran devis, '
       + 'jamais affiché par défaut',
       async () => {
         const getMe = vi.fn().mockResolvedValue({
@@ -247,11 +247,11 @@ describe(
 
         await screen.findByTestId('app-shell');
         expect(screen.getByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
-        expect(screen.queryByText('Maquette visuelle — aucune donnée réelle')).not.toBeInTheDocument();
+        expect(screen.queryByText('Aucun sélecteur de lot/organisation disponible')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: "Devis / Appels d'offres" }));
 
-        expect(await screen.findByText('Maquette visuelle — aucune donnée réelle')).toBeInTheDocument();
+        expect(await screen.findByText('Aucun sélecteur de lot/organisation disponible')).toBeInTheDocument();
         expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
       },
     );

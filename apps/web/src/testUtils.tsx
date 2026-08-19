@@ -15,6 +15,12 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     searchUsers: vi.fn(notMocked),
     getUserDetail: vi.fn(notMocked),
     deactivateUser: vi.fn(notMocked),
+    // Ticket 027 (apps/procurement) :
+    listDevisForLot: vi.fn(notMocked),
+    createDevis: vi.fn(notMocked),
+    lockDevis: vi.fn(notMocked),
+    listAjustements: vi.fn(notMocked),
+    createAjustement: vi.fn(notMocked),
     ...overrides,
   };
 }

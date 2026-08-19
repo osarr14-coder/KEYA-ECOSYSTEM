@@ -12,7 +12,7 @@ import {
   buildRedirectUrl, isSameOriginRedirect, resolveAppOrigins, resolveRedirectApp,
 } from './auth/redirectTarget';
 import { BackofficeView } from './views/BackofficeView';
-import { DevisAppelOffreMockup } from './views/DevisAppelOffreMockup';
+import { DevisView } from './views/DevisView';
 
 // Ticket 021 — réservé à admin_keyimmo, `requiredRoles` reste posé malgré la
 // garde déjà faite dans `AuthenticatedApp` (ci-dessous) — défense en
@@ -119,10 +119,10 @@ function AuthenticatedApp() {
 }
 
 /**
- * Ticket 025 — bascule entre le back-office (ticket 021, fonctionnel) et la
- * maquette Devis/Appels d'offres (ticket 025, visuelle uniquement, voir
- * `DevisAppelOffreMockup.tsx`). Même `TabBar` déjà réutilisé par HOME/BUILD
- * (ticket 023), jamais un second mécanisme d'onglets.
+ * Ticket 025 — bascule entre le back-office (ticket 021, fonctionnel) et
+ * l'écran Devis/Appels d'offres (maquette au ticket 025/026, fonctionnel
+ * depuis le ticket 027, voir `DevisView.tsx`). Même `TabBar` déjà réutilisé
+ * par HOME/BUILD (ticket 023), jamais un second mécanisme d'onglets.
  */
 function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   const [activeTab, setActiveTab] = useState<AuthenticatedTabId>('backoffice');
@@ -138,7 +138,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as AuthenticatedTabId)} aria-label="Sections back-office" />
 
       {activeTab === 'backoffice' && <BackofficeView />}
-      {activeTab === 'devis' && <DevisAppelOffreMockup />}
+      {activeTab === 'devis' && <DevisView />}
     </AppShell>
   );
 }

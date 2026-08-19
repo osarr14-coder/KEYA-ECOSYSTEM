@@ -1795,6 +1795,63 @@ l'arithmétique de cas limite déjà écrite au ticket 023.
 même `country_pack` créé avant un changement de taux a désormais le MÊME
 `marge_estimee`, plus une valeur individuelle par devis comme au ticket 023.
 
+## Devis/Appels d'offres — écrans fonctionnels réels (ticket 027 / F-027)
+
+Transforme la maquette visuelle des tickets 025/026 (`DevisAppelOffreMockup.tsx`,
+supprimée) en écran réel, `apps/web/src/views/DevisView.tsx`, connecté à
+`apps/procurement` (tickets 022/023/024) et `apps/pricing` (ticket 026-backend).
+Contrat API revérifié directement dans le code backend avant d'écrire ce fichier
+(voir `F-027-devis-fonctionnel.md`), jamais supposé depuis les tickets précédents
+seuls.
+
+**Découverte bloquante, actée avec l'utilisateur** : aucun endpoint ne permet à
+`admin_keyimmo` de découvrir un `Lot` ou une `Organization` en dehors de ses
+propres memberships (`GET /api/programs/lots/`/`GET /api/build/lots/` sont
+strictement scopés à `request.organization`, et `apps/organizations/urls.py`
+n'existe pas) — attendu, structurellement, puisqu'`admin_keyimmo` n'est jamais
+membre des organisations avec lesquelles `apps/procurement` le fait interagir
+(même bascule RLS explicite que `create_inspection`, ticket 005). Un nouveau
+ticket **B-028** (deux endpoints de recherche, sur le modèle de `GET
+/api/backoffice/users/?q=`, ticket 011) a été transmis à la session backend —
+DÉPENDANCE BLOQUANTE documentée, pas résolue par ce ticket. En attendant,
+`DevisView` fonctionne avec une saisie manuelle d'UUID (`LotSelector`,
+`AlertBanner` explicite) ; les champs de relation déjà connus
+(`candidate_organization`, `logged_by`, `created_by`) restent affichés en UUID
+brut, exactement ce que renvoie `DevisAdminSerializer`/
+`DevisAjustementAdminSerializer` (`ModelSerializer` par défaut, aucun nom résolu
+côté backend) — jamais masqué derrière un faux libellé.
+
+**Écart de vocabulaire avec la demande initiale** : « lancement d'un appel
+d'offres » n'a pas de contrepartie backend — ticket 022 a fusionné volontairement
+candidature et devis en une seule table, sans notion de lot « en appel
+d'offres » ouvert/fermé indépendamment des devis. `DevisView` reflète ce modèle
+tel quel (enregistrement de candidatures une à une) plutôt que d'inventer côté
+frontend une action qui n'aurait aucun endpoint à appeler.
+
+**`ApiError` gagne un champ `detail?: string`** (`apps/web/src/api/client.ts`) —
+le `request()` générique lit désormais le corps JSON d'une réponse d'erreur pour
+en extraire `{detail}` (message métier exact d'un 409 : `LotAlreadyLockedError`/
+`NoPricingConfigError`/`DevisNotLockedError`/`MarginExceededError`), jamais
+reconstruit côté frontend. Rétrocompatible : les appelants existants
+(back-office, ticket 021) n'en avaient jamais besoin, le champ reste optionnel.
+
+**`CandidateVisibleStatusNote` n'est pas un calcul métier frontend** — dérive
+localement `devis.status === 'devis_verrouille' && ajustements.length > 0`, mais
+la RÈGLE de gating elle-même vit exclusivement backend
+(`get_candidate_visible_devis_status`, ticket 024) : ce composant affiche
+seulement, sur des données déjà exactes fraîchement chargées via l'API admin,
+une règle déjà vérifiée dans le code backend — même raisonnement que le composant
+équivalent de la maquette (ticket 026), repris tel quel.
+
+**Vérifié dans un vrai navigateur, avec un vrai backend** (compte `admin_keyimmo`
+réel, `PricingConfig` réel à 12 % pour le Sénégal) : candidature réelle créée
+(`marge_estimee` auto-dérivée à 1 500 000 pour 12 500 000, confirmant le calcul
+du ticket 026-backend), verrouillage réel, ajustement favorable faisant passer la
+vue candidat de « encore Candidat » à « Gagnant », un ajustement délibérément
+excessif refusé avec le message backend EXACT, une seconde candidature sur le
+lot déjà verrouillé refusée avec le message backend exact. 254 tests frontend
+(5 packages), zéro régression, `tsc --noEmit` propre.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

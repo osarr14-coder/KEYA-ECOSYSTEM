@@ -1,13 +1,26 @@
 import type {
-  BackofficeUserDetail, BackofficeUserSummary, LoginResult, Me,
+  BackofficeUserDetail, BackofficeUserSummary, Devis, DevisAjustement,
+  DevisAjustementCreateResult, LoginResult, Me,
 } from './types';
 
 export class ApiError extends Error {
   status: number;
 
-  constructor(status: number, message: string) {
+  /**
+   * Ticket 027 — corps `{detail: "..."}` d'une réponse 409 (`LotAlreadyLockedError`/
+   * `NoPricingConfigError`/`DevisNotLockedError`/`MarginExceededError`, voir
+   * `apps/procurement/views.py`) : le message métier exact vient du backend,
+   * jamais reconstruit ici. `undefined` si le corps n'est pas du JSON exploitable
+   * ou n'a pas de champ `detail` (ex. erreurs 400 de validation DRF, forme
+   * différente) — les appelants existants (back-office, ticket 021) n'en avaient
+   * jamais besoin, ce champ reste optionnel pour ne rien changer à leur usage.
+   */
+  detail?: string;
+
+  constructor(status: number, message: string, detail?: string) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -64,7 +77,12 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
 
     const response = await fetch(`${baseUrl}${path}`, { method: options.method ?? 'GET', headers, body });
     if (!response.ok) {
-      throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`);
+      // Ticket 027 : lit le corps d'erreur pour en extraire `detail` (409
+      // métier, voir `ApiError.detail`) — `.catch(() => undefined)` couvre
+      // le cas d'un corps vide/non-JSON (ex. 401/500 sans corps structuré),
+      // jamais une exception qui masquerait l'erreur HTTP d'origine.
+      const errorBody = (await response.json().catch(() => undefined)) as { detail?: string } | undefined;
+      throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`, errorBody?.detail);
     }
     return (await response.json()) as T;
   }
@@ -119,6 +137,53 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
      * explicite AVANT cet appel, jamais déclenché par un simple clic. */
     deactivateUser: (userId: string) =>
       request<BackofficeUserSummary>(`/api/backoffice/users/${userId}/deactivate/`, { method: 'POST' }),
+
+    /**
+     * `GET /api/procurement/admin/lots/{lot_id}/devis/?organization_id=...`
+     * (ticket 022) — `organizationId` est celle du LOT, jamais celle du
+     * candidat (voir `apps.procurement.services.list_devis_for_lot_as_admin`).
+     * Seul endpoint de ce module qui expose des montants.
+     */
+    listDevisForLot: (lotId: string, organizationId: string) =>
+      request<Devis[]>(`/api/procurement/admin/lots/${lotId}/devis/${toQueryString({ organization_id: organizationId })}`),
+
+    /**
+     * `POST /api/procurement/devis/` (ticket 022, `marge_estimee` retiré du
+     * payload d'entrée au ticket 026 — dérivée backend depuis
+     * `PricingConfig`, jamais envoyée ici). 409 si le lot est déjà
+     * verrouillé (`LotAlreadyLockedError`) ou si aucun `PricingConfig`
+     * actif n'existe pour le pays du lot (`NoPricingConfigError`) — les
+     * deux portent un `detail` exploitable via `ApiError.detail`.
+     */
+    createDevis: (payload: { organization: string; lot: string; candidate_organization: string; amount: string }) =>
+      request<Devis>('/api/procurement/devis/', { method: 'POST', json: payload }),
+
+    /**
+     * `POST /api/procurement/devis/{id}/lock/` (ticket 022) — verrouille LE
+     * devis retenu pour son lot. `organization` est celle du lot. 409 si un
+     * devis est déjà verrouillé pour ce lot.
+     */
+    lockDevis: (devisId: string, organization: string) =>
+      request<Devis>(`/api/procurement/devis/${devisId}/lock/`, { method: 'POST', json: { organization } }),
+
+    /**
+     * `GET /api/procurement/devis/{id}/ajustements/?organization_id=...`
+     * (ticket 023) — historique complet, jamais de `marge_resultante` par
+     * ligne (uniquement présente sur la réponse `POST`, voir
+     * `createAjustement` ci-dessous).
+     */
+    listAjustements: (devisId: string, organizationId: string) =>
+      request<DevisAjustement[]>(`/api/procurement/devis/${devisId}/ajustements/${toQueryString({ organization_id: organizationId })}`),
+
+    /**
+     * `POST /api/procurement/devis/{id}/ajustements/` (ticket 023) — `ecart`
+     * est SIGNÉ (positif = défavorable, négatif = favorable). 409 si le
+     * devis n'est pas verrouillé (`DevisNotLockedError`) ou si l'écart
+     * dépasse la marge disponible courante (`MarginExceededError`) — les
+     * deux portent un `detail` exploitable via `ApiError.detail`.
+     */
+    createAjustement: (devisId: string, payload: { organization: string; ecart: string }) =>
+      request<DevisAjustementCreateResult>(`/api/procurement/devis/${devisId}/ajustements/`, { method: 'POST', json: payload }),
   };
 }
 
