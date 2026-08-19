@@ -1431,6 +1431,30 @@ anticiper un ticket suivant dans l'implémentation d'un ticket en cours, même s
 tentation existe (ex : ne pas ajouter de `status` stocké en ticket 001/002 alors que
 ticket 003 pose la doctrine append-only).
 
+**Numérotation historique (tickets 001 à 026) vs nouvelle convention** — deux sessions
+concurrentes (backend, dans ce worktree ; frontend, dans `feature/frontend-round-2`)
+proposent chacune indépendamment le numéro du ticket suivant, sans se coordonner en
+temps réel — trois collisions RÉELLES en résultent, jamais renommées rétroactivement,
+l'historique reste tel quel :
+
+- **023** : `023-polish-visuel.md` (frontend) vs le ticket de réconciliation
+  devis/ajustement (backend) — le second renommé en **024**
+  (`024-reconciliation-devis-ajustement.md`) avant fusion, collision résolue par
+  renumérotation.
+- **025** : `025-audit-accessibilite-maquette-devis.md` (frontend) coexiste avec
+  `025-pricing-config.md` (backend) — collision NON résolue, les deux fichiers
+  portent le même numéro.
+- **026** : `026-statut-gagnant-maquette-devis.md` (frontend) coexiste avec
+  `026-cablage-pricing-devis.md` (backend) — même situation, deux fichiers distincts
+  sous le même numéro.
+
+**Nouvelle convention, à partir du prochain ticket (027)** : préfixe explicite par
+domaine — **`B-NNN`** pour un ticket backend (ex. `B-027-*.md`), **`F-NNN`** pour un
+ticket frontend (ex. `F-027-*.md`) — même numéro `NNN` autorisé entre les deux
+préfixes (`B-027` et `F-027` peuvent coexister sans collision, le préfixe suffit à
+les distinguer). Ne s'applique qu'aux tickets créés à partir de maintenant — les
+tickets 001 à 026 ne sont PAS renommés rétroactivement.
+
 ## Verrouillage de devis / mise en concurrence (ticket 022)
 
 Nouvelle app `apps/procurement` (label `procurement`) — première app dédiée à la mise
