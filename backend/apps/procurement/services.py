@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -6,6 +6,8 @@ from django.db.models import Sum
 
 from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
+from apps.pricing.models import PricingCanal
+from apps.pricing.services import get_active_rate
 from apps.programs.models import Lot
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
@@ -40,6 +42,14 @@ class MarginExceededError(Exception):
     devis (marge_estimee moins la somme signée des ajustements déjà
     acceptés) — aucun `DevisAjustement` n'est créé quand cette exception
     est levée, même discipline que `LotAlreadyLockedError`.
+    """
+
+
+class NoPricingConfigError(Exception):
+    """Ticket 026 : aucun `PricingConfig` `canal_1_marge` actif n'existe
+    pour le `country_pack` du lot — `marge_estimee` ne peut être dérivé,
+    la création du devis est bloquée AVANT toute écriture (aucune ligne
+    créée), jamais un champ vide ni une valeur par défaut silencieuse.
     """
 
 
@@ -135,12 +145,20 @@ def is_lot_locked(lot_id):
 
 def create_devis(
     *, logged_by, logged_by_organization_id, target_organization_id,
-    lot_id, candidate_organization_id, amount, marge_estimee,
+    lot_id, candidate_organization_id, amount,
 ):
     """Point d'entrée unique pour enregistrer un devis reçu — ticket 022.
     L'appelant (`apps.procurement.views.DevisCreateView`) a déjà vérifié
     que `logged_by` détient le rôle `admin_keyimmo` (`IsAdminKeyimmo`,
     ticket 011) ; cette fonction ne revérifie pas ce rôle.
+
+    **`marge_estimee` n'est PLUS un paramètre depuis le ticket 026** —
+    dérivé exclusivement du dernier `PricingConfig` `canal_1_marge` actif
+    pour le `country_pack` du LOT (`target_organization.country_pack`,
+    décision de conception A du ticket 026 — jamais celui du candidat).
+    Invariant 25.10/25.15 (CLAUDE.md, section « Invariants du modèle
+    économique ») : aucun calcul métier dérivé n'est injectable depuis
+    l'extérieur, `admin_keyimmo` inclus — aucune échappatoire manuelle.
 
     Même schéma de bascule RLS que `create_inspection`/`create_mission`
     (tickets 005/012) : `target_organization_id` (l'organisation du LOT,
@@ -159,7 +177,6 @@ def create_devis(
                 lot_id=lot_id,
                 candidate_organization_id=candidate_organization_id,
                 amount=amount,
-                marge_estimee=marge_estimee,
             )
         finally:
             set_rls_context(organization_id=logged_by_organization_id)
@@ -167,7 +184,7 @@ def create_devis(
 
 
 def _create_devis_row(
-    *, logged_by, target_organization_id, lot_id, candidate_organization_id, amount, marge_estimee,
+    *, logged_by, target_organization_id, lot_id, candidate_organization_id, amount,
 ):
     target_organization = Organization.objects.filter(id=target_organization_id).first()
     if target_organization is None:
@@ -186,14 +203,52 @@ def _create_devis_row(
             'La mise en concurrence de ce lot est déjà verrouillée — aucun nouveau devis accepté.',
         )
 
+    # Ticket 026 — décision A : le country_pack déterminant est celui du
+    # LOT (target_organization), JAMAIS celui du candidat, qui peut en
+    # théorie différer sans que ça change le pays d'application du barème
+    # de CETTE affaire.
+    active_rate = get_active_rate(
+        country_pack_id=target_organization.country_pack_id, canal=PricingCanal.CANAL_1_MARGE,
+    )
+    if active_rate is None:
+        raise NoPricingConfigError(
+            f"Aucun taux de marge (canal 1) configuré pour le pays "
+            f"« {target_organization.country_pack.label} » — impossible de créer un devis.",
+        )
+
     return Devis.objects.create(
         organization=target_organization,
         candidate_organization=candidate_organization,
         lot=lot,
         amount=amount,
-        marge_estimee=marge_estimee,
+        marge_estimee=_derive_marge_estimee(amount=amount, rate_percent=active_rate.rate),
         logged_by=logged_by,
     )
+
+
+def _derive_marge_estimee(*, amount, rate_percent):
+    """`marge_estimee = amount × (rate_percent / 100)` — `PricingConfig.rate`
+    est un POURCENTAGE (ticket 025, ex. `12.50` pour 12,50 %), `amount` un
+    montant absolu ; une simple affectation directe du taux au champ
+    montant serait dimensionnellement fausse (et débordait littéralement
+    `PricingConfig.rate`, dimensionné `max_digits=5` pour un pourcentage,
+    quand testé avec un montant à 5 chiffres — bug réel trouvé au premier
+    lancement des tests de ce ticket).
+
+    **Limite assumée, documentée explicitement (ticket 026, section «
+    Limite assumée »)** : approxime la marge sur le seul poste
+    `amount` (l'offre de construction du candidat), pas sur un coût de
+    revient total agrégé (foncier + construction + bureau d'études +
+    bureau de contrôle) tel que décrit dans le modèle économique de
+    référence pour le canal 1 — cette agrégation n'existe pas encore dans
+    ce projet. Approximation jugée suffisante pour le canal 2, hors scope
+    de ce ticket (aucun mécanisme ne l'utilise).
+
+    Arrondi à 2 décimales, `ROUND_HALF_UP` (arrondi commercial standard —
+    explicite plutôt que le `ROUND_HALF_EVEN` implicite de `Decimal` par
+    défaut, pour un résultat prévisible et vérifiable dans les tests).
+    """
+    return (amount * rate_percent / Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def list_devis_for_lot_as_admin(*, admin, admin_organization_id, target_organization_id, lot_id):

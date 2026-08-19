@@ -43,11 +43,11 @@ class DevisCreateView(APIView):
                 lot_id=data['lot'],
                 candidate_organization_id=data['candidate_organization'],
                 amount=data['amount'],
-                marge_estimee=data['marge_estimee'],
             )
-        except services.LotAlreadyLockedError as exc:
+        except (services.LotAlreadyLockedError, services.NoPricingConfigError) as exc:
             # 409, pas 400 : le corps de la requête était valide, c'est
-            # l'ÉTAT du lot (déjà verrouillé) qui rend l'opération
+            # l'ÉTAT du système (lot déjà verrouillé, OU aucun taux
+            # PricingConfig actif — ticket 026) qui rend l'opération
             # impossible — même sémantique que `SyncInspectionView` (ticket
             # 010, `apps/control/views.py`), qui renvoie aussi un 409
             # construit explicitement plutôt qu'une DRF `ValidationError`

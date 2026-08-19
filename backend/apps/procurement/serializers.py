@@ -9,16 +9,19 @@ class DevisCreateSerializer(serializers.Serializer):
     l'organisation du LOT (cible de la bascule RLS), jamais celle du
     candidat. Voir `apps.procurement.services.create_devis`.
 
-    `marge_estimee` (ticket 023) : requis, saisi par l'admin au même moment
-    que `amount` — donnée distincte, jamais dérivée (voir le ticket,
-    décision de conception 1).
+    **`marge_estimee` n'est PLUS un champ d'entrée depuis le ticket 026** —
+    dérivé exclusivement du `PricingConfig` actif (ticket 025), aucun
+    override possible même par `admin_keyimmo` (invariant 25.10/25.15,
+    CLAUDE.md). Un client qui enverrait encore ce champ (code non mis à
+    jour) n'obtient pas d'erreur : DRF ignore silencieusement tout champ
+    non déclaré dans un serializer, comportement standard, pas un cas
+    spécial à gérer ici.
     """
 
     organization = serializers.UUIDField()
     lot = serializers.UUIDField()
     candidate_organization = serializers.UUIDField()
     amount = serializers.DecimalField(max_digits=14, decimal_places=2)
-    marge_estimee = serializers.DecimalField(max_digits=14, decimal_places=2)
 
 
 class DevisAdminSerializer(serializers.ModelSerializer):
