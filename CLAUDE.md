@@ -1562,7 +1562,56 @@ vrai backend (compte constructeur réel, redirection réelle vers BUILD) : polic
 appliquée, état actif des onglets/module sidebar visuellement distinct, liens de
 navigation sans soulignement bleu par défaut, zéro erreur console.
 
-## Audit d'accessibilité + maquette Devis/Appels d'offres (ticket 025)
+## PricingConfig (ticket 025 — backend, `apps/pricing`)
+
+Nouvelle app `apps/pricing` — configuration versionnée de deux taux fixes (vocabulaire
+de doctrine, comme `TrustLevel`/`TaskType`) : **canal 1 = marge**, **canal 2 =
+commission**, rattachés à un `CountryPack`. Voir `025-pricing-config.md` pour le détail
+complet, y compris les trois décisions de conception actées avant implémentation
+(A/B/C).
+
+**Aucun champ `is_active` ni `previous_rate`** : le taux ACTUEL d'un `(country_pack,
+canal)` est le DERNIER `PricingConfig` créé (`-created_at`) — dérivé, jamais stocké
+séparément, doctrine Visible Trust appliquée à une configuration système (pas un objet
+métier inspecté, mais même rigueur par analogie). L'« ancien taux » de tout changement
+se lit dans l'historique complet, jamais un champ dédié. Pas de colonne `sequence`
+(contrairement à `TrustEvent`, ticket 013 bis) : `create_pricing_config` ne crée
+jamais qu'un seul enregistrement par appel, aucun risque de deux créations dans la
+même transaction comme `_advance_existing_reserve`.
+
+**Immutabilité RLS, même rigueur que `procurement_devis`/`trust_event`** (décision C,
+justifiée explicitement par l'utilisateur : un taux mal modifié affecte
+silencieusement tous les devis créés après coup) — policies `SELECT`/`INSERT`
+permissives (`USING (true)`/`WITH CHECK (true)`, aucune colonne `organization_id`
+naturelle), **aucune policy `UPDATE`/`DELETE`**. Contrairement à `TrustEvent`, pas de
+trigger `BEFORE UPDATE/DELETE` en filet supplémentaire — un seul filet RLS, même
+niveau que `Devis` (ticket 022), pas les trois couches de la table la plus critique du
+projet. La restriction de LECTURE à `admin_keyimmo` (décision B, même principe que les
+montants de devis jamais exposés au rôle constructeur) reste une permission DRF
+(`IsAdminKeyimmo`), jamais une policy RLS.
+
+**Garde d'immutabilité vérifiée comme une tentative EXPLICITE refusée, pas seulement
+une absence de route** (demande explicite) : `PUT`/`PATCH`/`DELETE` HTTP → 405 ;
+`UPDATE`/`DELETE` SQL brut hors ORM → `rowcount == 0` sans exception ; aucune fonction
+`update_pricing_config`/`delete_pricing_config` dans `services.py` (`hasattr`).
+
+**Collision de nom évitée consciemment** : la classe `AppConfig` (`apps/pricing/apps.py`)
+est nommée `PricingAppConfig`, pas `PricingConfig` comme le voudrait la convention
+`<Nom>Config` suivie ailleurs (`ProcurementConfig`...) — collision directe avec le
+modèle métier du même nom, qui garde la priorité sur ce nom (celui du ticket).
+
+**Scope volontairement serré** : ce ticket ne câble PAS `PricingConfig` avec
+`Devis.marge_estimee` (aucun fichier `apps/procurement` touché) — pré-remplissage
+automatique laissé à un ticket séparé, une fois demandé explicitement (même
+discipline que ticket 009 → ticket 022 pour `Lot.assigned_organization`). **Collision de
+numérotation avec le ticket frontend ci-dessous** : ce ticket backend et
+`025-audit-accessibilite-maquette-devis.md` (frontend, section suivante) ont été
+numérotés « 025 » indépendamment, dans deux sessions/worktrees séparés, sans
+coordination — deux fichiers de noms distincts, aucun conflit de contenu, mais à ne pas
+lire comme UN SEUL ticket 025. Signalé explicitement plutôt que silencieusement laissé
+ambigu pour un futur lecteur.
+
+## Audit d'accessibilité + maquette Devis/Appels d'offres (ticket 025 — frontend)
 
 Voir `025-audit-accessibilite-maquette-devis.md` pour le détail complet (méthode,
 constats déjà conformes, correctifs, dette documentée).
@@ -1612,6 +1661,51 @@ reste donc, au moment de son commit, correcte par rapport à ce qui était réel
 fusionné dans SA branche de base, mais un futur câblage réel de cette maquette pourra
 directement s'appuyer sur `get_candidate_visible_devis_status` sans reprendre la
 question du séquencement.
+
+## Statut « gagnant » dans la maquette Devis/Appels d'offres (ticket 026)
+
+Suite directe du ticket 025 (frontend) une fois le ticket 024 (réconciliation) fusionné
+dans `origin/master` — voir `026-statut-gagnant-maquette-devis.md` pour le détail
+complet. Contrat API vérifié directement dans `backend/apps/procurement/{services,
+serializers,views}.py` avant tout code (jamais supposé) : `DevisAdminSerializer` expose
+le statut RÉEL (`get_devis_status`, jamais gaté), `DevisCandidateSerializer.get_status`
+appelle `get_candidate_visible_devis_status` (gaté, reste `candidat` tant qu'aucun
+`DevisAjustement` n'existe pour le devis, même verrouillé).
+
+**Deux indicateurs distincts dans la maquette, jamais fusionnés** :
+`DevisStatusIndicator` (statut admin réel, inchangé depuis le ticket 025) et
+`CandidateVisibleStatusNote` (nouveau — ce que voit ACTUELLEMENT le candidat, gaté). Les
+deux peuvent légitimement afficher des informations différentes pour la MÊME ligne au
+MÊME instant — c'est précisément le sujet du ticket 024 ; les fusionner aurait caché
+cette nuance. Trois cas mockés délibérément : Lot A12 (verrouillé + réconcilié →
+« Gagnant »), Lot C07 (verrouillé SANS réconciliation → encore « Candidat », cas ajouté
+spécifiquement pour prouver que le verrouillage seul ne suffit jamais), Lot B03 (non
+verrouillé → aucune vue candidat affichée).
+
+**Flake IndexedDB pré-existant trouvé et corrigé (sans lien avec le sujet du ticket)** :
+`InspectionFormView.test.tsx` (describe conflit, ticket 010 passe 2) échouait de façon
+intermittente en suite complète (jamais en isolant le fichier), révélé en relançant la
+suite après le merge du ticket 025 backend. Cause 1 : ce fichier avait sa propre boucle
+de nettoyage IndexedDB locale (`deleteDatabase()` jamais attendu) au lieu du helper
+partagé `clearIndexedDB()` (correctif du ticket 012 pour exactement ce piège) — corrigé.
+Cause 2, trouvée en creusant plus loin (la cause 1 seule n'a pas suffi) :
+`saveDraft`/`patchDraft`/`deleteDraft` (`apps/control-pwa/src/db/repository.ts`)
+utilisaient les raccourcis `idb` (`db.put`/`db.delete`), qui résolvent à la réussite de
+la REQUÊTE, pas de la TRANSACTION (`tx.done`) — fermer la connexion juste après pouvait
+interrompre la validation sous `fake-indexeddb`, avant qu'une lecture sur une NOUVELLE
+connexion (le montage d'`InspectionFormView`) ne la voie. Même classe de piège que celui
+déjà documenté au ticket 018. Corrigé en construisant explicitement la transaction et
+en attendant `tx.done` avant `db.close()`. Fréquence d'échec réduite très fortement mais
+UNE exécution a encore échoué après le premier correctif seul (avant le second) —
+documenté honnêtement comme dette de fiabilité résiduelle plutôt que classé clos à tort.
+
+**Collision de numérotation** : l'autre session a utilisé « ticket 025 » en parallèle
+pour un sujet backend distinct (`PricingConfig`, voir section ci-dessus) — deux fichiers
+de noms différents, aucun conflit de contenu, mais « ticket 025 » désigne deux choses
+différentes selon la branche. Ce ticket-ci a délibérément pris le numéro 026 pour éviter
+d'ajouter une TROISIÈME collision (l'autre session prévoit déjà un futur « ticket 026 »
+pour le câblage `PricingConfig`↔`Devis.marge_estimee` — les deux « 026 » désigneront
+probablement, eux aussi, des sujets différents une fois ce futur ticket écrit).
 
 ## Conventions de code
 
