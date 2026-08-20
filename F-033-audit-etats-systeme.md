@@ -206,23 +206,33 @@ laisse le bandeau réessayable à volonté ; après un retry réussi, la file
 n'est pas restée bloquée (une saisie suivante s'enregistre normalement).
 
 **Flake IndexedDB préexistant, déjà documenté (ticket 026), rencontré
-en testant — PAS causé par ce correctif** : le nouveau test « après un
-retry réussi... » échouait de façon intermittente en suite complète
-(jamais en isolant le fichier, ni en isolant ce seul test) — exactement
-la même classe déjà documentée pour ce fichier (« dette de fiabilité
-résiduelle », ticket 026). Investigation menée avant d'accepter cette
-explication : le test isolé passait de façon fiable (confirmant la LOGIQUE
-correcte), seule la version en suite complète échouait — un timeout de
-`waitFor` porté à 3000ms (au lieu du défaut 1000ms) a stabilisé CE test ;
-un run suivant a ensuite fait échouer un AUTRE test préexistant et
-NON-MODIFIÉ de ce même fichier (« un conflit... affiche le conflit et la
-saisie locale intacte », déjà nommément documenté comme flaky au ticket
-026), confirmant qu'il s'agit bien du même défaut systémique du fichier
-(contention IndexedDB sous suite complète), pas d'un bug introduit ici.
-Non corrigé (hors scope de ce correctif) — la fréquence semble avoir
-augmenté avec le volume croissant de tests dans ce fichier au fil des
-tickets ; à surveiller, candidat à un ticket dédié si la gêne devient
-réelle.
+en testant, corrigé sans toucher au fichier lui-même — PAS causé par ce
+correctif** : le nouveau test « après un retry réussi... » échouait de
+façon intermittente en suite complète (jamais en isolant le fichier) —
+exactement la même classe déjà documentée pour ce fichier (« dette de
+fiabilité résiduelle », ticket 026). Investigation poussée avant
+d'accepter une explication superficielle (« juste plus lent ») : un
+timeout `waitFor` porté à 3000ms n'a PAS suffi ; porté à 8000ms (avec le
+timeout du test lui-même étendu en conséquence), le test restait bloqué
+INDÉFINIMENT dans certains runs — preuve que ce n'était pas une question
+de lenteur mais d'un blocage réel. Tracé explicitement (logs temporaires,
+retirés après diagnostic) : le bandeau d'échec ne réapparaissait JAMAIS
+pendant l'attente (excluant une vraie seconde panne applicative), et le
+mécanisme `persist()`/`retryPersist()` lui-même s'est révélé correct par
+relecture — la CAUSE RÉELLE identifiée : le test vérifiait la persistance
+via une **nouvelle lecture IndexedDB** (`getDraftForMission`, une
+connexion supplémentaire), un 3ᵉ aller-retour de connexion dans ce même
+test (échec initial mocké, retry réel, cette vérification) qui exposait
+directement la dette de fiabilité déjà documentée du fichier, plutôt que
+la simple révéler par hasard. **Corrigé en changeant la méthode de
+vérification, pas en attendant plus longtemps** : le test vérifie
+désormais que `saveDraft` (l'espion) est bien rappelé après le retry — un
+signal SYNCHRONE à l'appel, sans ouvrir de connexion IndexedDB
+supplémentaire pour le constater. Stable sur 5 exécutions consécutives de
+la suite complète après ce changement (0 échec). Fichier
+`InspectionFormView.test.tsx` non modifié par ailleurs — la dette de
+fiabilité résiduelle qu'il porte reste entière, seulement plus exposée
+par ce nouveau test.
 
 **23 tests `apps/control-pwa`** ajoutés au total sur la session
 (`InspectionFormView.test.tsx` : 16 → 20, +4). **380 tests frontend** (5

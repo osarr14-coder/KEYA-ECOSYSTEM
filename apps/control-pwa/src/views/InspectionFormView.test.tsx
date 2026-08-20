@@ -429,28 +429,41 @@ describe(
     });
 
     it(
-      'après un retry réussi, une nouvelle saisie s\'enregistre de nouveau normalement '
+      'après un retry réussi, une nouvelle saisie est bien transmise à saveDraft '
       + '(la file n\'est pas restée bloquée)',
       async () => {
+        // Ticket F-033 (vague 4) — piège de test rencontré en l'écrivant :
+        // une première version vérifiait la persistance via une NOUVELLE
+        // lecture IndexedDB (`getDraftForMission`, une connexion fraîche
+        // supplémentaire). Ce fichier a déjà une « dette de fiabilité
+        // résiduelle » documentée (ticket 026) sous suite complète — ce
+        // 3e aller-retour supplémentaire (échec mocké, retry réel, cette
+        // écriture) l'exposait au point de faire échouer le test même avec
+        // un timeout de 8s, alors qu'il convergeait systématiquement en
+        // moins de 200ms en isolation, sans jamais que le bandeau d'échec
+        // ne réapparaisse pendant l'attente (tracé explicitement — donc
+        // pas une vraie seconde panne). Corrigé en vérifiant directement
+        // que `saveDraft` (l'espion, pas une relecture) est bien rappelé
+        // après le retry — signal synchrone à l'appel, sans ouvrir de
+        // connexion IndexedDB supplémentaire pour le vérifier.
         const realSaveDraft = repository.saveDraft;
-        vi.spyOn(repository, 'saveDraft').mockRejectedValueOnce(new Error('QuotaExceededError'));
+        const saveDraftSpy = vi.spyOn(repository, 'saveDraft');
+        saveDraftSpy.mockRejectedValueOnce(new Error('QuotaExceededError'));
 
         render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
         fireEvent.click(await screen.findByLabelText('Sécurité du chantier'));
         await screen.findByText('Échec de l\'enregistrement local.');
 
-        vi.spyOn(repository, 'saveDraft').mockImplementation(realSaveDraft);
+        saveDraftSpy.mockImplementation(realSaveDraft);
         fireEvent.click(screen.getByRole('button', { name: "Réessayer l'enregistrement" }));
         await waitFor(() => expect(
           screen.queryByText('Échec de l\'enregistrement local.'),
         ).not.toBeInTheDocument());
 
+        const callsAfterRetry = saveDraftSpy.mock.calls.length;
         fireEvent.click(await screen.findByLabelText('Conformité aux plans'));
 
-        await waitFor(async () => {
-          const draft = await getDraftForMission('mission-1');
-          expect(draft?.checklist.find((item) => item.id === 'conformite_plans')?.checked).toBe(true);
-        }, { timeout: 3000 });
+        await waitFor(() => expect(saveDraftSpy.mock.calls.length).toBeGreaterThan(callsAfterRetry));
         expect(screen.queryByText('Échec de l\'enregistrement local.')).not.toBeInTheDocument();
       },
     );

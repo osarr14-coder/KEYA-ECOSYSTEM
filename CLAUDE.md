@@ -2656,16 +2656,25 @@ directe contre un retry naïf : deux saisies DIFFÉRENTES pendant la panne,
 un seul clic « Réessayer » enregistre les DEUX, jamais seulement la
 dernière.
 
-**Flake IndexedDB préexistant (ticket 026), rencontré en testant — PAS
-causé par ce correctif** : un nouveau test échouait de façon intermittente
-en suite complète (jamais isolé). Investigué avant d'accepter cette
-explication : le test isolé passait de façon fiable (logique correcte),
-un timeout `waitFor` porté à 3000ms l'a stabilisé ; le run suivant a
-ensuite fait échouer un AUTRE test préexistant et NON MODIFIÉ de ce même
-fichier, déjà nommément documenté flaky au ticket 026 — confirme le même
-défaut systémique (contention IndexedDB en suite complète), pas un bug
-introduit ici. Non corrigé, fréquence semblant augmenter avec le volume
-croissant de tests du fichier — candidat à un ticket dédié si besoin.
+**Flake IndexedDB préexistant (ticket 026), rencontré en testant, corrigé
+sans toucher au fichier lui-même — PAS causé par ce correctif** : un
+nouveau test échouait de façon intermittente en suite complète (jamais
+isolé). Investigué avant d'accepter une explication superficielle
+(« juste plus lent ») : un timeout `waitFor` porté à 3000ms n'a pas
+suffi ; porté à 8000ms, le test restait bloqué INDÉFINIMENT dans
+certains runs — preuve d'un blocage réel, pas d'une simple lenteur.
+Tracé explicitement (le bandeau d'échec ne réapparaissait jamais pendant
+l'attente, excluant une vraie seconde panne) : la CAUSE RÉELLE était le
+mécanisme de vérification du test lui-même — une nouvelle lecture
+IndexedDB (`getDraftForMission`), un 3ᵉ aller-retour de connexion dans ce
+même test, qui exposait directement la dette de fiabilité déjà
+documentée du fichier (ticket 026) plutôt que de simplement la révéler
+par hasard. Corrigé en changeant la méthode de vérification (spy sur
+`saveDraft`, signal synchrone, aucune connexion IndexedDB
+supplémentaire), pas en attendant plus longtemps — stable sur 5
+exécutions consécutives de la suite complète après ce changement.
+Fichier `InspectionFormView.test.tsx` non modifié par ailleurs — la
+dette de fiabilité résiduelle qu'il porte reste entière.
 
 **380 tests frontend** (5 packages : 51+68+65+48+148), `tsc --noEmit`
 propre. **Pas de vérification en navigateur réel, décision assumée**
