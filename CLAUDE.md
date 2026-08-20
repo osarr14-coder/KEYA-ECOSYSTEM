@@ -2707,7 +2707,41 @@ vérification en navigateur réel (même rationale) : un vrai échec d'upload
 exige un rejet serveur reproductible, moins fiable à déclencher
 manuellement que via `vi.spyOn`.
 
-**Reste de la vague 4, non commencé** : `permission denied` dédiée,
+**`permission denied` distinct du reste, 401 vs 403 (même vague)** : un
+401 (session expirée/compte désactivé mid-session, ticket 011) ou un 403
+(permission refusée, session valide) tombaient TOUS LES DEUX dans le même
+message générique + bouton Réessayer, inutile dans les deux cas. Décision
+produit validée avant implémentation : un 401 EN COURS DE SESSION
+déclenche désormais une déconnexion AUTOMATIQUE (`ApiClientConfig.
+onUnauthorized`, nouveau callback dans `apps/{home,build,web}/src/api/
+client.ts` — PAS `control-pwa`, hors scope — appelé de façon SYNCHRONE dès
+qu'un `response.status === 401` est détecté, sur N'IMPORTE QUEL appel ;
+`login()` n'y passe jamais, un 401 d'identifiants invalides n'est jamais
+confondu avec une session morte). `forceLogout()` dupliqué par app : `apps/
+{home,build}` (aucun écran de connexion propre, ticket 020) redirigent
+vers l'origine d'`apps/web` ; `apps/web` recharge sa PROPRE origine
+(`storedAccessToken` lu UNE SEULE FOIS à l'initialisation, jamais réactif).
+Un 403 reste un état VISIBLE distinct (« Accès refusé », sans retry),
+jamais de déconnexion — la session reste valide, seul le droit manque.
+
+**`isForbiddenError`/`ApiErrorBanner`, nouveaux exports du design
+system** : `isForbiddenError` duck-typé sur `status` (chaque app a sa
+PROPRE classe `ApiError`, jamais partagée — même discipline que
+`createApiClient`) ; `ApiErrorBanner` (wrapper fin sur `AlertBanner`)
+centralise le SEUL branchement qui différait entre les ~19 sites de ce
+projet rendant un message générique sur une erreur de chargement. Trois
+états d'erreur locaux (`BackofficeView`/recherche, `DevisView`/
+`useDebouncedSearch`, `AllLotsView`/export CSV) étendus pour porter
+l'erreur brute, jusqu'ici absente (`{status:'error'}` sans payload) — les
+~16 autres sites utilisaient déjà `useApiResource`, qui la portait déjà.
+
+**421 tests frontend** (5 packages : 64+75+71+54+157), zéro régression
+(3 exécutions consécutives propres), `tsc --noEmit` propre. Pas de
+vérification en navigateur réel (même rationale que les points
+précédents) : provoquer un VRAI 401/403 en cours de session exige un état
+serveur réel — les tests automatisés le reproduisent plus fidèlement.
+
+**Reste de la vague 4, non commencé** :
 `resolveConflictByDiscarding` (même défaut, sévérité faible), stale data.
 
 ## Coûts programme et répartition entre lots (ticket B-033, `apps/programs`)

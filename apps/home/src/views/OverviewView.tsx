@@ -1,5 +1,5 @@
 import {
-  AlertBanner, ProgressBar, StatusBadge, semanticColors,
+  AlertBanner, ApiErrorBanner, ProgressBar, StatusBadge, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -37,7 +37,7 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger votre bien." onRetry={state.refetch} />;
+    return <ApiErrorBanner error={state.error} title="Impossible de charger votre bien." onRetry={state.refetch} />;
   }
 
   const overview = state.data;

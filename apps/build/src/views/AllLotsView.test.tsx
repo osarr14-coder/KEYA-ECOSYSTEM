@@ -3,6 +3,7 @@ import { Blob as NodeBlob } from 'node:buffer';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '../api/client';
 import type { LotRow, PaginatedResponse } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { AllLotsView } from './AllLotsView';
@@ -348,4 +349,18 @@ describe('AllLotsView — erreur de chargement générique (ticket F-033, vague 
     // Le même filtre/tri est retransmis, pas réinitialisé par le retry.
     expect(getAllLots).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'name' }));
   });
+
+  it(
+    'un 403 affiche "Accès refusé" (jamais retentable), distinct du message '
+    + 'générique — ticket F-033 (vague 4)',
+    async () => {
+      const getAllLots = vi.fn().mockRejectedValue(new ApiError(403, 'Permission refusée'));
+      const api = createMockApiClient({ getAllLots });
+      render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+      expect(await screen.findByText('Accès refusé')).toBeInTheDocument();
+      expect(screen.queryByText('Impossible de charger les lots.')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
+    },
+  );
 });

@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 
-import { AlertBanner, semanticColors } from '@keya/design-system';
+import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { useApiResource } from '../api/useApiResource';
@@ -9,7 +9,9 @@ import type { BackofficeUserSummary } from '../api/types';
 type SearchState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'error' }
+  // Ticket F-033 (vague 4) — `error: unknown` ajouté pour distinguer un 403
+  // (accès refusé, jamais retentable) du reste, voir `ApiErrorBanner`.
+  | { status: 'error'; error: unknown }
   | { status: 'success'; results: BackofficeUserSummary[] };
 
 /**
@@ -59,7 +61,7 @@ function UserDetailPanel({ userId }: { userId: string }) {
     return <p>Chargement du profil…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger ce profil." onRetry={state.refetch} />;
+    return <ApiErrorBanner error={state.error} title="Impossible de charger ce profil." onRetry={state.refetch} />;
   }
 
   const { user, memberships } = state.data;
@@ -137,8 +139,8 @@ export function BackofficeView() {
     try {
       const results = await api.searchUsers(query);
       setSearchState({ status: 'success', results });
-    } catch {
-      setSearchState({ status: 'error' });
+    } catch (error) {
+      setSearchState({ status: 'error', error });
     }
   }
 
@@ -170,7 +172,11 @@ export function BackofficeView() {
 
       {searchState.status === 'loading' && <p>Recherche…</p>}
       {searchState.status === 'error' && (
-        <AlertBanner title="Impossible d'effectuer la recherche." onRetry={() => { void runSearch(); }} />
+        <ApiErrorBanner
+          error={searchState.error}
+          title="Impossible d'effectuer la recherche."
+          onRetry={() => { void runSearch(); }}
+        />
       )}
       {searchState.status === 'success' && (
         searchState.results.length === 0 ? (

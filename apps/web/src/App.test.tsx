@@ -221,6 +221,19 @@ describe(
       expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger votre profil.');
     });
 
+    it(
+      'un 403 sur /me affiche "Accès refusé" (jamais retentable), distinct du message '
+      + 'générique — ticket F-033 (vague 4)',
+      async () => {
+        const getMe = vi.fn().mockRejectedValue(new ApiError(403, 'Permission refusée'));
+        renderAuthenticated({ getMe });
+
+        expect(await screen.findByText('Accès refusé')).toBeInTheDocument();
+        expect(screen.queryByText('Impossible de charger votre profil.')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
+      },
+    );
+
     it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement de /me (ticket F-033)', async () => {
       const getMe = vi.fn()
         .mockRejectedValueOnce(new Error('network down'))

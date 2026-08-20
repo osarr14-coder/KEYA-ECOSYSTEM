@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '../api/client';
 import type { BackofficeUserDetail, BackofficeUserSummary } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { BackofficeView } from './BackofficeView';
@@ -68,6 +69,20 @@ describe('BackofficeView — recherche d\'utilisateur (ticket 011/021)', () => {
     expect(await screen.findByRole('button', { name: /cible@example.com/ })).toBeInTheDocument();
     expect(searchUsers).toHaveBeenNthCalledWith(2, 'cible');
   });
+
+  it(
+    'un 403 affiche "Accès refusé" (jamais retentable), distinct du message '
+    + 'générique — ticket F-033 (vague 4)',
+    async () => {
+      renderView({ searchUsers: vi.fn().mockRejectedValue(new ApiError(403, 'Permission refusée')) });
+
+      await search();
+
+      expect(await screen.findByText('Accès refusé')).toBeInTheDocument();
+      expect(screen.queryByText("Impossible d'effectuer la recherche.")).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
+    },
+  );
 
   it('un compte désactivé est signalé directement dans la liste de résultats', async () => {
     renderView({

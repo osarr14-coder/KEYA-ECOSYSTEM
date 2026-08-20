@@ -19,6 +19,16 @@ export interface ApiClientConfig {
    * sur la membership la plus ancienne, son propre comportement par
    * défaut, jamais recalculé ici. */
   getActiveOrganizationId?: () => string | null;
+
+  /**
+   * Ticket F-033 (vague 4) — un 401 EN COURS DE SESSION (token expiré,
+   * compte désactivé mid-session, ticket 011) signifie que le jeton détenu
+   * est définitivement mort : aucun retry ne peut le réparer, contrairement
+   * à un 403 (session valide, permission refusée pour CETTE ressource —
+   * voir `isForbiddenError`, design-system). Appelé de façon SYNCHRONE dès
+   * la détection, pour CHAQUE requête, quel que soit l'appelant.
+   */
+  onUnauthorized?: () => void;
 }
 
 export interface TaskFilters {
@@ -39,7 +49,9 @@ export interface TaskFilters {
  * un passage direct du JSON reçu — critère d'acceptation central du
  * ticket 008.
  */
-export function createApiClient({ baseUrl, getAccessToken, getActiveOrganizationId }: ApiClientConfig) {
+export function createApiClient({
+  baseUrl, getAccessToken, getActiveOrganizationId, onUnauthorized,
+}: ApiClientConfig) {
   async function request<T>(path: string): Promise<T> {
     const token = getAccessToken();
     const headers: Record<string, string> = {};
@@ -48,6 +60,9 @@ export function createApiClient({ baseUrl, getAccessToken, getActiveOrganization
     if (organizationId) headers['X-Organization-Id'] = organizationId;
 
     const response = await fetch(`${baseUrl}${path}`, { headers });
+    if (response.status === 401) {
+      onUnauthorized?.();
+    }
     if (!response.ok) {
       throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`);
     }

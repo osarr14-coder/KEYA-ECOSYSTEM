@@ -293,10 +293,90 @@ rationale que ci-dessus) : provoquer un VRAI échec d'upload photo exige un
 rejet serveur reproductible, moins fiable à déclencher manuellement que via
 `vi.spyOn` sur le client API.
 
+## `permission denied` distinct du reste, 401 vs 403 (ticket F-033, vague 4)
+
+Avant ce correctif, un 401 (session expirée/compte désactivé mid-session,
+ticket 011) ou un 403 (permission refusée, session valide) tombaient TOUS
+LES DEUX dans le même message générique « Impossible de charger X. » +
+bouton Réessayer que toute autre erreur de chargement — inutile dans les
+deux cas (un jeton mort ou un droit manquant ne se corrige jamais par un
+nouvel essai identique), et le seul état `permission denied` réellement
+dédié du projet restait le gate `admin_keyimmo` d'`apps/web`, basé sur les
+rôles de `/me`, jamais sur un statut HTTP réel.
+
+**Décision produit validée avant implémentation** (le 401 pouvait rester un
+simple message visible, ou déclencher une vraie déconnexion) : un 401 EN
+COURS DE SESSION déclenche désormais une déconnexion AUTOMATIQUE (jeton
+effacé, redirection vers l'écran de connexion) — un jeton mort ne doit
+jamais laisser l'utilisateur bloqué sur un message d'erreur en poche. Un
+403 reste un état VISIBLE distinct (« Accès refusé », sans bouton
+Réessayer), jamais de déconnexion automatique (la session reste valide,
+seul le droit manque).
+
+**`ApiClientConfig.onUnauthorized`** — nouveau callback optionnel ajouté à
+`request()` dans `apps/{home,build,web}/src/api/client.ts` (PAS
+`control-pwa` : ses seules erreurs réseau utilisateur-visibles sont déjà
+couvertes — vagues 1/3 — et sa synchro de missions est auto-cicatrisante,
+sans état UI qui en dépende, voir vague 1). Appelé de façon SYNCHRONE dès
+qu'un `response.status === 401` est détecté, AVANT même la construction de
+l'`ApiError` — un 401 sur N'IMPORTE QUEL appel (pas seulement ceux passant
+par `useApiResource`) déclenche la déconnexion. `login()` (formulaire de
+connexion, ticket 020) ne passe jamais par `request()` : un 401
+d'identifiants invalides n'est JAMAIS confondu avec une session morte,
+déjà traité distinctement.
+
+**`forceLogout()`, dupliqué par app** (`auth/forceLogout.ts`, même
+discipline que `createApiClient`) — deux variantes selon que l'app héberge
+son propre écran de connexion : `apps/{home,build}` n'en ont AUCUN (ticket
+020 : seule `apps/web` en a un) — redirige vers l'origine d'`apps/web`
+(`VITE_WEB_URL`) après avoir effacé le jeton ; `apps/web` recharge son
+PROPRE origine (`App.tsx::App` lit `storedAccessToken` UNE SEULE FOIS à
+l'initialisation, jamais réactif — seul un vrai rechargement de document
+fait réapparaître l'écran de connexion une fois le jeton effacé).
+
+**`isForbiddenError`/`ApiErrorBanner`, nouveaux exports partagés du design
+system** — chaque app a sa PROPRE classe `ApiError` (même discipline que
+`createApiClient`, jamais partagée) : `isForbiddenError` est duck-typé sur
+`status` plutôt qu'un `instanceof`, correct quelle que soit la classe
+d'origine. `ApiErrorBanner` (wrapper fin autour d'`AlertBanner`, jamais une
+redéfinition) centralise le SEUL branchement qui différait entre les ~19
+sites de ce projet rendant `<AlertBanner title="..." onRetry=.../>` sur une
+erreur générique : `error.status === 403` → « Accès refusé », sans retry ;
+sinon → le message contextuel existant, inchangé.
+
+**Trois états d'erreur locaux (pas `useApiResource`) étendus pour porter
+l'erreur brute**, jusqu'ici absente de leur état (`{ status: 'error' }`
+sans payload) : `BackofficeView`/recherche utilisateur, `DevisView`/
+`useDebouncedSearch` (recherche lot/organisation), `AllLotsView`/export
+CSV — les ~16 autres sites utilisaient déjà `useApiResource`, qui porte
+`error: unknown` depuis son origine.
+
+**19 sites balayés** (`apps/home` : `App.tsx` ×2, `OverviewView`,
+`MyActionsView`, `EvidenceFeedView`, `PriorityTaskSummary` ; `apps/build` :
+`App.tsx`, `ExceptionsView`, `AllLotsView` ×2 ; `apps/web` : `App.tsx`,
+`PricingView` ×2, `LegalPaymentTiersView` ×2, `BackofficeView` ×2,
+`DevisView` ×3, `CountryPackSelector`) — un seul remplacement mécanique par
+site (`<AlertBanner .../>` → `<ApiErrorBanner error={...} .../>`), aucune
+autre logique changée.
+
+**Tests** : `isForbiddenError`/`ApiErrorBanner` (design-system, 13 tests) ;
+`onUnauthorized` par app (client.ts, 7 tests — un 401 déclenche, un 401 de
+`login()` ne déclenche jamais, aucun autre statut ne déclenche) ; 6 tests
+UI ciblés (403 → « Accès refusé », jamais de bouton Réessayer) sur les
+sites les plus représentatifs, y compris les 3 états locaux étendus.
+**421 tests frontend** (5 packages : 64+75+71+54+157), zéro régression
+(3 exécutions consécutives propres de la suite complète), `tsc --noEmit`
+propre.
+
+**Pas de vérification en navigateur réel, décision assumée** (même
+rationale que les points précédents de cette vague) : provoquer un VRAI
+401/403 en cours de session exige un état serveur réel (jeton expiré,
+compte désactivé, rôle retiré) — les tests automatisés (`ApiError`/
+`vi.fn().mockRejectedValue`) reproduisent ces scénarios de façon plus
+déterministe qu'une manipulation manuelle.
+
 ## Explicitement hors vague 4 (reste à prioriser)
 
-- États `permission denied` dédiés au-delà du gate `admin_keyimmo`
-  d'`apps/web`.
 - `resolveConflictByDiscarding` — même absence de `catch` que `persist()`
   avait, sévérité faible (pas d'état trompeur, l'inspecteur peut
   simplement recliquer).

@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 
-import { AlertBanner, semanticColors } from '@keya/design-system';
+import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
@@ -70,7 +70,7 @@ function ActiveTemplatePanel({ state }: { state: ApiResourceState<LegalPaymentTi
       <h3>Template actif</h3>
       {state.status === 'loading' && <p>Chargement du template actif…</p>}
       {state.status === 'error' && (
-        <AlertBanner title="Impossible de charger le template actif." onRetry={state.refetch} />
+        <ApiErrorBanner error={state.error} title="Impossible de charger le template actif." onRetry={state.refetch} />
       )}
       {state.status === 'success' && (
         state.data === null ? (
@@ -130,7 +130,7 @@ function HistoryPanel({
       <h3>Historique</h3>
       {state.status === 'loading' && <p>Chargement de l&apos;historique…</p>}
       {state.status === 'error' && (
-        <AlertBanner title="Impossible de charger l'historique." onRetry={state.refetch} />
+        <ApiErrorBanner error={state.error} title="Impossible de charger l'historique." onRetry={state.refetch} />
       )}
       {state.status === 'success' && (
         state.data.length === 0 ? (

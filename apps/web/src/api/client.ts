@@ -51,6 +51,21 @@ export interface ApiClientConfig {
    * mécanisme que `apps/{home,build,control-pwa}`.
    */
   getAccessToken?: () => string | null;
+
+  /**
+   * Ticket F-033 (vague 4) — un 401 EN COURS DE SESSION (token expiré,
+   * compte désactivé mid-session — ticket 011 : un jeton déjà émis est
+   * revérifié à CHAQUE requête, jamais seulement à l'émission) signifie que
+   * le jeton détenu est définitivement mort : aucun retry ne peut jamais le
+   * réparer, contrairement à un 403 (session valide, permission refusée
+   * pour CETTE ressource — voir `isForbiddenError`, design-system).
+   * Appelé de façon SYNCHRONE dès la détection, jamais seulement quand
+   * l'appelant choisit de traiter l'erreur — un 401 n'a AUCUN chemin de
+   * récupération manuel valable, contrairement à un 403. Jamais déclenché
+   * par `login()` ci-dessous (identifiants invalides ≠ session morte,
+   * déjà traité distinctement par le formulaire de connexion, ticket 020).
+   */
+  onUnauthorized?: () => void;
 }
 
 interface RequestOptions {
@@ -77,7 +92,7 @@ function toQueryString(params: Record<string, string | undefined>): string {
  * `request`, qui lit `getAccessToken()` — le token déjà persisté par
  * `receiveIncomingSession`/le mécanisme manuel.
  */
-export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiClientConfig) {
+export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauthorized }: ApiClientConfig) {
   async function request<T>(path: string, options: RequestOptions = {}, tokenOverride?: string): Promise<T> {
     const token = tokenOverride ?? getAccessToken();
     const headers: Record<string, string> = {};
@@ -90,6 +105,9 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
     }
 
     const response = await fetch(`${baseUrl}${path}`, { method: options.method ?? 'GET', headers, body });
+    if (response.status === 401) {
+      onUnauthorized?.();
+    }
     if (!response.ok) {
       // Ticket 027 : lit le corps d'erreur pour en extraire `detail` (409
       // métier, voir `ApiError.detail`) — `.catch(() => undefined)` couvre

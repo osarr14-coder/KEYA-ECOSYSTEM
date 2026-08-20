@@ -2,7 +2,7 @@ import {
   type FormEvent, type ReactNode, useEffect, useRef, useState,
 } from 'react';
 
-import { AlertBanner, semanticColors } from '@keya/design-system';
+import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
@@ -48,6 +48,9 @@ const SEARCH_DEBOUNCE_MS = 250;
 function useDebouncedSearch<T>(searchFn: (query: string) => Promise<T[]>, query: string) {
   const [results, setResults] = useState<T[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
+  // Ticket F-033 (vague 4) — brute conservée pour distinguer un 403 (accès
+  // refusé, jamais retentable) du reste, voir `ApiErrorBanner`.
+  const [error, setError] = useState<unknown>(null);
   // Ticket F-033 (vague 3) — même principe que `useApiResource.refetch()` :
   // un compteur inclus dans les deps de l'effet, pour qu'un bouton
   // "Réessayer" relance EXACTEMENT la même recherche sans dupliquer sa
@@ -76,9 +79,10 @@ function useDebouncedSearch<T>(searchFn: (query: string) => Promise<T[]>, query:
           setResults(data);
           setStatus('success');
         })
-        .catch(() => {
+        .catch((caughtError: unknown) => {
           if (cancelled || latestQueryRef.current !== query) return;
           setStatus('error');
+          setError(caughtError);
         });
     }, SEARCH_DEBOUNCE_MS);
 
@@ -89,7 +93,9 @@ function useDebouncedSearch<T>(searchFn: (query: string) => Promise<T[]>, query:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, searchFn, reloadToken]);
 
-  return { results, status, retry: () => setReloadToken((token) => token + 1) };
+  return {
+    results, status, error, retry: () => setReloadToken((token) => token + 1),
+  };
 }
 
 /**
@@ -108,7 +114,9 @@ function LiveSearchPicker<T>({
   onSelect: (item: T) => void;
 }) {
   const [query, setQuery] = useState('');
-  const { results, status, retry } = useDebouncedSearch(searchFn, query);
+  const {
+    results, status, error, retry,
+  } = useDebouncedSearch(searchFn, query);
 
   return (
     <div>
@@ -125,7 +133,7 @@ function LiveSearchPicker<T>({
       </label>
       {status === 'loading' && <p style={{ fontSize: '13px' }}>Recherche…</p>}
       {status === 'error' && (
-        <AlertBanner title="Impossible d'effectuer la recherche." onRetry={retry} />
+        <ApiErrorBanner error={error} title="Impossible d'effectuer la recherche." onRetry={retry} />
       )}
       {status === 'success' && results.length === 0 && (
         <p data-testid="no-search-results" style={{ fontSize: '13px' }}>Aucun résultat.</p>
@@ -403,7 +411,7 @@ function AjustementsPanel({ devis, organizationId }: { devis: Devis; organizatio
 
       {state.status === 'loading' && <p style={{ fontSize: '13px' }}>Chargement des ajustements…</p>}
       {state.status === 'error' && (
-        <AlertBanner title="Impossible de charger les ajustements." onRetry={state.refetch} />
+        <ApiErrorBanner error={state.error} title="Impossible de charger les ajustements." onRetry={state.refetch} />
       )}
       {state.status === 'success' && (
         ajustements.length === 0 ? (
@@ -488,7 +496,7 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
     <section aria-label={`Devis pour le lot ${lotId}`}>
       {state.status === 'loading' && <p>Chargement des devis…</p>}
       {state.status === 'error' && (
-        <AlertBanner title="Impossible de charger les devis de ce lot." onRetry={state.refetch} />
+        <ApiErrorBanner error={state.error} title="Impossible de charger les devis de ce lot." onRetry={state.refetch} />
       )}
       {state.status === 'success' && (
         <>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { AlertBanner } from '@keya/design-system';
+import { ApiErrorBanner } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { CountryPackSummary } from '../api/types';
@@ -74,7 +74,7 @@ export function CountryPackSelector({ onLoad }: { onLoad: (pack: CountryPackSumm
     <section aria-label="Sélectionner un pays" style={{ marginBottom: '16px' }}>
       {state.status === 'loading' && <p>Chargement des pays…</p>}
       {state.status === 'error' && (
-        <AlertBanner title="Impossible de charger la liste des pays." onRetry={state.refetch} />
+        <ApiErrorBanner error={state.error} title="Impossible de charger la liste des pays." onRetry={state.refetch} />
       )}
       {state.status === 'success' && (
         state.data.length === 0 ? (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  AlertBanner, densityTokens, ProgressBar, semanticColors, type Density,
+  AlertBanner, ApiErrorBanner, densityTokens, ProgressBar, semanticColors, type Density,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -52,7 +52,9 @@ type ExportState =
   | { status: 'idle' }
   | { status: 'confirming'; requestCount: number; totalCount: number }
   | { status: 'exporting' }
-  | { status: 'error' };
+  // Ticket F-033 (vague 4) — `error: unknown` ajouté pour distinguer un 403
+  // (accès refusé, jamais retentable) du reste, voir `ApiErrorBanner`.
+  | { status: 'error'; error: unknown };
 
 /**
  * Tableau « Tous les lots » (ticket 009) — écran d'usage intensif : tri,
@@ -105,8 +107,8 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
       const rows = await fetchAllLotRows(api.getAllLots, exportQuery, EXPORT_PAGE_SIZE);
       downloadCsv(buildLotsExportFilename(new Date()), buildLotsCsv(rows));
       setExportState({ status: 'idle' });
-    } catch {
-      setExportState({ status: 'error' });
+    } catch (error) {
+      setExportState({ status: 'error', error });
     }
   }
 
@@ -201,13 +203,13 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
         )}
 
         {exportState.status === 'error' && (
-          <AlertBanner title="Échec de l'export CSV. Réessayez." />
+          <ApiErrorBanner error={exportState.error} title="Échec de l'export CSV. Réessayez." />
         )}
       </div>
 
       {state.status === 'loading' && <p>Chargement…</p>}
       {state.status === 'error' && (
-        <AlertBanner title="Impossible de charger les lots." onRetry={state.refetch} />
+        <ApiErrorBanner error={state.error} title="Impossible de charger les lots." onRetry={state.refetch} />
       )}
 
       {state.status === 'success' && (

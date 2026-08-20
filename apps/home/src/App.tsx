@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
+  AlertBanner, ApiErrorBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -135,12 +135,15 @@ export function App() {
         // Ticket F-033 (vague 3) — remplace un `<p role="alert">` par
         // `AlertBanner` (incohérence déjà notée à l'audit) au passage,
         // exactement le même défaut (erreur de chargement générique) que
-        // les autres cibles de cette vague.
-        <AlertBanner title="Impossible de charger votre profil." onRetry={meState.refetch} />
+        // les autres cibles de cette vague. Ticket F-033 (vague 4) :
+        // `ApiErrorBanner` distingue désormais un 403 (accès refusé, jamais
+        // retentable) du reste — un 401 est traité séparément et
+        // automatiquement (déconnexion, voir `main.tsx::onUnauthorized`).
+        <ApiErrorBanner error={meState.error} title="Impossible de charger votre profil." onRetry={meState.refetch} />
       )}
       {meState.status === 'success' && lotsState.status === 'loading' && <p>Chargement…</p>}
       {meState.status === 'success' && lotsState.status === 'error' && (
-        <AlertBanner title="Impossible de charger vos biens." onRetry={lotsState.refetch} />
+        <ApiErrorBanner error={lotsState.error} title="Impossible de charger vos biens." onRetry={lotsState.refetch} />
       )}
       {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && (
         <p>Aucun bien ne vous est encore associé.</p>

@@ -120,6 +120,20 @@ describe('DevisView — recherche de lot en direct (ticket B-028/027)', () => {
     expect(searchLots).toHaveBeenNthCalledWith(2, 'A12');
   });
 
+  it(
+    'un 403 affiche "Accès refusé" (jamais retentable), distinct du message '
+    + 'générique — ticket F-033 (vague 4)',
+    async () => {
+      renderView({ searchLots: vi.fn().mockRejectedValue(new ApiError(403, 'Permission refusée')) });
+
+      fireEvent.change(screen.getByLabelText('Rechercher un lot (nom)'), { target: { value: 'A12' } });
+
+      expect(await screen.findByText('Accès refusé')).toBeInTheDocument();
+      expect(screen.queryByText("Impossible d'effectuer la recherche.")).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
+    },
+  );
+
   it('sélectionner un résultat affiche le lot choisi et charge ses devis ; "Changer de lot" revient au sélecteur', async () => {
     const listDevisForLot = vi.fn().mockResolvedValue([]);
     renderView({ listDevisForLot });
