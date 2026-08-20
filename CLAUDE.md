@@ -2469,6 +2469,66 @@ l'écrivant, contrairement à la plupart des tickets précédents de cette séri
 2 tests dédiés, suite `pricing` 38 tests, suite complète du projet 285 tests,
 tous verts.
 
+## Audit des états système — vague 1 (ticket F-033, `apps/control-pwa`)
+
+Voir `F-033-audit-etats-systeme.md` pour le détail complet. Premier audit
+exhaustif de la doctrine 17.5 (V3.0) sur tous les écrans admin d'`apps/web`
+et les 3 apps (HOME/BUILD/CONTROL PWA) — jamais fait de façon systématique
+avant ce ticket. Étape 1 (tableau écran × état, aucune correction) livrée
+et discutée avec l'utilisateur avant tout code, par ticket : constats
+transversaux majeurs — `offline` n'a de détection réelle que dans CONTROL
+PWA ; `permission denied` n'a un vrai état dédié qu'au gate `admin_keyimmo`
+d'`apps/web` (401/403 en cours de session tombe partout ailleurs dans
+l'erreur générique) ; aucun bouton « Réessayer » nulle part ; `sync failed`
+par photo tracké en données mais jamais affiché.
+
+**Vague 1 — deux bugs de robustesse réels** (pas des manques de style),
+trouvés en lisant le code de `MissionsListView`/`InspectionFormView`.
+Avant de corriger, l'utilisateur a demandé de vérifier l'étendue réelle du
+premier défaut (échec IndexedDB jamais catché) : lecture intégrale de
+`db/repository.ts` (chaque fonction utilise `try/finally`, JAMAIS `catch`
+— comportement correct pour une couche de données, elle doit propager) et
+`grep` exhaustif de tous ses appelants. Le même défaut EXACT existait
+aussi dans l'effet de montage d'`InspectionFormView` (même forme, même
+correctif trivial — corrigé) ; deux autres occurrences trouvées mais
+volontairement laissées hors vague 1 : `persist()` (nécessiterait une
+nouvelle UI « échec d'enregistrement local », pas juste un `catch` — la
+mise à jour optimiste a déjà eu lieu de façon synchrone, un échec
+silencieux ferait croire à tort que la saisie est enregistrée) et
+`resolveConflictByDiscarding` (sévérité faible, pas d'état trompeur).
+`syncEngine.ts::runSyncCycle` vérifié et jugé non défectueux : auto-
+cicatrisant (retenté toutes les 15s/à la reconnexion), aucun état UI n'en
+dépend.
+
+**Correctifs** : `MissionsListView` gagne un `LoadState`
+(`loading`/`error`/`ready`) — `getCachedMissions()` catché explicitement
+(`AlertBanner`, jamais un « Aucune mission » trompeur) ; le `Promise.all`
+sur les statuts de synchro par mission devient `Promise.allSettled` — une
+mission dont la lecture échoue n'affiche simplement aucun statut, les
+autres gardent le leur. `InspectionFormView` gagne un `loadError` à côté
+de `loading` — même principe, l'effet de montage capture désormais
+l'échec au lieu de laisser `loading` bloqué à `true` indéfiniment.
+
+**Tests écrits AVANT correction** (même discipline que le ticket 015) :
+lancés et confirmés ROUGES contre le code non corrigé — deux « Unhandled
+Rejection » observées en conditions réelles, preuve directe des deux bugs
+avant tout changement de code de production. 5 nouveaux tests
+`apps/control-pwa` (59, était 54). **338 tests frontend** (5 packages :
+44+62+59+40+133), zéro régression, `tsc --noEmit` propre.
+
+**Pas de vérification en navigateur réel pour cette vague, décision
+assumée** : correctifs purement additifs (aucun chemin nominal modifié),
+la seule façon de provoquer les nouvelles branches d'erreur est un VRAI
+échec IndexedDB — plus fiable à reproduire de façon déterministe via
+`vi.spyOn` que par une manipulation manuelle de navigateur.
+
+**Vagues 2/3/4 non commencées** — hors scope de ce ticket pour l'instant,
+listées explicitement dans `F-033-audit-etats-systeme.md` : `persist()`/
+`resolveConflictByDiscarding`, détection offline hors CONTROL PWA, états
+`permission denied` dédiés, bouton « Réessayer » générique, `sync failed`
+par photo jamais affiché, incohérence `<p role="alert">` vs `AlertBanner`
+(HOME/BUILD), stale data.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

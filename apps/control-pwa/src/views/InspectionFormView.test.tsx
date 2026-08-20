@@ -309,3 +309,36 @@ describe(
     );
   },
 );
+
+describe(
+  'InspectionFormView — robustesse du chargement initial aux échecs IndexedDB (ticket F-033, vague 1)',
+  () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it(
+      'un échec de lecture au montage (même défaut que MissionsListView) affiche une erreur '
+      + 'explicite, jamais un blocage indéfini sur "Chargement…"',
+      async () => {
+        vi.spyOn(repository, 'getDraftForMission').mockRejectedValueOnce(new Error('IndexedDB indisponible'));
+
+        render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger cette mission.');
+        expect(screen.queryByText('Chargement…')).not.toBeInTheDocument();
+        // Aucun formulaire n'est rendu par-dessus l'erreur (pas de checklist
+        // fantôme sur un brouillon jamais réellement chargé).
+        expect(screen.queryByText('Checklist')).not.toBeInTheDocument();
+      },
+    );
+
+    it('un échec de lecture de la mission en cache (getCachedMission) est traité identiquement', async () => {
+      vi.spyOn(repository, 'getCachedMission').mockRejectedValueOnce(new Error('IndexedDB indisponible'));
+
+      render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger cette mission.');
+    });
+  },
+);

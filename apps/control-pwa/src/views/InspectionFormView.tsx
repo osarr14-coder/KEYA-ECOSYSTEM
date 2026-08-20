@@ -63,6 +63,11 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   const [mission, setMission] = useState<Mission | null>(null);
   const [draft, setDraft] = useState<InspectionDraft | null>(null);
   const [loading, setLoading] = useState(true);
+  // Ticket F-033 (audit des états système, vague 1) — même défaut que
+  // MissionsListView (voir son docstring) : l'effet ci-dessous n'attrapait
+  // aucune erreur, laissant `loading` bloqué à `true` pour toujours en cas
+  // d'échec IndexedDB, sans le moindre message.
+  const [loadError, setLoadError] = useState(false);
 
   // Ticket 015 — cause du bug confirmée en le reproduisant AVANT ce
   // correctif (`InspectionFormView.test.tsx`) : DOUBLE, les deux se
@@ -91,14 +96,25 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(false);
     (async () => {
       // Ticket 012 : la mission vient désormais du cache local
       // (`getCachedMission`), jamais de `MOCK_MISSIONS` (retiré) — chargée
       // en parallèle du brouillon, pas de dépendance entre les deux.
-      const [existing, cachedMission] = await Promise.all([
-        getDraftForMission(missionId),
-        getCachedMission(missionId),
-      ]);
+      let existing: InspectionDraft | undefined;
+      let cachedMission: Mission | undefined;
+      try {
+        [existing, cachedMission] = await Promise.all([
+          getDraftForMission(missionId),
+          getCachedMission(missionId),
+        ]);
+      } catch {
+        if (!cancelled) {
+          setLoading(false);
+          setLoadError(true);
+        }
+        return;
+      }
       const initial = existing ?? createEmptyDraft(
         missionId, CHECKLIST_TEMPLATE, cachedMission?.reserveLatestEventId ?? null,
       );
@@ -228,7 +244,13 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     persistChainRef.current = Promise.resolve(fresh);
   }
 
-  if (loading || !draft) {
+  if (loading) {
+    return <p>Chargement…</p>;
+  }
+  if (loadError) {
+    return <AlertBanner title="Impossible de charger cette mission." />;
+  }
+  if (!draft) {
     return <p>Chargement…</p>;
   }
 
