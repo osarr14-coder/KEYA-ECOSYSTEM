@@ -13,6 +13,7 @@ import {
 } from './auth/redirectTarget';
 import { BackofficeView } from './views/BackofficeView';
 import { DevisView } from './views/DevisView';
+import { PricingView } from './views/PricingView';
 
 // Ticket 021 — réservé à admin_keyimmo, `requiredRoles` reste posé malgré la
 // garde déjà faite dans `AuthenticatedApp` (ci-dessous) — défense en
@@ -20,17 +21,20 @@ import { DevisView } from './views/DevisView';
 // projet (CLAUDE.md). Ticket 025 — un second module apparaît
 // (« Devis / Appels d'offres ») : apps/web n'héberge plus un seul écran
 // depuis ce ticket, sur le MÊME schéma d'onglets déjà établi pour HOME/BUILD
-// (`TabBar`, voir ci-dessous) plutôt qu'un mécanisme parallèle.
+// (`TabBar`, voir ci-dessous) plutôt qu'un mécanisme parallèle. Ticket
+// F-028 — un troisième module (« Tarifs ») suit le même schéma.
 const MODULES: AppModule[] = [
   { id: 'backoffice', label: 'Back-office', href: '/', requiredRoles: ['admin_keyimmo'] },
   { id: 'devis', label: 'Devis / Appels d\'offres', href: '/devis', requiredRoles: ['admin_keyimmo'] },
+  { id: 'pricing', label: 'Tarifs', href: '/tarifs', requiredRoles: ['admin_keyimmo'] },
 ];
 
-type AuthenticatedTabId = 'backoffice' | 'devis';
+type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing';
 
 const TABS: { id: AuthenticatedTabId; label: string }[] = [
   { id: 'backoffice', label: 'Back-office' },
   { id: 'devis', label: 'Devis / Appels d\'offres' },
+  { id: 'pricing', label: 'Tarifs' },
 ];
 
 export interface AppProps {
@@ -139,6 +143,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
 
       {activeTab === 'backoffice' && <BackofficeView />}
       {activeTab === 'devis' && <DevisView />}
+      {activeTab === 'pricing' && <PricingView />}
     </AppShell>
   );
 }

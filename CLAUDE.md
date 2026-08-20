@@ -2034,6 +2034,54 @@ par relecture silencieuse. Corrigé, aucune perte de couverture.
 12 tests dédiés, suite `procurement` 49 tests, suite complète du projet 270 tests,
 tous verts.
 
+## Administration des tarifs (ticket F-028, `apps/web`)
+
+Voir `F-028-administration-tarifs.md` pour le détail complet. Écran réel,
+`apps/web/src/views/PricingView.tsx`, consommant `apps/pricing` (ticket
+025-backend) — jamais consommé côté frontend jusqu'ici. Contrat API
+revérifié directement dans `backend/apps/pricing/{views,serializers,
+services}.py` avant d'écrire ce fichier, jamais supposé.
+
+**Trou découvert, transmis comme prérequis backend (pas de numéro réservé
+ici, pour éviter une collision avec un B-NNN déjà en discussion)** : aucun
+endpoint ne liste les `CountryPack` — `apps/organizations/urls.py` n'existe
+toujours pas, aucun serializer ne les expose. Un seul `CountryPack` existe
+aujourd'hui (Sénégal), mais la doctrine interdit explicitement de le coder
+en dur (CLAUDE.md, section « Doctrine produit »). En attendant une recherche
+filtrée côté backend (même modèle que B-028/ticket 011), `PricingView`
+fonctionne avec une saisie manuelle d'UUID (`CountryPackSelector`,
+`AlertBanner` explicite) — même schéma temporaire, explicitement marqué
+comme tel, que `LotSelector` au tout premier passage du ticket F-027.
+
+**`PricingCanal` (`canal_1_marge`/`canal_2_commission`) EST codé en dur**,
+contrairement à `CountryPack` — c'est un vocabulaire de doctrine FIXE (comme
+`TrustLevel`), pas une configuration qui varie par pays, même raisonnement
+déjà appliqué à `DevisStatus` (ticket 027).
+
+**`ApiError` gagne un champ `body?: unknown`** (`apps/web/src/api/client.ts`)
+— `POST /api/pricing/configs/` renvoie ses erreurs au format de validation
+DRF standard (`{champ: ["message"]}`), jamais `{detail: "..."}` comme les
+409 de `apps/procurement` (ticket 027) : premier consommateur d'un format
+d'erreur différent. `formatPricingApiError` (`PricingView.tsx`) lit ce corps
+brut, joint tous les messages de tous les champs, et les affiche EXACTEMENT
+tels que renvoyés par le backend — jamais reformulés.
+
+**« Ancien taux »/« nouveau taux » dans `CanalHistoryPanel` — pas un calcul
+métier frontend** : `apps.pricing.services.get_pricing_history` documente
+explicitement que l'ancien taux d'un changement se lit en comparant deux
+entrées consécutives de l'historique, jamais un champ dédié — ce panneau
+fait exactement cette juxtaposition positionnelle (aucune arithmétique) sur
+des valeurs déjà authentiques renvoyées par le backend dans l'ordre où il
+les a lui-même triées.
+
+**Vérifié dans un vrai navigateur, avec un vrai backend** (compte
+`admin_keyimmo` réel, `CountryPack` Sénégal réel) : taux actuel réel affiché,
+historique réel, création d'un nouveau taux reflétée immédiatement dans les
+deux panneaux (nouvelle ligne « ancien → nouveau » correcte), tentative
+délibérée d'un taux hors limites (`max_digits=5`) refusée avec le message
+backend EXACT, aucune ligne fantôme ajoutée. 270 tests frontend (5 packages,
+95 dans `apps/web` dont 13 nouveaux), zéro régression, `tsc --noEmit` propre.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

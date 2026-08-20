@@ -128,3 +128,33 @@ export interface LotSearchResult {
   organization: { id: string; name: string };
   program: { id: string; name: string };
 }
+
+/** Vocabulaire de doctrine fixe (`apps.pricing.models.PricingCanal`, ticket
+ * 025-backend) — les DEUX canaux existent partout, seul leur TAUX varie par
+ * pays (`PricingConfig.country_pack`). Sans risque à coder en dur ici, même
+ * raisonnement que `DevisStatus` ci-dessus : ce n'est PAS une configuration
+ * `CountryPack`, c'est un vocabulaire fixe au même titre que `TrustLevel`. */
+export type PricingCanal = 'canal_1_marge' | 'canal_2_commission';
+
+/** Miroir de `apps.pricing.serializers.PricingConfigSerializer` — seule
+ * audience possible : `admin_keyimmo` (ticket 025-backend, décision B).
+ * `rate` est un POURCENTAGE (`max_digits=5`), jamais un montant — voir
+ * `apps.procurement.services._derive_marge_estimee` (ticket 026-backend)
+ * pour le seul consommateur métier de ce taux dans ce projet. */
+export interface PricingConfig {
+  id: string;
+  country_pack: string;
+  canal: PricingCanal;
+  rate: string;
+  created_by: string;
+  created_at: string;
+}
+
+/** Réponse de `GET /api/pricing/configs/current/?country_pack_id=` (ticket
+ * 025-backend) — un `PricingConfig` par canal, `null` si aucun taux n'a
+ * encore été configuré pour ce `(country_pack, canal)`, jamais un champ
+ * manquant du tout (les deux clés sont TOUJOURS présentes). */
+export interface CurrentPricingRates {
+  canal_1_marge: PricingConfig | null;
+  canal_2_commission: PricingConfig | null;
+}

@@ -1,7 +1,7 @@
 import type {
-  BackofficeUserDetail, BackofficeUserSummary, Devis, DevisAjustement,
-  DevisAjustementCreateResult, LoginResult, LotSearchResult, Me,
-  OrganizationSearchResult,
+  BackofficeUserDetail, BackofficeUserSummary, CurrentPricingRates, Devis,
+  DevisAjustement, DevisAjustementCreateResult, LoginResult, LotSearchResult,
+  Me, OrganizationSearchResult, PricingCanal, PricingConfig,
 } from './types';
 
 export class ApiError extends Error {
@@ -18,10 +18,22 @@ export class ApiError extends Error {
    */
   detail?: string;
 
-  constructor(status: number, message: string, detail?: string) {
+  /**
+   * Ticket F-028 — corps BRUT de la réponse d'erreur, quelle que soit sa
+   * forme (`{detail: "..."}` OU le format de validation DRF par défaut,
+   * `{champ: ["message", ...]}`, ex. `PricingConfigCreateView`, qui ne
+   * renvoie JAMAIS `detail`). `detail` reste le raccourci pour le cas
+   * `{detail}` déjà géré partout ailleurs ; `body` permet à un appelant
+   * (voir `PricingView.tsx`) de lire un format différent sans que ce
+   * client générique ait à connaître chaque forme d'erreur possible.
+   */
+  body?: unknown;
+
+  constructor(status: number, message: string, detail?: string, body?: unknown) {
     super(message);
     this.status = status;
     this.detail = detail;
+    this.body = body;
   }
 }
 
@@ -81,9 +93,11 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
       // Ticket 027 : lit le corps d'erreur pour en extraire `detail` (409
       // métier, voir `ApiError.detail`) — `.catch(() => undefined)` couvre
       // le cas d'un corps vide/non-JSON (ex. 401/500 sans corps structuré),
-      // jamais une exception qui masquerait l'erreur HTTP d'origine.
+      // jamais une exception qui masquerait l'erreur HTTP d'origine. Ticket
+      // F-028 : le corps BRUT est conservé tel quel (`ApiError.body`) pour
+      // les appelants dont les erreurs n'ont pas la forme `{detail}`.
       const errorBody = (await response.json().catch(() => undefined)) as { detail?: string } | undefined;
-      throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`, errorBody?.detail);
+      throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`, errorBody?.detail, errorBody);
     }
     return (await response.json()) as T;
   }
@@ -205,6 +219,34 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
      */
     searchOrganizations: (query: string) =>
       request<OrganizationSearchResult[]>(`/api/procurement/admin/organizations/${toQueryString({ q: query })}`),
+
+    /**
+     * `GET /api/pricing/configs/current/?country_pack_id=...` (ticket
+     * 025-backend) — taux ACTUEL des deux canaux (dernier `PricingConfig`
+     * créé par canal), `null` par canal si aucun n'existe encore.
+     */
+    getCurrentPricingRates: (countryPackId: string) =>
+      request<CurrentPricingRates>(`/api/pricing/configs/current/${toQueryString({ country_pack_id: countryPackId })}`),
+
+    /**
+     * `GET /api/pricing/configs/history/?country_pack_id=...&canal=...`
+     * (ticket 025-backend) — historique COMPLET d'un `(country_pack,
+     * canal)`, du plus ancien au plus récent. `canal` est requis (pas de
+     * variante « les deux canaux à la fois » côté backend pour cet
+     * endpoint, contrairement à `getCurrentPricingRates`).
+     */
+    getPricingHistory: (countryPackId: string, canal: PricingCanal) =>
+      request<PricingConfig[]>(`/api/pricing/configs/history/${toQueryString({ country_pack_id: countryPackId, canal })}`),
+
+    /**
+     * `POST /api/pricing/configs/` (ticket 025-backend) — crée un NOUVEAU
+     * taux, jamais une modification (aucun endpoint `PUT`/`PATCH`/`DELETE`
+     * n'existe pour cette ressource). Erreurs en 400, forme de validation
+     * DRF standard (`{champ: ["message"]}`), PAS `{detail}` — voir
+     * `ApiError.body`.
+     */
+    createPricingConfig: (payload: { country_pack: string; canal: PricingCanal; rate: string }) =>
+      request<PricingConfig>('/api/pricing/configs/', { method: 'POST', json: payload }),
   };
 }
 
