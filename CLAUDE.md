@@ -2125,6 +2125,40 @@ service reste sans coût mesurable pour ce chemin (attributs déjà en cache).
 5 tests dédiés, suite `procurement` 54 tests, suite complète du projet 275 tests,
 tous verts.
 
+## Noms lisibles dans la liste des devis (ticket F-029, `apps/web`)
+
+Voir `F-029-noms-lisibles-devis.md` pour le détail complet. Suite directe de
+B-029 (backend, ci-dessus) : `DevisView.tsx::DevisRow` affichait
+`candidate_organization` en UUID brut — remplacé par
+`devis.candidate_organization_detail.name`, et une nouvelle colonne « Lot »
+(`${lot_detail.name} — ${lot_detail.program.name}`) ajoutée. Contrat API
+revérifié directement dans `backend/apps/procurement/{serializers,
+services}.py` après fusion de B-029, jamais supposé depuis le résumé
+CLAUDE.md de ce même ticket seul.
+
+**Les UUID restent accessibles, jamais simplement masqués** (demande
+explicite) : chaque cellule concernée porte `title={uuid}` (infobulle
+navigateur) ET un attribut technique dédié (`data-lot-id`/
+`data-organization-id`) — un consommateur externe (test, futur export) peut
+lire l'UUID réel sans dépendre du rendu d'une infobulle au survol.
+
+`apps/web/src/api/types.ts::Devis` gagne `lot_detail: LotSearchResult`/
+`candidate_organization_detail: OrganizationSearchResult` — réutilise
+LITTÉRALEMENT les types déjà définis pour la recherche B-028 (ticket F-027),
+jamais une forme dupliquée, cohérent avec la réutilisation faite côté
+backend (`LotSearchResultSerializer`/`OrganizationSearchResultSerializer`).
+`logged_by` reste un UUID brut — aucun champ `_detail` équivalent côté
+backend, hors scope de B-029 comme de ce ticket.
+
+**Vérifié dans un vrai navigateur, avec un vrai backend** (compte
+`admin_keyimmo` réel) : candidature réelle créée sur un lot fraîchement
+seedé — la ligne affiche immédiatement le nom du lot/programme et de
+l'organisation candidate, jamais les UUID bruts en texte ; confirmé par
+inspection JS directe que `title`/`data-lot-id`/`data-organization-id`
+portent bien les UUID RÉELS exacts renvoyés par le backend. 4 tests
+dédiés, 274 tests frontend (5 packages : 44+37+54+40+99), zéro régression,
+`tsc --noEmit` propre.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

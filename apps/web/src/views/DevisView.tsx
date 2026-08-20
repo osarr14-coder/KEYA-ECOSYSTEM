@@ -23,11 +23,16 @@ import { useApiResource } from '../api/useApiResource';
  * **Sélection du lot/de l'organisation candidate — recherche réelle (ticket
  * B-028, backend)** : `GET /api/procurement/admin/lots/?q=`/`GET
  * /api/procurement/admin/organizations/?q=` remplacent la saisie manuelle
- * d'UUID qu'utilisait ce fichier jusqu'ici. Limite résiduelle, SANS lien
- * avec B-028 : `DevisAdminSerializer` (déjà en place au ticket 022) n'a pas
- * changé — une fois un devis créé, ses champs de relation
- * (`candidate_organization`/`logged_by`) restent des UUID bruts dans la
- * table `DevisRow` ci-dessous, jamais masqués derrière un faux libellé.
+ * d'UUID qu'utilisait ce fichier jusqu'ici.
+ *
+ * **Noms lisibles dans la liste des devis (ticket F-029, backend B-029)** :
+ * `DevisRow` affichait `candidate_organization` en UUID brut — remplacé par
+ * `devis.candidate_organization_detail.name`/`devis.lot_detail` (nom du lot
+ * + programme parent), tous deux ajoutés PAR-DESSUS les UUID bruts existants
+ * côté backend (jamais à leur place). Les UUID restent accessibles, jamais
+ * simplement masqués : `title` (infobulle navigateur) + `data-*` sur chaque
+ * cellule concernée. `logged_by` reste un UUID brut, sans équivalent
+ * `_detail` côté backend — hors scope de B-029/F-029.
  */
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -419,12 +424,32 @@ function AjustementsPanel({ devis, organizationId }: { devis: Devis; organizatio
   );
 }
 
+/**
+ * Ticket F-029 — noms lisibles (lot, programme parent, organisation
+ * candidate) affichés PAR-DESSUS les UUID bruts, jamais à leur place :
+ * chaque cellule concernée porte `title` (infobulle navigateur) ET un
+ * attribut `data-*` technique pointant vers l'UUID réel — un test peut donc
+ * vérifier l'UUID sans dépendre du rendu d'une infobulle au survol.
+ */
 function DevisRow({
   devis, organizationId, lotAlreadyLocked, onChanged,
 }: { devis: Devis; organizationId: string; lotAlreadyLocked: boolean; onChanged: () => void }) {
   return (
     <tr style={{ borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
-      <td style={{ padding: '10px 12px' }}>{devis.candidate_organization}</td>
+      <td
+        style={{ padding: '10px 12px' }}
+        title={devis.lot}
+        data-lot-id={devis.lot}
+      >
+        {devis.lot_detail.name} — {devis.lot_detail.program.name}
+      </td>
+      <td
+        style={{ padding: '10px 12px' }}
+        title={devis.candidate_organization}
+        data-organization-id={devis.candidate_organization}
+      >
+        {devis.candidate_organization_detail.name}
+      </td>
       <td style={{ padding: '10px 12px' }}>{devis.amount}</td>
       <td style={{ padding: '10px 12px', color: semanticColors.neutral.textMuted }}>{devis.logged_by}</td>
       <td style={{ padding: '10px 12px', color: semanticColors.neutral.textMuted }}>{devis.created_at}</td>
@@ -460,6 +485,7 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '14px' }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${semanticColors.neutral.border}`, textAlign: 'left' }}>
+                  <th style={{ padding: '10px 12px' }}>Lot</th>
                   <th style={{ padding: '10px 12px' }}>Organisation candidate</th>
                   <th style={{ padding: '10px 12px' }}>Montant</th>
                   <th style={{ padding: '10px 12px' }}>Saisi par</th>

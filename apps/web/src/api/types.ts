@@ -68,14 +68,14 @@ export type DevisStatus = 'candidat' | 'devis_verrouille';
 
 /** Miroir de `apps.procurement.serializers.DevisAdminSerializer` — seul
  * serializer de ce module à exposer `amount`/`marge_estimee` (ticket 027).
- * Tous les champs de relation (`organization`, `candidate_organization`,
- * `lot`, `logged_by`) restent des UUID bruts : `ModelSerializer` par défaut,
- * aucun champ imbriqué — B-028 (ticket suivant) a ajouté une recherche pour
- * SÉLECTIONNER un lot/une organisation en amont (voir `LotSearchResult`/
- * `OrganizationSearchResult` ci-dessous), mais n'a pas touché CE serializer :
- * une fois un devis déjà créé, ses champs de relation dans la liste restent
- * affichés en UUID brut ici, limite résiduelle documentée dans
- * `F-027-devis-fonctionnel.md`. */
+ * `organization`/`candidate_organization`/`lot`/`logged_by` restent des
+ * UUID bruts (`ModelSerializer` par défaut, aucun champ imbriqué) — mais
+ * depuis le ticket B-029, `lot_detail`/`candidate_organization_detail`
+ * viennent EN PLUS (jamais à la place, décision A du ticket) résoudre le
+ * lot et l'organisation candidate en noms lisibles, réutilisant LITTÉRALEMENT
+ * `LotSearchResult`/`OrganizationSearchResult` (mêmes serializers que la
+ * recherche B-028). `logged_by` reste un UUID brut, sans équivalent
+ * `_detail` — hors scope de B-029, voir `F-029-noms-lisibles-devis.md`. */
 export interface Devis {
   id: string;
   organization: string;
@@ -86,6 +86,8 @@ export interface Devis {
   logged_by: string;
   created_at: string;
   status: DevisStatus;
+  lot_detail: LotSearchResult;
+  candidate_organization_detail: OrganizationSearchResult;
 }
 
 /** Miroir de `apps.procurement.serializers.DevisAjustementAdminSerializer`

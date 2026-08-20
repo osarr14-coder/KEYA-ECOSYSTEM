@@ -59,13 +59,14 @@ fusionné au moment de la livraison initiale de ce ticket. En attendant,
 texte + bouton « Charger ») avec un `AlertBanner` explicite expliquant
 pourquoi. **B-028 a depuis été fusionné dans `master` — voir la section
 « Levée de la dépendance B-028 » ci-dessous, qui remplace cette saisie
-manuelle par un vrai sélecteur.** Limite résiduelle, distincte et NON
-résolue par B-028 : les champs de relation d'un devis DÉJÀ créé
-(`candidate_organization`, `logged_by`, `created_by` d'un ajustement) restent
-des UUID bruts dans la table (`DevisAdminSerializer`/
+manuelle par un vrai sélecteur.** Limite résiduelle à l'époque, distincte et
+NON résolue par B-028 : les champs de relation d'un devis DÉJÀ créé
+(`candidate_organization`, `lot`, `logged_by`, `created_by` d'un ajustement)
+restaient des UUID bruts dans la table (`DevisAdminSerializer`/
 `DevisAjustementAdminSerializer`, `ModelSerializer` par défaut, aucun champ
-imbriqué) — affichés tels quels, jamais un faux libellé masquant cette
-limite.
+imbriqué). **`candidate_organization`/`lot` résolus depuis, ticket F-029**
+(voir `F-029-noms-lisibles-devis.md`) — `logged_by`/`created_by` restent des
+UUID bruts, toujours hors scope.
 
 ## Levée de la dépendance B-028 (sélecteur réel de lot/organisation)
 
@@ -235,12 +236,14 @@ avant tout changement, comme d'habitude — lecture complète de
   non affecté.
 
 ## Explicitement hors scope
-- Toute résolution de nom pour les UUID de relation déjà présentes sur un
-  devis créé (`candidate_organization`/`logged_by`/`created_by` dans
-  `DevisRow`/`AjustementsPanel`) — `DevisAdminSerializer`/
-  `DevisAjustementAdminSerializer` n'ont pas été touchés par B-028, seule la
-  phase de RECHERCHE/SÉLECTION en amont bénéficie désormais de noms
-  résolus.
+- ~~Toute résolution de nom pour les UUID de relation déjà présentes sur un
+  devis créé (`candidate_organization`/`lot` dans `DevisRow`)~~ — **résolu
+  au ticket F-029** une fois B-029 (backend) fusionné : `DevisAdminSerializer`
+  gagne `lot_detail`/`candidate_organization_detail`, consommés par
+  `DevisView`. Voir `F-029-noms-lisibles-devis.md`.
+- `logged_by`/`created_by` (dans `DevisRow`/`AjustementsPanel`) restent des
+  UUID bruts — `DevisAjustementAdminSerializer` n'a pas été touché par
+  B-029, et B-029 lui-même n'a pas résolu `logged_by`. Toujours hors scope.
 - Vue côté rôle `constructeur` (`DevisCandidateSerializer`,
   `MyCandidaturesListView`/`Detail`) — hors périmètre admin de ce ticket.
 

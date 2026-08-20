@@ -20,6 +20,15 @@ const CANDIDATE_ORG_RESULT: OrganizationSearchResult = {
   name: 'Bati Senegal Verif SARL',
 };
 
+/** Ticket F-029/B-029 : `candidate_organization_detail` par défaut d'un
+ * devis créé par `makeDevis()` — distinct de `CANDIDATE_ORG_RESULT`
+ * (utilisé pour le PICKER de candidature) afin de ne jamais confondre les
+ * deux dans une assertion. */
+const DEFAULT_CANDIDATE_DETAIL: OrganizationSearchResult = {
+  id: 'org-candidat-1',
+  name: 'Candidat Défaut SARL',
+};
+
 function makeDevis(overrides: Partial<Devis> = {}): Devis {
   return {
     id: 'devis-1',
@@ -31,6 +40,8 @@ function makeDevis(overrides: Partial<Devis> = {}): Devis {
     logged_by: 'admin-1',
     created_at: '2026-03-02T09:14:00Z',
     status: 'candidat',
+    lot_detail: LOT_RESULT,
+    candidate_organization_detail: DEFAULT_CANDIDATE_DETAIL,
     ...overrides,
   };
 }
@@ -120,13 +131,12 @@ describe('DevisView — liste des devis d\'un lot (ticket 022/027)', () => {
     expect(await screen.findByTestId('no-devis')).toBeInTheDocument();
   });
 
-  it('affiche les champs réels (montant, organisation candidate en UUID brut, saisi par, date, statut)', async () => {
+  it('affiche les champs réels (montant, saisi par, date, statut)', async () => {
     renderView({ listDevisForLot: vi.fn().mockResolvedValue([makeDevis()]) });
 
     await selectLot();
 
-    expect(await screen.findByText('org-candidat-1')).toBeInTheDocument();
-    expect(screen.getByText('12500000.00')).toBeInTheDocument();
+    expect(await screen.findByText('12500000.00')).toBeInTheDocument();
     expect(screen.getByText('admin-1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Verrouiller' })).toBeInTheDocument();
   });
@@ -138,6 +148,59 @@ describe('DevisView — liste des devis d\'un lot (ticket 022/027)', () => {
 
     expect(await screen.findByTestId('devis-status')).toHaveTextContent('Verrouillé');
     expect(screen.queryByRole('button', { name: 'Verrouiller' })).not.toBeInTheDocument();
+  });
+});
+
+describe('DevisView — noms lisibles sur une ligne de devis (ticket F-029/B-029)', () => {
+  it('affiche le nom du lot + le programme parent, jamais l\'UUID brut en texte', async () => {
+    renderView({ listDevisForLot: vi.fn().mockResolvedValue([makeDevis()]) });
+
+    await selectLot();
+
+    const lotCell = await screen.findByText(`${LOT_RESULT.name} — ${LOT_RESULT.program.name}`);
+    expect(lotCell).toBeInTheDocument();
+    expect(screen.queryByText(LOT_RESULT.id)).not.toBeInTheDocument();
+  });
+
+  it('affiche le nom de l\'organisation candidate, jamais l\'UUID brut en texte', async () => {
+    renderView({ listDevisForLot: vi.fn().mockResolvedValue([makeDevis()]) });
+
+    await selectLot();
+
+    expect(await screen.findByText(DEFAULT_CANDIDATE_DETAIL.name)).toBeInTheDocument();
+    expect(screen.queryByText('org-candidat-1')).not.toBeInTheDocument();
+  });
+
+  it('les UUID du lot et de l\'organisation candidate restent accessibles via title et un attribut technique, pas juste masqués', async () => {
+    renderView({ listDevisForLot: vi.fn().mockResolvedValue([makeDevis()]) });
+
+    await selectLot();
+
+    const lotCell = await screen.findByText(`${LOT_RESULT.name} — ${LOT_RESULT.program.name}`);
+    expect(lotCell).toHaveAttribute('title', LOT_RESULT.id);
+    expect(lotCell).toHaveAttribute('data-lot-id', LOT_RESULT.id);
+
+    const candidateCell = screen.getByText(DEFAULT_CANDIDATE_DETAIL.name);
+    expect(candidateCell).toHaveAttribute('title', 'org-candidat-1');
+    expect(candidateCell).toHaveAttribute('data-organization-id', 'org-candidat-1');
+  });
+
+  it('deux devis pour des organisations candidates différentes affichent chacun leur propre nom', async () => {
+    renderView({
+      listDevisForLot: vi.fn().mockResolvedValue([
+        makeDevis({ id: 'devis-1' }),
+        makeDevis({
+          id: 'devis-2',
+          candidate_organization: 'org-candidat-2',
+          candidate_organization_detail: { id: 'org-candidat-2', name: 'Autre Candidat SARL' },
+        }),
+      ]),
+    });
+
+    await selectLot();
+
+    expect(await screen.findByText(DEFAULT_CANDIDATE_DETAIL.name)).toBeInTheDocument();
+    expect(screen.getByText('Autre Candidat SARL')).toBeInTheDocument();
   });
 });
 
@@ -257,7 +320,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
     });
 
     await selectLot();
-    await screen.findByText('org-candidat-1');
+    await screen.findByText(DEFAULT_CANDIDATE_DETAIL.name);
 
     expect(screen.queryByText('Aucun ajustement enregistré pour l\'instant.')).not.toBeInTheDocument();
   });
