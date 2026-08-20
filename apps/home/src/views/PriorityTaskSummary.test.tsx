@@ -1,3 +1,4 @@
+import { brandColors } from '@keya/design-system';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -88,6 +89,25 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
 
     fireEvent.click(await screen.findByRole('button', { name: 'Voir toutes mes actions' }));
     expect(onSeeAllActions).toHaveBeenCalledOnce();
+  });
+
+  it('le CTA "Voir toutes mes actions" porte l\'accent de marque brandColors.gold/navy (ticket F-039)', async () => {
+    const api = createMockApiClient({
+      getMyTasks: async () => [
+        {
+          id: 'task-1', type: 'task' as const, subject_type: 'inbox_tasks.task', subject_id: 'x',
+          program: null, assignee: 'client@example.com', source: 'reserve_opened',
+          label: 'Action prioritaire', due_date: null,
+          priority: 'high' as const, status: 'pending' as const,
+          created_at: '2026-03-06T09:00:00Z', completed_at: null,
+        },
+      ],
+    });
+
+    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
+
+    const button = await screen.findByRole('button', { name: 'Voir toutes mes actions' });
+    expect(button).toHaveStyle({ borderColor: brandColors.gold, color: brandColors.navy });
   });
 
   it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {

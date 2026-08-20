@@ -114,6 +114,10 @@ export function App() {
   return (
     <AppShell
       density="confortable"
+      // Ticket F-039 — seule app du projet à activer l'identité de marque
+      // KEYIMMO AFRIC (navy/or) sur le chrome d'AppShell. BUILD/CONTROL/
+      // apps/web n'y touchent jamais (doctrine 17.3 V3.0).
+      brand
       modules={MODULES}
       userRoles={userRoles}
       activeModuleId="home"

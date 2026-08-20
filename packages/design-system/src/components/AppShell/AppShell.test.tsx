@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { brandColors } from '../../tokens/colors';
 import { densityTokens } from '../../tokens/density';
 import { AppShell, type AppModule } from './AppShell';
 
@@ -119,6 +120,28 @@ describe('AppShell — topbar (recherche, sélecteurs, Task Inbox, avatar)', () 
   it('affiche le nom de l\'utilisateur connecté', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} user={{ name: 'Awa Diop' }} />);
     expect(screen.getByLabelText('Connecté comme Awa Diop')).toBeInTheDocument();
+  });
+});
+
+describe('AppShell — identité de marque KEYIMMO AFRIC (ticket F-039, prop brand)', () => {
+  it('sans brand (défaut) : en-tête neutre, aucun repère de marque — comportement BUILD/CONTROL/apps/web inchangé', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
+    expect(screen.getByTestId('app-shell-header')).not.toHaveStyle({ background: brandColors.navy });
+  });
+
+  it('avec brand : en-tête en navy, bordure or, repère de marque affiché', () => {
+    render(<AppShell density="confortable" brand modules={MODULES} userRoles={[]} />);
+    const header = screen.getByTestId('app-shell-header');
+    expect(header).toHaveStyle({ background: brandColors.navy, color: '#FFFFFF' });
+    expect(header).toHaveStyle({ borderBottom: `2px solid ${brandColors.gold}` });
+    expect(screen.getByTestId('brand-mark')).toBeInTheDocument();
+    expect(screen.getByText('KEYIMMO AFRIC')).toBeInTheDocument();
+  });
+
+  it('brand=false explicite se comporte comme l\'absence du prop', () => {
+    render(<AppShell density="confortable" brand={false} modules={MODULES} userRoles={[]} />);
+    expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
   });
 });
 

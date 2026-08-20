@@ -3392,6 +3392,94 @@ supprimé, volume préservé).
 packages : 82+75+73+55+180), zéro régression (2 exécutions consécutives
 propres), `tsc --noEmit` propre sur les 5 packages.
 
+## Identité de marque KEYIMMO AFRIC dans HOME (ticket F-039)
+
+Voir `F-039-identite-marque-home.md` pour le détail complet. Suite de
+l'audit visuel F-038 : le design system ne contenait aucune trace de la
+palette de marque KEYIMMO AFRIC (navy `#0B1D3A`, or `#C49A2C`) — HOME
+(l'écran client final) était visuellement identique aux outils internes.
+**Décision de portée non négociable, tranchée par l'utilisateur** :
+réintroduction ciblée et MINIMALE, HOME uniquement — BUILD/CONTROL/
+apps/web restent neutres (doctrine 17.3 V3.0, densité/vitesse de scan).
+
+**`brandColors`** (`packages/design-system/src/tokens/colors.ts`) —
+groupe SÉPARÉ de `semanticColors`, exactement deux valeurs (`navy`,
+`gold`), aucune nuance dérivée inventée. **`levelMeta.ts` (TrustLevel)
+strictement intouché** — vérifié par `git diff`/`git status`, pas par
+affirmation (seule autre exception "couleur de marque" du projet,
+protégée depuis le ticket 003/007, jamais mélangée avec ce nouveau
+registre).
+
+**Consommation strictement limitée à deux points** : `AppShell` gagne un
+prop `brand?: boolean` (défaut `false`) — EXPLICITE, jamais dérivé de
+`density === 'confortable'` (même si seule HOME l'utilise aujourd'hui,
+coupler le rendu de marque à la densité aurait créé un couplage implicite
+fragile, même principe que `requiredRoles`/`userRoles`). Quand actif :
+en-tête en fond navy, texte blanc, bordure or 2px, repère de marque
+textuel — seule `apps/home/src/App.tsx` l'active. Le CTA le plus visible
+de HOME (« Voir toutes mes actions », `PriorityTaskSummary`, migré vers
+`Button` de F-038) reçoit un accent or en BORDURE (jamais en fond plein
+— calculé avant implémentation : texte blanc sur or mesure ≈2,6:1,
+échoue WCAG AA ; texte navy sur fond transparent mesure ≈16,8:1, largement
+AAA — le or reste un accent, jamais un remplissage).
+
+**Asset logo K+toit — vérifié avant toute référence, confirmé absent** :
+recherche exhaustive de fichiers image dans le projet, un seul résultat
+(`apps/control-pwa/public/icon.svg`, une icône générique sans lien avec
+KEYIMMO AFRIC). Substitué par un repère de marque textuel (« K+ » en or
+sur navy, contraste ≈6,4:1) plutôt que de référencer un fichier
+inexistant.
+
+**Test de garde** (`brandGovernance.test.ts`, même famille que
+`governance.test.ts` ticket 007) : scanne le code source réel
+d'`AlertBanner`/`StatusBadge`(+`levelMeta.ts`)/`ProgressBar`/`Button`/
+`Input`/`Select` — absence de `"brandColors"` confirmée dans les 6, plus
+un contrôle POSITIF prouvant que le scan fonctionne réellement
+(`AppShell` référencé, comme attendu).
+
+**Panneau Browser — diagnostic affiné en DEUX passes, sur demande
+explicite de l'utilisateur avant tout commit** : `computer{screenshot}`
+a d'abord semblé se débloquer en cours de session (une capture réelle a
+fonctionné sur une URL externe) — mais une vérification complète de HOME
+juste après a échoué de la même façon qu'au ticket F-038. Une SECONDE
+tentative, avec un protocole plus rigoureux (onglet unique isolé, attente
+explicite de 3s AVANT toute action suivante, contrôle A/B URL externe vs
+`localhost`, navigation directe vers le port "fantôme" lui-même,
+`preview_start` en plus de `navigate`), a révisé le diagnostic : ce n'est
+PAS (ou plus seulement) une contention entre onglets/sessions — la
+réversion vers `chrome-error://chromewebdata/` se produit de façon
+AUTONOME, dans la fenêtre d'attente elle-même, sans action de ma part.
+Le contrôle décisif : `https://example.org` reste parfaitement stable
+sur ce même onglet, à la même minute, alors que `localhost:5173`
+échoue systématiquement, par TOUTES les méthodes testées — **l'outil
+Browser ne parvient actuellement à joindre aucun port localhost de cette
+machine, quelle que soit l'approche**, alors que le serveur `apps/home`
+est confirmé joignable en `curl` local. Le titre `localhost:5176` affiché
+à chaque échec n'est pas un port réellement atteint (une navigation
+explicite vers ce port échoue elle aussi) — une référence résiduelle
+affichée par défaut. Contournement, toujours PAS présenté comme
+équivalent : assertions `getComputedStyle`/`toHaveStyle` déjà écrites en
+Vitest+jsdom, déterministes, déjà vertes, portant sur exactement les
+mêmes faits visuels — aucune capture d'écran ni inspection DOM/CSS
+réelle contre un backend démarré n'a pu être obtenue pour ce ticket,
+malgré deux tentatives complètes et une investigation méthodique de la
+cause. Documenté avant tout commit, conformément à la demande explicite
+de l'utilisateur.
+
+13 tests dédiés (7 `brandGovernance` + 2 `colors` + 3 `AppShell` + 1
+`PriorityTaskSummary`). 478 tests frontend (5 packages :
+94+75+73+56+180), zéro régression sur BUILD/CONTROL PWA/apps/web
+(inchangés à l'unité près, 2 exécutions consécutives propres), `tsc
+--noEmit` propre sur les 5 packages.
+
+**Statut** : committé sur `feature/frontend-round-2`, PAS fusionné vers
+`master`. Décision explicite de l'utilisateur : la vérification visuelle
+reste **en attente d'un contrôle humain réel**, pas d'un outil
+automatisé — le code/tokens/tests sont livrés et vérifiés, seul le rendu
+visuel effectif de HOME (navy/or réellement appliqués) doit être confirmé
+par un humain avant toute fusion. Voir `F-039-identite-marque-home.md`,
+section « Pour un contrôle humain manuel ».
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

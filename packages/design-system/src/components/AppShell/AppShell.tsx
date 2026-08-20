@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
 
-import { semanticColors } from '../../tokens/colors';
+import { brandColors, semanticColors } from '../../tokens/colors';
 import { type Density, densityTokens } from '../../tokens/density';
 
 /**
@@ -37,6 +37,17 @@ export interface AppShellProps {
   /** "dense" (BUILD/FINANCE) ou "confortable" (HOME) — un seul composant,
    * pas deux implémentations séparées (critère d'acceptation ticket 007). */
   density: Density;
+  /**
+   * Ticket F-039 — identité de marque KEYIMMO AFRIC (navy/or) sur le
+   * "chrome" (en-tête). Volontairement un prop EXPLICITE, jamais dérivé de
+   * `density === 'confortable'` : aujourd'hui seule HOME utilise cette
+   * densité, mais coupler le rendu de marque à la densité créerait un
+   * couplage implicite fragile — c'est à l'app consommatrice de le
+   * demander explicitement, même principe que `requiredRoles`/`userRoles`.
+   * Absent ou `false` : comportement strictement inchangé (BUILD/CONTROL/
+   * apps/web, aucune régression possible).
+   */
+  brand?: boolean;
   modules: AppModule[];
   /** Rôles de l'utilisateur courant, utilisés pour filtrer les modules
    * professionnels — voir `AppModule.requiredRoles`. */
@@ -62,6 +73,7 @@ function isModuleVisible(module: AppModule, userRoles: string[]): boolean {
 
 export function AppShell({
   density,
+  brand = false,
   modules,
   userRoles,
   breadcrumbs = [],
@@ -146,14 +158,33 @@ export function AppShell({
       </aside>
 
       <header
+        data-testid="app-shell-header"
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: tokens.gap,
           padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
-          borderBottom: `1px solid ${semanticColors.neutral.border}`,
+          borderBottom: brand ? `2px solid ${brandColors.gold}` : `1px solid ${semanticColors.neutral.border}`,
+          background: brand ? brandColors.navy : undefined,
+          color: brand ? '#FFFFFF' : undefined,
         }}
       >
+        {brand && (
+          // Ticket F-039 — aucun asset logo K+toit n'existe dans ce projet
+          // (vérifié : recherche exhaustive de fichiers image, un seul
+          // résultat trouvé, `apps/control-pwa/public/icon.svg`, un icône
+          // générique sans lien avec KEYIMMO AFRIC) — repère de marque
+          // textuel plutôt que de référencer un fichier qui n'existe pas.
+          <span
+            data-testid="brand-mark"
+            style={{
+              display: 'inline-flex', alignItems: 'baseline', gap: '4px', fontWeight: 700, whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ color: brandColors.gold }}>K+</span>
+            <span>KEYIMMO AFRIC</span>
+          </span>
+        )}
         <form
           role="search"
           onSubmit={(event) => {

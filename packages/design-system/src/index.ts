@@ -37,8 +37,10 @@ export type { StatusBadgeProps, TrustEventData, TrustLevel } from './components/
 export { TabBar } from './components/TabBar/TabBar';
 export type { TabBarProps, TabBarTab } from './components/TabBar/TabBar';
 
-export { semanticColors } from './tokens/colors';
-export type { NeutralColorTokens, ProgressColorTokens, SemanticColorTokens } from './tokens/colors';
+export { brandColors, semanticColors } from './tokens/colors';
+export type {
+  BrandColorTokens, NeutralColorTokens, ProgressColorTokens, SemanticColorTokens,
+} from './tokens/colors';
 
 export { ALL_DENSITIES, densityTokens } from './tokens/density';
 export type { Density, DensityTokens } from './tokens/density';

@@ -1,4 +1,4 @@
-import { ApiErrorBanner } from '@keya/design-system';
+import { ApiErrorBanner, Button, brandColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { useApiResource } from '../api/useApiResource';
@@ -53,9 +53,23 @@ export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: P
         <div>
           <strong>{priorityTask.label}</strong>
           <p>Échéance : {formatDueDate(priorityTask.due_date)}</p>
-          <button type="button" onClick={onSeeAllActions}>
+          {/* Ticket F-039 — CTA le plus visible de HOME (résumé de la
+              tâche prioritaire, en tête de Vue d'ensemble) : accent
+              brandColors.gold (bordure) + brandColors.navy (texte), fond
+              transparent conservé pour un contraste large (~16,8:1) — le
+              or seul en fond plein contre du blanc échoue WCAG AA
+              (~2,6:1), d'où un rôle d'ACCENT plutôt que de remplissage,
+              conforme à la formulation du ticket. Seul bouton de HOME (en
+              dehors d'AppShell) à consommer brandColors — voir le test de
+              garde `brandGovernance.test.ts`. */}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onSeeAllActions}
+            style={{ borderColor: brandColors.gold, borderWidth: '2px', color: brandColors.navy }}
+          >
             Voir toutes mes actions
-          </button>
+          </Button>
         </div>
       ) : (
         <p>Rien à faire pour l'instant.</p>

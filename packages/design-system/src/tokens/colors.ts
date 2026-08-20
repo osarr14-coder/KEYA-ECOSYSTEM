@@ -43,6 +43,30 @@ export interface ProgressColorTokens {
   fill: string;
 }
 
+/**
+ * Ticket F-039 — identité de marque KEYIMMO AFRIC (navy/or), volontairement
+ * SÉPARÉE de `semanticColors` : ce ne sont pas des couleurs sémantiques
+ * génériques réutilisables par tout composant, mais la palette de marque,
+ * dont la consommation est délibérément restreinte à HOME (l'écran client
+ * final) — voir `F-039-identite-marque-home.md`. Les écrans professionnels
+ * (BUILD, CONTROL, apps/web) n'y touchent jamais, cohérents avec la
+ * doctrine 17.3 V3.0 (densité/vitesse de scan plutôt qu'identité visuelle).
+ * Deux valeurs seulement, aucune nuance dérivée inventée sans besoin
+ * démontré — ne jamais utiliser ce groupe pour dériver de nouvelles teintes
+ * à la volée. Distincte de `levelMeta.ts` (TrustLevel, ticket 003/007),
+ * seule autre exception "couleur de marque" du projet — les deux registres
+ * ne se mélangent jamais.
+ */
+export interface BrandColorTokens {
+  navy: string;
+  gold: string;
+}
+
+export const brandColors: BrandColorTokens = {
+  navy: '#0B1D3A',
+  gold: '#C49A2C',
+};
+
 export const semanticColors: {
   alert: SemanticColorTokens;
   danger: SemanticColorTokens;
