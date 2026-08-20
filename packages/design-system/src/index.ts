@@ -1,6 +1,9 @@
 export { AlertBanner } from './components/AlertBanner/AlertBanner';
 export type { AlertBannerProps } from './components/AlertBanner/AlertBanner';
 
+export { ApiErrorBanner } from './components/ApiErrorBanner/ApiErrorBanner';
+export type { ApiErrorBannerProps } from './components/ApiErrorBanner/ApiErrorBanner';
+
 export { AppShell } from './components/AppShell/AppShell';
 export type {
   AppModule,
@@ -11,6 +14,8 @@ export type {
 } from './components/AppShell/AppShell';
 
 export { GlobalStyles } from './components/GlobalStyles/GlobalStyles';
+
+export { isForbiddenError } from './errors/isForbiddenError';
 
 export { useOnlineStatus } from './hooks/useOnlineStatus';
 

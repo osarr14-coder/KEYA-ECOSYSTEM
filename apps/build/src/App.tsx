@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
+  AlertBanner, ApiErrorBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -105,7 +105,8 @@ export function App() {
         // Ticket F-033 (vague 3) — remplace un `<p role="alert">` par
         // `AlertBanner` (incohérence déjà notée à l'audit) au passage, même
         // défaut (erreur de chargement générique) que les autres cibles.
-        <AlertBanner title="Impossible de charger votre profil." onRetry={meState.refetch} />
+        // Ticket F-033 (vague 4) : `ApiErrorBanner` distingue un 403.
+        <ApiErrorBanner error={meState.error} title="Impossible de charger votre profil." onRetry={meState.refetch} />
       )}
       {meState.status === 'success' && (
         <>

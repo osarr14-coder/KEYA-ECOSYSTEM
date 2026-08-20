@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '../api/client';
 import type { BackofficeUserDetail, BackofficeUserSummary } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { BackofficeView } from './BackofficeView';
@@ -68,6 +69,20 @@ describe('BackofficeView — recherche d\'utilisateur (ticket 011/021)', () => {
     expect(await screen.findByRole('button', { name: /cible@example.com/ })).toBeInTheDocument();
     expect(searchUsers).toHaveBeenNthCalledWith(2, 'cible');
   });
+
+  it(
+    'un 403 affiche "Accès refusé" (jamais retentable), distinct du message '
+    + 'générique — ticket F-033 (vague 4)',
+    async () => {
+      renderView({ searchUsers: vi.fn().mockRejectedValue(new ApiError(403, 'Permission refusée')) });
+
+      await search();
+
+      expect(await screen.findByText('Accès refusé')).toBeInTheDocument();
+      expect(screen.queryByText("Impossible d'effectuer la recherche.")).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
+    },
+  );
 
   it('un compte désactivé est signalé directement dans la liste de résultats', async () => {
     renderView({
@@ -198,6 +213,34 @@ describe(
       expect(screen.queryByRole('button', { name: 'Désactiver ce compte' })).not.toBeInTheDocument();
       expect(getUserDetail).toHaveBeenCalledTimes(2);
     });
+
+    it(
+      'après confirmation réussie, la LISTE de résultats derrière le panneau se rafraîchit aussi '
+      + '(compte marqué désactivé), jamais périmée jusqu\'à une recherche manuelle — ticket F-033 '
+      + '(vague 4, stale data) — le panneau de détail reste ouvert pendant ce rafraîchissement',
+      async () => {
+        const getUserDetail = vi.fn()
+          .mockResolvedValueOnce(USER_DETAIL)
+          .mockResolvedValueOnce({ ...USER_DETAIL, user: { ...USER_DETAIL.user, is_active: false } });
+        const deactivateUser = vi.fn().mockResolvedValue({ ...SEARCH_RESULT, is_active: false });
+        const searchUsers = vi.fn()
+          .mockResolvedValueOnce([SEARCH_RESULT])
+          .mockResolvedValueOnce([{ ...SEARCH_RESULT, is_active: false }]);
+        await selectUser({ searchUsers, getUserDetail, deactivateUser });
+
+        // Preuve directe que la même recherche est relancée, jamais une
+        // query différente : la liste affichée reste celle de "cible".
+        expect(screen.queryByText(/\(compte désactivé\)/)).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Désactiver ce compte' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Confirmer la désactivation' }));
+
+        await waitFor(() => expect(screen.getByText(/\(compte désactivé\)/)).toBeInTheDocument());
+        expect(searchUsers).toHaveBeenNthCalledWith(2, 'cible');
+        // Le panneau de détail n'a jamais été fermé par ce rafraîchissement.
+        expect(screen.getByTestId('account-status')).toHaveTextContent('Compte désactivé');
+      },
+    );
 
     it('un échec de deactivateUser affiche une erreur, garde la confirmation ouverte, ne prétend jamais avoir réussi', async () => {
       const deactivateUser = vi.fn().mockRejectedValue(new Error('network down'));

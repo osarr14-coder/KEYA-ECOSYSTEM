@@ -1,4 +1,4 @@
-import { AlertBanner } from '@keya/design-system';
+import { ApiErrorBanner } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { useApiResource } from '../api/useApiResource';
@@ -41,7 +41,7 @@ export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: P
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger vos actions." onRetry={state.refetch} />;
+    return <ApiErrorBanner error={state.error} title="Impossible de charger vos actions." onRetry={state.refetch} />;
   }
 
   const priorityTask = state.data[0] ?? null;

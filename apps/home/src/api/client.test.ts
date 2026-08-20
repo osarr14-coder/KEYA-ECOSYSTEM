@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createApiClient } from './client';
+import { ApiError, createApiClient } from './client';
 
-function jsonResponse(body: unknown): Response {
-  return { ok: true, status: 200, json: async () => body } as Response;
+function jsonResponse(body: unknown, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
 }
 
 afterEach(() => {
@@ -69,3 +69,27 @@ describe(
     );
   },
 );
+
+describe('createApiClient — onUnauthorized (ticket F-033, vague 4)', () => {
+  it('un 401 en cours de session appelle onUnauthorized', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ detail: 'Jeton invalide ou expiré.' }, 401));
+    vi.stubGlobal('fetch', fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'dead-token', onUnauthorized });
+
+    await expect(client.getMe()).rejects.toMatchObject({ status: 401 } satisfies Partial<ApiError>);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([200, 403, 404, 500])('un status %s n\'appelle jamais onUnauthorized', async (status) => {
+    const fetchMock = vi.fn(async () => jsonResponse({}, status));
+    vi.stubGlobal('fetch', fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'token', onUnauthorized });
+    await client.getMe().catch(() => undefined);
+
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+});

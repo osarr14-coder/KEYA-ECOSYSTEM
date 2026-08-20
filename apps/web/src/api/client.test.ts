@@ -166,6 +166,45 @@ describe('createApiClient — back-office (ticket 011/021)', () => {
   });
 });
 
+describe('createApiClient — onUnauthorized (ticket F-033, vague 4)', () => {
+  it('un 401 EN COURS DE SESSION (pas login()) appelle onUnauthorized', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(401, { detail: 'Jeton invalide ou expiré.' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'dead-token', onUnauthorized });
+
+    await expect(client.getMe()).rejects.toMatchObject({ status: 401 } satisfies Partial<ApiError>);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([200, 403, 404, 500])('un status %s n\'appelle jamais onUnauthorized', async (status) => {
+    const fetchMock = vi.fn(async () => jsonResponse(status, {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const onUnauthorized = vi.fn();
+
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'token', onUnauthorized });
+    await client.getMe().catch(() => undefined);
+
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it(
+    'un 401 de login() (identifiants invalides) n\'appelle JAMAIS onUnauthorized — '
+    + 'distinct d\'une session qui expire, déjà géré par le formulaire de connexion (ticket 020)',
+    async () => {
+      const fetchMock = vi.fn(async () => jsonResponse(401, { detail: 'No active account found' }));
+      vi.stubGlobal('fetch', fetchMock);
+      const onUnauthorized = vi.fn();
+
+      const client = createApiClient({ baseUrl: 'http://api.test', onUnauthorized });
+      await client.login('a@example.com', 'wrong').catch(() => undefined);
+
+      expect(onUnauthorized).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe('createApiClient — corps de réponse 200 VRAIMENT vide (ticket F-030)', () => {
   it(
     'getActiveLegalPaymentTierTemplate résout à `null` sur un corps vide (DRF `Response(None)`), '

@@ -1,3 +1,4 @@
+import { StatusDot } from './StatusDot';
 import type { SyncStatus } from '../db/types';
 
 /**
@@ -15,6 +16,12 @@ import type { SyncStatus } from '../db/types';
  * teintes `TrustLevel` (`packages/design-system/.../levelMeta.ts`) pour ne
  * jamais laisser croire, même par ressemblance visuelle, qu'un statut de
  * synchronisation serait un niveau de confiance.
+ *
+ * Ticket F-033 (vague 4) — le rendu pastille+libellé est désormais délégué
+ * à `StatusDot`, extrait au moment où `PhotoSyncStatusIndicator` en devient
+ * un second consommateur réel avec la même forme mais un domaine de
+ * valeurs distinct (`MediaSyncStatus`) — comportement observable inchangé
+ * (mêmes `data-testid`/`data-status`/libellés).
  */
 const LABELS: Record<SyncStatus, string> = {
   pending: 'En attente de synchronisation',
@@ -32,19 +39,6 @@ const DOT_COLOR: Record<SyncStatus, string> = {
 
 export function SyncStatusIndicator({ status }: { status: SyncStatus }) {
   return (
-    <span
-      data-testid="sync-status"
-      data-status={status}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%',
-          background: DOT_COLOR[status],
-        }}
-      />
-      {LABELS[status]}
-    </span>
+    <StatusDot testId="sync-status" status={status} label={LABELS[status]} color={DOT_COLOR[status]} />
   );
 }

@@ -6,6 +6,7 @@ import { GlobalStyles } from '@keya/design-system';
 import { ApiClientProvider } from './api/ApiClientContext';
 import { createApiClient } from './api/client';
 import { App } from './App';
+import { forceLogout } from './auth/forceLogout';
 import { receiveIncomingSession } from './auth/receiveIncomingSession';
 
 // Ticket 020 : consomme une session transmise par l'écran de connexion
@@ -23,6 +24,7 @@ const apiClient = createApiClient({
   baseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000',
   getAccessToken: () => localStorage.getItem('keya_access_token'),
   getActiveOrganizationId: () => localStorage.getItem('keya_active_organization_id'),
+  onUnauthorized: forceLogout,
 });
 
 createRoot(document.getElementById('root')!).render(

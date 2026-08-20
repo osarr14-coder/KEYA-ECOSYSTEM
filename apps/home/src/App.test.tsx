@@ -5,6 +5,7 @@ import {
   afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 
+import { ApiError } from './api/client';
 import { createMockApiClient, withApiClient } from './testUtils';
 import { App } from './App';
 
@@ -298,4 +299,17 @@ describe('App — erreur de chargement du profil (ticket F-033, vague 3)', () =>
     await screen.findByText('Résidence Ker');
     expect(getMe).toHaveBeenCalledTimes(2);
   });
+
+  it(
+    'un 403 sur /me affiche "Accès refusé" (jamais retentable), distinct du message '
+    + 'générique — ticket F-033 (vague 4)',
+    async () => {
+      const getMe = vi.fn().mockRejectedValue(new ApiError(403, 'Permission refusée'));
+      renderApp({ getMe });
+
+      expect(await screen.findByText('Accès refusé')).toBeInTheDocument();
+      expect(screen.queryByText('Impossible de charger votre profil.')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
+    },
+  );
 });

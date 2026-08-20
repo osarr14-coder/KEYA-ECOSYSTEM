@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { AlertBanner, StatusBadge, semanticColors } from '@keya/design-system';
+import { AlertBanner, ApiErrorBanner, StatusBadge, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { EvidenceSummary, LotExceptionRow, ReserveExceptionRow } from '../api/types';
@@ -219,7 +219,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger les exceptions." onRetry={state.refetch} />;
+    return <ApiErrorBanner error={state.error} title="Impossible de charger les exceptions." onRetry={state.refetch} />;
   }
 
   const exceptions = state.data;

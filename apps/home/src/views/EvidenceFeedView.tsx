@@ -1,4 +1,4 @@
-import { AlertBanner, StatusBadge, semanticColors } from '@keya/design-system';
+import { ApiErrorBanner, StatusBadge, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { toTrustEventData } from '../api/types';
@@ -16,7 +16,7 @@ export function EvidenceFeedView({ lotId }: EvidenceFeedViewProps) {
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger l'avancement." onRetry={state.refetch} />;
+    return <ApiErrorBanner error={state.error} title="Impossible de charger l'avancement." onRetry={state.refetch} />;
   }
   if (state.data.length === 0) {
     return <p>Aucune preuve pour le moment.</p>;

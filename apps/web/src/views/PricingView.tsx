@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 
-import { AlertBanner, semanticColors } from '@keya/design-system';
+import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
@@ -49,7 +49,7 @@ function CurrentRatesPanel({ countryPackId, reloadKey }: { countryPackId: string
       <h3>Taux actuels</h3>
       {state.status === 'loading' && <p>Chargement des taux actuels…</p>}
       {state.status === 'error' && (
-        <AlertBanner title="Impossible de charger les taux actuels." onRetry={state.refetch} />
+        <ApiErrorBanner error={state.error} title="Impossible de charger les taux actuels." onRetry={state.refetch} />
       )}
       {state.status === 'success' && (
         <ul style={{ listStyle: 'none', padding: 0 }}>
@@ -98,7 +98,7 @@ function CanalHistoryPanel({
       <h4>{canalLabel(canal)}</h4>
       {state.status === 'loading' && <p>Chargement de l&apos;historique…</p>}
       {state.status === 'error' && (
-        <AlertBanner title="Impossible de charger l'historique." onRetry={state.refetch} />
+        <ApiErrorBanner error={state.error} title="Impossible de charger l'historique." onRetry={state.refetch} />
       )}
       {state.status === 'success' && (
         state.data.length === 0 ? (

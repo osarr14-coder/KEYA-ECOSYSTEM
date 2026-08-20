@@ -184,6 +184,77 @@ describe(
 );
 
 describe(
+  'InspectionFormView — échec d\'abandon d\'une saisie en conflit, jamais silencieux '
+  + '(ticket F-034, même défaut que persist() — F-033 vague 4)',
+  () => {
+    async function createConflictedDraft() {
+      const draft = createEmptyDraft('mission-1', CHECKLIST_TEMPLATE);
+      draft.comment = 'Fissure visible';
+      draft.decision = 'reserve';
+      draft.syncStatus = 'conflict';
+      draft.conflict = { currentEventSource: 'inspection_avec_reserve', currentEventCreatedAt: '2026-08-15T09:00:00.000Z' };
+      await saveDraft(draft);
+      return draft;
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it(
+      'un échec de deleteDraft affiche un bandeau explicite, jamais une rejection non gérée — '
+      + 'la saisie en conflit reste affichée intacte',
+      async () => {
+        vi.spyOn(repository, 'deleteDraft').mockRejectedValue(new Error('QuotaExceededError'));
+        await createConflictedDraft();
+
+        render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+        await screen.findByText('Conflit à résoudre', { selector: 'span' });
+        fireEvent.click(screen.getByRole('button', { name: 'Ignorer ma saisie et recommencer' }));
+
+        expect(await screen.findByText("Échec de l'abandon de la saisie.")).toBeInTheDocument();
+        // La saisie en conflit reste intacte — rien n'a été perdu ni effacé.
+        expect(screen.getByText('Conflit à résoudre', { selector: 'span' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Commentaire')).toHaveValue('Fissure visible');
+        expect(screen.getByLabelText('Réserve')).toBeChecked();
+
+        const draft = await getDraftForMission('mission-1');
+        expect(draft).toBeDefined();
+      },
+    );
+
+    it(
+      'réessayer après un échec repart bien d\'un formulaire vierge, jamais bloqué sur '
+      + 'le même échec indéfiniment',
+      async () => {
+        const realDeleteDraft = repository.deleteDraft;
+        const deleteDraftSpy = vi.spyOn(repository, 'deleteDraft');
+        deleteDraftSpy.mockRejectedValueOnce(new Error('QuotaExceededError'));
+        await createConflictedDraft();
+
+        render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+        await screen.findByText('Conflit à résoudre', { selector: 'span' });
+        fireEvent.click(screen.getByRole('button', { name: 'Ignorer ma saisie et recommencer' }));
+        await screen.findByText("Échec de l'abandon de la saisie.");
+
+        deleteDraftSpy.mockImplementation(realDeleteDraft);
+        fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+        await waitFor(() => {
+          expect(screen.getByLabelText('Commentaire')).toHaveValue('');
+        });
+        expect(screen.getByLabelText('Réserve')).not.toBeChecked();
+        expect(screen.queryByText('Conflit à résoudre', { selector: 'span' })).not.toBeInTheDocument();
+        expect(screen.queryByText("Échec de l'abandon de la saisie.")).not.toBeInTheDocument();
+
+        const draft = await getDraftForMission('mission-1');
+        expect(draft).toBeUndefined();
+      },
+    );
+  },
+);
+
+describe(
   'InspectionFormView — persist() concurrents (ticket 015) : deux saisies presque simultanées '
   + 'ne doivent jamais s\'écraser mutuellement',
   () => {
@@ -465,6 +536,56 @@ describe(
 
         await waitFor(() => expect(saveDraftSpy.mock.calls.length).toBeGreaterThan(callsAfterRetry));
         expect(screen.queryByText('Échec de l\'enregistrement local.')).not.toBeInTheDocument();
+      },
+    );
+  },
+);
+
+describe(
+  'InspectionFormView — statut de synchronisation par photo, jamais silencieux (ticket F-033, vague 4)',
+  () => {
+    it('une photo tout juste ajoutée affiche "En attente d\'envoi"', async () => {
+      render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+      const file = new File(['contenu-photo'], 'photo.jpg', { type: 'image/jpeg' });
+      fireEvent.change(await screen.findByLabelText('Ajouter une photo'), { target: { files: [file] } });
+
+      expect(await screen.findByText("En attente d'envoi")).toBeInTheDocument();
+      // Attend l'écriture IndexedDB réelle avant la fin du test — sans quoi
+      // elle peut se terminer APRÈS le `clearIndexedDB()` du test suivant et
+      // le contaminer (même piège déjà documenté au ticket 025 pour ce
+      // fichier).
+      await waitFor(async () => {
+        const stored = await getDraftForMission('mission-1');
+        expect(stored?.photos).toHaveLength(1);
+      });
+    });
+
+    it(
+      'une photo restée en échec d\'upload (mediaSyncStatus="failed") l\'affiche '
+      + 'explicitement au chargement du brouillon, jamais confondue avec une photo envoyée',
+      async () => {
+        const draft = createEmptyDraft('mission-1', CHECKLIST_TEMPLATE);
+        await saveDraft({
+          ...draft,
+          photos: [{
+            id: 'photo-1',
+            blob: new File(['contenu-photo'], 'photo.jpg', { type: 'image/jpeg' }),
+            fileName: 'photo.jpg',
+            capturedAt: '2026-08-20T10:00:00.000Z',
+            mediaSyncStatus: 'failed',
+            remoteDocumentId: null,
+            retryCount: 2,
+            nextRetryAt: '2026-08-20T10:00:08.000Z',
+          }],
+        });
+
+        render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+        expect(
+          await screen.findByText("Échec d'envoi — nouvelle tentative automatique"),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Envoyée')).not.toBeInTheDocument();
       },
     );
   },

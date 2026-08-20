@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
+  AlertBanner, ApiErrorBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -119,7 +119,7 @@ function AuthenticatedApp() {
   if (meState.status === 'error') {
     return (
       <main style={{ padding: '24px' }}>
-        <AlertBanner title="Impossible de charger votre profil." onRetry={meState.refetch} />
+        <ApiErrorBanner error={meState.error} title="Impossible de charger votre profil." onRetry={meState.refetch} />
       </main>
     );
   }

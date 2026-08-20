@@ -6,6 +6,7 @@ import { GlobalStyles } from '@keya/design-system';
 import { ApiClientProvider } from './api/ApiClientContext';
 import { createApiClient } from './api/client';
 import { App } from './App';
+import { forceLogout } from './auth/forceLogout';
 import { receiveIncomingSession } from './auth/receiveIncomingSession';
 
 // Ticket 021 : apps/web peut désormais être elle-même la destination d'une
@@ -18,6 +19,7 @@ receiveIncomingSession();
 const apiClient = createApiClient({
   baseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000',
   getAccessToken: () => localStorage.getItem('keya_access_token'),
+  onUnauthorized: forceLogout,
 });
 
 createRoot(document.getElementById('root')!).render(

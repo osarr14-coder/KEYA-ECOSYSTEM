@@ -2683,9 +2683,133 @@ d'écriture IndexedDB déclenche la nouvelle branche — les tests automatisés
 (`vi.spyOn` sur `saveDraft`) la reproduisent plus fidèlement qu'une
 manipulation manuelle.
 
-**Reste de la vague 4, non commencé** : `permission denied` dédiée,
-`sync failed` par photo, `resolveConflictByDiscarding` (même défaut,
-sévérité faible), stale data.
+**`sync failed` par photo, désormais affiché (même vague)** :
+`LocalPhoto.mediaSyncStatus` (`pending/syncing/synced/failed`, tracké et
+retenté indéfiniment par `syncEngine.ts::syncPhotos`, backoff exponentiel,
+ticket 010 passe 2) n'était jamais lu par `PhotoThumbnail` — une photo
+bloquée en échec restait visuellement identique à une photo synchronisée.
+**`StatusDot`** (`components/StatusDot.tsx`), scaffolding pastille+libellé
+extrait de `SyncStatusIndicator` au moment où un second consommateur réel
+apparaît (`PhotoSyncStatusIndicator`, domaine de valeurs distinct —
+`failed` plutôt que `conflict`, aucune notion de conflit sur un simple
+upload de fichier) — `SyncStatusIndicator` délègue désormais son rendu à
+`StatusDot`, comportement observable inchangé. Libellé `failed` honnête
+sur le comportement réel (« nouvelle tentative automatique ») : aucune
+action de l'inspecteur requise, contrairement au bandeau d'échec
+d'enregistrement local ci-dessus. **Piège de test rencontré, même famille
+que ci-dessus** : un premier test ne patientait pas la fin réelle de
+l'écriture IndexedDB avant de se terminer, contaminant la lecture du test
+suivant — corrigé en attendant explicitement la persistance (`waitFor` +
+relecture DB), même discipline que les tests préexistants du fichier.
+8 nouveaux tests. **386 tests frontend** (5 packages :
+51+68+71+48+148), zéro régression, `tsc --noEmit` propre. Pas de
+vérification en navigateur réel (même rationale) : un vrai échec d'upload
+exige un rejet serveur reproductible, moins fiable à déclencher
+manuellement que via `vi.spyOn`.
+
+**`permission denied` distinct du reste, 401 vs 403 (même vague)** : un
+401 (session expirée/compte désactivé mid-session, ticket 011) ou un 403
+(permission refusée, session valide) tombaient TOUS LES DEUX dans le même
+message générique + bouton Réessayer, inutile dans les deux cas. Décision
+produit validée avant implémentation : un 401 EN COURS DE SESSION
+déclenche désormais une déconnexion AUTOMATIQUE (`ApiClientConfig.
+onUnauthorized`, nouveau callback dans `apps/{home,build,web}/src/api/
+client.ts` — PAS `control-pwa`, hors scope — appelé de façon SYNCHRONE dès
+qu'un `response.status === 401` est détecté, sur N'IMPORTE QUEL appel ;
+`login()` n'y passe jamais, un 401 d'identifiants invalides n'est jamais
+confondu avec une session morte). `forceLogout()` dupliqué par app : `apps/
+{home,build}` (aucun écran de connexion propre, ticket 020) redirigent
+vers l'origine d'`apps/web` ; `apps/web` recharge sa PROPRE origine
+(`storedAccessToken` lu UNE SEULE FOIS à l'initialisation, jamais réactif).
+Un 403 reste un état VISIBLE distinct (« Accès refusé », sans retry),
+jamais de déconnexion — la session reste valide, seul le droit manque.
+
+**`isForbiddenError`/`ApiErrorBanner`, nouveaux exports du design
+system** : `isForbiddenError` duck-typé sur `status` (chaque app a sa
+PROPRE classe `ApiError`, jamais partagée — même discipline que
+`createApiClient`) ; `ApiErrorBanner` (wrapper fin sur `AlertBanner`)
+centralise le SEUL branchement qui différait entre les ~19 sites de ce
+projet rendant un message générique sur une erreur de chargement. Trois
+états d'erreur locaux (`BackofficeView`/recherche, `DevisView`/
+`useDebouncedSearch`, `AllLotsView`/export CSV) étendus pour porter
+l'erreur brute, jusqu'ici absente (`{status:'error'}` sans payload) — les
+~16 autres sites utilisaient déjà `useApiResource`, qui la portait déjà.
+
+**421 tests frontend** (5 packages : 64+75+71+54+157), zéro régression
+(3 exécutions consécutives propres), `tsc --noEmit` propre. Pas de
+vérification en navigateur réel (même rationale que les points
+précédents) : provoquer un VRAI 401/403 en cours de session exige un état
+serveur réel — les tests automatisés le reproduisent plus fidèlement.
+
+**Stale data — OverviewView et liste back-office (même vague)** : deux cas
+concrets, distincts de la limite déjà documentée « missions/
+`knownLatestEventId` CONTROL PWA » (ticket 010 passe 2, reste hors scope).
+`OverviewView` (HOME) ne se rafraîchissait jamais une fois chargée (aucun
+sondage, aucune action visible) — corrigé par un bouton « Actualiser »
+permanent réutilisant `state.refetch` (vague 3, jusque-là seulement sur
+erreur), jamais un sondage automatique en arrière-plan. `BackofficeView` :
+`searchState.results` et `UserDetailPanel::state` sont deux états React
+indépendants — désactiver un compte depuis le panneau rafraîchissait CE
+panneau mais jamais la liste de résultats derrière lui, qui gardait
+l'ancien `is_active: true`. Corrigé par un callback `onDeactivated` qui
+relance la RECHERCHE RÉELLE déjà affichée, jamais un patch local optimiste
+(même doctrine que `UserDetailPanel` lui-même). **Piège trouvé en
+écrivant l'implémentation** : la query qui a produit les résultats
+affichés (`lastSearchedQueryRef`) doit être distincte de la query LIVE de
+l'input — un admin peut modifier le champ sans soumettre pendant qu'un
+profil reste ouvert. **Second piège, trouvé en écrivant le test** : la
+désélection du profil (`setSelectedUserId(null)`) doit rester dans
+`handleSearch` (nouvelle recherche) SEULE, jamais dans `runSearch`/
+`refreshCurrentSearch` — sinon rafraîchir après désactivation fermerait le
+panneau que l'admin vient de confirmer avoir désactivé. **423 tests
+frontend** (5 packages : 64+75+71+55+158), zéro régression, `tsc --noEmit`
+propre. Pas de vérification en navigateur réel (les deux correctifs sont
+vérifiables de façon déterministe par mocks à réponses successives
+distinctes).
+
+**F-033 clos** — le seul point restant de la vague 4
+(`resolveConflictByDiscarding`, même défaut que `persist()`, sévérité
+faible) a été traité séparément par le ticket **F-034**, voir section
+dédiée ci-dessous.
+
+## Échec silencieux d'abandon d'une saisie en conflit (ticket F-034, `apps/control-pwa`)
+
+Voir `F-034-abandon-conflit-silencieux.md` pour le détail complet. Ticket
+de suivi direct de F-033 (vague 4) : ferme la dette explicitement laissée
+de côté à l'audit (« pas d'état trompeur, l'inspecteur peut simplement
+recliquer ») — `resolveConflictByDiscarding()` (bouton « Ignorer ma saisie
+et recommencer », CONTROL PWA) appelait `deleteDraft(draft.id)` sans aucun
+`try/catch` : un échec IndexedDB devenait une rejection non gérée, jamais
+un signal visible.
+
+**Même mécanisme de correctif que `persist()`, sévérité réellement plus
+faible confirmée avant implémentation** : contrairement à `persist()`, ici
+aucune file d'écriture partagée n'est poisonnée par l'échec (le bandeau de
+conflit + le bouton restent affichés tels quels, techniquement
+recliquables) — mais l'absence de feedback explicite et la rejection non
+gérée restaient un défaut réel. Corrigé par le même portillon EXPLICITE en
+état React (`resolveConflictError`, jamais une promesse rejetée
+silencieusement) et un `AlertBanner` dédié (`onRetry`/`retryLabel`, vague 3)
+en SIBLING du bandeau de conflit — jamais imbriqué dans un autre
+`AlertBanner` (deux régions `role="alert"` imbriquées auraient été un
+problème d'accessibilité).
+
+**Différence assumée avec `retryPersist()`** : `deleteDraft` +
+`createEmptyDraft` est une action IDEMPOTENTE, sans saisie intermédiaire à
+fusionner — rejouer exactement la même fonction comme retry suffit,
+contrairement à `persist()` où un retry naïf aurait perdu les saisies
+accumulées pendant la panne. Aucun second chemin d'écriture parallèle.
+
+**Tests confirmés ROUGES avant correctif** (vérifié en isolant
+temporairement le correctif via `git stash`, puis en le restaurant) —
+l'échec observé est littéralement une **rejection non gérée**
+(`Unhandled Rejection: QuotaExceededError`), preuve directe du défaut
+décrit. 2 nouveaux tests (`apps/control-pwa` : 22 → 24). **425 tests
+frontend** (5 packages : 64+75+73+55+158), zéro régression (2 exécutions
+consécutives propres), `tsc --noEmit` propre. Pas de vérification en
+navigateur réel (même rationale que `persist()`) : un vrai échec
+`deleteDraft` exige une vraie panne IndexedDB, plus fiable à reproduire
+via `vi.spyOn`.
 
 ## Coûts programme et répartition entre lots (ticket B-033, `apps/programs`)
 
