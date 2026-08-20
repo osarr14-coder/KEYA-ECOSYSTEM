@@ -2015,6 +2015,13 @@ class TestLotLedgerMargin:
             Decimal('20000000.00') - Decimal('5000000.00') - Decimal('1000000.00') - expected_construction
         )
         assert margin_response.data['margin'] == expected_margin
+        # Ticket B-038 — décomposition complète, tous les postes qui
+        # composent la marge, pas seulement le résultat final.
+        assert margin_response.data['prix_client'] == Decimal('20000000.00')
+        assert margin_response.data['foncier_alloue'] == Decimal('5000000.00')
+        assert margin_response.data['be_alloue'] == Decimal('1000000.00')
+        assert margin_response.data['construction_courante'] == expected_construction
+        assert margin_response.data['bc_charges_total'] == Decimal('0')
 
     def test_margin_endpoint_returns_404_when_no_ledger_exists_yet(self):
         admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
@@ -2037,6 +2044,61 @@ class TestLotLedgerMargin:
             reverse('lot-ledger-margin', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
         )
         assert response.status_code == 403
+
+    def test_margin_equals_the_arithmetic_of_the_other_returned_fields(self):
+        """Ticket B-038 — vérifie la COHÉRENCE INTERNE de la réponse par
+        calcul explicite à partir des AUTRES champs qu'elle retourne
+        elle-même, jamais une valeur en dur : preuve que `margin` est
+        TOUJOURS `prix_client - foncier_alloue - be_alloue -
+        construction_courante - bc_charges_total`, quel que soit le
+        scénario (ici avec un ajustement ET une charge BC, pour ne pas se
+        contenter du cas trivial où un poste vaut zéro).
+        """
+        admin_client, admin_org, admin_user, sponsor_org, lot, devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready(
+                'margin-internal-consistency', devis_amount=Decimal('1000000.00'),
+                foncier_total=Decimal('3000000.00'), be_total=Decimal('600000.00'),
+            )
+        )
+        create_response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '15000000.00'},
+            format='json',
+        )
+        assert create_response.status_code == 201, create_response.data
+
+        ajustement_response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': '2500.00'},
+            format='json',
+        )
+        assert ajustement_response.status_code == 201, ajustement_response.data
+
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type='fondations', calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+            fixed_amount=Decimal('42000.00'),
+        )
+        mission_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='margin-consistency',
+        )
+        assert mission_response.status_code == 201, mission_response.data
+
+        response = admin_client.get(
+            reverse('lot-ledger-margin', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        data = response.data
+        computed_margin = (
+            data['prix_client'] - data['foncier_alloue'] - data['be_alloue']
+            - data['construction_courante'] - data['bc_charges_total']
+        )
+        assert computed_margin == data['margin']
+        # Non-triviaux : preuve que ce test couvre bien un cas où AUCUN
+        # poste ne vaut zéro par hasard.
+        assert data['construction_courante'] == Decimal('1002500.00')
+        assert data['bc_charges_total'] == Decimal('42000.00')
 
 
 @pytest.mark.django_db
@@ -2332,6 +2394,14 @@ class TestLotLedgerMarginIncludesBcCharges:
             - Decimal('1000000.00') - Decimal('50000.00') - Decimal('20000.00')
         )
         assert margin_response.data['margin'] == expected_margin
+        # Ticket B-038 — `bc_charges_total` cumule les DEUX charges
+        # (fixe + globale), preuve que ce n'est pas juste la dernière
+        # créée qui est renvoyée.
+        assert margin_response.data['bc_charges_total'] == Decimal('70000.00')
+        assert margin_response.data['construction_courante'] == Decimal('1000000.00')
+        assert margin_response.data['prix_client'] == Decimal('20000000.00')
+        assert margin_response.data['foncier_alloue'] == Decimal('5000000.00')
+        assert margin_response.data['be_alloue'] == Decimal('1000000.00')
 
 
 @pytest.mark.django_db
