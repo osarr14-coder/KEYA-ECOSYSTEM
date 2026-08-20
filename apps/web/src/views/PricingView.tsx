@@ -3,9 +3,10 @@ import { type FormEvent, useState } from 'react';
 import { AlertBanner, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
-import { ApiError } from '../api/client';
+import { formatDrfFieldErrors } from '../api/errors';
 import type { PricingCanal } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
+import { CountryPackSelector } from '../components/CountryPackSelector';
 
 /**
  * Ticket F-028 — écran fonctionnel réel d'administration des tarifs,
@@ -15,16 +16,12 @@ import { useApiResource } from '../api/useApiResource';
  * dans `backend/apps/pricing/{views,serializers,services}.py` avant
  * d'écrire ce fichier.
  *
- * **Aucun sélecteur de pays** : contrairement à `DevisView.tsx` (ticket
- * B-028, Lot/Organisation), aucun endpoint ne liste les `CountryPack` —
- * `apps/organizations/urls.py` n'existe toujours pas, aucun serializer
- * existant n'expose `CountryPack`. Décision actée avec l'utilisateur :
- * documenter ce trou comme prérequis pour un futur ticket backend (même
- * modèle que B-028/B-011, recherche filtrée, jamais un dump complet — un
- * seul `CountryPack` existe aujourd'hui, mais la doctrine interdit de le
- * coder en dur, CLAUDE.md, section « Doctrine produit »), et fonctionner
- * en attendant avec une saisie manuelle d'UUID — même schéma temporaire que
- * `LotSelector` au tout premier passage du ticket F-027.
+ * **Aucun sélecteur de pays** (`CountryPackSelector`, `apps/web/src/
+ * components/`) : aucun endpoint ne liste les `CountryPack` — décision
+ * actée avec l'utilisateur, documenté comme prérequis pour un futur ticket
+ * backend, saisie manuelle d'UUID en attendant. Extrait vers un composant
+ * partagé au ticket F-030, une fois `LegalPaymentTiersView.tsx` devenu un
+ * second consommateur du même besoin.
  *
  * `PricingCanal` (`canal_1_marge`/`canal_2_commission`) EST codé en dur ici
  * (`CANALS` ci-dessous) — à la différence de `CountryPack`, c'est un
@@ -39,62 +36,6 @@ const CANALS: { id: PricingCanal; label: string }[] = [
 
 function canalLabel(canal: PricingCanal): string {
   return CANALS.find((entry) => entry.id === canal)?.label ?? canal;
-}
-
-/**
- * `POST /api/pricing/configs/` renvoie ses erreurs au format de validation
- * DRF standard (`{champ: ["message"]}`), PAS `{detail: "..."}` comme les
- * 409 de `apps/procurement` (ticket 027) — ce formulaire est le premier
- * consommateur de `ApiError.body` (voir `client.ts`). Les messages sont
- * affichés EXACTEMENT tels que renvoyés par le backend, jamais reformulés.
- */
-function formatPricingApiError(caught: unknown): string {
-  if (!(caught instanceof ApiError)) return 'Échec de la création du taux.';
-  if (caught.detail) return caught.detail;
-  if (caught.body && typeof caught.body === 'object') {
-    const messages = Object.values(caught.body as Record<string, unknown>)
-      .flat()
-      .filter((value): value is string => typeof value === 'string');
-    if (messages.length > 0) return messages.join(' ');
-  }
-  return 'Échec de la création du taux.';
-}
-
-function CountryPackSelector({ onLoad }: { onLoad: (countryPackId: string) => void }) {
-  const [countryPackId, setCountryPackId] = useState('');
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    onLoad(countryPackId.trim());
-  }
-
-  return (
-    <section aria-label="Sélectionner un pays" style={{ marginBottom: '16px' }}>
-      <AlertBanner title="Aucun sélecteur de pays disponible">
-        Aucun endpoint ne permet aujourd&apos;hui de rechercher un Country Pack — dépendance
-        transmise à la session backend (même modèle que la recherche Lot/Organisation, ticket
-        B-028). Saisissez l&apos;identifiant UUID directement.
-      </AlertBanner>
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', marginTop: '12px' }}
-      >
-        <label>
-          Pays (Country Pack UUID)
-          <input
-            type="text"
-            aria-label="Pays (Country Pack UUID)"
-            value={countryPackId}
-            onChange={(event) => setCountryPackId(event.target.value)}
-            style={{ display: 'block', marginTop: '4px', width: '360px' }}
-          />
-        </label>
-        <button type="submit" disabled={!countryPackId.trim()}>
-          Charger les tarifs de ce pays
-        </button>
-      </form>
-    </section>
-  );
 }
 
 function CurrentRatesPanel({ countryPackId, reloadKey }: { countryPackId: string; reloadKey: number }) {
@@ -207,7 +148,7 @@ function CreatePricingConfigForm({ countryPackId, onCreated }: { countryPackId: 
       setRate('');
       onCreated();
     } catch (caught) {
-      setError(formatPricingApiError(caught));
+      setError(formatDrfFieldErrors(caught, 'Échec de la création du taux.'));
     } finally {
       setSubmitting(false);
     }
@@ -274,7 +215,7 @@ export function PricingView() {
           </p>
         </div>
       ) : (
-        <CountryPackSelector onLoad={setCountryPackId} />
+        <CountryPackSelector onLoad={setCountryPackId} submitLabel="Charger les tarifs de ce pays" />
       )}
 
       {countryPackId && (

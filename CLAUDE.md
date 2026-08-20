@@ -2159,6 +2159,57 @@ portent bien les UUID RÉELS exacts renvoyés par le backend. 4 tests
 dédiés, 274 tests frontend (5 packages : 44+37+54+40+99), zéro régression,
 `tsc --noEmit` propre.
 
+## Administration des paliers légaux de paiement (ticket F-030, `apps/web`)
+
+Voir `F-030-paliers-legaux-paiement.md` pour le détail complet. Écran réel,
+`apps/web/src/views/LegalPaymentTiersView.tsx`, consommant
+`LegalPaymentTierTemplate` (ticket B-027, `apps/pricing`) — jamais consommé
+côté frontend jusqu'ici. Même structure que `PricingView` (ticket F-028) :
+sélecteur de pays temporaire en UUID manuel (même trou, même dépendance
+backend transmise), consultation de l'actif courant, historique, création
+avec gestion des erreurs DRF.
+
+**Piège de conception évité** : `activated_by`/`activated_at` sur un
+`LegalPaymentTierTemplate` signifient « a été activé un jour », PAS « est
+l'actif COURANT » (un ancien actif supplanté garde ces champs, jamais
+effacés — décision D du ticket B-027). `LegalPaymentTierWorkspace` dérive
+`activeTemplateId` UNE SEULE FOIS via `GET .../active/` et le transmet en
+prop à `HistoryPanel` — jamais un tri de l'historique sur `activated_at`,
+qui aurait affiché « Actif » sur le mauvais template. Testé explicitement
+avec un template supplanté ET l'actif courant côte à côte.
+
+**Bug réel trouvé en vérifiant en navigateur, corrigé dans `request()`
+lui-même** : `GET .../active/` sans template actif renvoie `Response(None)`
+côté backend — DRF's `JSONRenderer` rend un corps VRAIMENT VIDE dans ce
+cas, PAS le littéral JSON `null` (comportement DRF non intuitif, invisible
+en tests puisque le mock existant ne reproduisait jamais un corps vide).
+`response.json()` levait une `SyntaxError`, faisant passer un 200 légitime
+pour une erreur réseau — trouvé UNIQUEMENT par la vérification en
+navigateur réel contre le vrai backend (l'écran affichait une erreur au
+lieu de « Aucun template actif pour ce pays. »). Corrigé de façon générale
+dans `apps/web/src/api/client.ts::request()` : le corps est lu en texte
+d'abord, `text === '' ? null : JSON.parse(text)` — reste équivalent à
+`response.json()` pour tous les appelants existants (aucun autre endpoint
+de ce projet ne renvoie un corps 200 vide à ce jour). Régression testée
+(`client.test.ts`) avec un mock qui reproduit fidèlement le corps vide.
+
+**`CountryPackSelector`/`formatDrfFieldErrors` extraits vers du code
+partagé** (`apps/web/src/components/CountryPackSelector.tsx`/`apps/web/
+src/api/errors.ts`) — `LegalPaymentTiersView` en est le second
+consommateur, même discipline anti-duplication qu'ailleurs dans ce projet
+(ex. `LEVEL_PROGRESS_FRACTION`, ticket 009 backend). `PricingView.tsx`
+migré vers ces utilitaires partagés, comportement observable inchangé
+(ses 13 tests existants restent verts sans modification).
+
+**Vérifié dans un vrai navigateur, avec un vrai backend** (compte
+`admin_keyimmo` réel, `CountryPack` Sénégal réel) : chargement d'un pays
+sans aucun template (confirme le correctif du bug `Response(None)`),
+création réelle d'un template à 2 paliers (40 % puis 100 %), activation
+réelle reflétée immédiatement dans les deux panneaux, tentative délibérée
+d'un template invalide (dernier palier ≠ 100) refusée avec le message
+backend EXACT, aucun template fantôme créé. 291 tests frontend (5
+packages : 44+37+54+40+116), zéro régression, `tsc --noEmit` propre.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

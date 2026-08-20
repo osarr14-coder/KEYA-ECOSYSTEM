@@ -160,3 +160,51 @@ export interface CurrentPricingRates {
   canal_1_marge: PricingConfig | null;
   canal_2_commission: PricingConfig | null;
 }
+
+/** Miroir de `apps.pricing.serializers.LegalPaymentTierStepSerializer`
+ * (ticket B-027) — l'ordre d'affichage vient TOUJOURS du backend
+ * (`LegalPaymentTierStep.Meta.ordering = ['order']`), jamais retrié ici. */
+export interface LegalPaymentTierStep {
+  id: string;
+  order: number;
+  code: string;
+  label: string;
+  cumulative_cap_percent: string;
+  allows_progressive_payments: boolean;
+}
+
+/** Un palier en ENTRÉE de `POST /api/pricing/legal-payment-tier-templates/`
+ * — mêmes champs que `LegalPaymentTierStep`, sans `id` (pas encore créé).
+ * Peut être envoyé dans n'importe quel ordre (le backend trie lui-même par
+ * `order` pour valider les plafonds cumulés, voir
+ * `apps.pricing.services.create_legal_payment_tier_template`). */
+export interface LegalPaymentTierStepInput {
+  order: number;
+  code: string;
+  label: string;
+  cumulative_cap_percent: string;
+  allows_progressive_payments: boolean;
+}
+
+/** Miroir de `apps.pricing.serializers.LegalPaymentTierTemplateSerializer`
+ * (ticket B-027) — seule audience possible : `admin_keyimmo`.
+ *
+ * **`activated_by`/`activated_at` signifient « a été activé un jour »,
+ * PAS « est l'actif COURANT »** — posés UNE FOIS par
+ * `activate_legal_payment_tier_template` (décision D) et JAMAIS effacés
+ * quand un template plus récent prend sa place (l'ancien actif n'est
+ * jamais modifié). Pour savoir quel template est actuellement actif pour
+ * un pays, il faut `GET /api/pricing/legal-payment-tier-templates/active/`
+ * (le pointeur `ActiveLegalPaymentTierTemplate`), jamais trier l'historique
+ * sur `activated_at` — un brouillon jamais activé porte `null` pour les
+ * deux champs. */
+export interface LegalPaymentTierTemplate {
+  id: string;
+  country_pack: string;
+  version: number;
+  created_by: string;
+  created_at: string;
+  activated_by: string | null;
+  activated_at: string | null;
+  steps: LegalPaymentTierStep[];
+}

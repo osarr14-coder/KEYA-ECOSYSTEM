@@ -28,6 +28,11 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     getCurrentPricingRates: vi.fn(notMocked),
     getPricingHistory: vi.fn(notMocked),
     createPricingConfig: vi.fn(notMocked),
+    // Ticket F-030 (apps/pricing, LegalPaymentTierTemplate) :
+    createLegalPaymentTierTemplate: vi.fn(notMocked),
+    activateLegalPaymentTierTemplate: vi.fn(notMocked),
+    getActiveLegalPaymentTierTemplate: vi.fn(notMocked),
+    getLegalPaymentTierTemplateHistory: vi.fn(notMocked),
     ...overrides,
   };
 }

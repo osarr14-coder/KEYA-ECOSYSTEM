@@ -124,3 +124,16 @@ dans ce projet, `apps/procurement`), ticket 027/B-028 (`ApiError.detail`,
 et pour la future recherche `CountryPack`), **futur ticket backend
 (prérequis transmis, numéro à attribuer par la session backend) — recherche
 `CountryPack`**.
+
+## Addendum (ticket F-030) — `CountryPackSelector`/`formatPricingApiError` extraits vers du code partagé
+`LegalPaymentTiersView.tsx` (ticket F-030) a eu besoin du même sélecteur
+temporaire de pays et du même format d'erreur DRF — plutôt que dupliquer,
+les deux ont été extraits hors de `PricingView.tsx` : `CountryPackSelector`
+vers `apps/web/src/components/CountryPackSelector.tsx` (gagne un prop
+`submitLabel`, seule différence entre les deux usages) et
+`formatPricingApiError` vers `apps/web/src/api/errors.ts::formatDrfFieldErrors`
+(renommée, généralisée — gagne un paramètre `fallback` explicite plutôt
+qu'un message codé en dur). `PricingView.tsx` importe désormais ces deux
+utilitaires au lieu de ses copies locales — comportement observable
+inchangé, vérifié par ses 13 tests existants, verts sans modification après
+ce refactor.

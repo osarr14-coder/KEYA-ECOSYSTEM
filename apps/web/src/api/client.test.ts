@@ -3,7 +3,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, createApiClient } from './client';
 
 function jsonResponse(status: number, body: unknown): Response {
-  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  } as Response;
+}
+
+/** Ticket F-030 — reproduit `Response(None)` de DRF (ex.
+ * `LegalPaymentTierTemplateActiveView`, quand rien n'est actif) : un corps
+ * VRAIMENT VIDE, pas le littéral JSON `null`. */
+function emptyBodyResponse(status: number): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => { throw new SyntaxError('Unexpected end of JSON input'); },
+    text: async () => '',
+  } as Response;
 }
 
 afterEach(() => {
@@ -147,4 +164,20 @@ describe('createApiClient — back-office (ticket 011/021)', () => {
 
     await expect(client.searchUsers('alice')).rejects.toMatchObject({ status: 403 } satisfies Partial<ApiError>);
   });
+});
+
+describe('createApiClient — corps de réponse 200 VRAIMENT vide (ticket F-030)', () => {
+  it(
+    'getActiveLegalPaymentTierTemplate résout à `null` sur un corps vide (DRF `Response(None)`), '
+    + 'jamais une erreur de parsing JSON — bug réel trouvé en vérifiant en navigateur',
+    async () => {
+      const fetchMock = vi.fn(async () => emptyBodyResponse(200));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'admin-token' });
+      const result = await client.getActiveLegalPaymentTierTemplate('country-pack-1');
+
+      expect(result).toBeNull();
+    },
+  );
 });

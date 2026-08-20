@@ -1,7 +1,8 @@
 import type {
   BackofficeUserDetail, BackofficeUserSummary, CurrentPricingRates, Devis,
-  DevisAjustement, DevisAjustementCreateResult, LoginResult, LotSearchResult,
-  Me, OrganizationSearchResult, PricingCanal, PricingConfig,
+  DevisAjustement, DevisAjustementCreateResult, LegalPaymentTierStepInput,
+  LegalPaymentTierTemplate, LoginResult, LotSearchResult, Me,
+  OrganizationSearchResult, PricingCanal, PricingConfig,
 } from './types';
 
 export class ApiError extends Error {
@@ -99,7 +100,18 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
       const errorBody = (await response.json().catch(() => undefined)) as { detail?: string } | undefined;
       throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`, errorBody?.detail, errorBody);
     }
-    return (await response.json()) as T;
+    // Ticket F-030 : bug réel trouvé en vérifiant `getActiveLegalPaymentTierTemplate`
+    // en navigateur réel — DRF's `Response(None)` (ex.
+    // `LegalPaymentTierTemplateActiveView`, quand aucun template n'est actif)
+    // rend un corps VRAIMENT VIDE, pas le littéral JSON `null` : `response.json()`
+    // lève alors une `SyntaxError` (« Unexpected end of JSON input »), jamais
+    // rattrapée avant ce correctif, faisant passer une réponse 200 légitime
+    // pour une erreur réseau côté `useApiResource`. Lire le corps en texte
+    // d'abord permet de distinguer les deux cas sans changer le comportement
+    // des appelants existants (aucun autre endpoint de ce projet ne renvoie de
+    // corps 200 vide à ce jour).
+    const text = await response.text();
+    return (text === '' ? null : JSON.parse(text)) as T;
   }
 
   /**
@@ -247,6 +259,55 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
      */
     createPricingConfig: (payload: { country_pack: string; canal: PricingCanal; rate: string }) =>
       request<PricingConfig>('/api/pricing/configs/', { method: 'POST', json: payload }),
+
+    /**
+     * `POST /api/pricing/legal-payment-tier-templates/` (ticket B-027) —
+     * crée un template BROUILLON avec ses paliers en une seule requête.
+     * `steps` peut être envoyé dans n'importe quel ordre (le backend trie
+     * lui-même par `order`). Erreurs en 400, forme de validation DRF
+     * standard (`{champ: ["message"]}`) — ex. `steps` non strictement
+     * croissants ou dernier palier ≠ 100 — voir `ApiError.body`.
+     */
+    createLegalPaymentTierTemplate: (
+      payload: { country_pack: string; version: number; steps: LegalPaymentTierStepInput[] },
+    ) => request<LegalPaymentTierTemplate>(
+      '/api/pricing/legal-payment-tier-templates/', { method: 'POST', json: payload },
+    ),
+
+    /**
+     * `POST /api/pricing/legal-payment-tier-templates/{id}/activate/`
+     * (ticket B-027) — aucun corps de requête (`template_id` suffit, dans
+     * l'URL). Pose `activated_by`/`activated_at` sur CE template (jamais
+     * réécrits ensuite) puis bascule le pointeur d'actif de son pays —
+     * l'ancien actif, s'il existe, n'est jamais modifié.
+     */
+    activateLegalPaymentTierTemplate: (templateId: string) =>
+      request<LegalPaymentTierTemplate>(
+        `/api/pricing/legal-payment-tier-templates/${templateId}/activate/`, { method: 'POST' },
+      ),
+
+    /**
+     * `GET /api/pricing/legal-payment-tier-templates/active/?country_pack_id=...`
+     * (ticket B-027) — le template ACTUELLEMENT actif pour ce pays (via le
+     * pointeur `ActiveLegalPaymentTierTemplate`), `null` si aucun n'a
+     * jamais été activé. Jamais dérivé d'un tri sur `activated_at` côté
+     * frontend — ce serait faux (voir `LegalPaymentTierTemplate` dans
+     * `types.ts`).
+     */
+    getActiveLegalPaymentTierTemplate: (countryPackId: string) =>
+      request<LegalPaymentTierTemplate | null>(
+        `/api/pricing/legal-payment-tier-templates/active/${toQueryString({ country_pack_id: countryPackId })}`,
+      ),
+
+    /**
+     * `GET /api/pricing/legal-payment-tier-templates/history/?country_pack_id=...`
+     * (ticket B-027) — TOUS les templates d'un pays (brouillons et
+     * activés), triés par `version`.
+     */
+    getLegalPaymentTierTemplateHistory: (countryPackId: string) =>
+      request<LegalPaymentTierTemplate[]>(
+        `/api/pricing/legal-payment-tier-templates/history/${toQueryString({ country_pack_id: countryPackId })}`,
+      ),
   };
 }
 
