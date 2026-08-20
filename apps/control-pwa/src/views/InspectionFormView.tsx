@@ -63,6 +63,20 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   const [mission, setMission] = useState<Mission | null>(null);
   const [draft, setDraft] = useState<InspectionDraft | null>(null);
   const [loading, setLoading] = useState(true);
+  // Ticket F-033 (audit des états système, vague 1) — même défaut que
+  // MissionsListView (voir son docstring) : l'effet ci-dessous n'attrapait
+  // aucune erreur, laissant `loading` bloqué à `true` pour toujours en cas
+  // d'échec IndexedDB, sans le moindre message.
+  const [loadError, setLoadError] = useState(false);
+  // Ticket F-033 (vague 3) — même principe que `useApiResource.refetch()` :
+  // un compteur inclus dans les deps de l'effet, pour que le bouton
+  // "Réessayer" relance le chargement sans dupliquer sa logique.
+  const [reloadToken, setReloadToken] = useState(0);
+  // Ticket F-033 (vague 4) — voir `persist()` ci-dessous : portillon
+  // EXPLICITE (pas une promesse rejetée) qui empêche les tentatives
+  // d'écriture individuelles pendant une panne, jusqu'à un retry réussi.
+  const [persistError, setPersistError] = useState(false);
+  const [retryingPersist, setRetryingPersist] = useState(false);
 
   // Ticket 015 — cause du bug confirmée en le reproduisant AVANT ce
   // correctif (`InspectionFormView.test.tsx`) : DOUBLE, les deux se
@@ -91,14 +105,25 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(false);
     (async () => {
       // Ticket 012 : la mission vient désormais du cache local
       // (`getCachedMission`), jamais de `MOCK_MISSIONS` (retiré) — chargée
       // en parallèle du brouillon, pas de dépendance entre les deux.
-      const [existing, cachedMission] = await Promise.all([
-        getDraftForMission(missionId),
-        getCachedMission(missionId),
-      ]);
+      let existing: InspectionDraft | undefined;
+      let cachedMission: Mission | undefined;
+      try {
+        [existing, cachedMission] = await Promise.all([
+          getDraftForMission(missionId),
+          getCachedMission(missionId),
+        ]);
+      } catch {
+        if (!cancelled) {
+          setLoading(false);
+          setLoadError(true);
+        }
+        return;
+      }
       const initial = existing ?? createEmptyDraft(
         missionId, CHECKLIST_TEMPLATE, cachedMission?.reserveLatestEventId ?? null,
       );
@@ -113,8 +138,27 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     return () => {
       cancelled = true;
     };
-  }, [missionId]);
+  }, [missionId, reloadToken]);
 
+  /**
+   * Ticket F-033 (vague 4) — AVANT ce ticket, un échec d'écriture (quota
+   * dépassé, IndexedDB bloquée par une mise à jour de version, navigation
+   * privée...) laissait `persistChainRef.current` sur une promesse
+   * REJETÉE : chaque `persist()` suivant, `queue.then(onFulfilled)` sur
+   * une promesse déjà rejetée ne s'exécutant JAMAIS, devenait un no-op
+   * d'écriture silencieux — la mise à jour optimiste continuait de
+   * s'afficher normalement à l'écran, mais plus rien n'était plus jamais
+   * réellement enregistré, sans le moindre signal, jusqu'à la fermeture de
+   * l'app (perte de toute saisie non confirmée).
+   *
+   * Corrigé en INTERNALISANT l'échec dans la chaîne elle-même (`.catch`
+   * ci-dessous) : `persistChainRef.current` reste TOUJOURS une promesse
+   * SAINE, `persistError` (état React, pas la promesse) est l'unique
+   * portillon qui empêche désormais les tentatives d'écriture
+   * individuelles suivantes — voir `retryPersist()`, qui réutilise cette
+   * MÊME `persistChainRef`/`draftRef`, jamais un second chemin d'écriture
+   * parallèle.
+   */
   function persist(mutate: (current: InspectionDraft) => InspectionDraft): Promise<InspectionDraft> | undefined {
     const current = draftRef.current;
     if (!current) return undefined;
@@ -126,6 +170,14 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     const next = mutate(current);
     draftRef.current = next;
     setDraft(next);
+
+    if (persistError) {
+      // Une panne est déjà connue : ne tente plus d'écriture individuelle
+      // (elle échouerait de toute façon) — `retryPersist()` capturera
+      // CETTE saisie, et toutes les autres accumulées depuis, via
+      // `draftRef.current` au prochain clic sur "Réessayer".
+      return Promise.resolve(next);
+    }
 
     const queue = persistChainRef.current ?? Promise.resolve(next);
     const nextInChain = queue.then(async () => {
@@ -161,9 +213,69 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
         setDraft(saved);
       }
       return saved;
+    }).catch(() => {
+      setPersistError(true);
+      // Résout (ne rejette PAS) : `next`, la valeur optimiste déjà
+      // affichée, reste la référence — `persistChainRef.current` reste un
+      // maillon SAIN pour ne jamais bloquer un futur `retryPersist()`
+      // réussi. C'est `persistError` (portillon ci-dessus), pas l'état de
+      // la promesse, qui empêche désormais les tentatives suivantes.
+      return next;
     });
     persistChainRef.current = nextInChain;
     return nextInChain;
+  }
+
+  /**
+   * Seule façon de sortir de `persistError` — action EXPLICITE de
+   * l'inspecteur, jamais une nouvelle tentative automatique en arrière-plan
+   * (même discipline que `resolveConflictByDiscarding` : un problème
+   * visible attend une décision consciente, pas un retry silencieux qui
+   * masquerait le problème sans le résoudre).
+   *
+   * Sauvegarde l'état COMPLET actuellement en mémoire (`draftRef.current`),
+   * JAMAIS une mutation isolée : un retry naïf qui rejouerait seulement la
+   * dernière modification sur la base IndexedDB (périmée depuis la panne)
+   * perdrait silencieusement toutes les saisies faites ENTRE-TEMPS — c'est
+   * précisément ce qui distingue ce correctif d'un simple `catch`.
+   */
+  async function retryPersist() {
+    const current = draftRef.current;
+    if (!current) return;
+
+    setRetryingPersist(true);
+    const queue = persistChainRef.current ?? Promise.resolve(current);
+    const nextInChain = queue.then(async () => {
+      // Même relecture fraîche que `persist()` ci-dessus — préserve les
+      // champs pilotés par le moteur de synchro, mais applique l'état
+      // COMPLET de `current`, jamais une mutation isolée.
+      const freshBase = (await getDraft(current.id)) ?? current;
+      return saveDraft({
+        ...freshBase,
+        checklist: current.checklist,
+        comment: current.comment,
+        decision: current.decision,
+        photos: current.photos,
+      });
+    }).then((saved) => {
+      if (draftRef.current === current) {
+        draftRef.current = saved;
+        setDraft(saved);
+        setPersistError(false);
+      }
+      // Sinon : une saisie plus récente est arrivée PENDANT ce retry — le
+      // bandeau reste affiché, un second clic la capturera (IndexedDB
+      // n'étant plus périmée à ce stade, ce second retry partira d'une
+      // base déjà à jour).
+      return saved;
+    }).catch(() => {
+      // Reste en échec — le bandeau reste affiché, réessayable à volonté.
+      return current;
+    }).finally(() => {
+      setRetryingPersist(false);
+    });
+    persistChainRef.current = nextInChain;
+    await nextInChain;
   }
 
   function toggleChecklistItem(itemId: string) {
@@ -228,7 +340,18 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     persistChainRef.current = Promise.resolve(fresh);
   }
 
-  if (loading || !draft) {
+  if (loading) {
+    return <p>Chargement…</p>;
+  }
+  if (loadError) {
+    return (
+      <AlertBanner
+        title="Impossible de charger cette mission."
+        onRetry={() => setReloadToken((token) => token + 1)}
+      />
+    );
+  }
+  if (!draft) {
     return <p>Chargement…</p>;
   }
 
@@ -260,6 +383,17 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       </div>
 
       <SyncStatusIndicator status={draft.syncStatus} />
+
+      {persistError && (
+        <AlertBanner
+          title="Échec de l'enregistrement local."
+          onRetry={() => { void retryPersist(); }}
+          retryLabel={retryingPersist ? 'Nouvelle tentative…' : "Réessayer l'enregistrement"}
+        >
+          Votre dernière saisie n&apos;a pas pu être enregistrée sur cet appareil. Elle reste
+          affichée à l&apos;écran, mais serait perdue si vous fermiez l&apos;application maintenant.
+        </AlertBanner>
+      )}
 
       {draft.syncStatus === 'conflict' && (
         <AlertBanner title="Conflit à résoudre">

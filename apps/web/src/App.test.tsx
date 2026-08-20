@@ -221,6 +221,22 @@ describe(
       expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger votre profil.');
     });
 
+    it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement de /me (ticket F-033)', async () => {
+      const getMe = vi.fn()
+        .mockRejectedValueOnce(new Error('network down'))
+        .mockResolvedValueOnce({
+          id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
+          memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+        });
+      renderAuthenticated({ getMe });
+
+      await screen.findByRole('alert');
+      fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+      expect(await screen.findByTestId('app-shell')).toBeInTheDocument();
+      expect(getMe).toHaveBeenCalledTimes(2);
+    });
+
     it('recherche puis affichage du profil d\'un utilisateur cible (organisation/rôle) fonctionne de bout en bout', async () => {
       const getMe = vi.fn().mockResolvedValue({
         id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
@@ -341,5 +357,57 @@ describe('App — état de chargement pendant la soumission', () => {
     expect(await screen.findByRole('button', { name: 'Connexion…' })).toBeDisabled();
 
     resolveLogin!({ access: 'tok', refresh: 'ref' });
+  });
+});
+
+describe('App — détection hors ligne (ticket F-033, vague 2)', () => {
+  function setNavigatorOnLine(value: boolean) {
+    Object.defineProperty(window.navigator, 'onLine', { value, writable: true, configurable: true });
+  }
+
+  afterEach(() => {
+    setNavigatorOnLine(true);
+  });
+
+  it('affiche un bandeau "Hors ligne" sur l\'écran de connexion (pas encore authentifié)', async () => {
+    setNavigatorOnLine(false);
+    renderApp();
+
+    expect(await screen.findByText('Hors ligne')).toBeInTheDocument();
+    expect(screen.getByLabelText('Connexion')).toBeInTheDocument();
+  });
+
+  it('affiche un bandeau "Hors ligne" une fois authentifié aussi', async () => {
+    setNavigatorOnLine(false);
+    localStorage.setItem('keya_access_token', 'stored-admin-token');
+    const api = createMockApiClient({
+      getMe: vi.fn().mockResolvedValue({
+        id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
+        memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+      }),
+    });
+    render(withApiClient(api, <App />));
+
+    expect(await screen.findByText('Hors ligne')).toBeInTheDocument();
+    expect(await screen.findByTestId('app-shell')).toBeInTheDocument();
+  });
+
+  it('le bandeau disparaît au retour en ligne (événement "online")', async () => {
+    setNavigatorOnLine(false);
+    renderApp();
+    await screen.findByText('Hors ligne');
+
+    act(() => {
+      setNavigatorOnLine(true);
+      window.dispatchEvent(new Event('online'));
+    });
+
+    expect(screen.queryByText('Hors ligne')).not.toBeInTheDocument();
+  });
+
+  it('aucun bandeau n\'apparaît quand la connexion est active', () => {
+    renderApp();
+
+    expect(screen.queryByText('Hors ligne')).not.toBeInTheDocument();
   });
 });

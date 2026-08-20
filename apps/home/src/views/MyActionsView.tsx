@@ -18,7 +18,7 @@ export function MyActionsView({ activeOrganizationId }: MyActionsViewProps) {
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger vos actions." />;
+    return <AlertBanner title="Impossible de charger vos actions." onRetry={state.refetch} />;
   }
   if (state.data.length === 0) {
     return <p>Aucune action en attente pour le moment.</p>;

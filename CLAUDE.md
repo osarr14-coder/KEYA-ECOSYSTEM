@@ -2484,6 +2484,209 @@ l'écrivant, contrairement à la plupart des tickets précédents de cette séri
 2 tests dédiés, suite `pricing` 38 tests, suite complète du projet 285 tests,
 tous verts.
 
+## Audit des états système — vague 1 (ticket F-033)
+
+Voir `F-033-audit-etats-systeme.md` pour le détail complet. Premier audit
+exhaustif de la doctrine 17.5 (V3.0) sur tous les écrans admin d'`apps/web`
+et les 3 apps (HOME/BUILD/CONTROL PWA) — jamais fait de façon systématique
+avant ce ticket. Étape 1 (tableau écran × état, aucune correction) livrée
+et discutée avec l'utilisateur avant tout code, par ticket : constats
+transversaux majeurs — `offline` n'a de détection réelle que dans CONTROL
+PWA ; `permission denied` n'a un vrai état dédié qu'au gate `admin_keyimmo`
+d'`apps/web` (401/403 en cours de session tombe partout ailleurs dans
+l'erreur générique) ; aucun bouton « Réessayer » nulle part ; `sync failed`
+par photo tracké en données mais jamais affiché.
+
+**Vague 1 — deux bugs de robustesse réels** (pas des manques de style),
+trouvés en lisant le code de `MissionsListView`/`InspectionFormView`.
+Avant de corriger, l'utilisateur a demandé de vérifier l'étendue réelle du
+premier défaut (échec IndexedDB jamais catché) : lecture intégrale de
+`db/repository.ts` (chaque fonction utilise `try/finally`, JAMAIS `catch`
+— comportement correct pour une couche de données, elle doit propager) et
+`grep` exhaustif de tous ses appelants. Le même défaut EXACT existait
+aussi dans l'effet de montage d'`InspectionFormView` (même forme, même
+correctif trivial — corrigé) ; deux autres occurrences trouvées mais
+volontairement laissées hors vague 1 : `persist()` (nécessiterait une
+nouvelle UI « échec d'enregistrement local », pas juste un `catch` — la
+mise à jour optimiste a déjà eu lieu de façon synchrone, un échec
+silencieux ferait croire à tort que la saisie est enregistrée) et
+`resolveConflictByDiscarding` (sévérité faible, pas d'état trompeur).
+`syncEngine.ts::runSyncCycle` vérifié et jugé non défectueux : auto-
+cicatrisant (retenté toutes les 15s/à la reconnexion), aucun état UI n'en
+dépend.
+
+**Correctifs** : `MissionsListView` gagne un `LoadState`
+(`loading`/`error`/`ready`) — `getCachedMissions()` catché explicitement
+(`AlertBanner`, jamais un « Aucune mission » trompeur) ; le `Promise.all`
+sur les statuts de synchro par mission devient `Promise.allSettled` — une
+mission dont la lecture échoue n'affiche simplement aucun statut, les
+autres gardent le leur. `InspectionFormView` gagne un `loadError` à côté
+de `loading` — même principe, l'effet de montage capture désormais
+l'échec au lieu de laisser `loading` bloqué à `true` indéfiniment.
+
+**Tests écrits AVANT correction** (même discipline que le ticket 015) :
+lancés et confirmés ROUGES contre le code non corrigé — deux « Unhandled
+Rejection » observées en conditions réelles, preuve directe des deux bugs
+avant tout changement de code de production. 5 nouveaux tests
+`apps/control-pwa` (59, était 54). **338 tests frontend** (5 packages :
+44+62+59+40+133), zéro régression, `tsc --noEmit` propre.
+
+**Pas de vérification en navigateur réel pour cette vague, décision
+assumée** : correctifs purement additifs (aucun chemin nominal modifié),
+la seule façon de provoquer les nouvelles branches d'erreur est un VRAI
+échec IndexedDB — plus fiable à reproduire de façon déterministe via
+`vi.spyOn` que par une manipulation manuelle de navigateur.
+
+**Vagues 2/3/4 non commencées** — hors scope de ce ticket pour l'instant,
+listées explicitement dans `F-033-audit-etats-systeme.md` : `persist()`/
+`resolveConflictByDiscarding`, détection offline hors CONTROL PWA, états
+`permission denied` dédiés, bouton « Réessayer » générique, `sync failed`
+par photo jamais affiché, incohérence `<p role="alert">` vs `AlertBanner`
+(HOME/BUILD), stale data.
+
+## Audit des états système — vagues 2+3 (ticket F-033)
+
+Voir `F-033-audit-etats-systeme.md` pour le détail complet. Suite directe
+de la vague 1 : détection réseau hors CONTROL PWA (vague 2) et bouton
+« Réessayer » sur les erreurs génériques (vague 3), traitées ensemble.
+
+**État des lieux vérifié avant tout code (demande explicite)** :
+`useOnlineStatus` (offline) était un hook LOCAL à `apps/control-pwa/src/
+App.tsx`, jamais partagé. `packages/design-system/src` ne contenait AUCUN
+hook logique, seulement des composants visuels + tokens.
+
+**Décision initiale proposée puis CORRIGÉE par l'utilisateur avant
+implémentation** : j'avais d'abord proposé de dupliquer ce hook par app
+(par analogie avec `createApiClient`/`useApiResource`, déjà dupliqués
+entre apps dans ce projet). L'utilisateur a rappelé la règle constante du
+projet — « toujours réutiliser, jamais redéfinir », déjà appliquée à
+`CountryPackSelector` (ticket F-030) et `StatusBadge`/`AppShell` (ticket
+007) — et a tranché : `useOnlineStatus` est purement générique, sans rien
+de spécifique à une app, il doit avoir UNE SEULE implémentation. Promu à
+`packages/design-system/src/hooks/useOnlineStatus.ts` (premier hook du
+package, jusque-là uniquement composants/tokens) — CONTROL PWA importe
+désormais cette implémentation UNIQUE au lieu de sa copie locale, retirée.
+HOME/BUILD/`apps/web` l'importent aussi, avec `AlertBanner` (déjà
+partagé) pour le bandeau — texte volontairement DIFFÉRENT de CONTROL PWA
+(qui promet une synchronisation automatique différée, vraie SEULEMENT
+là-bas) : « Les actions nécessitant le réseau échoueront tant que la
+connexion n'est pas rétablie. », honnête sur l'absence de file
+offline-first dans ces 3 apps.
+
+**Vague 3** : `AlertBanner` gagne `onRetry?`/`retryLabel?` (optionnels,
+rétrocompatibles). `useApiResource` (dupliqué dans home/build/web) gagne
+un `refetch()` — compteur interne (`reloadToken`) inclus dans les deps de
+l'effet EN PLUS de celles de l'appelant, nouveau type exporté
+`ApiResourceState<T>`. Deux mécanismes hors `useApiResource` reçoivent le
+même traitement séparément : `BackofficeView::handleSearch` (extrait en
+`runSearch()`, appelable sans `FormEvent`) et `DevisView::
+useDebouncedSearch` (compteur dans ses propres deps, retry TOUJOURS via
+le même debounce 250ms, jamais un chemin direct qui contournerait ses
+gardes anti-course). Les 2 banners CONTROL PWA de la vague 1
+(`MissionsListView`/`InspectionFormView`, IndexedDB direct) reçoivent un
+`reloadToken` local à chaque fichier, même principe.
+
+**Incohérence corrigée au passage, pas silencieusement smuggled** :
+HOME/BUILD `App.tsx` utilisaient un `<p role="alert">` brut au lieu
+d'`AlertBanner` pour l'erreur `/me` (déjà notée à l'audit étape 1) —
+corrigé en même temps que l'ajout du retry sur ces mêmes lignes, plutôt
+que d'ajouter un bouton à un `<p>` et laisser l'incohérence stylistique.
+
+**20 sites câblés avec retry** (sur ~37 `AlertBanner` du projet,
+énumération exhaustive par `grep` dans `F-033-audit-etats-systeme.md`) —
+les ~17 restants (erreurs de soumission déjà retentables via leur propre
+bouton, bandeaux informationnels, conflit CONTROL PWA, « Accès refusé »,
+export CSV volumineux) laissés INTACTS, un retry y serait redondant ou
+dénué de sens.
+
+**376 tests frontend** (5 packages : 51+68+61+48+148), zéro régression,
+`tsc --noEmit` propre. **Vérifié dans un vrai navigateur, avec un vrai
+backend** (compte `admin_keyimmo` réel) : bandeau « Hors ligne » affiché
+sur l'écran de connexion ET le back-office authentifié (`navigator.
+onLine` simulé + événement `offline`) ; recherche back-office avec échec
+réseau simulé (`fetch` intercepté) → bouton « Réessayer » → résultat réel
+affiché, sans rechargement de page.
+
+**Vague 4 non commencée** (permission denied dédiée, `sync failed` par
+photo CONTROL PWA, `persist()`/`resolveConflictByDiscarding`, stale data)
+— listée explicitement dans `F-033-audit-etats-systeme.md`.
+
+## Audit des états système — vague 4 partielle : `persist()` silencieux (ticket F-033)
+
+Voir `F-033-audit-etats-systeme.md` pour le détail complet. Premier
+élément de la vague 4 : `InspectionFormView::persist()` (CONTROL PWA)
+écrivait de façon silencieusement défaillante après un échec IndexedDB.
+
+**État des lieux demandé explicitement avant toute proposition** : `persist()`
+découple la mise à jour optimiste (synchrone, toujours affichée) de
+l'écriture IndexedDB (mise en file via `persistChainRef`). Avant ce
+correctif, UNE SEULE écriture en échec laissait `persistChainRef.current`
+sur une promesse REJETÉE — chaque `persist()` suivant devenait un no-op
+d'écriture PERMANENT et SILENCIEUX (`queue.then(onFulfilled)` sur une
+promesse rejetée ne s'exécute jamais) : la saisie continuait de s'afficher
+normalement, mais plus rien n'était plus jamais enregistré, jusqu'à la
+fermeture de l'app.
+
+**Pourquoi « juste un catch » ne suffisait pas** — montré à l'utilisateur
+avant tout code : un retry naïf qui rejoue uniquement la DERNIÈRE mutation
+sur la base IndexedDB (périmée depuis la panne) perdrait silencieusement
+toutes les saisies faites ENTRE-TEMPS. Le retry doit sauvegarder l'état
+COMPLET actuellement en mémoire (`draftRef.current`), jamais une mutation
+isolée.
+
+**Contrainte explicite de l'utilisateur, vérifiée avant de committer** :
+pas de second chemin d'écriture parallèle (risque de réintroduire la
+classe de race déjà corrigée au ticket 015). Résolu via un état React
+`persistError` comme portillon EXPLICITE dans `persist()` (plutôt que de
+s'appuyer sur l'état de la promesse) : la chaîne catche désormais sa
+propre erreur et RÉSOUT (jamais ne rejette), donc `persistChainRef.current`
+reste TOUJOURS sain — c'est `persistError`, pas la promesse, qui empêche
+les écritures individuelles suivantes tant qu'un retry explicite n'a pas
+réussi. `retryPersist()` s'enchaîne sur cette MÊME `persistChainRef`/
+`draftRef`, jamais un chemin séparé.
+
+**Nouveau bandeau** (`AlertBanner`, réutilisant `onRetry`/`retryLabel` de
+la vague 3) : « Échec de l'enregistrement local. » + « Réessayer
+l'enregistrement » — distinct du bandeau « Conflit » (deux problèmes
+indépendants, coexistence possible).
+
+**Tests écrits AVANT correction, confirmés ROUGES** (4 rejets non gérés
+observés avant tout changement de code de production) — dont la preuve
+directe contre un retry naïf : deux saisies DIFFÉRENTES pendant la panne,
+un seul clic « Réessayer » enregistre les DEUX, jamais seulement la
+dernière.
+
+**Flake IndexedDB préexistant (ticket 026), rencontré en testant, corrigé
+sans toucher au fichier lui-même — PAS causé par ce correctif** : un
+nouveau test échouait de façon intermittente en suite complète (jamais
+isolé). Investigué avant d'accepter une explication superficielle
+(« juste plus lent ») : un timeout `waitFor` porté à 3000ms n'a pas
+suffi ; porté à 8000ms, le test restait bloqué INDÉFINIMENT dans
+certains runs — preuve d'un blocage réel, pas d'une simple lenteur.
+Tracé explicitement (le bandeau d'échec ne réapparaissait jamais pendant
+l'attente, excluant une vraie seconde panne) : la CAUSE RÉELLE était le
+mécanisme de vérification du test lui-même — une nouvelle lecture
+IndexedDB (`getDraftForMission`), un 3ᵉ aller-retour de connexion dans ce
+même test, qui exposait directement la dette de fiabilité déjà
+documentée du fichier (ticket 026) plutôt que de simplement la révéler
+par hasard. Corrigé en changeant la méthode de vérification (spy sur
+`saveDraft`, signal synchrone, aucune connexion IndexedDB
+supplémentaire), pas en attendant plus longtemps — stable sur 5
+exécutions consécutives de la suite complète après ce changement.
+Fichier `InspectionFormView.test.tsx` non modifié par ailleurs — la
+dette de fiabilité résiduelle qu'il porte reste entière.
+
+**380 tests frontend** (5 packages : 51+68+65+48+148), `tsc --noEmit`
+propre. **Pas de vérification en navigateur réel, décision assumée**
+(même rationale que la vague 1) : purement additif, seule une VRAIE panne
+d'écriture IndexedDB déclenche la nouvelle branche — les tests automatisés
+(`vi.spyOn` sur `saveDraft`) la reproduisent plus fidèlement qu'une
+manipulation manuelle.
+
+**Reste de la vague 4, non commencé** : `permission denied` dédiée,
+`sync failed` par photo, `resolveConflictByDiscarding` (même défaut,
+sévérité faible), stale data.
+
 ## Coûts programme et répartition entre lots (ticket B-033, `apps/programs`)
 
 Voir `B-033-program-cost-repartition.md` pour le détail complet. Canal 1 :

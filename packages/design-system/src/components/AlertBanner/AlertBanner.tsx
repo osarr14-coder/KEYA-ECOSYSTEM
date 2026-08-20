@@ -21,6 +21,17 @@ export interface AlertBannerProps {
   title: string;
   children?: ReactNode;
   className?: string;
+  /**
+   * Ticket F-033 (vague 3) — redéclenche l'action associée (typiquement un
+   * nouveau fetch) sans recharger la page ni changer un filtre. Absent par
+   * défaut, volontairement : la plupart des usages d'`AlertBanner` ne sont
+   * PAS des erreurs de chargement génériques (erreurs de soumission de
+   * formulaire déjà retentables via leur propre bouton, bandeaux
+   * informationnels, permission refusée où réessayer ne change rien...) —
+   * ne poser cette prop que sur les cas réellement concernés.
+   */
+  onRetry?: () => void;
+  retryLabel?: string;
 }
 
 function WarningIcon() {
@@ -39,7 +50,9 @@ function WarningIcon() {
   );
 }
 
-export function AlertBanner({ title, children, className }: AlertBannerProps) {
+export function AlertBanner({
+  title, children, className, onRetry, retryLabel,
+}: AlertBannerProps) {
   return (
     <div
       role="alert"
@@ -59,6 +72,11 @@ export function AlertBanner({ title, children, className }: AlertBannerProps) {
       <div>
         <strong>{title}</strong>
         {children && <div>{children}</div>}
+        {onRetry && (
+          <div style={{ marginTop: '8px' }}>
+            <button type="button" onClick={onRetry}>{retryLabel ?? 'Réessayer'}</button>
+          </div>
+        )}
       </div>
     </div>
   );

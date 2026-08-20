@@ -1,5 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  act, fireEvent, render, screen, waitFor,
+} from '@testing-library/react';
+import {
+  afterEach, beforeEach, describe, expect, it, vi,
+} from 'vitest';
 
 import { createMockApiClient, withApiClient } from './testUtils';
 import { App } from './App';
@@ -243,3 +247,55 @@ describe(
     );
   },
 );
+
+describe('App — détection hors ligne (ticket F-033, vague 2)', () => {
+  function setNavigatorOnLine(value: boolean) {
+    Object.defineProperty(window.navigator, 'onLine', { value, writable: true, configurable: true });
+  }
+
+  afterEach(() => {
+    setNavigatorOnLine(true);
+  });
+
+  it('affiche un bandeau "Hors ligne" quand navigator.onLine est false dès le montage', async () => {
+    setNavigatorOnLine(false);
+    renderApp();
+
+    expect(await screen.findByText('Hors ligne')).toBeInTheDocument();
+  });
+
+  it('le bandeau disparaît au retour en ligne (événement "online")', async () => {
+    setNavigatorOnLine(false);
+    renderApp();
+    await screen.findByText('Hors ligne');
+
+    act(() => {
+      setNavigatorOnLine(true);
+      window.dispatchEvent(new Event('online'));
+    });
+
+    expect(screen.queryByText('Hors ligne')).not.toBeInTheDocument();
+  });
+
+  it('aucun bandeau n\'apparaît quand la connexion est active', async () => {
+    renderApp();
+    await screen.findByText('Résidence Ker');
+
+    expect(screen.queryByText('Hors ligne')).not.toBeInTheDocument();
+  });
+});
+
+describe('App — erreur de chargement du profil (ticket F-033, vague 3)', () => {
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement de /me', async () => {
+    const getMe = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(SINGLE_MEMBERSHIP_ME);
+    renderApp({ getMe });
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByText('Résidence Ker');
+    expect(getMe).toHaveBeenCalledTimes(2);
+  });
+});

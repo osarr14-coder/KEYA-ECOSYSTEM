@@ -223,3 +223,18 @@ describe('ExceptionsView — documents manquants : action réelle d\'upload', ()
     ));
   });
 });
+
+describe('ExceptionsView — erreur de chargement générique (ticket F-033, vague 3)', () => {
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement', async () => {
+    const getExceptions = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(EMPTY_EXCEPTIONS);
+    renderView({ getExceptions });
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByText('Aucune exception en ce moment — tout est à jour.');
+    expect(getExceptions).toHaveBeenCalledTimes(2);
+  });
+});

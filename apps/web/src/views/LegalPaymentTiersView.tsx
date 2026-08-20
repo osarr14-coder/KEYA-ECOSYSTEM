@@ -5,7 +5,7 @@ import { AlertBanner, semanticColors } from '@keya/design-system';
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
 import type { CountryPackSummary, LegalPaymentTierStep, LegalPaymentTierTemplate } from '../api/types';
-import { type ResourceState, useApiResource } from '../api/useApiResource';
+import { type ApiResourceState, useApiResource } from '../api/useApiResource';
 import { CountryPackSelector } from '../components/CountryPackSelector';
 
 /**
@@ -64,12 +64,14 @@ function TemplateStepsTable({ steps }: { steps: LegalPaymentTierStep[] }) {
   );
 }
 
-function ActiveTemplatePanel({ state }: { state: ResourceState<LegalPaymentTierTemplate | null> }) {
+function ActiveTemplatePanel({ state }: { state: ApiResourceState<LegalPaymentTierTemplate | null> }) {
   return (
     <section aria-label="Template actif">
       <h3>Template actif</h3>
       {state.status === 'loading' && <p>Chargement du template actif…</p>}
-      {state.status === 'error' && <AlertBanner title="Impossible de charger le template actif." />}
+      {state.status === 'error' && (
+        <AlertBanner title="Impossible de charger le template actif." onRetry={state.refetch} />
+      )}
       {state.status === 'success' && (
         state.data === null ? (
           <p data-testid="no-active-template">Aucun template actif pour ce pays.</p>
@@ -127,7 +129,9 @@ function HistoryPanel({
     <section aria-label="Historique des templates" style={{ marginTop: '16px' }}>
       <h3>Historique</h3>
       {state.status === 'loading' && <p>Chargement de l&apos;historique…</p>}
-      {state.status === 'error' && <AlertBanner title="Impossible de charger l'historique." />}
+      {state.status === 'error' && (
+        <AlertBanner title="Impossible de charger l'historique." onRetry={state.refetch} />
+      )}
       {state.status === 'success' && (
         state.data.length === 0 ? (
           <p data-testid="no-template-history">Aucun template enregistré pour l&apos;instant.</p>

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { AppShell, TabBar, type AppModule } from '@keya/design-system';
+import {
+  AlertBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
+} from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
 import { useApiResource } from './api/useApiResource';
@@ -32,6 +34,10 @@ const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';
 export function App() {
   const api = useApiClient();
   const meState = useApiResource(() => api.getMe(), []);
+  // Ticket F-033 (vague 2) — implémentation UNIQUE promue au design system
+  // (`useOnlineStatus`, extraite de CONTROL PWA, ticket 010 passe 2) : une
+  // coupure réseau ne doit plus ressembler à une erreur serveur générique.
+  const isOnline = useOnlineStatus();
 
   // Ticket 019 — App Switcher multi-rôle. `userRoles` (codé en dur avant ce
   // ticket, jamais utilisé en production puisque `main.tsx` rend `<App />`
@@ -116,11 +122,25 @@ export function App() {
       activeOrganizationId={activeOrganizationId ?? undefined}
       onOrganizationChange={handleOrganizationChange}
     >
+      {!isOnline && (
+        <div style={{ marginBottom: '12px' }}>
+          <AlertBanner title="Hors ligne">
+            Les actions nécessitant le réseau échoueront tant que la connexion n&apos;est pas rétablie.
+          </AlertBanner>
+        </div>
+      )}
+
       {meState.status === 'loading' && <p>Chargement…</p>}
-      {meState.status === 'error' && <p role="alert">Impossible de charger votre profil.</p>}
+      {meState.status === 'error' && (
+        // Ticket F-033 (vague 3) — remplace un `<p role="alert">` par
+        // `AlertBanner` (incohérence déjà notée à l'audit) au passage,
+        // exactement le même défaut (erreur de chargement générique) que
+        // les autres cibles de cette vague.
+        <AlertBanner title="Impossible de charger votre profil." onRetry={meState.refetch} />
+      )}
       {meState.status === 'success' && lotsState.status === 'loading' && <p>Chargement…</p>}
       {meState.status === 'success' && lotsState.status === 'error' && (
-        <p role="alert">Impossible de charger vos biens.</p>
+        <AlertBanner title="Impossible de charger vos biens." onRetry={lotsState.refetch} />
       )}
       {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && (
         <p>Aucun bien ne vous est encore associé.</p>

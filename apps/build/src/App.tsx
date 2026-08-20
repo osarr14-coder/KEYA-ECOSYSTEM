@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { AppShell, TabBar, type AppModule } from '@keya/design-system';
+import {
+  AlertBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
+} from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
 import { useApiResource } from './api/useApiResource';
@@ -30,6 +32,10 @@ const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';
 export function App() {
   const api = useApiClient();
   const meState = useApiResource(() => api.getMe(), []);
+  // Ticket F-033 (vague 2) — implémentation UNIQUE promue au design system
+  // (`useOnlineStatus`, extraite de CONTROL PWA, ticket 010 passe 2) : une
+  // coupure réseau ne doit plus ressembler à une erreur serveur générique.
+  const isOnline = useOnlineStatus();
 
   // Ticket 019 — App Switcher multi-rôle : voir apps/home/src/App.tsx pour
   // le détail de cette dérivation (même schéma exact). `activeOrganizationId`
@@ -86,8 +92,21 @@ export function App() {
     >
       <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as ViewId)} aria-label="Sections BUILD" />
 
+      {!isOnline && (
+        <div style={{ marginBottom: '12px' }}>
+          <AlertBanner title="Hors ligne">
+            Les actions nécessitant le réseau échoueront tant que la connexion n&apos;est pas rétablie.
+          </AlertBanner>
+        </div>
+      )}
+
       {meState.status === 'loading' && <p>Chargement…</p>}
-      {meState.status === 'error' && <p role="alert">Impossible de charger votre profil.</p>}
+      {meState.status === 'error' && (
+        // Ticket F-033 (vague 3) — remplace un `<p role="alert">` par
+        // `AlertBanner` (incohérence déjà notée à l'audit) au passage, même
+        // défaut (erreur de chargement générique) que les autres cibles.
+        <AlertBanner title="Impossible de charger votre profil." onRetry={meState.refetch} />
+      )}
       {meState.status === 'success' && (
         <>
           {/* Ticket 019 : les vues ne montent (et ne fetchent) qu'une fois

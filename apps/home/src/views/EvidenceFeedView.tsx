@@ -16,7 +16,7 @@ export function EvidenceFeedView({ lotId }: EvidenceFeedViewProps) {
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger l'avancement." />;
+    return <AlertBanner title="Impossible de charger l'avancement." onRetry={state.refetch} />;
   }
   if (state.data.length === 0) {
     return <p>Aucune preuve pour le moment.</p>;

@@ -106,6 +106,20 @@ describe('DevisView — recherche de lot en direct (ticket B-028/027)', () => {
     expect(await screen.findByText("Impossible d'effectuer la recherche.")).toBeInTheDocument();
   });
 
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui relance EXACTEMENT la même recherche (ticket F-033)', async () => {
+    const searchLots = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([LOT_RESULT]);
+    renderView({ searchLots });
+
+    fireEvent.change(screen.getByLabelText('Rechercher un lot (nom)'), { target: { value: 'A12' } });
+    await screen.findByText("Impossible d'effectuer la recherche.");
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    expect(await screen.findByRole('button', { name: 'Lot A12 — Programme Verif F027 (Org Constructeur Verif)' })).toBeInTheDocument();
+    expect(searchLots).toHaveBeenNthCalledWith(2, 'A12');
+  });
+
   it('sélectionner un résultat affiche le lot choisi et charge ses devis ; "Changer de lot" revient au sélecteur', async () => {
     const listDevisForLot = vi.fn().mockResolvedValue([]);
     renderView({ listDevisForLot });
@@ -148,6 +162,20 @@ describe('DevisView — liste des devis d\'un lot (ticket 022/027)', () => {
 
     expect(await screen.findByTestId('devis-status')).toHaveTextContent('Verrouillé');
     expect(screen.queryByRole('button', { name: 'Verrouiller' })).not.toBeInTheDocument();
+  });
+
+  it('un échec réseau affiche une erreur explicite, avec un bouton "Réessayer" (ticket F-033)', async () => {
+    const listDevisForLot = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([]);
+    renderView({ listDevisForLot });
+
+    await selectLot();
+    await screen.findByText('Impossible de charger les devis de ce lot.');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByTestId('no-devis');
+    expect(listDevisForLot).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -351,6 +379,23 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
     expect(note).toHaveAttribute('data-status', 'gagnant');
     expect(note).toHaveTextContent('« Gagnant »');
     expect(screen.getByText('-200000.00')).toBeInTheDocument();
+  });
+
+  it('un échec réseau affiche une erreur explicite, avec un bouton "Réessayer" (ticket F-033)', async () => {
+    const listAjustements = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([]);
+    renderView({
+      listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'devis_verrouille' })]),
+      listAjustements,
+    });
+
+    await selectLot();
+    await screen.findByText('Impossible de charger les ajustements.');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByText('Aucun ajustement enregistré pour l\'instant.');
+    expect(listAjustements).toHaveBeenCalledTimes(2);
   });
 
   it('enregistrer un ajustement appelle createAjustement(devisId, {organization, ecart}), recharge la liste des ajustements', async () => {

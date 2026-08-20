@@ -112,9 +112,37 @@ describe('LegalPaymentTiersView — template actif (ticket B-027/F-030)', () => 
 
     expect(await screen.findByText('Impossible de charger le template actif.')).toBeInTheDocument();
   });
+
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {
+    const getActiveLegalPaymentTierTemplate = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(null);
+    renderView({ getActiveLegalPaymentTierTemplate });
+
+    await selectCountry();
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByTestId('no-active-template');
+    expect(getActiveLegalPaymentTierTemplate).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('LegalPaymentTiersView — historique (ticket B-027/F-030)', () => {
+  it('un échec réseau affiche une erreur explicite, avec un bouton "Réessayer" (ticket F-033)', async () => {
+    const getLegalPaymentTierTemplateHistory = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([]);
+    renderView({ getLegalPaymentTierTemplateHistory });
+
+    await selectCountry();
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByTestId('no-template-history');
+    expect(getLegalPaymentTierTemplateHistory).toHaveBeenCalledTimes(2);
+  });
+
   it('aucun template enregistré affiche "Aucun template enregistré pour l\'instant."', async () => {
     renderView({ getLegalPaymentTierTemplateHistory: vi.fn().mockResolvedValue([]) });
 

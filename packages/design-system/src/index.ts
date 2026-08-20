@@ -12,6 +12,8 @@ export type {
 
 export { GlobalStyles } from './components/GlobalStyles/GlobalStyles';
 
+export { useOnlineStatus } from './hooks/useOnlineStatus';
+
 export { ProgressBar } from './components/ProgressBar/ProgressBar';
 export type { ProgressBarProps } from './components/ProgressBar/ProgressBar';
 

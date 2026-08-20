@@ -1,37 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { AlertBanner } from '@keya/design-system';
+import { AlertBanner, useOnlineStatus } from '@keya/design-system';
 
 import { createDefaultApiClient, startSyncEngine } from './sync/syncEngine';
 import { InspectionFormView } from './views/InspectionFormView';
 import { MissionsListView } from './views/MissionsListView';
-
-function useOnlineStatus(): boolean {
-  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
-
-  useEffect(() => {
-    function goOnline() {
-      setIsOnline(true);
-    }
-    function goOffline() {
-      setIsOnline(false);
-    }
-    window.addEventListener('online', goOnline);
-    window.addEventListener('offline', goOffline);
-    return () => {
-      window.removeEventListener('online', goOnline);
-      window.removeEventListener('offline', goOffline);
-    };
-  }, []);
-
-  return isOnline;
-}
 
 /**
  * `AlertBanner` (ticket 007/008) réutilisé tel quel pour l'indicateur hors
  * ligne — pas `AppShell` : conçu pour un layout desktop dense/confortable
  * (sidebar + topbar), pas pour un écran tactile 360-430px. Voir CLAUDE.md,
  * section CONTROL PWA.
+ *
+ * `useOnlineStatus` vivait ici même (ticket 010 passe 2) — promu au design
+ * system au ticket F-033 (vague 2), désormais aussi consommé par HOME/
+ * BUILD/apps-web : ce fichier importe la même implémentation UNIQUE,
+ * jamais une copie locale.
  */
 export function App() {
   const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);

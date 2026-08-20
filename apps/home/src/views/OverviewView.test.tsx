@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createMockApiClient, withApiClient } from '../testUtils';
@@ -104,6 +104,25 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
 
     await screen.findByText("60% d'avancement");
     expect(screen.queryByTestId('open-reserve')).not.toBeInTheDocument();
+  });
+
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {
+    const getLotOverview = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({
+        lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
+        asset_location: 'Dakar', program_name: 'Programme',
+        progress_percentage: 60, milestones: [], latest_notable_event: null, open_reserve: null,
+      });
+    const api = createMockApiClient({ getLotOverview, getMyTasks: NO_PENDING_TASKS });
+
+    render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByText("60% d'avancement");
+    expect(getLotOverview).toHaveBeenCalledTimes(2);
   });
 });
 
