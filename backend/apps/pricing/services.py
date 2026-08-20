@@ -23,6 +23,19 @@ from .models import (
 LATEST_FIRST_ORDERING = ('-created_at', '-sequence')
 
 
+class CountryPackInactiveError(Exception):
+    """Ticket B-032 — ferme la dette signalée au ticket B-030 : un
+    `country_pack_id` inactif (`is_active=False`) deviné ou copié d'ailleurs
+    contournait le filtre `is_active=True` appliqué côté liste
+    (`GET /api/organizations/country-packs/`) et permettait quand même de
+    créer un `PricingConfig`/`LegalPaymentTierTemplate` pour ce pays. Même
+    famille que `apps.procurement.services.LotAlreadyLockedError`/
+    `NoPricingConfigError` — 409, pas 400 : le corps de la requête est
+    valide (un `country_pack_id` qui existe réellement), c'est l'ÉTAT de ce
+    `CountryPack` qui rend l'opération impossible.
+    """
+
+
 def create_pricing_config(*, admin, country_pack_id, canal, rate):
     """Point d'entrée unique pour créer un `PricingConfig` — ticket 025.
     L'appelant (`apps.pricing.views.PricingConfigCreateView`) a déjà
@@ -33,10 +46,17 @@ def create_pricing_config(*, admin, country_pack_id, canal, rate):
     (tickets 005/012/022) : `PricingConfig` n'a pas de colonne
     `organization_id`, la policy RLS `INSERT` est permissive
     (`WITH CHECK (true)`, voir migration RLS) — rien à emprunter.
+
+    **Garde `is_active` (ticket B-032)** : refusée AVANT toute écriture,
+    aucune ligne créée — voir `CountryPackInactiveError`.
     """
     country_pack = CountryPack.objects.filter(id=country_pack_id).first()
     if country_pack is None:
         raise ValidationError({'country_pack': 'Country Pack introuvable.'})
+    if not country_pack.is_active:
+        raise CountryPackInactiveError(
+            f"Le Country Pack « {country_pack.label} » n'est pas actif — aucun taux ne peut y être créé.",
+        )
 
     return PricingConfig.objects.create(
         country_pack=country_pack,
@@ -115,10 +135,18 @@ def create_legal_payment_tier_template(*, admin, country_pack_id, version, steps
     ni le template ni ses paliers (même discipline que
     `apps.procurement.services.create_devis`/`LotAlreadyLockedError`,
     ticket 022).
+
+    **Garde `is_active` (ticket B-032)** : refusée AVANT toute écriture,
+    aucune ligne créée — voir `CountryPackInactiveError`.
     """
     country_pack = CountryPack.objects.filter(id=country_pack_id).first()
     if country_pack is None:
         raise ValidationError({'country_pack': 'Country Pack introuvable.'})
+    if not country_pack.is_active:
+        raise CountryPackInactiveError(
+            f"Le Country Pack « {country_pack.label} » n'est pas actif — "
+            f"aucun palier légal ne peut y être créé.",
+        )
 
     if not steps:
         raise ValidationError({'steps': 'Au moins un palier est requis.'})
