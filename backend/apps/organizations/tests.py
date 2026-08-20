@@ -4,11 +4,47 @@ import psycopg2
 import pytest
 from django.db import connection
 from django.db.utils import ProgrammingError as DjangoProgrammingError
+from django.urls import reverse
+from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 
 from .models import CountryPack, Membership, Organization, Role
+
+PASSWORD = 'strongpass123'
+
+
+def _register(email, organization_name, role_code='sponsor'):
+    """Même helper que les autres modules de test de ce projet — dupliqué
+    volontairement (discipline déjà assumée, voir apps/pricing/tests.py).
+    """
+    client = APIClient()
+    client.post(
+        reverse('register'),
+        {'email': email, 'password': PASSWORD, 'organization_name': organization_name},
+        format='json',
+    )
+    token = client.post(reverse('login'), {'email': email, 'password': PASSWORD}, format='json').data['access']
+    client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    user = User.objects.get(email=email)
+    organization = Organization.objects.get(name=organization_name)
+
+    set_rls_context(user_id=user.id, organization_id=organization.id)
+    if role_code != 'sponsor':
+        role, _ = Role.objects.get_or_create(code=role_code, defaults={'label': role_code.capitalize()})
+        Membership.objects.filter(user=user, organization=organization).update(role=role)
+
+    return client, organization, user
+
+
+def _register_admin(email, organization_name):
+    return _register(email, organization_name, role_code='admin_keyimmo')
+
+
+def _register_constructeur(email, organization_name):
+    return _register(email, organization_name, role_code='constructeur')
 
 
 def _raw_sql(sql, params):
@@ -139,3 +175,64 @@ def test_country_pack_senegal_exists_as_seeded_data():
     senegal = CountryPack.objects.get(code='SN')
     assert senegal.label == 'Sénégal'
     assert senegal.is_active is True
+
+
+@pytest.mark.django_db
+class TestCountryPackList:
+    """`GET /api/organizations/country-packs/` — ticket B-030."""
+
+    def test_admin_keyimmo_can_list_active_country_packs(self):
+        admin_client, _org, _user = _register_admin(
+            'country-pack-list-admin@example.com', 'Org Country Pack List Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.get(reverse('country-pack-list'))
+        assert response.status_code == 200
+        row = next(r for r in response.data if r['code'] == 'SN')
+        assert row['id'] == str(senegal.id)
+        assert row['label'] == senegal.label
+
+    def test_an_inactive_country_pack_is_absent_from_the_response(self):
+        """Cœur du ticket (décision A) : premier usage réel de
+        `CountryPack.is_active` dans ce projet — prouvé avec un
+        `CountryPack` inactif créé pour l'occasion, absent de la réponse.
+        """
+        admin_client, _org, _user = _register_admin(
+            'country-pack-list-inactive-admin@example.com', 'Org Country Pack List Inactive Admin',
+        )
+        inactive_pack = CountryPack.objects.create(code='ZZ', label='Pays Inactif Test', is_active=False)
+
+        response = admin_client.get(reverse('country-pack-list'))
+        assert response.status_code == 200
+        codes = {row['code'] for row in response.data}
+        assert inactive_pack.code not in codes
+
+    def test_a_constructeur_cannot_list_country_packs(self):
+        constructeur_client, _org, _user = _register_constructeur(
+            'country-pack-list-forbidden@example.com', 'Org Country Pack List Forbidden',
+        )
+        response = constructeur_client.get(reverse('country-pack-list'))
+        assert response.status_code == 403
+
+    def test_response_is_sorted_by_label(self):
+        admin_client, _org, _user = _register_admin(
+            'country-pack-list-sorted-admin@example.com', 'Org Country Pack List Sorted Admin',
+        )
+        CountryPack.objects.create(code='ZY', label='Zambie Test', is_active=True)
+        CountryPack.objects.create(code='AL', label='Algérie Test', is_active=True)
+
+        response = admin_client.get(reverse('country-pack-list'))
+        assert response.status_code == 200
+        labels = [row['label'] for row in response.data]
+        assert labels == sorted(labels)
+
+    def test_each_element_has_exactly_id_label_code(self):
+        admin_client, _org, _user = _register_admin(
+            'country-pack-list-shape-admin@example.com', 'Org Country Pack List Shape Admin',
+        )
+        response = admin_client.get(reverse('country-pack-list'))
+        assert response.status_code == 200
+        assert len(response.data) >= 1
+        for row in response.data:
+            assert set(row.keys()) == {'id', 'label', 'code'}
