@@ -2979,6 +2979,66 @@ vérifiée et confirmée exploitable avant la rédaction de ce ticket.
 immutabilité), suite `procurement` 71 tests, suite complète du projet 339
 tests, tous verts.
 
+## Grand-livre de coûts par lot, écran fonctionnel (ticket F-035, `apps/web`)
+
+Voir `F-035-grand-livre-lot.md` pour le détail complet. Écran réel,
+`apps/web/src/views/LotLedgerPanel.tsx`, consommant `LotLedger` (ticket
+B-035, `apps/procurement`) — jamais consommé côté frontend jusqu'ici.
+Contrat API revérifié directement dans `backend/apps/procurement/
+{models,services,views,serializers}.py` avant tout code.
+
+**Trois découvertes qui ont changé le périmètre, vérifiées avant
+implémentation** : (1) `LotBcCharge` (ticket B-036) n'existe toujours pas
+côté backend (aucun modèle, confirmé par `git log`) — aucune liste de
+charges BC n'est affichable ; (2) « construction courante » n'est PAS
+exposée comme poste isolé par `GET .../margin/` (seule la marge finale
+l'est) — la recalculer côté frontend (`devis.amount + Σ écarts`)
+violerait la doctrine « aucun calcul frontend » ; (3) le lien avec
+`DevisView` n'est pas qu'une commodité — `search_lots_as_admin` (ticket
+B-028) exclut les lots déjà verrouillés de ses résultats, donc un nouvel
+onglet avec sa propre recherche de lot n'aurait jamais pu retrouver un lot
+une fois son devis verrouillé.
+
+**Décision validée avec l'utilisateur** : ni la construction courante, ni
+les charges BC ne sont affichées dans ce ticket — documentées comme
+dépendances backend BLOQUANTES, mentionnées EXPLICITEMENT dans
+l'interface elle-même (jamais un silence), même pattern que B-028/B-030
+pour de précédents tickets frontend. Nouveau ticket backend à cadrer
+séparément (numéro à déterminer côté session backend) pour étendre
+l'endpoint de marge et exposer la décomposition complète.
+
+**`LotLedgerPanel.tsx`, monté depuis `DevisView.tsx::DevisListPanel`,
+JAMAIS un nouvel onglet** — uniquement une fois `lotAlreadyLocked`. Marge
+négative → `AlertBanner` réutilisant le token ambre `semanticColors.alert`
+existant (décision explicite, jamais un nouveau token « danger » — cohérent
+avec l'usage déjà établi partout dans ce projet). `isNegative` est une
+simple lecture de SIGNE sur une valeur déjà calculée backend, pas un
+calcul métier.
+
+**Task ALERT (ticket 024) vérifié, aucun rapport avec ce ticket** :
+`create_task_for_devis_ajustement_refuse` ne se déclenche que sur un
+`DevisAjustement` refusé (marge du DEVIS), jamais sur une marge de
+GRAND-LIVRE négative — et `apps/web` ne consomme de toute façon pas
+`GET /api/me/tasks/` (seul `apps/home` le fait). Zéro risque de
+duplication, zéro mécanisme existant à réutiliser.
+
+**Piège de test rencontré** : 5 tests préexistants de `DevisView.test.tsx`
+(section « devis verrouillé ») utilisaient `status: 'devis_verrouille'`
+sans mocker `getLotLedger` — une fois `LotLedgerPanel` monté, son propre
+état d'erreur par défaut (« not mocked ») affichait un second bouton
+« Réessayer », rendant `getByRole` ambigu. Corrigé en fournissant
+`getLotLedger: vi.fn().mockResolvedValue(null)` à ces 5 tests.
+
+12 tests dédiés (10 `LotLedgerPanel.test.tsx` + 2 intégration
+`DevisView.test.tsx`). **437 tests frontend** (5 packages :
+64+75+73+55+170), zéro régression, `tsc --noEmit` propre. **Pas de
+vérification en navigateur réel** : aucun backend/Docker n'était démarré
+dans cet environnement au moment de ce ticket — monter l'infrastructure
+complète (seed `PricingConfig`/`ProgramCost`/`Devis` verrouillé) pour
+cette seule vérification aurait été disproportionné face à la couverture
+automatisée déjà obtenue (messages d'erreur backend EXACTS reproduits via
+`ApiError`).
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

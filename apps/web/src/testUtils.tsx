@@ -35,6 +35,10 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     getLegalPaymentTierTemplateHistory: vi.fn(notMocked),
     // Ticket B-030 (apps/organizations) :
     listCountryPacks: vi.fn(notMocked),
+    // Ticket F-035 (apps/procurement, LotLedger) :
+    getLotLedger: vi.fn(notMocked),
+    getLotLedgerMargin: vi.fn(notMocked),
+    createLotLedger: vi.fn(notMocked),
     ...overrides,
   };
 }

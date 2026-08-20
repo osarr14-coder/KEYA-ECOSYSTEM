@@ -1,7 +1,7 @@
 import type {
   BackofficeUserDetail, BackofficeUserSummary, CountryPackSummary,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
-  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult,
+  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, LotLedger,
   LotSearchResult, Me, OrganizationSearchResult, PricingCanal, PricingConfig,
 } from './types';
 
@@ -337,6 +337,40 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
      * UUID manuel).
      */
     listCountryPacks: () => request<CountryPackSummary[]>('/api/organizations/country-packs/'),
+
+    /**
+     * `GET /api/procurement/lot-ledgers/{lot_id}/?organization_id=...`
+     * (ticket B-035) — `null` si aucun grand-livre n'existe encore pour ce
+     * lot (corps 200 vide, jamais une 404 — même convention que
+     * `getActiveLegalPaymentTierTemplate`).
+     */
+    getLotLedger: (lotId: string, organizationId: string) =>
+      request<LotLedger | null>(`/api/procurement/lot-ledgers/${lotId}/${toQueryString({ organization_id: organizationId })}`),
+
+    /**
+     * `GET /api/procurement/lot-ledgers/{lot_id}/margin/?organization_id=...`
+     * (ticket B-035) — marge disponible COURANTE, calculée à la volée
+     * côté backend (`apps.procurement.services.get_lot_ledger_margin`,
+     * formule volontairement incomplète, TODO B-036 — voir
+     * F-035-grand-livre-lot.md). 404 si aucun grand-livre n'existe : ne
+     * jamais appeler avant d'avoir confirmé son existence via
+     * `getLotLedger`.
+     */
+    getLotLedgerMargin: (lotId: string, organizationId: string) =>
+      request<{ margin: string }>(`/api/procurement/lot-ledgers/${lotId}/margin/${toQueryString({ organization_id: organizationId })}`),
+
+    /**
+     * `POST /api/procurement/lot-ledgers/` (ticket B-035) — `prix_client`
+     * saisi manuellement, `foncier_alloue`/`be_alloue` dérivés backend
+     * (snapshot `ProgramCost`, jamais transmis ici). 409 si le devis du
+     * lot n'est pas encore verrouillé (`LotDevisNotLockedError`), si un
+     * grand-livre existe déjà (`LotLedgerAlreadyExistsError`), ou si le
+     * partage foncier/BE échoue (`NoProgramCostError`/
+     * `LotMissingSurfaceError`) — les quatre portent un `detail`
+     * exploitable via `ApiError.detail`.
+     */
+    createLotLedger: (payload: { organization: string; lot: string; prix_client: string }) =>
+      request<LotLedger>('/api/procurement/lot-ledgers/', { method: 'POST', json: payload }),
   };
 }
 
