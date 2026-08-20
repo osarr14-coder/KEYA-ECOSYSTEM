@@ -4,7 +4,7 @@ import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
-import type { LotBcCharge, LotLedger } from '../api/types';
+import type { LotBcCharge } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 
 /**
@@ -28,9 +28,14 @@ import { useApiResource } from '../api/useApiResource';
  * début de ce ticket, mais cette branche n'avait jamais synchronisé ce
  * commit avant d'écrire ce fichier. Une fois `git fetch`/`merge` refaits,
  * `LotBcCharge`/`GET .../bc-charges/` existent bel et bien — voir
- * `LotBcChargesPanel` ci-dessous. Seule la « construction courante »
- * reste une dépendance backend bloquante réelle (voir
- * `F-035-grand-livre-lot.md`, section « Correction post-fusion »).
+ * `LotBcChargesPanel` ci-dessous.
+ *
+ * **Dernière dépendance levée (ticket F-037, backend B-038)** : la
+ * « construction courante », seul poste encore non exposé isolément
+ * après F-035 bis, l'est désormais via `GET .../margin/` (réponse
+ * étendue) — voir `LotLedgerMarginBreakdown` ci-dessous. F-035 est
+ * considéré ENTIÈREMENT clos à partir de ce ticket, voir
+ * `F-035-grand-livre-lot.md`.
  */
 
 function CreateLotLedgerForm({
@@ -96,18 +101,32 @@ function CreateLotLedgerForm({
 }
 
 /**
- * Marge disponible COURANTE (`GET .../margin/`) — composant SÉPARÉ du
- * reste du détail : cet endpoint 404 tant qu'aucun grand-livre n'existe
- * (contrairement au détail lui-même, qui renvoie `null`), donc n'est
- * appelé qu'une fois l'existence du grand-livre déjà confirmée par le
- * parent (`LotLedgerDetail`, jamais avant).
+ * Ticket F-037 — décomposition COMPLÈTE de la marge (`GET .../margin/`,
+ * réponse étendue par le ticket B-038 backend), ferme la dépendance
+ * backend documentée depuis F-035 (« construction courante non exposée
+ * comme poste isolé »). Cet endpoint 404 tant qu'aucun grand-livre
+ * n'existe (contrairement à `getLotLedger`, qui renvoie `null`), donc
+ * n'est monté qu'une fois l'existence du grand-livre déjà confirmée par
+ * le parent (`LotLedgerPanel`, jamais avant) — remplace l'ancien
+ * `LotLedgerDetail` (F-035/F-035 bis), devenu un pur pass-through une
+ * fois son propre `dl` (prix/foncier/BE depuis `LotLedger`) absorbé ici.
  *
- * `isNegative` est une simple lecture de SIGNE sur une valeur déjà
- * calculée par le backend — pas un calcul métier (même principe que
- * vérifier `ecart < 0` sur un `DevisAjustement` déjà reçu) : la valeur
- * numérique affichée reste EXACTEMENT `margin`, jamais retraitée.
+ * **Chaque poste affiché SÉPARÉMENT, dans l'ordre logique du calcul**
+ * (prix de cession en haut, chaque coût déduit ensuite, marge résultante
+ * en bas) — cohérent avec la doctrine de transparence du modèle
+ * économique : la marge n'est jamais noyée dans le reste, toujours une
+ * ligne distincte. Les 6 valeurs viennent TELLES QUELLES de la réponse
+ * API, aucune arithmétique n'a lieu ici (`prix_client`, `foncier_alloue`,
+ * `be_alloue`, `construction_courante`, `bc_charges_total`, `margin` —
+ * `apps.procurement.services._compute_lot_ledger_margin_breakdown` fait
+ * déjà tout le calcul côté backend).
+ *
+ * `isNegative` est une simple lecture de SIGNE sur `margin`, déjà calculée
+ * par le backend — pas un calcul métier (même principe que vérifier
+ * `ecart < 0` sur un `DevisAjustement` déjà reçu) : la valeur numérique
+ * affichée reste EXACTEMENT `margin`, jamais retraitée.
  */
-function LotLedgerMargin({ organizationId, lotId }: { organizationId: string; lotId: string }) {
+function LotLedgerMarginBreakdown({ organizationId, lotId }: { organizationId: string; lotId: string }) {
   const api = useApiClient();
   const state = useApiResource(() => api.getLotLedgerMargin(lotId, organizationId), [lotId, organizationId]);
 
@@ -120,59 +139,45 @@ function LotLedgerMargin({ organizationId, lotId }: { organizationId: string; lo
     );
   }
 
-  const isNegative = Number(state.data.margin) < 0;
+  const {
+    prix_client: prixClient, foncier_alloue: foncierAlloue, be_alloue: beAlloue,
+    construction_courante: constructionCourante, bc_charges_total: bcChargesTotal, margin,
+  } = state.data;
+  const isNegative = Number(margin) < 0;
 
-  if (isNegative) {
-    // Ticket F-035 — marge négative : réutilise AlertBanner (couleur
-    // ambre existante, semanticColors.alert) plutôt qu'un nouveau token
-    // de couleur dédié — décision explicite, cohérent avec l'usage déjà
-    // établi d'AlertBanner pour tout état qui demande attention dans ce
-    // projet. Jamais la couleur SEULE : le libellé l'indique aussi.
-    return (
-      <AlertBanner title={`Marge disponible : ${state.data.margin} (négative)`}>
-        Le prix client ne couvre plus le foncier alloué, le BE alloué et la construction courante de ce lot.
-      </AlertBanner>
-    );
-  }
-
-  return (
-    <p data-testid="lot-ledger-margin" style={{ margin: '8px 0 0' }}>
-      Marge disponible : <strong>{state.data.margin}</strong>
-    </p>
-  );
-}
-
-function LotLedgerDetail({
-  ledger, organizationId, lotId,
-}: { ledger: LotLedger; organizationId: string; lotId: string }) {
   return (
     <div style={{ marginTop: '12px' }}>
       <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 16px', margin: 0, fontSize: '14px' }}>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Prix client</dt>
-        <dd style={{ margin: 0 }} data-testid="lot-ledger-prix-client">{ledger.prix_client}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Foncier alloué</dt>
-        <dd style={{ margin: 0 }} data-testid="lot-ledger-foncier-alloue">{ledger.foncier_alloue}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>BE alloué</dt>
-        <dd style={{ margin: 0 }} data-testid="lot-ledger-be-alloue">{ledger.be_alloue}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Prix client (cession)</dt>
+        <dd style={{ margin: 0 }} data-testid="lot-ledger-prix-client">{prixClient}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>− Foncier alloué</dt>
+        <dd style={{ margin: 0 }} data-testid="lot-ledger-foncier-alloue">{foncierAlloue}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>− BE alloué</dt>
+        <dd style={{ margin: 0 }} data-testid="lot-ledger-be-alloue">{beAlloue}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>− Construction courante</dt>
+        <dd style={{ margin: 0 }} data-testid="lot-ledger-construction-courante">{constructionCourante}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>− Charges bureau de contrôle</dt>
+        <dd style={{ margin: 0 }} data-testid="lot-ledger-bc-charges-total">{bcChargesTotal}</dd>
       </dl>
 
-      {/* Ticket F-035 — mention EXPLICITE de la dépendance backend
-          bloquante restante (jamais un silence) : la construction courante
-          n'est toujours pas exposée comme poste isolé par l'API (seule la
-          marge finale, déjà nette de ce terme, l'est). Le détail de la
-          construction (devis + ajustements) reste consultable dans le
-          tableau de devis ci-dessus, sur ce MÊME écran — jamais un renvoi
-          vers un autre onglet, ce panneau est intégré à DevisView. Les
-          charges bureau de contrôle, elles, sont bien listées ci-dessous
-          (`LotBcChargesPanel`) — B-036, fusionné dans master avant ce
-          ticket sans que cette branche ne l'ait synchronisé à temps. */}
-      <p style={{ margin: '8px 0 0', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-        Détail de la construction (devis verrouillé + ajustements) : voir le tableau de devis ci-dessus.
-        La marge disponible ci-dessous est déjà nette de la construction courante — son montant isolé
-        n&apos;est pas encore exposé comme poste séparé par l&apos;API (dépendance backend).
-      </p>
-
-      <LotLedgerMargin organizationId={organizationId} lotId={lotId} />
+      {isNegative ? (
+        // Ticket F-035 — marge négative : réutilise AlertBanner (couleur
+        // ambre existante, semanticColors.alert) plutôt qu'un nouveau
+        // token de couleur dédié — décision explicite, cohérent avec
+        // l'usage déjà établi d'AlertBanner pour tout état qui demande
+        // attention dans ce projet. Jamais la couleur SEULE : le libellé
+        // l'indique aussi.
+        <div style={{ marginTop: '8px' }}>
+          <AlertBanner title={`Marge disponible : ${margin} (négative)`}>
+            Le prix client ne couvre plus le foncier alloué, le BE alloué, la construction courante et
+            les charges bureau de contrôle de ce lot.
+          </AlertBanner>
+        </div>
+      ) : (
+        <p data-testid="lot-ledger-margin" style={{ margin: '8px 0 0' }}>
+          = Marge disponible : <strong>{margin}</strong>
+        </p>
+      )}
     </div>
   );
 }
@@ -187,12 +192,12 @@ function LotLedgerDetail({
  * que soit l'état du grand-livre (même avant sa création). Ce panneau
  * reste donc visible dans les DEUX états.
  *
- * **Aucun total affiché** : la somme des charges est déjà intégrée à la
- * marge disponible (`get_lot_ledger_margin`, `- Σ LotBcCharge.montant`),
- * mais cette somme elle-même n'est exposée par AUCUN endpoint comme valeur
- * isolée — la recalculer ici en sommant les lignes listées serait un
- * calcul frontend, même limite que « construction courante » ci-dessus.
- * Seules les lignes individuelles (valeurs API directes) sont affichées.
+ * **Aucun total RECALCULÉ ici, même si la valeur existe désormais
+ * ailleurs** : `LotLedgerMarginBreakdown` ci-dessus affiche déjà
+ * `bc_charges_total` (ticket F-037, réponse `/margin/`) — ce panneau-ci
+ * reste volontairement dédié aux lignes INDIVIDUELLES (une par charge),
+ * jamais une resomme locale des montants listés, qui dupliquerait un
+ * calcul déjà fait côté backend pour aucun bénéfice.
  */
 function LotBcChargesPanel({ organizationId, lotId }: { organizationId: string; lotId: string }) {
   const api = useApiClient();
@@ -273,7 +278,7 @@ export function LotLedgerPanel({
             onCreated={() => setReloadKey((key) => key + 1)}
           />
         ) : (
-          <LotLedgerDetail ledger={state.data} organizationId={organizationId} lotId={lotId} />
+          <LotLedgerMarginBreakdown organizationId={organizationId} lotId={lotId} />
         )
       )}
 

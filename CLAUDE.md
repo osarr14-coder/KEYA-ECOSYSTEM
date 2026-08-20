@@ -3244,10 +3244,63 @@ jamais un contrat qui change silencieusement sous un nom inchangé.
 
 **Consommation frontend explicitement HORS SCOPE de ce ticket** —
 `LotLedgerPanel.tsx` continue de n'afficher que `margin` ; exploiter le
-détail (afficher chaque poste) est un futur ticket frontend.
+détail (afficher chaque poste) est un futur ticket frontend. **Consommé
+depuis par le ticket F-037**, voir section dédiée ci-dessous.
 
 3 tests dédiés/étendus, suite `procurement` 92 tests, suite complète du
 projet 363 tests, tous verts.
+
+## Décomposition complète de la marge, écran fonctionnel (ticket F-037, `apps/web`)
+
+Voir `F-037-decomposition-marge-grand-livre.md` pour le détail complet.
+Suite directe de F-035/F-035 bis : ferme DÉFINITIVEMENT la dépendance
+backend « construction courante non exposée comme poste isolé » — plus
+aucune dépendance bloquante ne subsiste sur l'écran du grand-livre.
+
+**Même piège de synchronisation que F-035 bis, nuance différente** :
+B-038 n'apparaissait sur AUCUNE branche accessible via `origin/master` au
+début de ce ticket — mais existait bien sur la branche `master` **locale**
+(partagée entre worktrees sur cette machine), 2 commits en avance sur
+`origin/master`, jamais poussée par la session backend. `git merge
+master` (la référence locale, pas `origin/master`) a débloqué la suite,
+sans attendre le push. Leçon retenue : dans un environnement
+multi-worktree, une branche locale partagée peut être en avance sur son
+propre remote-tracking ref.
+
+**`LotLedgerPanel.tsx` — `LotLedgerMargin` renommé `LotLedgerMarginBreakdown`,
+`LotLedgerDetail` (l'ancien wrapper prix/foncier/BE) supprimé** : les 6
+postes (`prix_client`, `foncier_alloue`, `be_alloue`,
+`construction_courante`, `bc_charges_total`, `margin`) sont désormais
+affichés dans UNE SEULE liste ordonnée — prix de cession en haut, chaque
+coût déduit ensuite (préfixe `−`), marge résultante en bas (préfixe `=`)
+— cohérent avec la doctrine de transparence du modèle économique. Mention
+« détail construction disponible dans l'onglet Devis » retirée (devenue
+obsolète), remplacée par l'affichage direct du poste. `LotBcChargesPanel`
+(F-035 bis) reste inchangé — les lignes individuelles de charges BC ne
+sont pas redondantes avec `bc_charges_total` (l'une est déjà une somme
+backend, l'autre le détail ligne par ligne, jamais recalculée).
+
+**15 tests** (`LotLedgerPanel.test.tsx`), dont un test d'ORDRE réel du
+DOM (requête directe des `<dt>`, comparaison de position DOM pour la
+marge — jamais une supposition). **447 tests frontend** (5 packages :
+64+75+73+55+180), zéro régression, `tsc --noEmit` propre.
+
+**Vérifié en navigateur réel, backend réellement disponible cette fois**
+(contrairement à F-035) : Postgres du projet démarré (`docker compose
+up`), migrations appliquées, données seedées via script Django shell
+temporaire (admin_keyimmo, deux organisations, `ProgramCost`,
+`PricingConfig` 12 %, lot verrouillé). **Piège rencontré** : le premier
+lot seedé avait déjà son `LotLedger` — introuvable via les DEUX
+sélecteurs de `DevisView` (les deux excluent un lot déjà pourvu d'un
+grand-livre, limite déjà documentée au ticket F-036). Corrigé en seedant
+un second lot verrouillé SANS grand-livre préalable, pour tester le VRAI
+parcours (sélection → formulaire de création → décomposition affichée).
+**Résultat observé, chiffres réels** : prix client 40 000 000,00 saisi
+via le formulaire réel − foncier 18 000 000,00 − BE 3 600 000,00 −
+construction courante 30 000 000,00 − charges BC 0,00 = marge
+**−11 600 000,00**, bandeau négatif affiché correctement. Nettoyage
+effectué après vérification (serveurs arrêtés, conteneur Docker
+supprimé, scripts de seed temporaires retirés du dépôt).
 
 ## Conventions de code
 

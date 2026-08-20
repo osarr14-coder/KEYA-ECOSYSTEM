@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
-import type { LotBcCharge, LotLedger } from '../api/types';
+import type { LotBcCharge, LotLedger, LotLedgerMarginBreakdown } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { LotLedgerPanel } from './LotLedgerPanel';
 
@@ -19,6 +19,20 @@ function makeLedger(overrides: Partial<LotLedger> = {}): LotLedger {
     be_alloue: '500000.00',
     created_by: 'admin-1',
     created_at: '2026-08-20T09:00:00Z',
+    ...overrides,
+  };
+}
+
+// Ticket F-037 (backend B-038) — la réponse de GET .../margin/ est
+// désormais la décomposition COMPLÈTE, pas seulement `{margin}`.
+function makeMarginBreakdown(overrides: Partial<LotLedgerMarginBreakdown> = {}): LotLedgerMarginBreakdown {
+  return {
+    prix_client: '18000000.00',
+    foncier_alloue: '2000000.00',
+    be_alloue: '500000.00',
+    construction_courante: '12000000.00',
+    bc_charges_total: '500000.00',
+    margin: '3000000.00',
     ...overrides,
   };
 }
@@ -47,8 +61,8 @@ function renderPanel(overrides: Parameters<typeof createMockApiClient>[0] = {}) 
     getLotBcCharges: vi.fn().mockResolvedValue([]),
     ...overrides,
   });
-  render(withApiClient(api, <LotLedgerPanel organizationId={ORGANIZATION_ID} lotId={LOT_ID} />));
-  return { api };
+  const result = render(withApiClient(api, <LotLedgerPanel organizationId={ORGANIZATION_ID} lotId={LOT_ID} />));
+  return { api, container: result.container };
 }
 
 describe('LotLedgerPanel — chargement (ticket F-035)', () => {
@@ -85,7 +99,7 @@ describe('LotLedgerPanel — création (aucun grand-livre existant, ticket F-035
       renderPanel({
         getLotLedger,
         createLotLedger,
-        getLotLedgerMargin: vi.fn().mockResolvedValue({ margin: '3000000.00' }),
+        getLotLedgerMargin: vi.fn().mockResolvedValue(makeMarginBreakdown()),
       });
 
       await screen.findByLabelText('Prix client');
@@ -136,72 +150,122 @@ describe('LotLedgerPanel — création (aucun grand-livre existant, ticket F-035
   );
 });
 
-describe('LotLedgerPanel — détail d\'un grand-livre existant (ticket F-035)', () => {
-  it('affiche prix client / foncier alloué / BE alloué tels que renvoyés, sans aucun calcul', async () => {
-    renderPanel({
-      getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
-      getLotLedgerMargin: vi.fn().mockResolvedValue({ margin: '3000000.00' }),
-    });
+describe(
+  'LotLedgerPanel — décomposition complète de la marge, un grand-livre existant '
+  + '(ticket F-037, backend B-038)',
+  () => {
+    it(
+      'affiche les 5 postes déduits (prix client, foncier, BE, construction courante, '
+      + 'charges BC) tels que renvoyés par l\'API, sans aucun calcul frontend',
+      async () => {
+        renderPanel({
+          getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
+          getLotLedgerMargin: vi.fn().mockResolvedValue(makeMarginBreakdown({
+            prix_client: '18000000.00',
+            foncier_alloue: '2000000.00',
+            be_alloue: '500000.00',
+            construction_courante: '12000000.00',
+            bc_charges_total: '500000.00',
+            margin: '3000000.00',
+          })),
+        });
 
-    expect(await screen.findByTestId('lot-ledger-prix-client')).toHaveTextContent('18000000.00');
-    expect(screen.getByTestId('lot-ledger-foncier-alloue')).toHaveTextContent('2000000.00');
-    expect(screen.getByTestId('lot-ledger-be-alloue')).toHaveTextContent('500000.00');
-  });
+        expect(await screen.findByTestId('lot-ledger-prix-client')).toHaveTextContent('18000000.00');
+        expect(screen.getByTestId('lot-ledger-foncier-alloue')).toHaveTextContent('2000000.00');
+        expect(screen.getByTestId('lot-ledger-be-alloue')).toHaveTextContent('500000.00');
+        expect(screen.getByTestId('lot-ledger-construction-courante')).toHaveTextContent('12000000.00');
+        expect(screen.getByTestId('lot-ledger-bc-charges-total')).toHaveTextContent('500000.00');
+        expect(screen.getByTestId('lot-ledger-margin')).toHaveTextContent('3000000.00');
+      },
+    );
 
-  it(
-    'mentionne explicitement que la construction courante n\'est pas exposée comme poste '
-    + 'isolé (dépendance backend, jamais un silence)',
-    async () => {
+    it(
+      'affiche les postes dans l\'ordre logique du calcul : prix de cession en haut, '
+      + 'chaque coût déduit ensuite, marge résultante en bas',
+      async () => {
+        const { container } = renderPanel({
+          getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
+          getLotLedgerMargin: vi.fn().mockResolvedValue(makeMarginBreakdown()),
+        });
+
+        await screen.findByTestId('lot-ledger-prix-client');
+
+        // Ordre RÉEL du DOM (jamais une supposition) : les 5 <dt> déduits,
+        // puis la ligne de marge résultante en dehors du <dl>.
+        const dtLabels = Array.from(container.querySelectorAll('dt')).map((node) => node.textContent);
+        expect(dtLabels).toEqual([
+          'Prix client (cession)',
+          '− Foncier alloué',
+          '− BE alloué',
+          '− Construction courante',
+          '− Charges bureau de contrôle',
+        ]);
+
+        const dl = container.querySelector('dl');
+        const marginLine = screen.getByTestId('lot-ledger-margin');
+        expect(dl?.compareDocumentPosition(marginLine)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      },
+    );
+
+    it(
+      'ne mentionne plus jamais "détail construction disponible dans l\'onglet Devis" — '
+      + 'affichage direct désormais, dépendance F-035 close',
+      async () => {
+        renderPanel({
+          getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
+          getLotLedgerMargin: vi.fn().mockResolvedValue(makeMarginBreakdown()),
+        });
+
+        await screen.findByTestId('lot-ledger-margin');
+        expect(screen.queryByText(/Détail de la construction/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/onglet Devis/)).not.toBeInTheDocument();
+      },
+    );
+
+    it('une marge disponible POSITIVE s\'affiche en texte simple', async () => {
       renderPanel({
         getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
-        getLotLedgerMargin: vi.fn().mockResolvedValue({ margin: '3000000.00' }),
+        getLotLedgerMargin: vi.fn().mockResolvedValue(makeMarginBreakdown({ margin: '3000000.00' })),
       });
 
-      expect(await screen.findByText(/Détail de la construction/)).toBeInTheDocument();
-      expect(screen.getByText(/n'est pas encore exposé comme poste séparé/)).toBeInTheDocument();
-    },
-  );
-
-  it('une marge disponible POSITIVE s\'affiche en texte simple', async () => {
-    renderPanel({
-      getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
-      getLotLedgerMargin: vi.fn().mockResolvedValue({ margin: '3000000.00' }),
+      const margin = await screen.findByTestId('lot-ledger-margin');
+      expect(margin).toHaveTextContent('3000000.00');
+      expect(screen.queryByText(/négative/)).not.toBeInTheDocument();
     });
 
-    const margin = await screen.findByTestId('lot-ledger-margin');
-    expect(margin).toHaveTextContent('3000000.00');
-    expect(screen.queryByText(/négative/)).not.toBeInTheDocument();
-  });
+    it(
+      'une marge disponible NÉGATIVE est visuellement distincte (AlertBanner), '
+      + 'jamais confondue avec une marge positive',
+      async () => {
+        renderPanel({
+          getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
+          getLotLedgerMargin: vi.fn().mockResolvedValue(makeMarginBreakdown({ margin: '-450000.00' })),
+        });
 
-  it(
-    'une marge disponible NÉGATIVE est visuellement distincte (AlertBanner), '
-    + 'jamais confondue avec une marge positive',
-    async () => {
+        expect(await screen.findByText('Marge disponible : -450000.00 (négative)')).toBeInTheDocument();
+        expect(screen.queryByTestId('lot-ledger-margin')).not.toBeInTheDocument();
+        // Les postes déduits restent affichés même sous alerte — seule la
+        // ligne finale change de forme (AlertBanner vs texte simple).
+        expect(screen.getByTestId('lot-ledger-prix-client')).toBeInTheDocument();
+      },
+    );
+
+    it('un échec de chargement de la marge affiche une erreur distincte, avec "Réessayer"', async () => {
+      const getLotLedgerMargin = vi.fn()
+        .mockRejectedValueOnce(new Error('network down'))
+        .mockResolvedValueOnce(makeMarginBreakdown());
       renderPanel({
         getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
-        getLotLedgerMargin: vi.fn().mockResolvedValue({ margin: '-450000.00' }),
+        getLotLedgerMargin,
       });
 
-      expect(await screen.findByText('Marge disponible : -450000.00 (négative)')).toBeInTheDocument();
-      expect(screen.queryByTestId('lot-ledger-margin')).not.toBeInTheDocument();
-    },
-  );
+      await screen.findByText('Impossible de charger la marge disponible.');
+      fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
 
-  it('un échec de chargement de la marge affiche une erreur distincte, avec "Réessayer"', async () => {
-    const getLotLedgerMargin = vi.fn()
-      .mockRejectedValueOnce(new Error('network down'))
-      .mockResolvedValueOnce({ margin: '3000000.00' });
-    renderPanel({
-      getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
-      getLotLedgerMargin,
+      expect(await screen.findByTestId('lot-ledger-margin')).toHaveTextContent('3000000.00');
     });
-
-    await screen.findByText('Impossible de charger la marge disponible.');
-    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
-
-    expect(await screen.findByTestId('lot-ledger-margin')).toHaveTextContent('3000000.00');
-  });
-});
+  },
+);
 
 describe(
   'LotLedgerPanel — charges bureau de contrôle (ticket F-035 bis, backend B-036, LotBcCharge)',
@@ -239,7 +303,7 @@ describe(
       async () => {
         renderPanel({
           getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
-          getLotLedgerMargin: vi.fn().mockResolvedValue({ margin: '2700000.00' }),
+          getLotLedgerMargin: vi.fn().mockResolvedValue(makeMarginBreakdown({ margin: '2700000.00' })),
           getLotBcCharges: vi.fn().mockResolvedValue([
             makeBcCharge({ id: 'bc-1', jalon_type: 'conception', montant: '150000.00', is_global_reference: false }),
             makeBcCharge({ id: 'bc-2', jalon_type: 'global', montant: '150000.00', is_global_reference: true }),

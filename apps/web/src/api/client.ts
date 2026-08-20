@@ -2,8 +2,8 @@ import type {
   BackofficeUserDetail, BackofficeUserSummary, CountryPackSummary,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult,
-  LotBcCharge, LotLedger, LotSearchResult, Me, OrganizationSearchResult,
-  PricingCanal, PricingConfig,
+  LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
+  OrganizationSearchResult, PricingCanal, PricingConfig,
 } from './types';
 
 export class ApiError extends Error {
@@ -366,15 +366,16 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
 
     /**
      * `GET /api/procurement/lot-ledgers/{lot_id}/margin/?organization_id=...`
-     * (ticket B-035) — marge disponible COURANTE, calculée à la volée
-     * côté backend (`apps.procurement.services.get_lot_ledger_margin`,
-     * formule volontairement incomplète, TODO B-036 — voir
-     * F-035-grand-livre-lot.md). 404 si aucun grand-livre n'existe : ne
-     * jamais appeler avant d'avoir confirmé son existence via
-     * `getLotLedger`.
+     * (ticket B-035, réponse ÉTENDUE par B-038) — décomposition COMPLÈTE
+     * de la marge disponible courante (`prix_client`, `foncier_alloue`,
+     * `be_alloue`, `construction_courante`, `bc_charges_total`, `margin`),
+     * calculée à la volée côté backend, jamais recalculée ici (ticket
+     * F-037 — voir F-037-decomposition-marge-grand-livre.md). 404 si aucun
+     * grand-livre n'existe : ne jamais appeler avant d'avoir confirmé son
+     * existence via `getLotLedger`.
      */
     getLotLedgerMargin: (lotId: string, organizationId: string) =>
-      request<{ margin: string }>(`/api/procurement/lot-ledgers/${lotId}/margin/${toQueryString({ organization_id: organizationId })}`),
+      request<LotLedgerMarginBreakdown>(`/api/procurement/lot-ledgers/${lotId}/margin/${toQueryString({ organization_id: organizationId })}`),
 
     /**
      * `POST /api/procurement/lot-ledgers/` (ticket B-035) — `prix_client`

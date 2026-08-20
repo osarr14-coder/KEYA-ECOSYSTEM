@@ -175,6 +175,26 @@ export interface LotBcCharge {
   created_at: string;
 }
 
+/**
+ * Miroir de la réponse JSON de `GET /api/procurement/lot-ledgers/
+ * {lot_id}/margin/`, ÉTENDUE par le ticket B-038 (`apps.procurement.
+ * services._compute_lot_ledger_margin_breakdown`) — remplace l'ancien
+ * type inline `{ margin: string }` (F-035/F-035 bis, seul champ exposé
+ * avant B-038). `margin = prix_client - foncier_alloue - be_alloue -
+ * construction_courante - bc_charges_total`, déjà calculé côté backend —
+ * ce ticket (F-037) affiche ces 6 valeurs telles quelles, aucun calcul
+ * frontend. `construction_courante`/`bc_charges_total` n'existent NULLE
+ * PART ailleurs dans ce projet (jamais exposés isolément avant B-038).
+ */
+export interface LotLedgerMarginBreakdown {
+  prix_client: string;
+  foncier_alloue: string;
+  be_alloue: string;
+  construction_courante: string;
+  bc_charges_total: string;
+  margin: string;
+}
+
 /** Vocabulaire de doctrine fixe (`apps.pricing.models.PricingCanal`, ticket
  * 025-backend) — les DEUX canaux existent partout, seul leur TAUX varie par
  * pays (`PricingConfig.country_pack`). Sans risque à coder en dur ici, même

@@ -1,10 +1,16 @@
 # Ticket F-035 — Grand-livre de coûts par lot (canal 1)
 
 ## Statut
-Livré (branche `feature/frontend-round-2`). **Corrigé après livraison
-initiale** — voir « Correction post-fusion » ci-dessous : le point 1 de
-l'état des lieux (`LotBcCharge` inexistant) était FAUX, causé par une
-branche non synchronisée avec `master` au moment de l'implémentation.
+**Entièrement clos** (branche `feature/frontend-round-2`). Deux
+corrections successives après la livraison initiale :
+- **F-035 bis** — voir « Correction post-fusion » ci-dessous : le point 1
+  de l'état des lieux (`LotBcCharge` inexistant) était FAUX, causé par une
+  branche non synchronisée avec `master` au moment de l'implémentation.
+- **F-037** (`F-037-decomposition-marge-grand-livre.md`) — la dernière
+  dépendance backend restante (construction courante non exposée comme
+  poste isolé, point 2 de l'état des lieux) a été levée par le ticket
+  backend B-038 puis consommée côté frontend. Plus AUCUNE dépendance
+  bloquante ne subsiste pour cet écran.
 
 ## Contexte
 
@@ -187,16 +193,24 @@ tickets précédents (F-027 notamment) qui ont pu s'appuyer sur un backend
 déjà actif dans leur session, aucun n'était disponible ici.
 
 ## Dépendances
-**Non bloquante** : une future extension de l'endpoint de marge pour
-exposer `construction_courante` isolément resterait utile (voir
-« État des lieux », point 2), mais n'empêche pas ce ticket de fonctionner
-correctement — la marge affichée reste déjà nette de ce terme (calcul
-backend). Aucune dépendance bloquante restante côté charges BC, intégrées
-dans ce même ticket après la correction post-fusion.
+**Aucune restante.** La dernière dépendance (`construction_courante` non
+exposée isolément, voir « État des lieux », point 2) a été fermée par le
+ticket backend B-038 puis consommée côté frontend par le ticket
+**F-037** (`F-037-decomposition-marge-grand-livre.md`) — voir ce fichier
+pour le détail complet (contrat API, implémentation, vérification en
+navigateur réel avec un backend réellement disponible). L'écran du
+grand-livre est désormais complet : tous les postes du calcul
+(`prix_client`, `foncier_alloue`, `be_alloue`, `construction_courante`,
+`bc_charges_total`, `margin`) sont affichés séparément, sans aucun calcul
+frontend.
 
 **Leçon générale pour ce projet, au-delà de ce ticket seul** : avant de
 conclure qu'une fonctionnalité backend « n'existe pas encore » (candidat à
 devenir une dépendance transmise à une autre session), vérifier d'abord
 que la branche locale est à jour avec `master` (`git fetch`/`git log
 HEAD..origin/master`) — un constat basé sur un instantané périmé peut
-recadrer un ticket entier à tort, comme ici.
+recadrer un ticket entier à tort, comme ici. **Confirmé une seconde fois
+au ticket F-037** : cette fois avec la nuance qu'une branche LOCALE
+partagée entre worktrees peut elle-même être en avance sur son
+remote-tracking ref (`origin/master`) sans jamais avoir été poussée —
+vérifier les deux avant de conclure qu'une fonctionnalité n'existe pas.
