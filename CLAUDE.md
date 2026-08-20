@@ -3215,6 +3215,40 @@ candidat pour un futur ticket si ce second trou doit être fermé.
 
 5 tests dédiés, suite `web` 179 tests, `tsc --noEmit` propre.
 
+## Décomposition complète de la marge du grand-livre (ticket B-038, `apps/procurement`)
+
+Voir `B-038-lot-ledger-margin-breakdown.md` pour le détail complet. Ferme
+la dépendance backend documentée dans `F-035-grand-livre-lot.md` («
+construction courante non exposée comme poste isolé ») : `GET
+.../lot-ledgers/{lot_id}/margin/` renvoie désormais `prix_client`,
+`foncier_alloue`, `be_alloue`, `construction_courante`,
+`bc_charges_total`, EN PLUS de `margin` — extension ADDITIVE, vérifiée
+avant conception (aucun consommateur, backend ou frontend, ne fait
+d'égalité stricte sur le dict complet ; le type frontend actuel,
+`{margin: string}`, est INLINE, jamais une interface partagée).
+
+**Même discipline de refactor que B-037** : `_compute_lot_ledger_margin_breakdown`
+calcule TOUT une seule fois ; `get_lot_ledger_margin` (marge SEULE,
+`Decimal` nu) et `get_lot_ledger_margin_breakdown` (tous les postes,
+dict) délèguent TOUTES DEUX au même helper — jamais deux formules qui
+pourraient diverger. `get_lot_ledger_margin` reste INCHANGÉE dans sa
+signature/son type de retour — ses deux appelants existants
+(`_maybe_alert_negative_margin`, ticket B-036, et le test qui l'appelle
+directement) n'ont eu besoin d'AUCUNE modification.
+
+**Renommage assumé** : `get_lot_ledger_margin_for_lot` (seul appelant :
+la vue) → `get_lot_ledger_margin_breakdown_for_lot`, son type de retour
+passant d'un `Decimal` nu à un dict — même discipline de nommage
+explicite que `get_devis_status`/`get_candidate_visible_devis_status`,
+jamais un contrat qui change silencieusement sous un nom inchangé.
+
+**Consommation frontend explicitement HORS SCOPE de ce ticket** —
+`LotLedgerPanel.tsx` continue de n'afficher que `margin` ; exploiter le
+détail (afficher chaque poste) est un futur ticket frontend.
+
+3 tests dédiés/étendus, suite `procurement` 92 tests, suite complète du
+projet 363 tests, tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

@@ -456,16 +456,21 @@ def get_construction_amount(devis):
     return devis.amount + total_ecarts
 
 
-def get_lot_ledger_margin(ledger):
-    """Marge disponible COURANTE d'un grand-livre — ticket B-035, formule
-    COMPLÉTÉE par le ticket B-036 (fermeture du TODO laissé par B-035).
-    Calculée À LA VOLÉE, JAMAIS stockée (doctrine Visible Trust) :
+def _compute_lot_ledger_margin_breakdown(ledger):
+    """Calcule TOUS les postes de la marge d'un grand-livre EN UNE SEULE
+    FOIS — ticket B-038, extrait du corps original de
+    `get_lot_ledger_margin` (même discipline que le refactor B-037,
+    `_search_lots_by_name_as_admin`) : `get_lot_ledger_margin` (qui ne
+    retourne QUE le résultat final, jamais changée dans son contrat) et
+    `get_lot_ledger_margin_breakdown` (qui retourne TOUS les postes,
+    ticket B-038) délèguent TOUTES DEUX à cette fonction — jamais deux
+    calculs indépendants qui pourraient diverger.
+
     `prix_client - foncier_alloue - be_alloue - construction_courante -
-    Σ LotBcCharge.montant` (toutes les charges bureau de contrôle du lot,
-    fixes et globale confondues — voir `record_bc_charge_for_mission`).
-    Ne jamais dupliquer cette formule ailleurs, toujours passer par cette
-    fonction (même discipline que `apps.pricing.services.
-    get_active_control_office_rate`, seule source de vérité).
+    bc_charges_total` (toutes les charges bureau de contrôle du lot,
+    fixes et globale confondues — voir `record_bc_charge_for_mission`,
+    ticket B-036). Calculée À LA VOLÉE, JAMAIS stockée (doctrine Visible
+    Trust).
 
     Lecture DIRECTE, sans bascule : appelée uniquement depuis un appelant
     déjà basculé sur l'organisation du lot (la même que `ledger.
@@ -474,13 +479,58 @@ def get_lot_ledger_margin(ledger):
     """
     devis = get_locked_devis_for_lot(ledger.lot_id)
     construction_courante = get_construction_amount(devis)
-    total_bc_charges = LotBcCharge.objects.filter(lot_id=ledger.lot_id).aggregate(
+    bc_charges_total = LotBcCharge.objects.filter(lot_id=ledger.lot_id).aggregate(
         total=Sum('montant'),
     )['total'] or Decimal('0')
-    return (
+    margin = (
         ledger.prix_client - ledger.foncier_alloue - ledger.be_alloue
-        - construction_courante - total_bc_charges
+        - construction_courante - bc_charges_total
     )
+    return {
+        'prix_client': ledger.prix_client,
+        'foncier_alloue': ledger.foncier_alloue,
+        'be_alloue': ledger.be_alloue,
+        'construction_courante': construction_courante,
+        'bc_charges_total': bc_charges_total,
+        'margin': margin,
+    }
+
+
+def get_lot_ledger_margin(ledger):
+    """Marge disponible COURANTE d'un grand-livre, SEULE — ticket B-035,
+    formule COMPLÉTÉE par le ticket B-036 (fermeture du TODO laissé par
+    B-035). **Signature ET type de retour INCHANGÉS par le ticket B-038**
+    (`Decimal` nu, jamais un dict) — mince wrapper autour de
+    `_compute_lot_ledger_margin_breakdown`, aucun appelant existant
+    (`apps.procurement.services._maybe_alert_negative_margin`, ticket
+    B-036) n'a besoin d'être modifié. Voir `get_lot_ledger_margin_breakdown`
+    pour la version qui expose TOUS les postes (ticket B-038).
+
+    Ne jamais dupliquer la formule ailleurs, toujours passer par cette
+    fonction OU `get_lot_ledger_margin_breakdown` (même discipline que
+    `apps.pricing.services.get_active_control_office_rate`, seule source
+    de vérité). Lecture DIRECTE, sans bascule — voir
+    `_compute_lot_ledger_margin_breakdown`.
+    """
+    return _compute_lot_ledger_margin_breakdown(ledger)['margin']
+
+
+def get_lot_ledger_margin_breakdown(ledger):
+    """Tous les postes de la marge d'un grand-livre, séparément — ticket
+    B-038 : `prix_client`, `foncier_alloue`, `be_alloue`,
+    `construction_courante`, `bc_charges_total`, `margin`. Ferme la
+    dépendance backend documentée dans `F-035-grand-livre-lot.md`
+    (« construction courante non exposée comme poste isolé ») — un futur
+    ticket frontend peut consommer ce détail sans recalculer quoi que ce
+    soit côté client (doctrine « aucun calcul métier frontend »).
+
+    Même précondition d'appel que `get_lot_ledger_margin` (lecture
+    DIRECTE, sans bascule, appelant déjà positionné sur l'organisation du
+    lot) — les deux fonctions partagent EXACTEMENT le même calcul via
+    `_compute_lot_ledger_margin_breakdown`, jamais deux formules qui
+    pourraient diverger.
+    """
+    return _compute_lot_ledger_margin_breakdown(ledger)
 
 
 def record_bc_charge_for_mission(*, mission, actor):
@@ -703,23 +753,30 @@ def get_lot_ledger(*, admin_organization_id, target_organization_id, lot_id):
         set_rls_context(organization_id=admin_organization_id)
 
 
-def get_lot_ledger_margin_for_lot(*, admin_organization_id, target_organization_id, lot_id):
-    """Grand-livre + marge disponible courante de ce lot — ticket B-035.
-    Combine `get_lot_ledger`/`get_lot_ledger_margin` sous UNE SEULE bascule
-    RLS (évite un aller-retour de bascule supplémentaire pour une même
-    lecture — `get_lot_ledger_margin` a besoin d'être appelée sous cette
-    même bascule, voir sa docstring). Retourne `(None, None)` si aucun
-    grand-livre n'existe encore pour ce lot.
+def get_lot_ledger_margin_breakdown_for_lot(*, admin_organization_id, target_organization_id, lot_id):
+    """Grand-livre + décomposition complète de sa marge disponible
+    courante — ticket B-038, RENOMMÉE depuis `get_lot_ledger_margin_for_lot`
+    (ticket B-035) : son type de retour change (dict complet au lieu d'un
+    `Decimal` nu), un nouveau nom rend ce changement de contrat explicite
+    plutôt que silencieux — même discipline de nommage que
+    `get_devis_status`/`get_candidate_visible_devis_status`. Seul appelant
+    dans tout le projet : `apps.procurement.views.LotLedgerMarginView`.
+
+    Combine `get_lot_ledger`/`get_lot_ledger_margin_breakdown` sous UNE
+    SEULE bascule RLS (évite un aller-retour de bascule supplémentaire
+    pour une même lecture — `get_lot_ledger_margin_breakdown` a besoin
+    d'être appelée sous cette même bascule, voir sa docstring). Retourne
+    `(None, None)` si aucun grand-livre n'existe encore pour ce lot.
     """
     set_rls_context(organization_id=target_organization_id)
     try:
         ledger = LotLedger.objects.filter(lot_id=lot_id).first()
         if ledger is None:
             return None, None
-        margin = get_lot_ledger_margin(ledger)
+        breakdown = get_lot_ledger_margin_breakdown(ledger)
     finally:
         set_rls_context(organization_id=admin_organization_id)
-    return ledger, margin
+    return ledger, breakdown
 
 
 def create_ajustement(*, admin, admin_organization_id, target_organization_id, devis_id, ecart):
