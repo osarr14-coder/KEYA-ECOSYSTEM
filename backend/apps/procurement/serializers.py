@@ -39,15 +39,43 @@ class DevisAdminSerializer(serializers.ModelSerializer):
     — un admin a besoin de savoir immédiatement qu'un devis est verrouillé,
     y compris avant tout ajustement (voir `DevisCandidateSerializer` pour
     le statut GATÉ exposé au candidat, ticket 023).
+
+    **`lot_detail`/`candidate_organization_detail` (ticket B-029)** — noms
+    lisibles, en PLUS des UUID bruts existants (`organization`,
+    `candidate_organization`, `lot`), jamais à leur place (décision A) :
+    remplacer ces champs casserait `apps/web/src/api/types.ts` et tout code
+    frontend qui recopie ces UUID vers une requête suivante
+    (`DevisLockView`/`DevisAjustementView` attendent `organization` en UUID
+    brut dans leur corps). Réutilise LITTÉRALEMENT les serializers du
+    ticket B-028 (décision B) — `LotSearchResultSerializer`/
+    `OrganizationSearchResultSerializer`, pas une forme dupliquée. Aucun
+    `organization_detail` séparé (décision C) : `Devis.organization` vaut
+    TOUJOURS l'organisation du lot par construction (voir le modèle) —
+    identique à `lot_detail['organization']`, un champ dédié dupliquerait
+    l'information sans rien ajouter.
+
+    **`get_lot_detail`/`get_candidate_organization_detail` passent PAR le
+    service** (`apps.procurement.services.get_devis_lot_detail`/
+    `get_devis_candidate_organization_detail`), jamais un accès direct
+    `obj.lot`/`obj.candidate_organization` dans le serializer — bug réel
+    trouvé au premier lancement des tests de ce ticket : `Lot`/`Asset`/
+    `Program` sont sous RLS, et le contexte de la connexion est déjà celui
+    de l'admin (restauré par `create_devis`/`lock_devis` AVANT la
+    sérialisation) — accéder à `obj.lot.asset.program` sans bascule échoue
+    en `Asset.DoesNotExist`, même piège déjà documenté pour `get_status`
+    (ticket 022).
     """
 
     status = serializers.SerializerMethodField()
+    lot_detail = serializers.SerializerMethodField()
+    candidate_organization_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = Devis
         fields = [
             'id', 'organization', 'candidate_organization', 'lot',
             'amount', 'marge_estimee', 'logged_by', 'created_at', 'status',
+            'lot_detail', 'candidate_organization_detail',
         ]
         read_only_fields = fields
 
@@ -55,6 +83,16 @@ class DevisAdminSerializer(serializers.ModelSerializer):
         request = self.context['request']
         restore_organization_id = request.organization.id if request.organization else None
         return services.get_devis_status(obj, restore_organization_id=restore_organization_id)
+
+    def get_lot_detail(self, obj):
+        request = self.context['request']
+        restore_organization_id = request.organization.id if request.organization else None
+        return services.get_devis_lot_detail(obj, restore_organization_id=restore_organization_id)
+
+    def get_candidate_organization_detail(self, obj):
+        request = self.context['request']
+        restore_organization_id = request.organization.id if request.organization else None
+        return services.get_devis_candidate_organization_detail(obj, restore_organization_id=restore_organization_id)
 
 
 class DevisCandidateSerializer(serializers.ModelSerializer):

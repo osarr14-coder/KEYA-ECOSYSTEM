@@ -2082,6 +2082,49 @@ délibérée d'un taux hors limites (`max_digits=5`) refusée avec le message
 backend EXACT, aucune ligne fantôme ajoutée. 270 tests frontend (5 packages,
 95 dans `apps/web` dont 13 nouveaux), zéro régression, `tsc --noEmit` propre.
 
+## Noms lisibles sur DevisAdminSerializer (ticket B-029, `apps/procurement`)
+
+Voir `B-029-devis-admin-serializer-noms.md` pour le détail complet. Ticket de suivi
+direct de B-028 : `DevisAdminSerializer` exposait `organization`/`lot`/
+`candidate_organization` comme des UUID bruts, jamais résolus en noms — alors que
+les endpoints de recherche B-028 renvoient déjà `{id, name}`.
+
+**Additif, jamais un remplacement** : `lot_detail`/`candidate_organization_detail`
+ajoutés EN PLUS des UUID bruts existants, qui restent inchangés — vérifié avant
+conception que `apps/web/src/api/types.ts` (`organization: string`) et le corps de
+requête de `DevisLockView`/`DevisAjustementView` (UUID brut attendu) dépendent déjà
+de ces champs tels quels ; un remplacement les aurait cassés silencieusement.
+Réutilise LITTÉRALEMENT `LotSearchResultSerializer`/`OrganizationSearchResultSerializer`
+(ticket B-028), pas une forme dupliquée. Pas de `organization_detail` séparé :
+`Devis.organization` vaut toujours l'organisation du lot par construction —
+identique à `lot_detail['organization']`.
+
+**Bug réel trouvé au premier lancement des tests — même classe que le bug déjà
+documenté pour `get_status` au ticket 022** : `DevisCreateView`/`DevisLockView`
+restaurent le contexte RLS vers l'organisation de l'admin AVANT de sérialiser leur
+réponse. Un accès direct `obj.lot.asset.program` depuis le serializer déclenchait
+une requête fraîche sous ce mauvais contexte (`programs_lot`/`programs_asset`/
+`programs_program` sous `FORCE ROW LEVEL SECURITY`) — `obj.lot` restait accessible
+(déjà en cache), mais `.asset`/`.asset.program`, jamais chargés, échouaient en
+`Asset.DoesNotExist`. 8 tests ont échoué dès la première exécution — jamais
+découvert par relecture. Corrigé par deux nouvelles fonctions de service
+(`get_devis_lot_detail`/`get_devis_candidate_organization_detail`) qui reprennent
+EXACTEMENT le schéma de `get_devis_status` (bascule vers `devis.organization_id`,
+lecture, restauration dans un `finally`) — le serializer ne touche plus jamais
+directement `obj.lot`/`obj.candidate_organization`. **Leçon générale pour ce
+projet** : tout `SerializerMethodField` qui traverse une relation FK vers une
+table sous RLS doit passer par le service, jamais un accès direct dans le
+serializer — le contexte RLS au moment de la SÉRIALISATION n'est pas fiable pour
+en présumer.
+
+`list_devis_for_lot_as_admin` gagne un `select_related('lot__organization',
+'lot__asset__program', 'candidate_organization')` pour éviter un N+1 par ligne sur
+`DevisAdminListView` — la bascule RLS posée dans les nouvelles fonctions de
+service reste sans coût mesurable pour ce chemin (attributs déjà en cache).
+
+5 tests dédiés, suite `procurement` 54 tests, suite complète du projet 275 tests,
+tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
