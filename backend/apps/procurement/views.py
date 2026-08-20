@@ -242,6 +242,29 @@ class AdminLotSearchView(APIView):
         return Response(LotSearchResultSerializer(lots, many=True).data)
 
 
+class AdminLotEligibleForLedgerSearchView(APIView):
+    """`GET /api/procurement/admin/lots/eligible-for-ledger/?q=<recherche>`
+    — ticket B-037, réservé à `admin_keyimmo`. Recherche de lot par nom,
+    TOUTES organisations confondues, en préparation de
+    `POST /api/procurement/lot-ledgers/` (B-035) — CRITÈRE INVERSE de
+    `AdminLotSearchView` : devis déjà VERROUILLÉ, ET aucun `LotLedger`
+    existant encore pour ce lot. Voir `apps.procurement.services.
+    search_lots_eligible_for_ledger_as_admin`, qui réutilise le même
+    mécanisme de recherche que B-028 (`_search_lots_by_name_as_admin`).
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        query = request.query_params.get('q', '').strip()
+        lots = services.search_lots_eligible_for_ledger_as_admin(
+            admin=request.user,
+            admin_organization_id=request.organization.id if request.organization else None,
+            query=query,
+        )
+        return Response(LotSearchResultSerializer(lots, many=True).data)
+
+
 class LotLedgerCreateView(APIView):
     """`POST /api/procurement/lot-ledgers/` — ticket B-035, réservé à
     `admin_keyimmo`. Crée le grand-livre d'un lot (`prix_client`, snapshot
