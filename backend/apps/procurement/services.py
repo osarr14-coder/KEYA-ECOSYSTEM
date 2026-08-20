@@ -129,6 +129,60 @@ def get_candidate_visible_devis_status(devis, *, restore_organization_id):
     return DEVIS_LOCKED_SOURCE if has_successful_reconciliation else DEVIS_CANDIDATE_STATUS
 
 
+def get_devis_lot_detail(devis, *, restore_organization_id):
+    """Ticket B-029 — `lot_detail` de `DevisAdminSerializer`, sous la
+    bascule RLS correcte. **Même piège déjà documenté pour
+    `get_devis_status`** : après `create_devis`/`lock_devis`, le contexte
+    RLS de la connexion est déjà celui de l'admin (restauré AVANT que la
+    vue ne sérialise la réponse), pas celui du lot. `Lot`/`Asset`/`Program`
+    sont sous RLS (migration `apps/programs/migrations/0002_programs_rls.py`)
+    — accéder à `devis.lot.asset`/`.asset.program` sans bascule échoue en
+    `Asset.DoesNotExist` (bug réel trouvé au premier lancement des tests
+    de ce ticket, `TestDevisCreation::test_admin_keyimmo_can_create_a_devis`) :
+    `devis.lot` lui-même reste accessible (déjà mis en cache par `create_
+    devis`/`lock_devis`), mais `lot.asset`/`lot.asset.program`, jamais
+    chargés jusque-là, déclenchent une requête FRAÎCHE sous le MAUVAIS
+    contexte RLS.
+
+    Import différé de `.serializers` (niveau fonction, pas module) : évite
+    l'import circulaire, `serializers.py` importe déjà `from . import
+    services` au niveau module.
+
+    Sans effet mesurable pour `DevisAdminListView` (`list_devis_for_lot_
+    as_admin`, qui charge déjà `lot__organization`/`lot__asset__program`
+    via `select_related` PENDANT sa propre bascule) : la bascule ici ne
+    fait alors que deux appels `set_config` inoffensifs, `LotSearchResult
+    Serializer` lit des attributs DÉJÀ en cache, aucune requête SQL
+    supplémentaire.
+    """
+    from .serializers import LotSearchResultSerializer
+
+    set_rls_context(organization_id=devis.organization_id)
+    try:
+        return LotSearchResultSerializer(devis.lot).data
+    finally:
+        set_rls_context(organization_id=restore_organization_id)
+
+
+def get_devis_candidate_organization_detail(devis, *, restore_organization_id):
+    """Ticket B-029 — `candidate_organization_detail` de
+    `DevisAdminSerializer`. `organizations_organization` n'a AUCUNE RLS
+    (vérifié au ticket B-028) : cette bascule n'est pas STRICTEMENT
+    nécessaire pour cette lecture précise, mais la poser quand même
+    documente explicitement que ce n'est délibérément pas un oubli, et
+    évite qu'un futur ajout de RLS sur `Organization` ne réintroduise
+    silencieusement le même piège que `get_devis_lot_detail` ci-dessus
+    sans que personne n'y pense.
+    """
+    from .serializers import OrganizationSearchResultSerializer
+
+    set_rls_context(organization_id=devis.organization_id)
+    try:
+        return OrganizationSearchResultSerializer(devis.candidate_organization).data
+    finally:
+        set_rls_context(organization_id=restore_organization_id)
+
+
 def is_lot_locked(lot_id):
     """Vrai si un devis de ce lot est déjà verrouillé — la mise en
     concurrence est close. Itère les devis du lot (quelques candidats par
@@ -272,10 +326,22 @@ def list_devis_for_lot_as_admin(*, admin, admin_organization_id, target_organiza
     quel que soit leur `candidate_organization` — une seule bascule suffit
     pour les voir TOUS en une seule requête, contrairement à une lecture
     scopée par candidat qui nécessiterait une bascule par candidat.
+
+    `select_related` (ticket B-029) : `DevisAdminSerializer.lot_detail`/
+    `candidate_organization_detail` accèdent à `lot__organization`,
+    `lot__asset__program` et `candidate_organization` pour CHAQUE devis de
+    la liste — sans ce `select_related`, N devis d'un même lot
+    redéclencheraient chacun leurs propres requêtes vers le MÊME lot/la
+    même organisation (Django ne déduplique jamais entre instances
+    distinctes), un N+1 évitable puisque connu à l'avance ici.
     """
     set_rls_context(organization_id=target_organization_id)
     try:
-        return list(Devis.objects.filter(lot_id=lot_id).order_by('created_at'))
+        return list(
+            Devis.objects.filter(lot_id=lot_id)
+            .select_related('lot__organization', 'lot__asset__program', 'candidate_organization')
+            .order_by('created_at'),
+        )
     finally:
         set_rls_context(organization_id=admin_organization_id)
 

@@ -255,6 +255,117 @@ class TestDevisCreation:
 
 
 @pytest.mark.django_db
+class TestDevisAdminSerializerNames:
+    """`lot_detail`/`candidate_organization_detail` — ticket B-029, ajout
+    ADDITIF à `DevisAdminSerializer` (décision A), sur les 3 endpoints
+    existants qui l'utilisent.
+    """
+
+    def test_devis_create_response_includes_lot_detail_and_candidate_organization_detail(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('names-create')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        program = lot.asset.program
+
+        response = admin_client.post(
+            reverse('procurement-devis-create'),
+            {
+                'organization': str(sponsor_org.id), 'lot': str(lot.id),
+                'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+
+        # Champs UUID bruts existants : PRÉSENTS et INCHANGÉS (décision A).
+        assert response.data['lot'] == lot.id
+        assert response.data['organization'] == sponsor_org.id
+        assert response.data['candidate_organization'] == candidate_a_org.id
+
+        assert response.data['lot_detail'] == {
+            'id': str(lot.id), 'name': lot.name,
+            'organization': {'id': str(sponsor_org.id), 'name': sponsor_org.name},
+            'program': {'id': str(program.id), 'name': program.name},
+        }
+        assert response.data['candidate_organization_detail'] == {
+            'id': str(candidate_a_org.id), 'name': candidate_a_org.name,
+        }
+
+    def test_devis_lock_response_includes_lot_detail_and_candidate_organization_detail(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('names-lock')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        devis = services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+        )
+
+        response = admin_client.post(
+            reverse('procurement-devis-lock', args=[devis.id]),
+            {'organization': str(sponsor_org.id)},
+            format='json',
+        )
+        assert response.status_code == 200, response.data
+        assert response.data['lot_detail']['id'] == str(lot.id)
+        assert response.data['lot_detail']['organization']['id'] == str(sponsor_org.id)
+        assert response.data['candidate_organization_detail']['id'] == str(candidate_a_org.id)
+
+    def test_devis_admin_list_response_includes_lot_detail_and_candidate_organization_detail_for_every_row(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, candidate_b = (
+            _setup_lot_up_for_bid('names-list')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        _candidate_b_client, candidate_b_org = candidate_b
+        services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+        )
+        services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_b_org.id, amount=AMOUNT_B,
+        )
+
+        response = admin_client.get(
+            reverse('procurement-admin-devis-list', args=[lot.id]),
+            {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        assert len(response.data) == 2
+        for row in response.data:
+            assert row['lot_detail']['id'] == str(lot.id)
+            assert row['lot_detail']['organization']['id'] == str(sponsor_org.id)
+        candidate_ids = {row['candidate_organization_detail']['id'] for row in response.data}
+        assert candidate_ids == {str(candidate_a_org.id), str(candidate_b_org.id)}
+
+    def test_no_organization_detail_field_exists_lot_detail_organization_suffices(self):
+        """Décision C : pas de champ `organization_detail` séparé —
+        `Devis.organization` vaut toujours l'organisation du lot, déjà
+        exposée via `lot_detail['organization']`.
+        """
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('names-no-org-detail')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+
+        response = admin_client.post(
+            reverse('procurement-devis-create'),
+            {
+                'organization': str(sponsor_org.id), 'lot': str(lot.id),
+                'candidate_organization': str(candidate_a_org.id), 'amount': str(AMOUNT_A),
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert 'organization_detail' not in response.data
+        assert response.data['lot_detail']['organization'] == {'id': str(sponsor_org.id), 'name': sponsor_org.name}
+
+
+@pytest.mark.django_db
 class TestDevisLock:
     def test_admin_keyimmo_can_lock_a_devis(self):
         admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
@@ -608,6 +719,36 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
         body_text = response.content.decode()
         assert str(AMOUNT_A) not in body_text
         assert str(AMOUNT_B) not in body_text
+
+    def test_lot_detail_and_candidate_organization_detail_are_absent_from_candidate_responses(self):
+        """Décision D (ticket B-029) : prouvé explicitement, pas seulement
+        présumé de l'absence d'héritage entre `DevisCandidateSerializer`
+        et `DevisAdminSerializer` — même discipline que le reste de cette
+        classe de test (montants).
+        """
+        _admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('names-leak')
+        )
+        candidate_a_client, candidate_a_org = candidate_a
+
+        devis_a = services.create_devis(
+            logged_by=admin_user, logged_by_organization_id=admin_org.id,
+            target_organization_id=sponsor_org.id, lot_id=lot.id,
+            candidate_organization_id=candidate_a_org.id, amount=AMOUNT_A,
+        )
+
+        list_response = candidate_a_client.get(reverse('procurement-my-candidatures'))
+        assert list_response.status_code == 200
+        for row in list_response.data:
+            assert 'lot_detail' not in row
+            assert 'candidate_organization_detail' not in row
+
+        detail_response = candidate_a_client.get(
+            reverse('procurement-my-candidature-detail', args=[devis_a.id]),
+        )
+        assert detail_response.status_code == 200
+        assert 'lot_detail' not in detail_response.data
+        assert 'candidate_organization_detail' not in detail_response.data
 
     def test_sweep_across_every_other_endpoint_already_accessible_to_the_constructeur_role(self):
         """Balayage large : un constructeur candidat, propriétaire d'un
