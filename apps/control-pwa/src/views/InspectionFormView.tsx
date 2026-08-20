@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { AlertBanner, semanticColors } from '@keya/design-system';
 
+import { PhotoSyncStatusIndicator } from '../components/PhotoSyncStatusIndicator';
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { CHECKLIST_TEMPLATE } from '../db/missions';
 import {
@@ -34,7 +35,10 @@ function PhotoThumbnail({ photo, onRemove }: { photo: LocalPhoto; onRemove: () =
       {objectUrl && (
         <img src={objectUrl} alt={photo.fileName} width={72} height={72} style={{ objectFit: 'cover' }} />
       )}
-      <span>{photo.fileName}</span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <span>{photo.fileName}</span>
+        <PhotoSyncStatusIndicator status={photo.mediaSyncStatus} />
+      </span>
       {/* Ticket 024 (audit accessibilité) — cible tactile portée à 44x44
           (WCAG 2.5.5), app CONTROL PWA explicitement tactile (360-430px,
           voir CLAUDE.md). Aucun bouton natif de ce fichier n'avait de taille

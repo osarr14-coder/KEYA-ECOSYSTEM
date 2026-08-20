@@ -2683,9 +2683,32 @@ d'écriture IndexedDB déclenche la nouvelle branche — les tests automatisés
 (`vi.spyOn` sur `saveDraft`) la reproduisent plus fidèlement qu'une
 manipulation manuelle.
 
+**`sync failed` par photo, désormais affiché (même vague)** :
+`LocalPhoto.mediaSyncStatus` (`pending/syncing/synced/failed`, tracké et
+retenté indéfiniment par `syncEngine.ts::syncPhotos`, backoff exponentiel,
+ticket 010 passe 2) n'était jamais lu par `PhotoThumbnail` — une photo
+bloquée en échec restait visuellement identique à une photo synchronisée.
+**`StatusDot`** (`components/StatusDot.tsx`), scaffolding pastille+libellé
+extrait de `SyncStatusIndicator` au moment où un second consommateur réel
+apparaît (`PhotoSyncStatusIndicator`, domaine de valeurs distinct —
+`failed` plutôt que `conflict`, aucune notion de conflit sur un simple
+upload de fichier) — `SyncStatusIndicator` délègue désormais son rendu à
+`StatusDot`, comportement observable inchangé. Libellé `failed` honnête
+sur le comportement réel (« nouvelle tentative automatique ») : aucune
+action de l'inspecteur requise, contrairement au bandeau d'échec
+d'enregistrement local ci-dessus. **Piège de test rencontré, même famille
+que ci-dessus** : un premier test ne patientait pas la fin réelle de
+l'écriture IndexedDB avant de se terminer, contaminant la lecture du test
+suivant — corrigé en attendant explicitement la persistance (`waitFor` +
+relecture DB), même discipline que les tests préexistants du fichier.
+8 nouveaux tests. **386 tests frontend** (5 packages :
+51+68+71+48+148), zéro régression, `tsc --noEmit` propre. Pas de
+vérification en navigateur réel (même rationale) : un vrai échec d'upload
+exige un rejet serveur reproductible, moins fiable à déclencher
+manuellement que via `vi.spyOn`.
+
 **Reste de la vague 4, non commencé** : `permission denied` dédiée,
-`sync failed` par photo, `resolveConflictByDiscarding` (même défaut,
-sévérité faible), stale data.
+`resolveConflictByDiscarding` (même défaut, sévérité faible), stale data.
 
 ## Coûts programme et répartition entre lots (ticket B-033, `apps/programs`)
 

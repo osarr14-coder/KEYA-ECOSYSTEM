@@ -469,3 +469,53 @@ describe(
     );
   },
 );
+
+describe(
+  'InspectionFormView — statut de synchronisation par photo, jamais silencieux (ticket F-033, vague 4)',
+  () => {
+    it('une photo tout juste ajoutée affiche "En attente d\'envoi"', async () => {
+      render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+      const file = new File(['contenu-photo'], 'photo.jpg', { type: 'image/jpeg' });
+      fireEvent.change(await screen.findByLabelText('Ajouter une photo'), { target: { files: [file] } });
+
+      expect(await screen.findByText("En attente d'envoi")).toBeInTheDocument();
+      // Attend l'écriture IndexedDB réelle avant la fin du test — sans quoi
+      // elle peut se terminer APRÈS le `clearIndexedDB()` du test suivant et
+      // le contaminer (même piège déjà documenté au ticket 025 pour ce
+      // fichier).
+      await waitFor(async () => {
+        const stored = await getDraftForMission('mission-1');
+        expect(stored?.photos).toHaveLength(1);
+      });
+    });
+
+    it(
+      'une photo restée en échec d\'upload (mediaSyncStatus="failed") l\'affiche '
+      + 'explicitement au chargement du brouillon, jamais confondue avec une photo envoyée',
+      async () => {
+        const draft = createEmptyDraft('mission-1', CHECKLIST_TEMPLATE);
+        await saveDraft({
+          ...draft,
+          photos: [{
+            id: 'photo-1',
+            blob: new File(['contenu-photo'], 'photo.jpg', { type: 'image/jpeg' }),
+            fileName: 'photo.jpg',
+            capturedAt: '2026-08-20T10:00:00.000Z',
+            mediaSyncStatus: 'failed',
+            remoteDocumentId: null,
+            retryCount: 2,
+            nextRetryAt: '2026-08-20T10:00:08.000Z',
+          }],
+        });
+
+        render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+        expect(
+          await screen.findByText("Échec d'envoi — nouvelle tentative automatique"),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('Envoyée')).not.toBeInTheDocument();
+      },
+    );
+  },
+);

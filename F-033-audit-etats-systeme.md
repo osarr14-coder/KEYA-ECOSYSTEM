@@ -245,12 +245,58 @@ d'écriture IndexedDB — les tests automatisés (qui interceptent précisément
 `saveDraft` via `vi.spyOn`) reproduisent ce scénario de façon plus
 déterministe qu'une manipulation manuelle de navigateur.
 
+## `sync failed` par photo, désormais affiché (ticket F-033, vague 4)
+
+`LocalPhoto.mediaSyncStatus` (`pending/syncing/synced/failed`) était
+tracké et mis à jour par `syncEngine.ts::syncPhotos` (backoff exponentiel,
+jamais d'abandon — ticket 010 passe 2) depuis le début, mais jamais lu par
+`PhotoThumbnail` : une photo bloquée en échec restait visuellement
+identique à une photo synchronisée, sans aucun signal, même après
+plusieurs tentatives automatiques.
+
+**`StatusDot`, nouveau composant interne partagé** (`components/
+StatusDot.tsx`) — extrait de `SyncStatusIndicator` (ticket 010) au moment
+où un second consommateur réel apparaît avec la même forme (pastille +
+libellé) mais un domaine de valeurs distinct : `PhotoSyncStatusIndicator`
+(`MediaSyncStatus`, avec `failed` plutôt que `conflict` — aucune notion de
+conflit ne s'applique à un simple upload de fichier). `SyncStatusIndicator`
+délègue désormais son rendu à `StatusDot`, comportement observable
+strictement inchangé (mêmes `data-testid`/`data-status`/libellés, ses 4
+tests existants passent sans modification).
+
+**Libellé `failed` honnête sur le comportement réel** : « Échec d'envoi —
+nouvelle tentative automatique », pas un « échec » qui laisserait croire à
+un blocage définitif — contrairement au bandeau d'échec d'enregistrement
+local (portillon `persistError`, action explicite requise), aucune action
+de l'inspecteur n'est nécessaire ici, le moteur de synchro retente déjà
+seul indéfiniment.
+
+**Piège de test rencontré, même famille que celui déjà documenté pour le
+retry `persist()` ci-dessus** : un premier test ("En attente d'envoi" via
+l'UI) ne patientait pas la fin RÉELLE de l'écriture IndexedDB avant de se
+terminer (`findByText` résout dès la mise à jour optimiste, avant même que
+la file d'écriture sérialisée touche IndexedDB) — l'écriture pouvait alors
+se terminer APRÈS le `clearIndexedDB()` du test suivant, contaminant sa
+lecture (`getDraftForMission` retrouvait le brouillon `pending` du test
+précédent plutôt que celui explicitement sauvegardé en `failed`). Corrigé
+en attendant explicitement la persistance réelle (`waitFor` + relecture
+DB) avant la fin du test, même discipline que les tests préexistants de ce
+fichier (ticket 010).
+
+**8 nouveaux tests** (`PhotoSyncStatusIndicator.test.tsx` : 4 ; 2 tests
+d'intégration dans `InspectionFormView.test.tsx`, un via l'UI, un en
+préchargeant un brouillon avec une photo `failed`). **386 tests frontend**
+(5 packages : 51+68+71+48+148), zéro régression, `tsc --noEmit` propre.
+
+**Pas de vérification en navigateur réel, décision assumée** (même
+rationale que ci-dessus) : provoquer un VRAI échec d'upload photo exige un
+rejet serveur reproductible, moins fiable à déclencher manuellement que via
+`vi.spyOn` sur le client API.
+
 ## Explicitement hors vague 4 (reste à prioriser)
 
 - États `permission denied` dédiés au-delà du gate `admin_keyimmo`
   d'`apps/web`.
-- `sync failed` par photo (`LocalPhoto.mediaSyncStatus === 'failed'`)
-  jamais affiché dans `PhotoThumbnail`.
 - `resolveConflictByDiscarding` — même absence de `catch` que `persist()`
   avait, sévérité faible (pas d'état trompeur, l'inspecteur peut
   simplement recliquer).
