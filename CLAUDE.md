@@ -3499,6 +3499,19 @@ responsive d'`AppShell`) — mais jamais corrigé avant non plus. Priorité
 à évaluer selon l'usage réel attendu de HOME (mobile vs desktop) avant
 qu'un futur ticket (F-040 ou suivant) ne s'y attaque.
 
+**Second point à investiguer séparément, PAS diagnostiqué, PAS lié à
+F-039** : pendant la même revue critique, une tentative de connexion à
+BUILD (`apps/build`, utilisateur `constructeur` réel, JWT injecté) a
+bouclé vers l'écran de connexion `apps/web` sans que la cause soit
+identifiée — abandonné dans le temps imparti à ce challenge, hors de son
+périmètre. Aucune investigation menée au-delà de ce constat : cause
+inconnue (pourrait être un JWT expiré au moment du test, un souci
+propre à l'environnement de vérification de cette session, ou un vrai
+bug de `forceLogout`/`receiveIncomingSession` sur BUILD) — noté ici pour
+ne pas le perdre de vue, à creuser dans un futur ticket dédié si le
+symptôme se reproduit, jamais traité comme un bug confirmé tant que
+personne ne l'a réellement diagnostiqué.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
