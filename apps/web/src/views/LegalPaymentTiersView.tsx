@@ -4,7 +4,7 @@ import { AlertBanner, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
-import type { LegalPaymentTierStep, LegalPaymentTierTemplate } from '../api/types';
+import type { CountryPackSummary, LegalPaymentTierStep, LegalPaymentTierTemplate } from '../api/types';
 import { type ResourceState, useApiResource } from '../api/useApiResource';
 import { CountryPackSelector } from '../components/CountryPackSelector';
 
@@ -18,10 +18,11 @@ import { CountryPackSelector } from '../components/CountryPackSelector';
  * `backend/apps/pricing/{views,serializers,services}.py` avant d'écrire ce
  * fichier.
  *
- * **Aucun sélecteur de pays** (`CountryPackSelector`, `apps/web/src/
- * components/`) : même trou et même solution temporaire que `PricingView`
- * (ticket F-028) — saisie manuelle d'UUID, explicitement documentée comme
- * en attente d'un futur ticket backend de recherche `CountryPack`.
+ * **Sélecteur de pays réel** (`CountryPackSelector`, `apps/web/src/
+ * components/`) : `GET /api/organizations/country-packs/` (ticket B-030)
+ * remplace la saisie manuelle d'UUID utilisée jusque-là — dépendance levée,
+ * voir `F-030-paliers-legaux-paiement.md`, section « Levée de la dépendance
+ * B-030 ».
  *
  * **`activated_by`/`activated_at` signifient « a été activé un jour », PAS
  * « est l'actif COURANT »** (voir `apps/web/src/api/types.ts::
@@ -363,24 +364,24 @@ function LegalPaymentTierWorkspace({ countryPackId }: { countryPackId: string })
 }
 
 export function LegalPaymentTiersView() {
-  const [countryPackId, setCountryPackId] = useState<string | null>(null);
+  const [selectedCountryPack, setSelectedCountryPack] = useState<CountryPackSummary | null>(null);
 
   return (
     <section aria-label="Paliers légaux de paiement">
       <h2>Paliers légaux de paiement par pays</h2>
 
-      {countryPackId ? (
+      {selectedCountryPack ? (
         <div style={{ marginBottom: '16px' }}>
           <p>
-            Pays sélectionné : <strong>{countryPackId}</strong>{' '}
-            <button type="button" onClick={() => setCountryPackId(null)}>Changer de pays</button>
+            Pays sélectionné : <strong>{selectedCountryPack.label} ({selectedCountryPack.code})</strong>{' '}
+            <button type="button" onClick={() => setSelectedCountryPack(null)}>Changer de pays</button>
           </p>
         </div>
       ) : (
-        <CountryPackSelector onLoad={setCountryPackId} submitLabel="Charger les paliers de ce pays" />
+        <CountryPackSelector onLoad={setSelectedCountryPack} />
       )}
 
-      {countryPackId && <LegalPaymentTierWorkspace countryPackId={countryPackId} />}
+      {selectedCountryPack && <LegalPaymentTierWorkspace countryPackId={selectedCountryPack.id} />}
     </section>
   );
 }

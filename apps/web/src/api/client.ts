@@ -1,8 +1,8 @@
 import type {
-  BackofficeUserDetail, BackofficeUserSummary, CurrentPricingRates, Devis,
-  DevisAjustement, DevisAjustementCreateResult, LegalPaymentTierStepInput,
-  LegalPaymentTierTemplate, LoginResult, LotSearchResult, Me,
-  OrganizationSearchResult, PricingCanal, PricingConfig,
+  BackofficeUserDetail, BackofficeUserSummary, CountryPackSummary,
+  CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
+  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult,
+  LotSearchResult, Me, OrganizationSearchResult, PricingCanal, PricingConfig,
 } from './types';
 
 export class ApiError extends Error {
@@ -308,6 +308,17 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
       request<LegalPaymentTierTemplate[]>(
         `/api/pricing/legal-payment-tier-templates/history/${toQueryString({ country_pack_id: countryPackId })}`,
       ),
+
+    /**
+     * `GET /api/organizations/country-packs/` (ticket B-030) — TOUS les
+     * `CountryPack` actifs, triés par `label`. Aucun paramètre `q` côté
+     * backend (liste complète, pas une recherche filtrée) — contrairement
+     * à `searchLots`/`searchOrganizations` (ticket B-028). Lève la
+     * dépendance documentée dans `F-028-administration-tarifs.md`/
+     * `F-030-paliers-legaux-paiement.md` (sélecteur de pays temporaire par
+     * UUID manuel).
+     */
+    listCountryPacks: () => request<CountryPackSummary[]>('/api/organizations/country-packs/'),
   };
 }
 

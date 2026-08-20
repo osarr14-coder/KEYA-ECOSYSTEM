@@ -4,11 +4,12 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
-import type { LegalPaymentTierTemplate } from '../api/types';
+import type { CountryPackSummary, LegalPaymentTierTemplate } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { LegalPaymentTiersView } from './LegalPaymentTiersView';
 
-const COUNTRY_PACK_ID = 'country-pack-senegal';
+const COUNTRY_PACK: CountryPackSummary = { id: 'country-pack-senegal', label: 'Sénégal', code: 'SN' };
+const COUNTRY_PACK_ID = COUNTRY_PACK.id;
 
 function makeTemplate(overrides: Partial<LegalPaymentTierTemplate> = {}): LegalPaymentTierTemplate {
   return {
@@ -33,6 +34,7 @@ function makeTemplate(overrides: Partial<LegalPaymentTierTemplate> = {}): LegalP
 
 function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
+    listCountryPacks: vi.fn().mockResolvedValue([COUNTRY_PACK]),
     getActiveLegalPaymentTierTemplate: vi.fn().mockResolvedValue(null),
     getLegalPaymentTierTemplateHistory: vi.fn().mockResolvedValue([]),
     ...overrides,
@@ -41,22 +43,21 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   return { api };
 }
 
-async function selectCountry(countryPackId = COUNTRY_PACK_ID) {
-  fireEvent.change(screen.getByLabelText('Pays (Country Pack UUID)'), { target: { value: countryPackId } });
-  fireEvent.click(screen.getByRole('button', { name: 'Charger les paliers de ce pays' }));
-  await screen.findByText(countryPackId, { selector: 'strong' });
+async function selectCountry() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Sénégal (SN)' }));
+  await screen.findByText('Sénégal (SN)', { selector: 'strong' });
 }
 
-describe('LegalPaymentTiersView — sélection manuelle du pays (ticket F-030, dépendance backend transmise)', () => {
-  it('affiche l\'avertissement sur l\'absence de sélecteur, aucun appel avant soumission', () => {
-    const getActiveLegalPaymentTierTemplate = vi.fn();
-    renderView({ getActiveLegalPaymentTierTemplate });
+describe('LegalPaymentTiersView — sélection du pays (ticket F-030, dépendance B-030 levée)', () => {
+  it('charge la liste des pays au montage, sélectionnable directement', async () => {
+    const listCountryPacks = vi.fn().mockResolvedValue([COUNTRY_PACK]);
+    renderView({ listCountryPacks });
 
-    expect(screen.getByText('Aucun sélecteur de pays disponible')).toBeInTheDocument();
-    expect(getActiveLegalPaymentTierTemplate).not.toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: 'Sénégal (SN)' })).toBeInTheDocument();
+    expect(listCountryPacks).toHaveBeenCalledTimes(1);
   });
 
-  it('soumettre le formulaire appelle getActiveLegalPaymentTierTemplate et getLegalPaymentTierTemplateHistory avec le pays saisi', async () => {
+  it('sélectionner un pays appelle getActiveLegalPaymentTierTemplate/getLegalPaymentTierTemplateHistory avec son id', async () => {
     const getActiveLegalPaymentTierTemplate = vi.fn().mockResolvedValue(null);
     const getLegalPaymentTierTemplateHistory = vi.fn().mockResolvedValue([]);
     renderView({ getActiveLegalPaymentTierTemplate, getLegalPaymentTierTemplateHistory });
@@ -73,8 +74,8 @@ describe('LegalPaymentTiersView — sélection manuelle du pays (ticket F-030, d
     await selectCountry();
     fireEvent.click(screen.getByRole('button', { name: 'Changer de pays' }));
 
-    expect(screen.queryByText(COUNTRY_PACK_ID, { selector: 'strong' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Pays (Country Pack UUID)')).toBeInTheDocument();
+    expect(screen.queryByText('Sénégal (SN)', { selector: 'strong' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Sénégal (SN)' })).toBeInTheDocument();
   });
 });
 

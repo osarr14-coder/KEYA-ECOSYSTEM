@@ -2,11 +2,12 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
-import type { CurrentPricingRates, PricingConfig } from '../api/types';
+import type { CountryPackSummary, CurrentPricingRates, PricingConfig } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { PricingView } from './PricingView';
 
-const COUNTRY_PACK_ID = 'country-pack-senegal';
+const COUNTRY_PACK: CountryPackSummary = { id: 'country-pack-senegal', label: 'Sénégal', code: 'SN' };
+const COUNTRY_PACK_ID = COUNTRY_PACK.id;
 
 function makePricingConfig(overrides: Partial<PricingConfig> = {}): PricingConfig {
   return {
@@ -24,6 +25,7 @@ const EMPTY_CURRENT_RATES: CurrentPricingRates = { canal_1_marge: null, canal_2_
 
 function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
+    listCountryPacks: vi.fn().mockResolvedValue([COUNTRY_PACK]),
     getCurrentPricingRates: vi.fn().mockResolvedValue(EMPTY_CURRENT_RATES),
     getPricingHistory: vi.fn().mockResolvedValue([]),
     ...overrides,
@@ -32,28 +34,54 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   return { api };
 }
 
-async function selectCountry(countryPackId = COUNTRY_PACK_ID) {
-  fireEvent.change(screen.getByLabelText('Pays (Country Pack UUID)'), { target: { value: countryPackId } });
-  fireEvent.click(screen.getByRole('button', { name: 'Charger les tarifs de ce pays' }));
-  await screen.findByText(countryPackId, { selector: 'strong' });
+async function selectCountry() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Sénégal (SN)' }));
+  await screen.findByText('Sénégal (SN)', { selector: 'strong' });
 }
 
-describe('PricingView — sélection manuelle du pays (ticket F-028, dépendance backend transmise)', () => {
-  it('affiche l\'avertissement sur l\'absence de sélecteur, aucun appel avant soumission', () => {
-    const getCurrentPricingRates = vi.fn();
-    renderView({ getCurrentPricingRates });
+describe('PricingView — sélection du pays (ticket F-028, dépendance B-030 levée)', () => {
+  it('charge la liste des pays au montage, sans action de l\'utilisateur', async () => {
+    const listCountryPacks = vi.fn().mockResolvedValue([COUNTRY_PACK]);
+    renderView({ listCountryPacks });
 
-    expect(screen.getByText('Aucun sélecteur de pays disponible')).toBeInTheDocument();
-    expect(getCurrentPricingRates).not.toHaveBeenCalled();
+    expect(listCountryPacks).toHaveBeenCalledTimes(1);
+    await screen.findByRole('button', { name: 'Sénégal (SN)' });
   });
 
-  it('le bouton "Charger les tarifs de ce pays" reste désactivé tant qu\'aucun UUID n\'est saisi', () => {
+  it('affiche chaque pays actif, sélectionnable directement (pas de bouton "Charger" séparé)', async () => {
     renderView();
 
-    expect(screen.getByRole('button', { name: 'Charger les tarifs de ce pays' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Sénégal (SN)' })).toBeInTheDocument();
   });
 
-  it('soumettre le formulaire appelle getCurrentPricingRates et getPricingHistory (pour chaque canal) avec le pays saisi', async () => {
+  it('aucun pays actif affiche "Aucun pays actif disponible."', async () => {
+    renderView({ listCountryPacks: vi.fn().mockResolvedValue([]) });
+
+    expect(await screen.findByTestId('no-country-packs')).toBeInTheDocument();
+  });
+
+  it('un échec réseau affiche une erreur explicite', async () => {
+    renderView({ listCountryPacks: vi.fn().mockRejectedValue(new Error('network down')) });
+
+    expect(await screen.findByText('Impossible de charger la liste des pays.')).toBeInTheDocument();
+  });
+
+  it('le filtre (purement client) réduit la liste par label ou code, sans second appel réseau', async () => {
+    const listCountryPacks = vi.fn().mockResolvedValue([
+      COUNTRY_PACK,
+      { id: 'country-pack-cote-ivoire', label: "Côte d'Ivoire", code: 'CI' },
+    ]);
+    renderView({ listCountryPacks });
+
+    await screen.findByRole('button', { name: "Côte d'Ivoire (CI)" });
+    fireEvent.change(screen.getByLabelText('Filtrer les pays'), { target: { value: 'sn' } });
+
+    expect(screen.getByRole('button', { name: 'Sénégal (SN)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: "Côte d'Ivoire (CI)" })).not.toBeInTheDocument();
+    expect(listCountryPacks).toHaveBeenCalledTimes(1);
+  });
+
+  it('sélectionner un pays déclenche les appels avec son id, "Changer de pays" revient au sélecteur', async () => {
     const getCurrentPricingRates = vi.fn().mockResolvedValue(EMPTY_CURRENT_RATES);
     const getPricingHistory = vi.fn().mockResolvedValue([]);
     renderView({ getCurrentPricingRates, getPricingHistory });
@@ -63,16 +91,11 @@ describe('PricingView — sélection manuelle du pays (ticket F-028, dépendance
     await waitFor(() => expect(getCurrentPricingRates).toHaveBeenCalledWith(COUNTRY_PACK_ID));
     expect(getPricingHistory).toHaveBeenCalledWith(COUNTRY_PACK_ID, 'canal_1_marge');
     expect(getPricingHistory).toHaveBeenCalledWith(COUNTRY_PACK_ID, 'canal_2_commission');
-  });
 
-  it('"Changer de pays" revient au sélecteur', async () => {
-    renderView();
-
-    await selectCountry();
     fireEvent.click(screen.getByRole('button', { name: 'Changer de pays' }));
 
-    expect(screen.queryByText(COUNTRY_PACK_ID, { selector: 'strong' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Pays (Country Pack UUID)')).toBeInTheDocument();
+    expect(screen.queryByText('Sénégal (SN)', { selector: 'strong' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Sénégal (SN)' })).toBeInTheDocument();
   });
 });
 

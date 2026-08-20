@@ -4,7 +4,7 @@ import { AlertBanner, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
-import type { PricingCanal } from '../api/types';
+import type { CountryPackSummary, PricingCanal } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { CountryPackSelector } from '../components/CountryPackSelector';
 
@@ -16,12 +16,11 @@ import { CountryPackSelector } from '../components/CountryPackSelector';
  * dans `backend/apps/pricing/{views,serializers,services}.py` avant
  * d'écrire ce fichier.
  *
- * **Aucun sélecteur de pays** (`CountryPackSelector`, `apps/web/src/
- * components/`) : aucun endpoint ne liste les `CountryPack` — décision
- * actée avec l'utilisateur, documenté comme prérequis pour un futur ticket
- * backend, saisie manuelle d'UUID en attendant. Extrait vers un composant
- * partagé au ticket F-030, une fois `LegalPaymentTiersView.tsx` devenu un
- * second consommateur du même besoin.
+ * **Sélecteur de pays réel** (`CountryPackSelector`, `apps/web/src/
+ * components/`) : `GET /api/organizations/country-packs/` (ticket B-030)
+ * remplace la saisie manuelle d'UUID utilisée jusque-là — dépendance levée,
+ * voir `F-028-administration-tarifs.md`, section « Levée de la dépendance
+ * B-030 ».
  *
  * `PricingCanal` (`canal_1_marge`/`canal_2_commission`) EST codé en dur ici
  * (`CANALS` ci-dessous) — à la différence de `CountryPack`, c'est un
@@ -200,35 +199,35 @@ function CreatePricingConfigForm({ countryPackId, onCreated }: { countryPackId: 
 }
 
 export function PricingView() {
-  const [countryPackId, setCountryPackId] = useState<string | null>(null);
+  const [selectedCountryPack, setSelectedCountryPack] = useState<CountryPackSummary | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   return (
     <section aria-label="Administration des tarifs">
       <h2>Tarification par pays</h2>
 
-      {countryPackId ? (
+      {selectedCountryPack ? (
         <div style={{ marginBottom: '16px' }}>
           <p>
-            Pays sélectionné : <strong>{countryPackId}</strong>{' '}
-            <button type="button" onClick={() => setCountryPackId(null)}>Changer de pays</button>
+            Pays sélectionné : <strong>{selectedCountryPack.label} ({selectedCountryPack.code})</strong>{' '}
+            <button type="button" onClick={() => setSelectedCountryPack(null)}>Changer de pays</button>
           </p>
         </div>
       ) : (
-        <CountryPackSelector onLoad={setCountryPackId} submitLabel="Charger les tarifs de ce pays" />
+        <CountryPackSelector onLoad={setSelectedCountryPack} />
       )}
 
-      {countryPackId && (
+      {selectedCountryPack && (
         <>
-          <CurrentRatesPanel countryPackId={countryPackId} reloadKey={reloadKey} />
+          <CurrentRatesPanel countryPackId={selectedCountryPack.id} reloadKey={reloadKey} />
 
           <h3 style={{ marginTop: '16px' }}>Historique par canal</h3>
           {CANALS.map(({ id }) => (
-            <CanalHistoryPanel key={id} countryPackId={countryPackId} canal={id} reloadKey={reloadKey} />
+            <CanalHistoryPanel key={id} countryPackId={selectedCountryPack.id} canal={id} reloadKey={reloadKey} />
           ))}
 
           <h3 style={{ marginTop: '16px' }}>Créer un nouveau taux</h3>
-          <CreatePricingConfigForm countryPackId={countryPackId} onCreated={() => setReloadKey((key) => key + 1)} />
+          <CreatePricingConfigForm countryPackId={selectedCountryPack.id} onCreated={() => setReloadKey((key) => key + 1)} />
         </>
       )}
     </section>

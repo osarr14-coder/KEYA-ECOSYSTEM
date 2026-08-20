@@ -20,7 +20,7 @@ function emptyBodyResponse(status: number): Response {
     status,
     json: async () => { throw new SyntaxError('Unexpected end of JSON input'); },
     text: async () => '',
-  } as Response;
+  } as unknown as Response;
 }
 
 afterEach(() => {

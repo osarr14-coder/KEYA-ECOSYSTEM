@@ -35,7 +35,7 @@ services}.py` avant d'écrire une ligne de frontend :
   codé en dur côté frontend (`CANALS` dans `PricingView.tsx`), même
   raisonnement déjà appliqué à `DevisStatus` (ticket 027).
 
-## Trou découvert — aucun endpoint ne liste les `CountryPack`, transmis comme prérequis backend
+## Trou découvert — aucun endpoint ne liste les `CountryPack`, transmis comme prérequis backend (RÉSOLU, voir « Levée de la dépendance B-030 » plus bas)
 `apps/organizations/urls.py` n'existe toujours pas, et aucun serializer
 existant n'expose `CountryPack` (`id`/`label`) — confirmé par grep sur tous
 les `serializers.py` du projet. Or les trois endpoints ci-dessus exigent un
@@ -104,8 +104,9 @@ jamais présenté comme une solution définitive.
   volume conservé).
 
 ## Explicitement hors scope
-- Tout sélecteur réel de pays (dépend du futur ticket backend de recherche
-  `CountryPack`, transmis comme prérequis).
+- ~~Tout sélecteur réel de pays (dépend du futur ticket backend de
+  recherche `CountryPack`, transmis comme prérequis).~~ — **résolu, voir
+  la section « Levée de la dépendance B-030 » ci-dessus.**
 - Modification ou suppression d'un taux existant — aucun endpoint
   `PUT`/`PATCH`/`DELETE` n'existe côté backend, par design (immutabilité de
   l'historique tarifaire).
@@ -137,3 +138,52 @@ qu'un message codé en dur). `PricingView.tsx` importe désormais ces deux
 utilitaires au lieu de ses copies locales — comportement observable
 inchangé, vérifié par ses 13 tests existants, verts sans modification après
 ce refactor.
+
+## Levée de la dépendance B-030 — sélecteur de pays réel
+
+Suite directe de ce ticket, une fois **B-030** (`GET /api/organizations/
+country-packs/`, `admin_keyimmo`, `{id, label, code}[]`, filtré
+`is_active=True`, trié par `label`) fusionné dans `master`. Contrat
+re-vérifié directement dans `backend/apps/organizations/{views,
+serializers}.py` avant tout changement — **aucun paramètre `q`** côté
+backend (liste complète, pas une recherche filtrée comme B-028) : `CountryPackSelector`
+charge la liste au montage (`useApiResource`, aucune action utilisateur
+requise) et applique un filtre textuel PUREMENT CLIENT (label/code,
+insensible à la casse) sur cette liste déjà réduite — jamais un second
+appel réseau par frappe, puisque le backend n'offre structurellement pas
+cette granularité.
+
+**`CountryPackSelector` réécrit** (`apps/web/src/components/
+CountryPackSelector.tsx`) : la saisie manuelle d'UUID + bouton « Charger »
+(`submitLabel`) disparaît, remplacée par une liste de boutons
+`${label} (${code})` sélectionnables directement — même principe que
+`LotPicker`/`OrganizationPicker` (`DevisView.tsx`, ticket B-028/F-027), la
+sélection EST l'action, pas un formulaire à soumettre. Prop `onLoad`
+inchangée de nom mais change de type : `(pack: CountryPackSummary) => void`
+au lieu de `(countryPackId: string) => void` — `PricingView`/
+`LegalPaymentTiersView` stockent désormais le pays SÉLECTIONNÉ complet
+(comme `selectedLot` dans `DevisView`), pas seulement son id, pour afficher
+« Pays sélectionné : Sénégal (SN) » au lieu de l'UUID brut.
+
+**Bug TypeScript latent trouvé et corrigé au passage, sans lien avec ce
+changement** : `client.test.ts::emptyBodyResponse` (ajouté au ticket F-030
+pour le correctif `Response(None)`) échouait `tsc --noEmit` avec
+« Conversion... may be a mistake » — un cast `as Response` sur un objet
+dont `json: async () => { throw ... }` s'infère en `Promise<never>`, que
+TypeScript refuse de considérer « suffisamment proche » de `Response` pour
+un simple `as`. Corrigé par un double cast `as unknown as Response`, suivant
+exactement la suggestion du compilateur — comportement runtime inchangé,
+uniquement une correction de typage statique.
+
+**Vérifié dans un vrai navigateur, avec un vrai backend** (compte
+`admin_keyimmo` réel, deux `CountryPack` actifs réels — Sénégal + Côte
+d'Ivoire ajoutée spécifiquement pour cette vérification) : liste réelle
+des deux pays affichée au chargement, filtre texte « sn » réduisant
+correctement la liste à Sénégal seul (Côte d'Ivoire disparaît), sélection
+déclenchant les appels `apps/pricing` avec le VRAI UUID résolu par la
+liste (confirmé par les requêtes réseau), « Pays sélectionné : Sénégal
+(SN) » affiché (jamais l'UUID brut). 5 tests réécrits/ajoutés
+(`PricingView.test.tsx`, describe « sélection du pays »), 293 tests
+frontend (5 packages : 44+37+54+40+118), zéro régression, `tsc --noEmit`
+propre. Cette dépendance était la DERNIÈRE limite documentée du ticket
+F-028 — plus aucune saisie manuelle d'UUID nulle part dans cet écran.

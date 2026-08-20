@@ -2238,6 +2238,46 @@ Candidat explicite pour un futur ticket de durcissement.
 5 tests dédiés, suite `organizations` 10 tests, suite complète du projet 280
 tests, tous verts.
 
+## Sélecteur de pays réel dans PricingView/LegalPaymentTiersView (ticket F-028/F-030, `apps/web`)
+
+Une fois B-030 (ci-dessus) fusionné, reconnecte les deux sélecteurs de pays
+temporaires — voir `F-028-administration-tarifs.md`/`F-030-paliers-legaux-
+paiement.md`, section « Levée de la dépendance B-030 », pour le détail
+complet dans chaque fichier de ticket (contenu quasi identique, non
+dupliqué ici).
+
+**Aucun paramètre `q` côté `GET /api/organizations/country-packs/`**
+(liste complète, pas une recherche filtrée comme B-028/Lot-Organisation) :
+`CountryPackSelector` (`apps/web/src/components/`, composant PARTAGÉ entre
+les deux écrans) charge la liste au montage et applique un filtre textuel
+PUREMENT CLIENT sur cette liste déjà réduite — jamais un second appel
+réseau par frappe, cohérent avec ce que le backend offre réellement.
+
+**`onLoad` change de type, même nom** : `(pack: CountryPackSummary) =>
+void` au lieu de `(countryPackId: string) => void` — les deux écrans
+stockent désormais le pays SÉLECTIONNÉ complet (même principe que
+`selectedLot` dans `DevisView`, ticket B-028/F-027), pas seulement son id,
+pour afficher « Pays sélectionné : Sénégal (SN) » au lieu de l'UUID brut.
+
+**Bug TypeScript latent trouvé et corrigé au passage** : `client.test.ts::
+emptyBodyResponse` (ticket F-030, correctif `Response(None)`) échouait
+`tsc --noEmit` avec « Conversion... may be a mistake » — un cast
+`as Response` sur un objet dont `json` s'infère en `() => Promise<never>`
+(fonction qui ne fait que lever), que TypeScript refuse pour un simple
+`as`. Corrigé par `as unknown as Response`, suivant la suggestion du
+compilateur — aucun changement de comportement runtime.
+
+**Vérifié dans un vrai navigateur, avec un vrai backend** (compte
+`admin_keyimmo` réel, deux `CountryPack` actifs réels — Sénégal + Côte
+d'Ivoire ajoutée pour cette vérification) : liste réelle affichée dans les
+deux écrans, filtre texte réduisant correctement la liste, sélection
+déclenchant les appels `apps/pricing` avec le VRAI UUID résolu (confirmé
+par les requêtes réseau), « Pays sélectionné » affichant le nom lisible,
+jamais l'UUID brut. C'était la DERNIÈRE limite documentée des tickets
+F-028/F-030 — plus aucune saisie manuelle d'UUID nulle part dans ces deux
+écrans. 293 tests frontend (5 packages : 44+37+54+40+118), zéro
+régression, `tsc --noEmit` propre.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

@@ -132,15 +132,43 @@ préexistants de ce fichier auraient cassé sur le changement de
   manuellement, conteneur Postgres retiré, volume conservé).
 
 ## Explicitement hors scope
-- Tout sélecteur réel de pays (même dépendance que `PricingView`, ticket
-  F-028 — prérequis backend transmis, toujours pas fusionné).
+- ~~Tout sélecteur réel de pays (même dépendance que `PricingView`, ticket
+  F-028 — prérequis backend transmis, toujours pas fusionné).~~ — **résolu,
+  voir la section « Levée de la dépendance B-030 » ci-dessous.**
 - Toute résolution de nom pour `created_by`/`activated_by` (UUID bruts) —
   aucun champ `_detail` équivalent côté backend pour ce module.
 - Modification/suppression d'un template existant — aucun endpoint
   `PUT`/`PATCH`/`DELETE` côté backend, par design.
 
+## Levée de la dépendance B-030 — sélecteur de pays réel
+
+Suite directe de ce ticket, une fois **B-030** (`GET /api/organizations/
+country-packs/`, `admin_keyimmo`, `{id, label, code}[]`, filtré
+`is_active=True`) fusionné dans `master`. Contrat re-vérifié directement
+dans `backend/apps/organizations/{views,serializers}.py` avant tout
+changement — même correctif que `F-028-administration-tarifs.md`, section
+« Levée de la dépendance B-030 » (détail complet là-bas, non dupliqué ici) :
+`CountryPackSelector` (composant PARTAGÉ, `apps/web/src/components/`)
+réécrit pour charger la liste réelle au montage plutôt qu'une saisie
+manuelle d'UUID, avec filtre textuel purement client. `LegalPaymentTiersView`
+stocke désormais le `CountryPackSummary` sélectionné (pas seulement son
+id) pour afficher « Pays sélectionné : Sénégal (SN) » au lieu de l'UUID
+brut.
+
+**Vérifié dans un vrai navigateur, avec un vrai backend** (compte
+`admin_keyimmo` réel, deux `CountryPack` actifs réels) : liste réelle
+affichée au chargement de l'onglet, sélection de Sénégal déclenchant
+`GET .../active/`/`GET .../history/` avec le VRAI UUID résolu par la
+liste (confirmé par les requêtes réseau), template actif réel affiché
+correctement (aucune régression du correctif `Response(None)` documenté
+plus haut). 16 tests adaptés (`LegalPaymentTiersView.test.tsx`), 293 tests
+frontend (5 packages : 44+37+54+40+118), zéro régression, `tsc --noEmit`
+propre. Cette dépendance était la DERNIÈRE limite documentée du ticket
+F-030 — plus aucune saisie manuelle d'UUID nulle part dans cet écran.
+
 ## Dépendances
 Ticket B-027 (`LegalPaymentTierTemplate`, endpoints consommés ici), ticket
 F-028 (`PricingView.tsx`, structure générale de l'écran, `CountryPackSelector`/
-`formatDrfFieldErrors` extraits d'ici vers du code partagé), ticket B-028
-(modèle de référence pour la future recherche `CountryPack`).
+`formatDrfFieldErrors` extraits d'ici vers du code partagé), **ticket B-030
+(backend, fusionné — `GET /api/organizations/country-packs/`, dépendance
+désormais LEVÉE, voir section dédiée ci-dessus)**.

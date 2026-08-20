@@ -161,6 +161,19 @@ export interface CurrentPricingRates {
   canal_2_commission: PricingConfig | null;
 }
 
+/** Miroir de `apps.organizations.serializers.CountryPackListSerializer`
+ * (`GET /api/organizations/country-packs/`, ticket B-030) — UNIQUEMENT les
+ * `CountryPack` `is_active=True` (filtré côté backend, jamais recalculé
+ * ici). `is_active` lui-même n'est pas exposé : tout élément listé EST
+ * actif par construction du filtre backend. Aucun paramètre de recherche
+ * côté serveur (liste complète) — voir `CountryPackSelector.tsx` pour le
+ * filtrage textuel, purement client, sur cette liste déjà réduite. */
+export interface CountryPackSummary {
+  id: string;
+  label: string;
+  code: string;
+}
+
 /** Miroir de `apps.pricing.serializers.LegalPaymentTierStepSerializer`
  * (ticket B-027) — l'ordre d'affichage vient TOUJOURS du backend
  * (`LegalPaymentTierStep.Meta.ordering = ['order']`), jamais retrié ici. */
