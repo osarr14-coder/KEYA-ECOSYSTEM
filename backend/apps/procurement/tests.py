@@ -885,6 +885,10 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # pas avant ce ticket), réservée à `admin_keyimmo`, jamais
             # accessible au rôle constructeur.
             'country-pack-list',
+            # Ticket B-034 — ajout conscient : barème sectoriel du bureau de
+            # contrôle, réservé à `admin_keyimmo`, jamais accessible au rôle
+            # constructeur/sponsor.
+            'control-office-rate-create', 'control-office-rate-current', 'control-office-rate-history',
         }
         assert actual == expected
 

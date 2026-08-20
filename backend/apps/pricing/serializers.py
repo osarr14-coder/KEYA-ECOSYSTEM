@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from .models import LegalPaymentTierStep, LegalPaymentTierTemplate, PricingCanal, PricingConfig
+from .models import (
+    ControlOfficeCalculationMode,
+    ControlOfficeRate,
+    LegalPaymentTierStep,
+    LegalPaymentTierTemplate,
+    PricingCanal,
+    PricingConfig,
+)
 
 
 class PricingConfigCreateSerializer(serializers.Serializer):
@@ -69,5 +76,35 @@ class LegalPaymentTierTemplateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'country_pack', 'version', 'created_by', 'created_at',
             'activated_by', 'activated_at', 'steps',
+        ]
+        read_only_fields = fields
+
+
+class ControlOfficeRateCreateSerializer(serializers.Serializer):
+    """Entrée de `POST /api/pricing/control-office-rates/` — voir
+    `apps.pricing.services.create_control_office_rate`. `percentage`/
+    `fixed_amount` restent tous deux optionnels ICI (la vérification
+    d'exclusivité selon `calculation_mode` vit dans le service, pas dans ce
+    serializer — même endroit que la validation des plafonds cumulés du
+    ticket B-027).
+    """
+
+    country_pack = serializers.UUIDField()
+    jalon_type = serializers.CharField(max_length=50)
+    calculation_mode = serializers.ChoiceField(choices=ControlOfficeCalculationMode.choices)
+    percentage = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    fixed_amount = serializers.DecimalField(max_digits=16, decimal_places=2, required=False, allow_null=True)
+
+
+class ControlOfficeRateSerializer(serializers.ModelSerializer):
+    """Réponse — SEULE audience possible : `admin_keyimmo` (même principe
+    que `PricingConfigSerializer`).
+    """
+
+    class Meta:
+        model = ControlOfficeRate
+        fields = [
+            'id', 'country_pack', 'jalon_type', 'calculation_mode',
+            'percentage', 'fixed_amount', 'created_by', 'created_at',
         ]
         read_only_fields = fields

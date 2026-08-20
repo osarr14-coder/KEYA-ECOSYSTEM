@@ -2418,6 +2418,72 @@ l'écrivant, contrairement à la plupart des tickets précédents de cette séri
 2 tests dédiés, suite `pricing` 38 tests, suite complète du projet 285 tests,
 tous verts.
 
+## Barème sectoriel du bureau de contrôle (ticket B-034, `apps/pricing`)
+
+Voir `B-034-control-office-rate.md` pour le détail complet. Invariant 25.16 :
+« le budget du bureau de contrôle (BC) est sanctuarisé, indexé sur un barème
+sectoriel, jamais soumis à l'arbitrage de marge de KEYIMMO ni à une
+négociation. » `ControlOfficeRate` construit ce concept, jusqu'ici marqué
+*pas encore applicable*.
+
+**`ControlOfficeRate` — SEULE source d'un montant bureau de contrôle dans
+TOUT ce projet, à lire IMPÉRATIVEMENT via `apps.pricing.services.
+get_active_control_office_rate(country_pack_id=..., jalon_type=...)`, JAMAIS
+recalculé ni dupliqué ailleurs.** Message adressé explicitement aux tickets
+**B-035/B-036** (grand-livre par lot, déjà annoncés) : quand ces tickets
+liront le montant bureau de contrôle d'un lot/jalon, ils DOIVENT appeler
+cette fonction — jamais réimplémenter la dérivation `calculation_mode` →
+`percentage` × coût de construction OU `fixed_amount` direct dans
+`apps/procurement`/un futur module de grand-livre. Une garde par test
+(`TestControlOfficeRateIsTheSoleSourceOfTruth`, `apps/pricing/tests.py`)
+scanne tous les modules `apps.*.services` du projet à la recherche de noms
+de fonction suspects, mais ne remplace pas cette note : un futur ticket qui
+recalculerait la même logique sous un autre nom légitime ne serait pas
+détecté par ce scan.
+
+**`be_total` (bureau d'études, `ProgramCost`, ticket B-033) est DISTINCT du
+bureau de contrôle (BC) de ce ticket-ci** — deux acteurs différents du
+modèle économique (section 6), aucun lien de conception entre les deux.
+
+**Même famille que `PricingConfig`/`LegalPaymentTierTemplate`, PAS le schéma
+RLS de `Devis`/`ProgramCost`** — donnée de référence par `CountryPack`,
+jamais liée à une organisation ; RLS `SELECT`/`INSERT` permissives, aucune
+policy `UPDATE`/`DELETE`, aucune bascule RLS nécessaire à la création
+(contrairement à `ProgramCost`, qui EST rattaché à une organisation via un
+programme).
+
+**`jalon_type` — référence LIBRE, jamais une FK** vers
+`MilestoneTemplateStep` (même raisonnement que `LegalPaymentTierStep.code`,
+ticket B-027, décision C) — vérifié avant conception : ce code est déjà
+réutilisé librement ailleurs dans ce projet
+(`apps/programs/migrations/0003_seed_senegal_milestone_template.py`).
+
+**Un seul des deux champs valeur actif à la fois, garanti par un
+`CheckConstraint` en base**, pas seulement une vérification applicative —
+prouvé par une tentative d'INSERT SQL brut qui le violerait directement.
+
+**`sequence` construit dès la conception** (comme `ProgramCost`, ticket
+B-033) — pas un retrofit après un flake comme `PricingConfig` a dû le faire
+au ticket B-031. Garde `is_active` du `CountryPack` posée dès ce ticket
+également (comme `ProgramCost`), en réutilisant `CountryPackInactiveError`
+(ticket B-032, même app).
+
+**Point vérifié avant rédaction du ticket** : « invariant 8.4 », cité dans
+la demande initiale, est introuvable dans `CLAUDE.md` et le document de
+référence (même vérification que « invariant 20.4 » au ticket B-030) — non
+utilisé comme référence dans ce ticket.
+
+**Piège opérationnel découvert en clôturant ce ticket, sans lien avec son
+code** : lancer deux suites de tests complètes en parallèle depuis deux
+worktrees différents contre la même base de données de test partagée
+(`test_keya_ecosystem_db`) provoque des collisions de cycle de vie
+(créations/destructions concurrentes) — de nombreux faux échecs. Aucune
+suite de tests de ce projet ne doit être lancée en parallèle d'une autre
+depuis une session différente.
+
+18 tests dédiés, suite `pricing` 56 tests, suite `procurement` 54 tests,
+suite complète du projet (base de cette branche) 303 tests, tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
