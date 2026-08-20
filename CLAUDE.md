@@ -3064,6 +3064,37 @@ organisation (règle d'indépendance, ticket 005).
 (`apps/pricing/tests.py`), suite `procurement` 85 tests, suite `pricing` 59
 tests, suite complète du projet à confirmer après fusion.
 
+## Recherche des lots éligibles à un LotLedger (ticket B-037, `apps/procurement`)
+
+Voir `B-037-lot-ledger-search.md` pour le détail complet. Anticipé pour
+**F-035** (écran frontend du grand-livre, en cadrage) — même besoin que
+B-028 (résoudre un lot par nom avant d'agir dessus), critère d'inclusion
+INVERSE.
+
+**Mécanisme de recherche PARTAGÉ avec B-028, jamais dupliqué** :
+`apps.procurement.services._search_lots_by_name_as_admin(*,
+admin_organization_id, query, include_lot)` — extraite du corps de
+`search_lots_as_admin` (B-028), qui devient un mince wrapper autour de ce
+helper (`include_lot=lambda lot: not is_lot_locked(lot.id)`, signature ET
+comportement publics INCHANGÉS). `search_lots_eligible_for_ledger_as_admin`
+(B-037) réutilise le MÊME helper avec le prédicat inverse :
+`is_lot_locked(lot.id) and not LotLedger.objects.filter(lot=lot).exists()`.
+
+**Non-régression prouvée, pas seulement présumée** : la suite
+`TestAdminLotSearch` (B-028, 7 tests) n'a subi AUCUNE modification et est
+passée verte dès le premier lancement après le refactor — y compris ses
+deux tests les plus sensibles (espionnage de `set_rls_context`,
+`side_effect` sur `is_lot_locked`), qui continuent de fonctionner parce
+que le `lambda` du wrapper résout ces noms par le module à l'appel,
+exactement comme le faisait le corps de fonction original.
+
+**Nouvelle route** `GET /api/procurement/admin/lots/eligible-for-ledger/?q=`
+— réservée `admin_keyimmo`, réutilise `LotSearchResultSerializer` (B-028)
+TEL QUEL, aucun nouveau serializer.
+
+6 tests dédiés, suite `procurement` 91 tests, suite complète du projet 362
+tests, tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

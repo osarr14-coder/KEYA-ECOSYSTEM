@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    AdminLotEligibleForLedgerSearchView,
     AdminLotSearchView,
     AdminOrganizationSearchView,
     DevisAdminListView,
@@ -40,6 +41,15 @@ urlpatterns = [
     path(
         'procurement/admin/organizations/',
         AdminOrganizationSearchView.as_view(), name='procurement-admin-organization-search',
+    ),
+    # Ticket B-037 — critère INVERSE de procurement-admin-lot-search
+    # ci-dessus : lot déjà verrouillé, sans LotLedger existant (préparation
+    # de POST /api/procurement/lot-ledgers/, B-035). Motif littéral
+    # `eligible-for-ledger/`, structurellement distinct de
+    # `.../lots/<uuid:lot_id>/devis/` (segment UUID) — aucune collision.
+    path(
+        'procurement/admin/lots/eligible-for-ledger/',
+        AdminLotEligibleForLedgerSearchView.as_view(), name='procurement-admin-lot-eligible-for-ledger-search',
     ),
     # Ticket B-035 — grand-livre de coûts par lot (canal 1), première
     # partie (le grand-livre seul, sans les charges bureau de contrôle).

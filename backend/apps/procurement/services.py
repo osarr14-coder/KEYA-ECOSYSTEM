@@ -833,14 +833,17 @@ def search_organizations_as_admin(query):
     return Organization.objects.filter(name__icontains=query).order_by('name')[:MAX_SEARCH_RESULTS]
 
 
-def search_lots_as_admin(*, admin, admin_organization_id, query):
-    """`GET /api/procurement/admin/lots/?q=` — ticket B-028. Recherche de
-    lot par nom (décision B), TOUTES organisations confondues — y compris
-    celles dont `admin` n'est membre d'AUCUNE, ce qu'aucune requête RLS
-    normale ne permet ici (`programs_lot` est sous `FORCE ROW LEVEL
-    SECURITY`, policy stricte `organization_id = current_org`, voir le
-    ticket pour le raisonnement complet sur pourquoi une policy
-    alternative n'est pas praticable — même récursion que
+def _search_lots_by_name_as_admin(*, admin_organization_id, query, include_lot):
+    """Mécanisme PARTAGÉ de recherche de lot par nom, cross-organisation,
+    pour `admin_keyimmo` — ticket B-028, extrait en fonction PRIVÉE au
+    ticket B-037 pour être réutilisé par un second critère d'inclusion
+    (`search_lots_eligible_for_ledger_as_admin`) sans dupliquer la boucle
+    de bascule RLS ci-dessous.
+
+    TOUTES organisations confondues — y compris celles dont l'admin n'est
+    membre d'AUCUNE, ce qu'aucune requête RLS normale ne permet ici
+    (`programs_lot` est sous `FORCE ROW LEVEL SECURITY`, policy stricte
+    `organization_id = current_org` — même récursion que
     `apps.backoffice.services.get_user_memberships`, ticket 011).
 
     **Mécanisme** : `organizations_organization` n'a aucune RLS (lecture
@@ -851,30 +854,31 @@ def search_lots_as_admin(*, admin, admin_organization_id, query):
     `create_mission`/`create_devis`, tickets 005/012/022) — jamais un
     bypass RLS global, jamais une nouvelle policy.
 
-    **Coût — limite MVP assumée et documentée explicitement (décision A)** :
-    `MAX_SEARCH_RESULTS` borne le nombre de RÉSULTATS retournés, PAS le
-    nombre de requêtes exécutées. Une recherche qui ne trouve rien ou peu
-    de correspondances continue d'itérer TOUTES les organisations
-    existantes avant de répondre — le pire cas reste
-    **O(nombre d'organisations)** requêtes SQL. Acceptable au stade actuel
-    du projet (peu d'organisations réelles) ; deviendrait un vrai problème
-    de performance à plus grande échelle — aucune optimisation (cache,
-    index texte, dénormalisation) n'est construite dans ce ticket. La
-    boucle s'arrête tôt (`break`) dès que `MAX_SEARCH_RESULTS` est
+    **Coût — limite MVP assumée et documentée explicitement (ticket
+    B-028, décision A)** : `MAX_SEARCH_RESULTS` borne le nombre de
+    RÉSULTATS retournés, PAS le nombre de requêtes exécutées. Une
+    recherche qui ne trouve rien ou peu de correspondances continue
+    d'itérer TOUTES les organisations existantes avant de répondre — le
+    pire cas reste **O(nombre d'organisations)** requêtes SQL. Acceptable
+    au stade actuel du projet ; aucune optimisation n'est construite ici.
+    La boucle s'arrête tôt (`break`) dès que `MAX_SEARCH_RESULTS` est
     atteint — seul le CAS DÉFAVORABLE (peu/pas de résultats) paie le coût
     complet.
 
-    **Exclusion des lots déjà verrouillés (décision D)** : `is_lot_locked`
-    est appelé DANS la même bascule RLS que la lecture du lot — déjà
+    **`include_lot(lot)` — critère d'inclusion PARAMÉTRÉ (ticket B-037)** :
+    appelé DANS la même bascule RLS que la lecture du lot — déjà
     positionnée sur l'organisation de CE lot au moment de l'appel, aucune
     bascule supplémentaire nécessaire (même précondition que documentée
-    dans `is_lot_locked` lui-même).
+    pour `is_lot_locked` lui-même). `search_lots_as_admin` (B-028,
+    exclut les lots déjà verrouillés) et
+    `search_lots_eligible_for_ledger_as_admin` (B-037, exige l'inverse :
+    verrouillé ET sans `LotLedger`) passent chacun leur propre prédicat.
 
     Restauration du contexte RLS de l'appelant dans un `finally` ENGLOBANT
     TOUTE la boucle (pas par itération) — restaurer après CHAQUE
     organisation testée serait un aller-retour inutile, seule la sortie
     (normale, via le cap atteint, ou par exception) doit restaurer le
-    contexte de `admin`.
+    contexte de l'appelant.
     """
     if not query:
         return []
@@ -890,7 +894,7 @@ def search_lots_as_admin(*, admin, admin_organization_id, query):
                 name__icontains=query,
             ).select_related('organization', 'asset__program')
             for lot in matching_lots:
-                if is_lot_locked(lot.id):
+                if not include_lot(lot):
                     continue
                 results.append(lot)
                 if len(results) >= MAX_SEARCH_RESULTS:
@@ -899,3 +903,39 @@ def search_lots_as_admin(*, admin, admin_organization_id, query):
         set_rls_context(organization_id=admin_organization_id)
 
     return results
+
+
+def search_lots_as_admin(*, admin, admin_organization_id, query):
+    """`GET /api/procurement/admin/lots/?q=` — ticket B-028. Recherche de
+    lot par nom, en préparation de `POST /api/procurement/devis/` — exclut
+    les lots déjà verrouillés (décision D du ticket : la mise en
+    concurrence est close, aucune nouvelle candidature possible). Mince
+    wrapper autour de `_search_lots_by_name_as_admin` (extraite au ticket
+    B-037) — signature ET comportement PUBLICS inchangés depuis B-028.
+    """
+    return _search_lots_by_name_as_admin(
+        admin_organization_id=admin_organization_id, query=query,
+        include_lot=lambda lot: not is_lot_locked(lot.id),
+    )
+
+
+def search_lots_eligible_for_ledger_as_admin(*, admin, admin_organization_id, query):
+    """`GET /api/procurement/admin/lots/eligible-for-ledger/?q=` — ticket
+    B-037, en préparation de `POST /api/procurement/lot-ledgers/`
+    (B-035). CRITÈRE INVERSE de `search_lots_as_admin` : le devis du lot
+    doit déjà être VERROUILLÉ (précondition de `create_lot_ledger`), ET
+    aucun `LotLedger` ne doit encore exister pour ce lot (au plus un par
+    lot, décision B du ticket B-035) — les deux critères sont mutuellement
+    exclusifs par construction, jamais un simple paramètre optionnel sur
+    `search_lots_as_admin`.
+
+    Réutilise le MÊME mécanisme de recherche que B-028
+    (`_search_lots_by_name_as_admin`), seul le prédicat `include_lot`
+    diffère. `LotLedger.objects.filter(lot=lot).exists()` est appelé SOUS
+    LA MÊME bascule RLS déjà positionnée par le mécanisme partagé — même
+    précondition que `is_lot_locked`.
+    """
+    return _search_lots_by_name_as_admin(
+        admin_organization_id=admin_organization_id, query=query,
+        include_lot=lambda lot: is_lot_locked(lot.id) and not LotLedger.objects.filter(lot=lot).exists(),
+    )

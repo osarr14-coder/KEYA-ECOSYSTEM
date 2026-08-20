@@ -904,6 +904,10 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # (canal 1), second sous-ticket, réservé à `admin_keyimmo`,
             # jamais accessible au rôle constructeur/sponsor.
             'lot-bc-charge-list',
+            # Ticket B-037 — ajout conscient : recherche des lots éligibles
+            # à la création d'un LotLedger, réservé à `admin_keyimmo`,
+            # jamais accessible au rôle constructeur/sponsor.
+            'procurement-admin-lot-eligible-for-ledger-search',
         }
         assert actual == expected
 
@@ -2528,3 +2532,126 @@ class TestLotBcChargeListEndpoint:
             reverse('lot-bc-charge-list', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
         )
         assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestAdminLotEligibleForLedgerSearch:
+    """`GET /api/procurement/admin/lots/eligible-for-ledger/?q=` — ticket
+    B-037. Réutilise le MÊME mécanisme de recherche que
+    `TestAdminLotSearch` (B-028, classe volontairement laissée INCHANGÉE
+    par ce ticket — voir `apps.procurement.services.
+    _search_lots_by_name_as_admin`), avec un critère d'inclusion INVERSE :
+    devis déjà VERROUILLÉ, ET aucun `LotLedger` existant encore.
+    """
+
+    def test_admin_keyimmo_can_find_an_eligible_lot_in_an_organization_he_is_not_a_member_of(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('eligible-search')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=AMOUNT_A,
+        )
+        assert sponsor_org.id != admin_org.id
+
+        response = admin_client.get(
+            reverse('procurement-admin-lot-eligible-for-ledger-search'), {'q': lot.name},
+        )
+        assert response.status_code == 200
+        assert len(response.data) == 1
+        row = response.data[0]
+        assert row['id'] == str(lot.id)
+        assert row['name'] == lot.name
+        assert row['organization'] == {'id': str(sponsor_org.id), 'name': sponsor_org.name}
+
+    def test_a_lot_without_a_locked_devis_is_excluded(self):
+        admin_client, _admin_org, _admin_user, _sponsor_org, lot, _candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('eligible-not-locked')
+        )
+        # Aucun devis créé/verrouillé pour ce lot.
+
+        response = admin_client.get(
+            reverse('procurement-admin-lot-eligible-for-ledger-search'), {'q': lot.name},
+        )
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_a_lot_that_already_has_a_ledger_is_excluded(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('eligible-has-ledger')
+        )
+        create_response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert create_response.status_code == 201, create_response.data
+
+        response = admin_client.get(
+            reverse('procurement-admin-lot-eligible-for-ledger-search'), {'q': lot.name},
+        )
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_empty_query_returns_an_empty_list_never_a_dump(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'lot-eligible-search-empty-admin@example.com', 'Org Lot Eligible Search Empty Admin',
+        )
+
+        response = admin_client.get(reverse('procurement-admin-lot-eligible-for-ledger-search'))
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_a_constructeur_cannot_search(self):
+        constructeur_client, _org, _user = _register(
+            'lot-eligible-search-forbidden@example.com', 'Org Lot Eligible Search Forbidden',
+            role_code='constructeur',
+        )
+
+        response = constructeur_client.get(
+            reverse('procurement-admin-lot-eligible-for-ledger-search'), {'q': 'a'},
+        )
+        assert response.status_code == 403
+
+    def test_more_than_max_search_results_matches_are_capped(self):
+        """Même preuve que `TestAdminLotSearch::
+        test_more_than_max_search_results_matches_are_capped` (B-028),
+        mais chaque lot doit ici être ÉLIGIBLE (devis verrouillé) pour
+        compter — organisations candidates créées directement par l'ORM
+        (pas de vrai compte, aucun besoin d'authentification pour une
+        `candidate_organization`), un seul `PricingConfig` Sénégal partagé
+        par toutes les itérations (même country pack pour chaque sponsor).
+        """
+        admin_client, admin_org, admin_user = _register_admin(
+            'lot-eligible-search-cap-admin@example.com', 'Org Lot Eligible Search Cap Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+        pricing_services.create_pricing_config(
+            admin=admin_user, country_pack_id=senegal.id,
+            canal=PricingCanal.CANAL_1_MARGE, rate=PRICING_RATE_PERCENT,
+        )
+
+        total_matching = services.MAX_SEARCH_RESULTS + 5
+        for i in range(total_matching):
+            sponsor_org, _program, _asset, lot = _create_sponsor_org_with_lot(
+                f'eligible-cap-{i}', f'Lot Plafond Eligible {i}',
+            )
+            candidate_org = Organization.objects.create(
+                name=f'Org Candidate Eligible Cap {i}', country_pack=senegal,
+            )
+            devis = services.create_devis(
+                logged_by=admin_user, logged_by_organization_id=admin_org.id,
+                target_organization_id=sponsor_org.id, lot_id=lot.id,
+                candidate_organization_id=candidate_org.id, amount=AMOUNT_A,
+            )
+            services.lock_devis(
+                admin=admin_user, admin_organization_id=admin_org.id,
+                target_organization_id=sponsor_org.id, devis_id=devis.id,
+            )
+
+        response = admin_client.get(
+            reverse('procurement-admin-lot-eligible-for-ledger-search'), {'q': 'Plafond Eligible'},
+        )
+        assert response.status_code == 200
+        assert len(response.data) == services.MAX_SEARCH_RESULTS
