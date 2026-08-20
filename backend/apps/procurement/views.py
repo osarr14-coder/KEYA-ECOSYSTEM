@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 
 from apps.backoffice.permissions import IsAdminKeyimmo
 from apps.evidence.permissions import IsConstructeur
+from apps.programs import services as programs_services
 
 from . import services
 from .models import Devis
@@ -15,6 +16,8 @@ from .serializers import (
     DevisAjustementCreateSerializer,
     DevisCandidateSerializer,
     DevisCreateSerializer,
+    LotLedgerCreateSerializer,
+    LotLedgerSerializer,
     LotSearchResultSerializer,
     OrganizationSearchResultSerializer,
 )
@@ -236,6 +239,100 @@ class AdminLotSearchView(APIView):
             query=query,
         )
         return Response(LotSearchResultSerializer(lots, many=True).data)
+
+
+class LotLedgerCreateView(APIView):
+    """`POST /api/procurement/lot-ledgers/` — ticket B-035, réservé à
+    `admin_keyimmo`. Crée le grand-livre d'un lot (`prix_client`, snapshot
+    foncier/BE) — voir `apps.procurement.services.create_lot_ledger` pour
+    la validation métier complète (devis verrouillé, un seul grand-livre
+    par lot). Aucun endpoint `PUT`/`PATCH`/`DELETE` n'existe nulle part
+    pour cette ressource (immuable, voir la migration RLS dédiée).
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def post(self, request):
+        serializer = LotLedgerCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            ledger = services.create_lot_ledger(
+                admin=request.user,
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=data['organization'],
+                lot_id=data['lot'],
+                prix_client=data['prix_client'],
+            )
+        except (
+            services.LotDevisNotLockedError,
+            services.LotLedgerAlreadyExistsError,
+            programs_services.NoProgramCostError,
+            programs_services.LotMissingSurfaceError,
+        ) as exc:
+            # 409, pas 400 : le corps de la requête est valide, c'est
+            # l'ÉTAT du lot/programme (devis pas encore verrouillé, grand-
+            # livre déjà existant, aucun ProgramCost enregistré, ou un lot
+            # sans surface pour prorata_surface) qui rend l'opération
+            # impossible — même sémantique que DevisCreateView/
+            # ProgramCostRepartitionView.
+            return Response({'detail': str(exc)}, status=409)
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+
+        return Response(LotLedgerSerializer(ledger).data, status=201)
+
+
+class LotLedgerDetailView(APIView):
+    """`GET /api/procurement/lot-ledgers/{lot_id}/?organization_id=<id>` —
+    ticket B-035, réservé à `admin_keyimmo`. Retourne `null` si aucun
+    grand-livre n'existe encore pour ce lot (même convention que
+    `ProgramCostCurrentView`, jamais une 404 pour une absence légitime).
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request, lot_id):
+        target_organization_id = request.query_params.get('organization_id')
+        if not target_organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+
+        ledger = services.get_lot_ledger(
+            admin_organization_id=request.organization.id if request.organization else None,
+            target_organization_id=target_organization_id,
+            lot_id=lot_id,
+        )
+        if ledger is None:
+            return Response(None)
+        return Response(LotLedgerSerializer(ledger).data)
+
+
+class LotLedgerMarginView(APIView):
+    """`GET /api/procurement/lot-ledgers/{lot_id}/margin/?organization_id=<id>`
+    — ticket B-035, réservé à `admin_keyimmo`. Marge disponible COURANTE
+    du grand-livre de ce lot — voir `apps.procurement.services.
+    get_lot_ledger_margin` pour la formule (VOLONTAIREMENT incomplète dans
+    ce ticket, TODO B-036). 404 si aucun grand-livre n'existe encore pour
+    ce lot — contrairement à `LotLedgerDetailView`, une marge n'a aucun
+    sens tant que le grand-livre lui-même n'existe pas.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request, lot_id):
+        target_organization_id = request.query_params.get('organization_id')
+        if not target_organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+
+        ledger, margin = services.get_lot_ledger_margin_for_lot(
+            admin_organization_id=request.organization.id if request.organization else None,
+            target_organization_id=target_organization_id,
+            lot_id=lot_id,
+        )
+        if ledger is None:
+            raise NotFound("Aucun grand-livre n'existe pour ce lot.")
+        return Response({'margin': margin})
 
 
 class AdminOrganizationSearchView(APIView):

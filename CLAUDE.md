@@ -2600,6 +2600,58 @@ depuis une session différente.
 18 tests dédiés, suite `pricing` 56 tests, suite `procurement` 54 tests,
 suite complète du projet (base de cette branche) 303 tests, tous verts.
 
+## Grand-livre de coûts par lot, première partie (ticket B-035, `apps/procurement`)
+
+Voir `B-035-lot-ledger.md` pour le détail complet. Premier des deux
+sous-tickets d'un chantier plus large (canal 1) : un grand-livre VIVANT par
+lot (foncier + BE figés, construction via `Devis`/`DevisAjustement`
+existant, bureau de contrôle progressif) — **ce ticket-ci construit
+uniquement le grand-livre lui-même (`LotLedger`), SANS les charges bureau
+de contrôle**. Le second sous-ticket, **B-036**, les ajoutera.
+
+**`LotLedger` — `prix_client` saisi manuellement par `admin_keyimmo`,
+`foncier_alloue`/`be_alloue` en SNAPSHOT figé** depuis
+`apps.programs.services.compute_lot_repartition` (ticket B-033) au moment
+de la création, jamais recalculé après (preuve par test : une nouvelle
+révision `ProgramCost` postérieure ne change rien à un grand-livre déjà
+créé). `lot` en `OneToOneField` (au plus un grand-livre par lot, contrainte
+`UNIQUE` réelle en base, même principe que
+`ActiveLegalPaymentTierTemplate.country_pack`, ticket B-027) — **aucune
+colonne `sequence`** : contrairement à `PricingConfig`/`ProgramCost`/
+`ControlOfficeRate` (entités VERSIONNÉES), `LotLedger` n'a par construction
+qu'une seule ligne par lot, aucune ambiguïté de tri à départager.
+
+**Précondition de création : le `Devis` du lot doit déjà être VERROUILLÉ**
+(logique VEFA) — refusé explicitement (`LotDevisNotLockedError`, 409)
+sinon. Immuable après création — RLS `SELECT`/`INSERT` scopés organisation,
+**aucune policy `UPDATE`/`DELETE`**, même niveau que `Devis`/`ProgramCost`.
+
+**Anti-course DIFFÉRENTE de `_upsert_active_pointer` (ticket B-027)** : ici,
+une course détectée (`IntegrityError` sur la contrainte `UNIQUE`) ne
+bascule JAMAIS vers une mise à jour de la ligne existante — elle lève
+`LotLedgerAlreadyExistsError`. `LotLedger` est immuable, pas un pointeur
+d'état courant comme `ActiveLegalPaymentTierTemplate`.
+
+**Marge disponible — `apps.procurement.services.get_lot_ledger_margin`,
+calculée À LA VOLÉE, jamais stockée, formule VOLONTAIREMENT INCOMPLÈTE dans
+ce ticket** : `prix_client - foncier_alloue - be_alloue -
+construction_courante` (`construction_courante` = `devis.amount + Σ écarts
+signés`, via la nouvelle `get_construction_amount` — une grandeur
+DIFFÉRENTE de `available_margin(devis)`, ticket 023, qui calcule la marge
+KEYIMMO sur le devis, pas un montant de construction).
+
+**Message adressé explicitement à B-036** : `get_lot_ledger_margin`
+(`apps/procurement/services.py`) porte un TODO nommé — B-036 DOIT étendre
+cette fonction pour soustraire `Σ LotBcCharge` de ce lot une fois ce modèle
+créé, jamais dupliquer la formule ailleurs. B-036 branchera aussi son effet
+de bord sur `apps.inspections.services.create_mission` (ticket 012) — la
+chaîne `InspectionMission.work_declaration.milestone.code`/`.lot` a été
+vérifiée et confirmée exploitable avant la rédaction de ce ticket.
+
+17 tests dédiés répartis sur 5 classes (création, snapshot, marge, lecture,
+immutabilité), suite `procurement` 71 tests, suite complète du projet 339
+tests, tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

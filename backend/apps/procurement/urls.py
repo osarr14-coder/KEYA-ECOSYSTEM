@@ -7,6 +7,9 @@ from .views import (
     DevisAjustementView,
     DevisCreateView,
     DevisLockView,
+    LotLedgerCreateView,
+    LotLedgerDetailView,
+    LotLedgerMarginView,
     MyCandidaturesDetailView,
     MyCandidaturesListView,
 )
@@ -36,5 +39,16 @@ urlpatterns = [
     path(
         'procurement/admin/organizations/',
         AdminOrganizationSearchView.as_view(), name='procurement-admin-organization-search',
+    ),
+    # Ticket B-035 — grand-livre de coûts par lot (canal 1), première
+    # partie (le grand-livre seul, sans les charges bureau de contrôle).
+    path('procurement/lot-ledgers/', LotLedgerCreateView.as_view(), name='lot-ledger-create'),
+    path(
+        'procurement/lot-ledgers/<uuid:lot_id>/',
+        LotLedgerDetailView.as_view(), name='lot-ledger-detail',
+    ),
+    path(
+        'procurement/lot-ledgers/<uuid:lot_id>/margin/',
+        LotLedgerMarginView.as_view(), name='lot-ledger-margin',
     ),
 ]
