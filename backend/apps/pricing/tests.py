@@ -138,6 +138,32 @@ class TestPricingConfigCreation:
             country_pack=senegal, canal=PricingCanal.CANAL_1_MARGE,
         ).count() == 2
 
+    def test_creating_a_pricing_config_for_an_inactive_country_pack_is_rejected(self):
+        """Ticket B-032 — ferme la dette signalée au ticket B-030 : un
+        `country_pack_id` inactif deviné ou copié d'ailleurs contournait le
+        filtre `is_active=True` de `GET /api/organizations/country-packs/`
+        et permettait quand même une création.
+        """
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'pricing-create-inactive-admin@example.com', 'Org Pricing Create Inactive Admin',
+        )
+        inactive_pack = CountryPack.objects.create(
+            code='ZI', label='Pays Inactif Pricing', is_active=False,
+        )
+
+        response = admin_client.post(
+            reverse('pricing-config-create'),
+            {
+                'country_pack': str(inactive_pack.id),
+                'canal': PricingCanal.CANAL_1_MARGE,
+                'rate': '12.50',
+            },
+            format='json',
+        )
+        assert response.status_code == 409
+        assert inactive_pack.label in response.data['detail']
+        assert not PricingConfig.objects.filter(country_pack=inactive_pack).exists()
+
 
 @pytest.mark.django_db
 class TestPricingConfigCurrentAndHistory:
@@ -580,6 +606,34 @@ class TestLegalPaymentTierTemplateCreation:
         )
         ordered_codes = [step.code for step in template.steps.all()]
         assert ordered_codes == ['reservation', 'achevement_fondations', 'achevement_gros_oeuvre', 'livraison']
+
+    def test_creating_a_template_for_an_inactive_country_pack_is_rejected(self):
+        """Ticket B-032 — symétrique de
+        `TestPricingConfigCreation::test_creating_a_pricing_config_for_an_
+        inactive_country_pack_is_rejected`, même dette fermée pour la
+        seconde fonction de création nommée par le ticket B-030.
+        """
+        admin_client, _org, _admin_user = _register_admin(
+            'tier-create-inactive-admin@example.com', 'Org Tier Create Inactive Admin',
+        )
+        inactive_pack = CountryPack.objects.create(
+            code='ZT', label='Pays Inactif Paliers', is_active=False,
+        )
+
+        response = admin_client.post(
+            reverse('legal-payment-tier-template-create'),
+            {
+                'country_pack': str(inactive_pack.id), 'version': 1,
+                'steps': [
+                    {**step, 'cumulative_cap_percent': str(step['cumulative_cap_percent'])}
+                    for step in SENEGAL_TIER_STEPS
+                ],
+            },
+            format='json',
+        )
+        assert response.status_code == 409
+        assert inactive_pack.label in response.data['detail']
+        assert not LegalPaymentTierTemplate.objects.filter(country_pack=inactive_pack).exists()
 
 
 @pytest.mark.django_db

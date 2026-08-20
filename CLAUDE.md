@@ -2442,6 +2442,33 @@ lignes affichées après tri appliqué, un seul appel réseau supplémentaire
 seuil d'avertissement vérifié en simulant `count=1234` (bandeau affiché,
 zéro requête d'export avant confirmation, « Annuler » fonctionnel).
 
+## Garde `is_active` sur la création de taux/paliers légaux (ticket B-032, `apps/pricing`)
+
+Voir `B-032-country-pack-inactive-guard.md` pour le détail complet. Ferme la
+dette signalée au ticket B-030 (« point de vigilance explicitement noté, NON
+corrigé ») : `create_pricing_config`/`create_legal_payment_tier_template`
+résolvaient un `CountryPack` par `id` uniquement, sans jamais vérifier son
+statut `is_active` — un `country_pack_id` inactif deviné ou copié d'ailleurs
+contournait le filtre côté liste (`GET /api/organizations/country-packs/`).
+
+**`CountryPackInactiveError`** (`apps/pricing/services.py`) — même famille que
+`apps.procurement.services.LotAlreadyLockedError`/`NoPricingConfigError`, une
+seule classe réutilisée par les deux fonctions de création, message
+spécifique par appelant (inclut le label du pays). 409, pas 400 — le corps de
+la requête est valide, c'est l'ÉTAT du `CountryPack` qui bloque l'opération.
+Vérification posée juste après la résolution du `country_pack`, avant toute
+autre validation — échec rapide, aucun effet de bord.
+
+**Vérifié avant implémentation, confirmé exact** : aucun test existant ne
+dépendait de la possibilité de créer sur un `CountryPack` inactif (recherche
+exhaustive des créations de `CountryPack` dans tous les fichiers de test) —
+aucun ajustement de fixture nécessaire. Implémentation directe, conforme à la
+proposition validée en amont — pas d'écart ni de surprise rencontrés en
+l'écrivant, contrairement à la plupart des tickets précédents de cette série.
+
+2 tests dédiés, suite `pricing` 38 tests, suite complète du projet 285 tests,
+tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
