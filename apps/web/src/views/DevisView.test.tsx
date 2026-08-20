@@ -15,6 +15,16 @@ const LOT_RESULT: LotSearchResult = {
   program: { id: 'program-1', name: 'Programme Verif F027' },
 };
 
+/** Ticket F-036/B-037 : distinct de `LOT_RESULT` — nom/organisation/programme
+ * différents pour prouver que le sélecteur « lot verrouillé » affiche bien
+ * SES propres résultats, jamais ceux de `searchLots`. */
+const ELIGIBLE_LOT_RESULT: LotSearchResult = {
+  id: 'lot-locked-1',
+  name: 'Lot B7 Verrouillé',
+  organization: { id: 'org-lot-2', name: 'Org Constructeur Verrouillé' },
+  program: { id: 'program-2', name: 'Programme Verif F036' },
+};
+
 const CANDIDATE_ORG_RESULT: OrganizationSearchResult = {
   id: 'org-candidat-9',
   name: 'Bati Senegal Verif SARL',
@@ -49,6 +59,9 @@ function makeDevis(overrides: Partial<Devis> = {}): Devis {
 function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
     searchLots: vi.fn().mockResolvedValue([LOT_RESULT]),
+    // Ticket F-036 (backend B-037) — défaut neutre, écrasé explicitement
+    // par les tests qui s'intéressent au second sélecteur.
+    searchLotsEligibleForLedger: vi.fn().mockResolvedValue([ELIGIBLE_LOT_RESULT]),
     searchOrganizations: vi.fn().mockResolvedValue([CANDIDATE_ORG_RESULT]),
     // Ticket F-035 bis (backend B-036) — `LotBcChargesPanel` se monte sur
     // CHAQUE rendu de `LotLedgerPanel` (voir son propre fichier de test) ;
@@ -152,6 +165,73 @@ describe('DevisView — recherche de lot en direct (ticket B-028/027)', () => {
 
     expect(screen.queryByText('Lot A12', { selector: 'strong' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Rechercher un lot (nom)')).toBeInTheDocument();
+  });
+});
+
+describe('DevisView — second sélecteur pour lots déjà verrouillés (ticket F-036/B-037)', () => {
+  it('affiche le sélecteur "lot ouvert" par défaut, jamais le second sélecteur', () => {
+    renderView();
+
+    expect(screen.getByLabelText('Rechercher un lot (nom)')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Rechercher un lot verrouillé (nom)')).not.toBeInTheDocument();
+  });
+
+  it(
+    'basculer sur "Lot déjà verrouillé (grand-livre)" affiche le second sélecteur '
+    + 'et appelle searchLotsEligibleForLedger, jamais searchLots',
+    async () => {
+      const searchLots = vi.fn();
+      const searchLotsEligibleForLedger = vi.fn().mockResolvedValue([ELIGIBLE_LOT_RESULT]);
+      renderView({ searchLots, searchLotsEligibleForLedger });
+
+      fireEvent.click(screen.getByLabelText('Lot déjà verrouillé (grand-livre)'));
+
+      expect(screen.getByLabelText('Rechercher un lot verrouillé (nom)')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Rechercher un lot (nom)')).not.toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText('Rechercher un lot verrouillé (nom)'), { target: { value: 'B7' } });
+
+      await waitFor(() => expect(searchLotsEligibleForLedger).toHaveBeenCalledWith('B7'));
+      expect(searchLots).not.toHaveBeenCalled();
+    },
+  );
+
+  it('revenir sur "Lot ouvert" depuis le second sélecteur réaffiche LotPicker, jamais les deux en même temps', () => {
+    renderView();
+
+    fireEvent.click(screen.getByLabelText('Lot déjà verrouillé (grand-livre)'));
+    expect(screen.getByLabelText('Rechercher un lot verrouillé (nom)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Lot ouvert (nouvelle candidature)'));
+
+    expect(screen.getByLabelText('Rechercher un lot (nom)')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Rechercher un lot verrouillé (nom)')).not.toBeInTheDocument();
+  });
+
+  it('sélectionner un lot depuis le second sélecteur mène au même écran de détail que LotPicker', async () => {
+    const listDevisForLot = vi.fn().mockResolvedValue([]);
+    renderView({ listDevisForLot });
+
+    fireEvent.click(screen.getByLabelText('Lot déjà verrouillé (grand-livre)'));
+    fireEvent.change(screen.getByLabelText('Rechercher un lot verrouillé (nom)'), { target: { value: 'B7' } });
+    fireEvent.click(await screen.findByRole(
+      'button',
+      { name: 'Lot B7 Verrouillé — Programme Verif F036 (Org Constructeur Verrouillé)' },
+    ));
+
+    expect(screen.getByText('Lot B7 Verrouillé', { selector: 'strong' })).toBeInTheDocument();
+    await waitFor(() => expect(listDevisForLot).toHaveBeenCalledWith(
+      ELIGIBLE_LOT_RESULT.id, ELIGIBLE_LOT_RESULT.organization.id,
+    ));
+  });
+
+  it('un échec réseau sur le second sélecteur affiche une erreur explicite, indépendante de searchLots', async () => {
+    renderView({ searchLotsEligibleForLedger: vi.fn().mockRejectedValue(new Error('network down')) });
+
+    fireEvent.click(screen.getByLabelText('Lot déjà verrouillé (grand-livre)'));
+    fireEvent.change(screen.getByLabelText('Rechercher un lot verrouillé (nom)'), { target: { value: 'B7' } });
+
+    expect(await screen.findByText("Impossible d'effectuer la recherche.")).toBeInTheDocument();
   });
 });
 

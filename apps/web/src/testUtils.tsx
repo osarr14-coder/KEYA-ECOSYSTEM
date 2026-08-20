@@ -24,6 +24,8 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     // Ticket B-028 (apps/procurement, recherche) :
     searchLots: vi.fn(notMocked),
     searchOrganizations: vi.fn(notMocked),
+    // Ticket F-036 (apps/procurement, recherche — B-037) :
+    searchLotsEligibleForLedger: vi.fn(notMocked),
     // Ticket F-028 (apps/pricing) :
     getCurrentPricingRates: vi.fn(notMocked),
     getPricingHistory: vi.fn(notMocked),

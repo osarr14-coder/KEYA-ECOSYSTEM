@@ -38,6 +38,18 @@ import { LotLedgerPanel } from './LotLedgerPanel';
  * **Grand-livre de coûts par lot (ticket F-035, backend B-035)** —
  * `LotLedgerPanel` (`./LotLedgerPanel.tsx`), monté une fois un devis
  * verrouillé sur le lot sélectionné. Voir `F-035-grand-livre-lot.md`.
+ *
+ * **Second sélecteur de lot (ticket F-036, backend B-037)** — F-035 avait
+ * documenté un trou de joignabilité : un lot verrouillé redevenait
+ * introuvable via l'UI dès que `selectedLot` (état React local ci-dessous)
+ * était perdu, `searchLots`/`LotPicker` l'excluant par construction
+ * (décision D, B-028). `LotEligibleForLedgerPicker`, branché sur le
+ * nouvel endpoint `search_lots_eligible_for_ledger_as_admin` (B-037, lot
+ * verrouillé SANS grand-livre existant), ferme ce trou — sélectionnable
+ * via un bouton radio, mutuellement exclusif avec `LotPicker`. Limite
+ * résiduelle assumée : un lot qui a DÉJÀ un grand-livre reste introuvable
+ * une fois la session perdue (voir la docstring de
+ * `LotEligibleForLedgerPicker`).
  */
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -171,6 +183,40 @@ function LotPicker({ onSelect }: { onSelect: (lot: LotSearchResult) => void }) {
       label="Rechercher un lot (nom)"
       placeholder="Nom du lot…"
       searchFn={api.searchLots}
+      getKey={(lot) => lot.id}
+      renderResult={(lot) => `${lot.name} — ${lot.program.name} (${lot.organization.name})`}
+      onSelect={onSelect}
+    />
+  );
+}
+
+/**
+ * Ticket F-036 — variante de `LotPicker` ci-dessus, branchée sur
+ * `searchLotsEligibleForLedger` (ticket B-037) : CRITÈRE INVERSE, lot déjà
+ * VERROUILLÉ, sans `LotLedger` (ticket B-035) existant encore. Ferme le
+ * trou de joignabilité documenté dans `F-035-grand-livre-lot.md` : sans ce
+ * sélecteur, un lot verrouillé redevenait introuvable via l'UI dès que
+ * `selectedLot` (état React local, `DevisView` ci-dessous) était perdu
+ * (rechargement de page, navigation) — `LotPicker`/`searchLots` l'exclut
+ * par construction (décision D, B-028), seul l'état déjà sélectionné y
+ * donnait accès jusqu'ici.
+ *
+ * **Limite résiduelle assumée, PAS corrigée par ce ticket** : un lot qui a
+ * DÉJÀ un `LotLedger` reste, lui, introuvable une fois la session perdue —
+ * `search_lots_eligible_for_ledger_as_admin` l'exclut aussi (au plus un
+ * grand-livre par lot, décision B du ticket B-035, donc plus « éligible à
+ * la création » une fois qu'il en a un). Aucun endpoint backend actuel ne
+ * permet de rechercher un lot verrouillé indépendamment de l'existence de
+ * son grand-livre — candidat pour un futur ticket si ce second trou doit
+ * être fermé.
+ */
+function LotEligibleForLedgerPicker({ onSelect }: { onSelect: (lot: LotSearchResult) => void }) {
+  const api = useApiClient();
+  return (
+    <LiveSearchPicker<LotSearchResult>
+      label="Rechercher un lot verrouillé (nom)"
+      placeholder="Nom du lot…"
+      searchFn={api.searchLotsEligibleForLedger}
       getKey={(lot) => lot.id}
       renderResult={(lot) => `${lot.name} — ${lot.program.name} (${lot.organization.name})`}
       onSelect={onSelect}
@@ -540,9 +586,12 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
               devis verrouillé sur ce lot (précondition backend,
               LotDevisNotLockedError sinon). Intégré ICI plutôt qu'un
               nouvel onglet : search_lots_as_admin (ticket B-028) exclut
-              les lots déjà verrouillés de ses résultats — ce lot ne
-              redeviendrait plus jamais trouvable par une recherche neuve,
-              seul cet état déjà sélectionné y donne accès. */}
+              les lots déjà verrouillés de ses résultats. Ticket F-036 :
+              `LotEligibleForLedgerPicker` (ci-dessous, DevisView) ferme
+              CE trou pour un lot SANS grand-livre encore — un lot qui en a
+              DÉJÀ un reste, lui, introuvable par une recherche neuve une
+              fois cet état perdu (limite résiduelle assumée, voir la
+              docstring de LotEligibleForLedgerPicker). */}
           {state.data.some((devis) => devis.status === 'devis_verrouille') && (
             <LotLedgerPanel organizationId={organizationId} lotId={lotId} />
           )}
@@ -552,8 +601,16 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
   );
 }
 
+type LotSearchMode = 'open' | 'eligible-for-ledger';
+
 export function DevisView() {
   const [selectedLot, setSelectedLot] = useState<LotSearchResult | null>(null);
+  // Ticket F-036 — les deux recherches sont MUTUELLEMENT EXCLUSIVES par
+  // construction côté backend (un lot est soit pas encore verrouillé, soit
+  // verrouillé sans grand-livre, jamais les deux à la fois) : un bouton
+  // radio pour choisir laquelle, jamais les deux pickers affichés en même
+  // temps (éviterait toute ambiguïté sur celui qui vient de répondre).
+  const [searchMode, setSearchMode] = useState<LotSearchMode>('open');
 
   return (
     <section aria-label="Devis / Appels d'offres">
@@ -568,7 +625,31 @@ export function DevisView() {
         </div>
       ) : (
         <div style={{ marginBottom: '16px' }}>
-          <LotPicker onSelect={setSelectedLot} />
+          <div role="radiogroup" aria-label="Type de recherche de lot" style={{ marginBottom: '8px' }}>
+            <label>
+              <input
+                type="radio"
+                name="lot-search-mode"
+                checked={searchMode === 'open'}
+                onChange={() => setSearchMode('open')}
+              />
+              {' '}Lot ouvert (nouvelle candidature)
+            </label>
+            <label style={{ marginLeft: '20px' }}>
+              <input
+                type="radio"
+                name="lot-search-mode"
+                checked={searchMode === 'eligible-for-ledger'}
+                onChange={() => setSearchMode('eligible-for-ledger')}
+              />
+              {' '}Lot déjà verrouillé (grand-livre)
+            </label>
+          </div>
+          {searchMode === 'open' ? (
+            <LotPicker onSelect={setSelectedLot} />
+          ) : (
+            <LotEligibleForLedgerPicker onSelect={setSelectedLot} />
+          )}
         </div>
       )}
 
