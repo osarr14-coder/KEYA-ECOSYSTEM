@@ -101,3 +101,69 @@ class DevisAjustement(models.Model):
 
     def __str__(self):
         return f'Ajustement {self.ecart} — {self.devis}'
+
+
+class LotLedger(models.Model):
+    """Grand-livre de coûts par lot (canal 1) — ticket B-035, première
+    partie (le grand-livre lui-même, SANS les charges bureau de contrôle,
+    voir ticket B-036 à venir).
+
+    Un grand-livre VIVANT, pas un instantané figé (décision utilisateur) :
+    la marge disponible se recalcule À LA VOLÉE (voir
+    `apps.procurement.services.get_lot_ledger_margin`), jamais stockée.
+    Seuls `foncier_alloue`/`be_alloue` sont figés une fois pour toutes, au
+    moment de la création de CE grand-livre — un snapshot depuis
+    `apps.programs.services.compute_lot_repartition` (ticket B-033), jamais
+    recalculé après, même si `ProgramCost` change ensuite (nouvelle
+    révision).
+
+    `lot` en `OneToOneField`, pas une simple FK — au plus UN grand-livre par
+    lot, garanti par une contrainte `UNIQUE` réelle en base (même principe
+    que `ActiveLegalPaymentTierTemplate.country_pack`, ticket B-027) — pas
+    seulement une vérification applicative. Voir
+    `apps.procurement.services.create_lot_ledger` pour la garantie
+    anti-course (même discipline EXPLICITE que `_get_or_create_task`,
+    ticket 017 / `_upsert_active_pointer`, ticket B-027) — DIFFÉRENCE
+    IMPORTANTE avec ces deux précédents : ici, une course détectée
+    (`IntegrityError`) ne bascule JAMAIS vers une mise à jour de la ligne
+    existante — `LotLedger` est immuable, la course se conclut par un rejet
+    explicite (`LotLedgerAlreadyExistsError`), jamais un `UPDATE`.
+
+    Aucune colonne `sequence` (contrairement à `PricingConfig`/
+    `ProgramCost`/`ControlOfficeRate`, entités VERSIONNÉES) : par
+    construction, une seule ligne par lot (garantie ci-dessus) — aucune
+    ambiguïté de tri à départager, le tie-break `sequence` n'a pas de sens
+    ici.
+
+    Précondition de création (voir `create_lot_ledger`) : le `Devis` du lot
+    doit déjà être VERROUILLÉ — cohérent avec la logique VEFA, voir le
+    ticket. `organization` dénormalisée depuis `lot.organization`, même
+    pattern RLS que `Devis`/`ProgramCost`. Immuable après création : RLS
+    `SELECT`/`INSERT` scopés organisation, **aucune policy `UPDATE`/
+    `DELETE`** (voir migration RLS dédiée) — même niveau que `Devis`/
+    `ProgramCost`.
+
+    **Message adressé à B-036** : la formule de marge de ce ticket
+    (`get_lot_ledger_margin`) est VOLONTAIREMENT INCOMPLÈTE — elle
+    n'inclut PAS encore le terme bureau de contrôle (`LotBcCharge`,
+    futur). Voir le TODO explicite dans `get_lot_ledger_margin`.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='lot_ledgers',
+    )
+    lot = models.OneToOneField(Lot, on_delete=models.PROTECT, related_name='ledger')
+    prix_client = models.DecimalField(max_digits=16, decimal_places=2)
+    foncier_alloue = models.DecimalField(max_digits=16, decimal_places=2)
+    be_alloue = models.DecimalField(max_digits=16, decimal_places=2)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='lot_ledgers_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'procurement_lot_ledger'
+
+    def __str__(self):
+        return f'Grand-livre — {self.lot}'

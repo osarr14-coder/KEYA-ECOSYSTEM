@@ -3,7 +3,7 @@ from rest_framework import serializers
 from apps.organizations.models import Organization
 
 from . import services
-from .models import Devis, DevisAjustement
+from .models import Devis, DevisAjustement, LotLedger
 
 
 class DevisCreateSerializer(serializers.Serializer):
@@ -149,6 +149,35 @@ class DevisAjustementAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = DevisAjustement
         fields = ['id', 'devis', 'organization', 'ecart', 'created_by', 'created_at']
+        read_only_fields = fields
+
+
+class LotLedgerCreateSerializer(serializers.Serializer):
+    """Entrée de `POST /api/procurement/lot-ledgers/` — ticket B-035.
+    `organization` est l'organisation du LOT (cible de la bascule RLS),
+    même conséquence assumée que `DevisCreateSerializer`. `prix_client`
+    saisi manuellement par `admin_keyimmo` — aucun calcul dérivé (voir
+    `apps.procurement.services.create_lot_ledger`).
+    """
+
+    organization = serializers.UUIDField()
+    lot = serializers.UUIDField()
+    prix_client = serializers.DecimalField(max_digits=16, decimal_places=2)
+
+
+class LotLedgerSerializer(serializers.ModelSerializer):
+    """Réponse admin_keyimmo — seule audience de `LotLedger` dans ce
+    ticket (aucune lecture candidate/sponsor). `foncier_alloue`/
+    `be_alloue` sont le snapshot figé à la création (décision E du ticket)
+    — jamais recalculés ici.
+    """
+
+    class Meta:
+        model = LotLedger
+        fields = [
+            'id', 'organization', 'lot', 'prix_client',
+            'foncier_alloue', 'be_alloue', 'created_by', 'created_at',
+        ]
         read_only_fields = fields
 
 

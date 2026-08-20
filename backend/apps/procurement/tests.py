@@ -2,7 +2,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from unittest import mock
 
 import pytest
-from django.db import connection
+from django.db import IntegrityError, connection, transaction
 from django.db.utils import ProgrammingError
 from django.urls import reverse
 from rest_framework.test import APIClient
@@ -13,14 +13,15 @@ from apps.evidence.services import create_work_declaration
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 from apps.pricing.models import PricingCanal
 from apps.pricing import services as pricing_services
-from apps.programs.models import Asset, Lot, Program
+from apps.programs import services as programs_services
+from apps.programs.models import Asset, Lot, Program, ProgramCostRepartitionMethod
 from apps.programs.services import instantiate_milestones_for_lot
 from apps.tasks.models import Task, TaskStatus, TaskType
 from apps.tasks.services import DEVIS_AJUSTEMENT_REFUSE_SOURCE
 from apps.trust.models import TrustEvent
 
 from . import services
-from .models import Devis, DevisAjustement
+from .models import Devis, DevisAjustement, LotLedger
 
 PASSWORD = 'strongpass123'
 
@@ -894,6 +895,10 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # contrôle, réservé à `admin_keyimmo`, jamais accessible au rôle
             # constructeur/sponsor.
             'control-office-rate-create', 'control-office-rate-current', 'control-office-rate-history',
+            # Ticket B-035 — ajout conscient : grand-livre de coûts par lot
+            # (canal 1), première partie, réservé à `admin_keyimmo`, jamais
+            # accessible au rôle constructeur/sponsor.
+            'lot-ledger-create', 'lot-ledger-detail', 'lot-ledger-margin',
         }
         assert actual == expected
 
@@ -1634,3 +1639,428 @@ class TestAdminLotSearch:
         # échoué (contexte resté bloqué sur le sponsor), cette lecture
         # verrait le lot à tort.
         assert not Lot.objects.filter(name__icontains='Exception Test').exists()
+
+
+def _seed_program_cost_for_lot(
+    *, admin_user, admin_org, sponsor_org, lot, foncier_total, be_total,
+    repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES,
+):
+    """Ticket B-035 : crée un `ProgramCost` pour le programme du lot donné.
+    Bascule RLS explicite avant de lire `lot.asset.program_id` — même
+    piège déjà documenté pour `get_devis_lot_detail` (ticket B-029) :
+    `lot` est un objet Python déjà chargé, mais `lot.asset` (jamais mis en
+    cache par les helpers d'enregistrement) déclencherait sinon une
+    requête FRAÎCHE sous le contexte RLS courant (potentiellement celui
+    d'une AUTRE organisation, laissée active par le dernier appel
+    `_register`/`_register_admin` de la fixture appelante).
+    """
+    set_rls_context(organization_id=sponsor_org.id)
+    program_id = lot.asset.program_id
+    set_rls_context(organization_id=admin_org.id)
+    return programs_services.create_program_cost(
+        admin=admin_user, admin_organization_id=admin_org.id,
+        target_organization_id=sponsor_org.id, program_id=program_id,
+        foncier_total=foncier_total, be_total=be_total,
+        repartition_method=repartition_method, justification='Test B-035',
+    )
+
+
+def _setup_lot_ledger_ready(
+    suffix, *, devis_amount=BOUNDARY_TEST_AMOUNT,
+    foncier_total=Decimal('5000000.00'), be_total=Decimal('1000000.00'),
+):
+    """Ticket B-035 : un lot avec un devis VERROUILLÉ et un `ProgramCost`
+    (`parts_egales`, un seul lot dans ce programme — chaque lot reçoit
+    100% des montants, aucune division en jeu) déjà en place, prêt pour
+    `POST /api/procurement/lot-ledgers/`.
+    """
+    admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, candidate_b = (
+        _setup_lot_up_for_bid(suffix)
+    )
+    _candidate_a_client, candidate_a_org = candidate_a
+    devis = _create_and_lock_devis(
+        admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+        candidate_org=candidate_a_org, amount=devis_amount,
+    )
+    _seed_program_cost_for_lot(
+        admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+        foncier_total=foncier_total, be_total=be_total,
+    )
+    return admin_client, admin_org, admin_user, sponsor_org, lot, devis, candidate_a, candidate_b
+
+
+@pytest.mark.django_db
+class TestLotLedgerCreation:
+    """Ticket B-035 — grand-livre de coûts par lot (canal 1), première
+    partie. Décisions D (précondition devis verrouillé) et B (un seul
+    grand-livre par lot) vérifiées ici.
+    """
+
+    def test_admin_keyimmo_can_create_a_lot_ledger_once_devis_is_locked(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('create')
+        )
+
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert Decimal(response.data['prix_client']) == Decimal('20000000.00')
+        # Un seul lot dans ce programme (parts_egales) : la part de CE lot
+        # vaut le TOTAL du ProgramCost, aucune division n'entre en jeu ici.
+        assert Decimal(response.data['foncier_alloue']) == Decimal('5000000.00')
+        assert Decimal(response.data['be_alloue']) == Decimal('1000000.00')
+        assert response.data['lot'] == lot.id
+        assert response.data['organization'] == sponsor_org.id
+
+    def test_a_constructeur_cannot_create_a_lot_ledger(self):
+        _admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('forbidden')
+        )
+        candidate_a_client, _candidate_a_org = candidate_a
+
+        response = candidate_a_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 403
+
+    def test_creation_without_a_locked_devis_is_rejected_and_creates_no_row(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('not-locked')
+        )
+        _seed_program_cost_for_lot(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            foncier_total=Decimal('5000000.00'), be_total=Decimal('1000000.00'),
+        )
+        # AUCUN devis créé/verrouillé pour ce lot — précondition D non remplie.
+
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 409
+
+        set_rls_context(organization_id=sponsor_org.id)
+        assert not LotLedger.objects.filter(lot=lot).exists()
+
+    def test_creation_without_any_program_cost_is_rejected_and_creates_no_row(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('no-program-cost')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
+        )
+        # Devis verrouillé, mais AUCUN ProgramCost enregistré pour ce
+        # programme — rien à répartir (même famille que
+        # ProgramCostRepartitionView, ticket B-033).
+
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 409
+
+        set_rls_context(organization_id=sponsor_org.id)
+        assert not LotLedger.objects.filter(lot=lot).exists()
+
+    def test_a_second_ledger_for_the_same_lot_via_the_api_is_rejected(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('duplicate')
+        )
+        first = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert first.status_code == 201, first.data
+
+        second = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '99999999.00'},
+            format='json',
+        )
+        assert second.status_code == 409
+
+        set_rls_context(organization_id=sponsor_org.id)
+        assert LotLedger.objects.filter(lot=lot).count() == 1
+
+    def test_direct_db_insert_bypassing_the_service_violates_the_unique_constraint(self):
+        """Décision B, garantie DB — pas seulement applicative : une
+        tentative d'`INSERT` en base qui violerait DIRECTEMENT la
+        contrainte `UNIQUE` du `OneToOneField` `lot` est rejetée par
+        PostgreSQL lui-même (`IntegrityError`), même en contournant
+        entièrement `create_lot_ledger`/sa vérification préalable — même
+        preuve que `TestLegalPaymentTierTemplateUniqueness` (ticket B-027,
+        `apps/pricing/tests.py`).
+        """
+        admin_client, _admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('db-constraint')
+        )
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                LotLedger.objects.create(
+                    organization=sponsor_org, lot=lot, prix_client=Decimal('1.00'),
+                    foncier_alloue=Decimal('1.00'), be_alloue=Decimal('1.00'), created_by=admin_user,
+                )
+
+
+@pytest.mark.django_db
+class TestLotLedgerSnapshot:
+    """Décision E : `foncier_alloue`/`be_alloue` sont un snapshot figé
+    depuis `compute_lot_repartition` (ticket B-033) au moment de la
+    création — jamais recalculé après, même si `ProgramCost` change
+    ensuite (nouvelle révision).
+    """
+
+    def test_snapshot_matches_repartition_with_parts_egales_across_two_lots(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot_a, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('parts-egales')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+
+        set_rls_context(organization_id=sponsor_org.id)
+        Lot.objects.create(organization=sponsor_org, asset=lot_a.asset, name='Second lot')
+        set_rls_context(organization_id=admin_org.id)
+
+        _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot_a,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
+        )
+        _seed_program_cost_for_lot(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot_a,
+            foncier_total=Decimal('5000000.00'), be_total=Decimal('1000000.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES,
+        )
+
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot_a.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        # Deux lots, parts égales : chacun reçoit exactement la moitié.
+        assert Decimal(response.data['foncier_alloue']) == Decimal('2500000.00')
+        assert Decimal(response.data['be_alloue']) == Decimal('500000.00')
+
+    def test_snapshot_matches_repartition_with_prorata_surface(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot_a, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('prorata-surface')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+
+        set_rls_context(organization_id=sponsor_org.id)
+        lot_a.surface = Decimal('100.00')
+        lot_a.save(update_fields=['surface'])
+        Lot.objects.create(
+            organization=sponsor_org, asset=lot_a.asset, name='Second lot', surface=Decimal('300.00'),
+        )
+        set_rls_context(organization_id=admin_org.id)
+
+        _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot_a,
+            candidate_org=candidate_a_org, amount=BOUNDARY_TEST_AMOUNT,
+        )
+        _seed_program_cost_for_lot(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot_a,
+            foncier_total=Decimal('4000000.00'), be_total=Decimal('800000.00'),
+            repartition_method=ProgramCostRepartitionMethod.PRORATA_SURFACE,
+        )
+
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot_a.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        # lot_a = 100 / (100 + 300) = 25% de chaque total.
+        assert Decimal(response.data['foncier_alloue']) == Decimal('1000000.00')
+        assert Decimal(response.data['be_alloue']) == Decimal('200000.00')
+
+    def test_a_later_program_cost_revision_never_changes_an_already_created_snapshot(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready(
+                'frozen-snapshot', foncier_total=Decimal('5000000.00'), be_total=Decimal('1000000.00'),
+            )
+        )
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        original_foncier = Decimal(response.data['foncier_alloue'])
+        original_be = Decimal(response.data['be_alloue'])
+        assert original_foncier == Decimal('5000000.00')
+        assert original_be == Decimal('1000000.00')
+
+        # Nouvelle révision ProgramCost, totaux TRÈS différents.
+        _seed_program_cost_for_lot(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            foncier_total=Decimal('99999999.00'), be_total=Decimal('88888888.00'),
+        )
+
+        detail_response = admin_client.get(
+            reverse('lot-ledger-detail', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert detail_response.status_code == 200
+        assert Decimal(detail_response.data['foncier_alloue']) == original_foncier
+        assert Decimal(detail_response.data['be_alloue']) == original_be
+
+
+@pytest.mark.django_db
+class TestLotLedgerMargin:
+    """Décision F : marge disponible calculée À LA VOLÉE, formule
+    VOLONTAIREMENT INCOMPLÈTE dans ce ticket (TODO B-036, terme bureau de
+    contrôle absent).
+    """
+
+    def test_margin_equals_prix_client_minus_foncier_be_minus_construction_amount(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready(
+                'margin-basic', devis_amount=BOUNDARY_TEST_AMOUNT,
+                foncier_total=Decimal('5000000.00'), be_total=Decimal('1000000.00'),
+            )
+        )
+        create_response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert create_response.status_code == 201, create_response.data
+
+        # Preuve que `construction_courante` inclut bien l'ajustement, pas
+        # seulement `devis.amount` seul (même discipline que le critère
+        # d'acceptation `TestDevisAjustementCumulativeSigned`).
+        ajustement_response = admin_client.post(
+            reverse('procurement-devis-ajustement', args=[devis.id]),
+            {'organization': str(sponsor_org.id), 'ecart': '1000.00'},
+            format='json',
+        )
+        assert ajustement_response.status_code == 201, ajustement_response.data
+
+        margin_response = admin_client.get(
+            reverse('lot-ledger-margin', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert margin_response.status_code == 200
+        # prix_client (20000000) - foncier_alloue (5000000) - be_alloue
+        # (1000000) - construction_courante (BOUNDARY_TEST_AMOUNT + 1000).
+        expected_construction = BOUNDARY_TEST_AMOUNT + Decimal('1000.00')
+        expected_margin = (
+            Decimal('20000000.00') - Decimal('5000000.00') - Decimal('1000000.00') - expected_construction
+        )
+        assert margin_response.data['margin'] == expected_margin
+
+    def test_margin_endpoint_returns_404_when_no_ledger_exists_yet(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('margin-missing')
+        )
+        # Aucun grand-livre créé pour ce lot.
+
+        response = admin_client.get(
+            reverse('lot-ledger-margin', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 404
+
+    def test_a_constructeur_cannot_read_the_margin(self):
+        _admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('margin-forbidden')
+        )
+        candidate_a_client, _candidate_a_org = candidate_a
+
+        response = candidate_a_client.get(
+            reverse('lot-ledger-margin', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestLotLedgerDetail:
+    def test_reading_a_lot_without_a_ledger_returns_null(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, _candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('detail-null')
+        )
+        response = admin_client.get(
+            reverse('lot-ledger-detail', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        assert response.data is None
+
+    def test_a_constructeur_cannot_read_a_lot_ledger(self):
+        _admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('detail-forbidden')
+        )
+        candidate_a_client, _candidate_a_org = candidate_a
+
+        response = candidate_a_client.get(
+            reverse('lot-ledger-detail', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestLotLedgerImmutability:
+    """Décision C : `LotLedger` n'est jamais révisé après création — même
+    niveau que `Devis`/`ProgramCost` (aucune policy RLS `UPDATE`/`DELETE`).
+    """
+
+    def test_no_update_or_delete_function_exists_in_services(self):
+        assert not hasattr(services, 'update_lot_ledger')
+        assert not hasattr(services, 'delete_lot_ledger')
+
+    def test_direct_sql_update_on_lot_ledger_is_blocked_by_rls_no_policy_defined(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('immutable-sql-update')
+        )
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        ledger_id = response.data['id']
+
+        set_rls_context(organization_id=sponsor_org.id)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE procurement_lot_ledger SET prix_client = %s WHERE id = %s",
+                [str(Decimal('1.00')), str(ledger_id)],
+            )
+            assert cursor.rowcount == 0
+
+        ledger = LotLedger.objects.get(id=ledger_id)
+        assert ledger.prix_client == Decimal('20000000.00')
+
+    def test_direct_sql_delete_on_lot_ledger_is_blocked_by_rls_no_policy_defined(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('immutable-sql-delete')
+        )
+        response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        ledger_id = response.data['id']
+
+        set_rls_context(organization_id=sponsor_org.id)
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM procurement_lot_ledger WHERE id = %s", [str(ledger_id)])
+            assert cursor.rowcount == 0
+
+        assert LotLedger.objects.filter(id=ledger_id).exists()

@@ -1,18 +1,19 @@
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Sum
 
 from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
 from apps.pricing.models import PricingCanal
 from apps.pricing.services import get_active_rate
+from apps.programs import services as programs_services
 from apps.programs.models import Lot
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
 
-from .models import Devis, DevisAjustement
+from .models import Devis, DevisAjustement, LotLedger
 
 # Source de TrustEvent qui marque LE devis retenu pour un lot — un devis
 # sans TrustEvent de ce type est un simple candidat (voir get_devis_status).
@@ -57,6 +58,28 @@ class NoPricingConfigError(Exception):
     pour le `country_pack` du lot — `marge_estimee` ne peut être dérivé,
     la création du devis est bloquée AVANT toute écriture (aucune ligne
     créée), jamais un champ vide ni une valeur par défaut silencieuse.
+    """
+
+
+class LotDevisNotLockedError(Exception):
+    """Ticket B-035, décision D : un grand-livre (`LotLedger`) ne peut être
+    créé que pour un lot dont le `Devis` est déjà VERROUILLÉ — cohérent
+    avec la logique VEFA (tout se construit sur des devis/contrats
+    estimés) : créer un grand-livre avant la sélection du constructeur
+    n'aurait aucun sens (`construction_courante` serait indéfinie).
+    Aucune ligne `LotLedger` créée quand cette exception est levée.
+    """
+
+
+class LotLedgerAlreadyExistsError(Exception):
+    """Ticket B-035, décision B : au plus UN grand-livre par lot, garanti
+    par la contrainte `UNIQUE` réelle du `OneToOneField` `LotLedger.lot`
+    (pas seulement une vérification applicative). Levée à la fois par une
+    vérification explicite préalable ET par le rattrapage d'`IntegrityError`
+    d'une création concurrente (voir `create_lot_ledger`) — DIFFÉRENCE avec
+    `_upsert_active_pointer` (ticket B-027) : ici, une course détectée ne
+    bascule JAMAIS vers une mise à jour de la ligne existante, `LotLedger`
+    est immuable.
     """
 
 
@@ -395,6 +418,181 @@ def available_margin(devis):
     """
     total_ecarts = devis.ajustements.aggregate(total=Sum('ecart'))['total'] or Decimal('0')
     return devis.marge_estimee - total_ecarts
+
+
+def get_locked_devis_for_lot(lot_id):
+    """Le `Devis` VERROUILLÉ de ce lot — `None` si aucun. Ticket B-035 :
+    même itération que `is_lot_locked` (ticket 022), retourne l'OBJET
+    plutôt qu'un booléen — nécessaire pour dériver `construction_courante`
+    d'un grand-livre (voir `get_construction_amount`/`get_lot_ledger_margin`).
+
+    Même précondition d'appel que `is_lot_locked` : appelée sous la
+    bascule RLS déjà positionnée sur l'organisation du lot, sans bascule
+    supplémentaire ici.
+    """
+    for devis in Devis.objects.filter(lot_id=lot_id):
+        event = _read_current_devis_event(devis)
+        if event is not None and event.source == DEVIS_LOCKED_SOURCE:
+            return devis
+    return None
+
+
+def get_construction_amount(devis):
+    """Montant construction COURANT d'un devis verrouillé — ticket B-035 :
+    `devis.amount` plus la somme SIGNÉE de tous ses `DevisAjustement`
+    (positif = surcoût, l'augmente ; négatif = économie, le réduit — même
+    convention de signe que `available_margin`, ticket 023).
+
+    **Grandeur DIFFÉRENTE de `available_margin(devis)`** : celle-ci calcule
+    la marge KEYIMMO sur ce devis (`marge_estimee - Σécarts`), pas un
+    montant de construction — les deux fonctions partagent la même somme
+    d'écarts mais l'appliquent à des bases différentes, jamais
+    interchangeables.
+
+    Lecture DIRECTE, sans bascule — même discipline que `available_margin`
+    (appelée sous une bascule déjà positionnée par l'appelant).
+    """
+    total_ecarts = devis.ajustements.aggregate(total=Sum('ecart'))['total'] or Decimal('0')
+    return devis.amount + total_ecarts
+
+
+def get_lot_ledger_margin(ledger):
+    """Marge disponible COURANTE d'un grand-livre — ticket B-035. Calculée
+    À LA VOLÉE, JAMAIS stockée (doctrine Visible Trust) :
+    `prix_client - foncier_alloue - be_alloue - construction_courante`.
+
+    **TODO B-036 — formule VOLONTAIREMENT INCOMPLÈTE dans ce ticket** :
+    n'inclut PAS encore le terme bureau de contrôle
+    (`- Σ LotBcCharge` pour ce lot, futur). Le ticket B-036 doit ÉTENDRE
+    cette fonction pour soustraire ce terme une fois `LotBcCharge` créé —
+    ne jamais dupliquer cette formule ailleurs, toujours passer par cette
+    fonction (même discipline que `apps.pricing.services.
+    get_active_control_office_rate`, seule source de vérité).
+
+    Lecture DIRECTE, sans bascule : appelée uniquement depuis un appelant
+    déjà basculé sur l'organisation du lot (la même que `ledger.
+    organization` et que le devis verrouillé de ce lot) — même discipline
+    que `available_margin`.
+    """
+    devis = get_locked_devis_for_lot(ledger.lot_id)
+    construction_courante = get_construction_amount(devis)
+    return ledger.prix_client - ledger.foncier_alloue - ledger.be_alloue - construction_courante
+
+
+def create_lot_ledger(*, admin, admin_organization_id, target_organization_id, lot_id, prix_client):
+    """Point d'entrée unique pour créer le grand-livre d'un lot — ticket
+    B-035. L'appelant (`apps.procurement.views.LotLedgerCreateView`) a déjà
+    vérifié que `admin` détient `admin_keyimmo` ; cette fonction ne
+    revérifie pas ce rôle. Même schéma de bascule RLS explicite que
+    `create_devis`/`create_program_cost` : `target_organization_id`
+    (l'organisation du LOT) fourni EXPLICITEMENT par l'appelant.
+    """
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            ledger = _create_lot_ledger_row(
+                admin=admin, target_organization_id=target_organization_id,
+                lot_id=lot_id, prix_client=prix_client,
+            )
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return ledger
+
+
+def _create_lot_ledger_row(*, admin, target_organization_id, lot_id, prix_client):
+    """**Précondition (décision D)** : le devis du lot doit déjà être
+    VERROUILLÉ — refusé explicitement (`LotDevisNotLockedError`, 409)
+    sinon, AUCUNE ligne créée.
+
+    **Snapshot foncier/BE (décision E)** : lu depuis
+    `apps.programs.services.compute_lot_repartition` (ticket B-033) AU
+    MOMENT de cette création, jamais recalculé après — la ligne
+    correspondant à CE lot est cherchée dans la liste retournée (indexée
+    par lot, jamais un objet agrégé). Appelé sous la MÊME bascule déjà
+    active (`admin_organization_id=target_organization_id`, no-op) :
+    passer par le service `apps.programs.services`, jamais un accès direct
+    à `ProgramCost` depuis ce module — même discipline de frontière
+    inter-app que `get_active_control_office_rate` (ticket B-034).
+    `programs_services.NoProgramCostError`/`LotMissingSurfaceError` se
+    propagent tels quels jusqu'à la vue (même famille de 409).
+
+    **Anti-course, discipline EXPLICITE (décision B)** — vérification
+    préalable, PUIS `create()` sous `transaction.atomic()`, rattrapage
+    explicite d'`IntegrityError` : DIFFÉRENCE avec `_upsert_active_pointer`
+    (ticket B-027) — ici, une course détectée ne bascule JAMAIS vers une
+    mise à jour, elle lève `LotLedgerAlreadyExistsError` (`LotLedger` est
+    immuable, pas un pointeur d'état courant).
+    """
+    lot = Lot.objects.filter(id=lot_id, organization_id=target_organization_id).first()
+    if lot is None:
+        raise ValidationError({'lot': "Lot introuvable dans l'organisation cible."})
+
+    if LotLedger.objects.filter(lot=lot).exists():
+        raise LotLedgerAlreadyExistsError(
+            'Un grand-livre existe déjà pour ce lot — un seul par lot.',
+        )
+
+    if get_locked_devis_for_lot(lot.id) is None:
+        raise LotDevisNotLockedError(
+            'Le devis de ce lot doit être verrouillé avant de créer son grand-livre.',
+        )
+
+    repartition = programs_services.compute_lot_repartition(
+        admin_organization_id=target_organization_id,
+        target_organization_id=target_organization_id,
+        program_id=lot.asset.program_id,
+    )
+    lot_share = next((entry for entry in repartition if entry['lot'].id == lot.id), None)
+    if lot_share is None:
+        raise programs_services.NoProgramCostError(
+            'Aucun ProgramCost enregistré pour le programme de ce lot — rien à répartir.',
+        )
+
+    try:
+        with transaction.atomic():
+            return LotLedger.objects.create(
+                organization_id=target_organization_id,
+                lot=lot,
+                prix_client=prix_client,
+                foncier_alloue=lot_share['foncier_lot'],
+                be_alloue=lot_share['be_lot'],
+                created_by=admin,
+            )
+    except IntegrityError:
+        raise LotLedgerAlreadyExistsError(
+            'Un grand-livre existe déjà pour ce lot — un seul par lot.',
+        )
+
+
+def get_lot_ledger(*, admin_organization_id, target_organization_id, lot_id):
+    """Le `LotLedger` de ce lot, `None` si aucun n'existe encore — ticket
+    B-035. Même schéma de bascule RLS en lecture seule que
+    `list_devis_for_lot_as_admin`.
+    """
+    set_rls_context(organization_id=target_organization_id)
+    try:
+        return LotLedger.objects.filter(lot_id=lot_id).first()
+    finally:
+        set_rls_context(organization_id=admin_organization_id)
+
+
+def get_lot_ledger_margin_for_lot(*, admin_organization_id, target_organization_id, lot_id):
+    """Grand-livre + marge disponible courante de ce lot — ticket B-035.
+    Combine `get_lot_ledger`/`get_lot_ledger_margin` sous UNE SEULE bascule
+    RLS (évite un aller-retour de bascule supplémentaire pour une même
+    lecture — `get_lot_ledger_margin` a besoin d'être appelée sous cette
+    même bascule, voir sa docstring). Retourne `(None, None)` si aucun
+    grand-livre n'existe encore pour ce lot.
+    """
+    set_rls_context(organization_id=target_organization_id)
+    try:
+        ledger = LotLedger.objects.filter(lot_id=lot_id).first()
+        if ledger is None:
+            return None, None
+        margin = get_lot_ledger_margin(ledger)
+    finally:
+        set_rls_context(organization_id=admin_organization_id)
+    return ledger, margin
 
 
 def create_ajustement(*, admin, admin_organization_id, target_organization_id, devis_id, ecart):
