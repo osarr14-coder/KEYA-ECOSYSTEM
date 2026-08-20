@@ -247,11 +247,11 @@ describe(
 
         await screen.findByTestId('app-shell');
         expect(screen.getByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
-        expect(screen.queryByText('Aucun sélecteur de lot/organisation disponible')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Rechercher un lot (nom)')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: "Devis / Appels d'offres" }));
 
-        expect(await screen.findByText('Aucun sélecteur de lot/organisation disponible')).toBeInTheDocument();
+        expect(await screen.findByLabelText('Rechercher un lot (nom)')).toBeInTheDocument();
         expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
       },
     );

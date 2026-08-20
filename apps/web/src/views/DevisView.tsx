@@ -1,10 +1,14 @@
-import { type FormEvent, useState } from 'react';
+import {
+  type FormEvent, type ReactNode, useEffect, useRef, useState,
+} from 'react';
 
 import { AlertBanner, semanticColors } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
-import type { Devis, DevisAjustement } from '../api/types';
+import type {
+  Devis, DevisAjustement, LotSearchResult, OrganizationSearchResult,
+} from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 
 /**
@@ -16,64 +20,148 @@ import { useApiResource } from '../api/useApiResource';
  * vérifié directement dans `backend/apps/procurement/{services,serializers,
  * views}.py` avant d'écrire ce fichier, voir `F-027-devis-fonctionnel.md`.
  *
- * **Aucun sélecteur de lot/organisation** : ni `GET /api/programs/lots/` ni
- * `GET /api/build/lots/` ne permettent à admin_keyimmo de découvrir un lot
- * hors de ses propres memberships, et aucun endpoint ne liste les
- * organisations. Décision actée avec l'utilisateur : saisie manuelle des
- * UUID en attendant un futur ticket backend (B-028, transmis à la session
- * backend) qui ajouterait une recherche, sur le modèle de
- * `GET /api/backoffice/users/?q=` (ticket 011). Même raison : tous les
- * champs de relation d'un `Devis` (organisation, candidat, logged_by) sont
- * des UUID bruts non résolus en nom — affichés tels quels ci-dessous,
- * jamais masqués derrière un faux libellé.
+ * **Sélection du lot/de l'organisation candidate — recherche réelle (ticket
+ * B-028, backend)** : `GET /api/procurement/admin/lots/?q=`/`GET
+ * /api/procurement/admin/organizations/?q=` remplacent la saisie manuelle
+ * d'UUID qu'utilisait ce fichier jusqu'ici. Limite résiduelle, SANS lien
+ * avec B-028 : `DevisAdminSerializer` (déjà en place au ticket 022) n'a pas
+ * changé — une fois un devis créé, ses champs de relation
+ * (`candidate_organization`/`logged_by`) restent des UUID bruts dans la
+ * table `DevisRow` ci-dessous, jamais masqués derrière un faux libellé.
  */
 
-function LotSelector({ onLoad }: { onLoad: (organizationId: string, lotId: string) => void }) {
-  const [organizationId, setOrganizationId] = useState('');
-  const [lotId, setLotId] = useState('');
+const SEARCH_DEBOUNCE_MS = 250;
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    onLoad(organizationId.trim(), lotId.trim());
-  }
+/**
+ * Debounce + garde de réponse périmée : un `clearTimeout` seul n'annule que
+ * les requêtes pas encore PARTIES — une requête déjà en vol quand une
+ * frappe plus récente la dépasse doit encore être ignorée à sa résolution,
+ * jamais appliquée par-dessus un résultat plus frais (même discipline anti-
+ * course que `syncEngine.ts`, CONTROL PWA, tickets 015/016 : comparer l'état
+ * réel au moment de la résolution, pas seulement au moment du départ).
+ */
+function useDebouncedSearch<T>(searchFn: (query: string) => Promise<T[]>, query: string) {
+  const [results, setResults] = useState<T[]>([]);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
+  const latestQueryRef = useRef(query);
+
+  useEffect(() => {
+    let cancelled = false;
+    latestQueryRef.current = query;
+    const trimmed = query.trim();
+
+    if (!trimmed) {
+      setResults([]);
+      setStatus('idle');
+      return undefined;
+    }
+
+    setStatus('loading');
+    const timeoutId = setTimeout(() => {
+      searchFn(trimmed)
+        .then((data) => {
+          if (cancelled || latestQueryRef.current !== query) return;
+          setResults(data);
+          setStatus('success');
+        })
+        .catch(() => {
+          if (cancelled || latestQueryRef.current !== query) return;
+          setStatus('error');
+        });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, searchFn]);
+
+  return { results, status };
+}
+
+/**
+ * Sélecteur générique par recherche en direct — partagé entre lot et
+ * organisation candidate, seuls le libellé, la fonction de recherche et le
+ * rendu d'un résultat diffèrent.
+ */
+function LiveSearchPicker<T>({
+  label, placeholder, searchFn, renderResult, getKey, onSelect,
+}: {
+  label: string;
+  placeholder: string;
+  searchFn: (query: string) => Promise<T[]>;
+  renderResult: (item: T) => ReactNode;
+  getKey: (item: T) => string;
+  onSelect: (item: T) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const { results, status } = useDebouncedSearch(searchFn, query);
 
   return (
-    <section aria-label="Sélectionner un lot" style={{ marginBottom: '16px' }}>
-      <AlertBanner title="Aucun sélecteur de lot/organisation disponible">
-        Aucun endpoint ne permet aujourd&apos;hui de rechercher un lot ou une organisation
-        (ticket B-028, en attente côté backend). Saisissez les identifiants UUID directement.
-      </AlertBanner>
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '12px',
-        }}
-      >
-        <label>
-          Organisation du lot (UUID)
-          <input
-            type="text"
-            aria-label="Organisation du lot (UUID)"
-            value={organizationId}
-            onChange={(event) => setOrganizationId(event.target.value)}
-            style={{ display: 'block', marginTop: '4px', width: '280px' }}
-          />
-        </label>
-        <label>
-          Lot (UUID)
-          <input
-            type="text"
-            aria-label="Lot (UUID)"
-            value={lotId}
-            onChange={(event) => setLotId(event.target.value)}
-            style={{ display: 'block', marginTop: '4px', width: '280px' }}
-          />
-        </label>
-        <button type="submit" disabled={!organizationId.trim() || !lotId.trim()}>
-          Charger les devis de ce lot
-        </button>
-      </form>
-    </section>
+    <div>
+      <label>
+        {label}
+        <input
+          type="search"
+          aria-label={label}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={placeholder}
+          style={{ display: 'block', marginTop: '4px', width: '360px' }}
+        />
+      </label>
+      {status === 'loading' && <p style={{ fontSize: '13px' }}>Recherche…</p>}
+      {status === 'error' && <AlertBanner title="Impossible d'effectuer la recherche." />}
+      {status === 'success' && results.length === 0 && (
+        <p data-testid="no-search-results" style={{ fontSize: '13px' }}>Aucun résultat.</p>
+      )}
+      {status === 'success' && results.length > 0 && (
+        <ul style={{ listStyle: 'none', padding: 0, marginTop: '4px' }}>
+          {results.map((item) => (
+            <li key={getKey(item)}>
+              <button type="button" onClick={() => onSelect(item)} style={{ width: '100%', textAlign: 'left' }}>
+                {renderResult(item)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Lots DÉJÀ verrouillés exclus par le backend (`search_lots_as_admin`,
+ * décision D, ticket B-028) — jamais un filtre reconstruit ici. Le nom du
+ * programme (et de l'organisation) désambiguïse deux lots de même nom dans
+ * des programmes différents.
+ */
+function LotPicker({ onSelect }: { onSelect: (lot: LotSearchResult) => void }) {
+  const api = useApiClient();
+  return (
+    <LiveSearchPicker<LotSearchResult>
+      label="Rechercher un lot (nom)"
+      placeholder="Nom du lot…"
+      searchFn={api.searchLots}
+      getKey={(lot) => lot.id}
+      renderResult={(lot) => `${lot.name} — ${lot.program.name} (${lot.organization.name})`}
+      onSelect={onSelect}
+    />
+  );
+}
+
+function OrganizationPicker({ onSelect }: { onSelect: (organization: OrganizationSearchResult) => void }) {
+  const api = useApiClient();
+  return (
+    <LiveSearchPicker<OrganizationSearchResult>
+      label="Rechercher une organisation candidate (nom)"
+      placeholder="Nom de l'organisation…"
+      searchFn={api.searchOrganizations}
+      getKey={(organization) => organization.id}
+      renderResult={(organization) => organization.name}
+      onSelect={onSelect}
+    />
   );
 }
 
@@ -81,23 +169,24 @@ function CreateDevisForm({
   organizationId, lotId, onCreated,
 }: { organizationId: string; lotId: string; onCreated: () => void }) {
   const api = useApiClient();
-  const [candidateOrganizationId, setCandidateOrganizationId] = useState('');
+  const [candidateOrganization, setCandidateOrganization] = useState<OrganizationSearchResult | null>(null);
   const [amount, setAmount] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!candidateOrganization) return;
     setSubmitting(true);
     setError(null);
     try {
       await api.createDevis({
         organization: organizationId,
         lot: lotId,
-        candidate_organization: candidateOrganizationId.trim(),
+        candidate_organization: candidateOrganization.id,
         amount: amount.trim(),
       });
-      setCandidateOrganizationId('');
+      setCandidateOrganization(null);
       setAmount('');
       onCreated();
     } catch (caught) {
@@ -116,38 +205,36 @@ function CreateDevisForm({
     <form
       onSubmit={(event) => { void handleSubmit(event); }}
       aria-label="Enregistrer une candidature"
-      style={{
-        display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '12px',
-      }}
+      style={{ marginTop: '12px' }}
     >
-      <label>
-        Organisation candidate (UUID)
-        <input
-          type="text"
-          aria-label="Organisation candidate (UUID)"
-          value={candidateOrganizationId}
-          onChange={(event) => setCandidateOrganizationId(event.target.value)}
-          required
-          style={{ display: 'block', marginTop: '4px', width: '280px' }}
-        />
-      </label>
-      <label>
-        Montant
-        <input
-          type="text"
-          inputMode="decimal"
-          aria-label="Montant"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          required
-          style={{ display: 'block', marginTop: '4px', width: '160px' }}
-        />
-      </label>
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'Enregistrement…' : 'Enregistrer la candidature'}
-      </button>
+      {candidateOrganization ? (
+        <p>
+          Organisation candidate : <strong>{candidateOrganization.name}</strong>{' '}
+          <button type="button" onClick={() => setCandidateOrganization(null)}>Changer</button>
+        </p>
+      ) : (
+        <OrganizationPicker onSelect={setCandidateOrganization} />
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '8px' }}>
+        <label>
+          Montant
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label="Montant"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            required
+            style={{ display: 'block', marginTop: '4px', width: '160px' }}
+          />
+        </label>
+        <button type="submit" disabled={submitting || !candidateOrganization}>
+          {submitting ? 'Enregistrement…' : 'Enregistrer la candidature'}
+        </button>
+      </div>
       {error && (
-        <div style={{ width: '100%' }}>
+        <div style={{ marginTop: '8px' }}>
           <AlertBanner title={error} />
         </div>
       )}
@@ -403,14 +490,31 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
 }
 
 export function DevisView() {
-  const [selected, setSelected] = useState<{ organizationId: string; lotId: string } | null>(null);
+  const [selectedLot, setSelectedLot] = useState<LotSearchResult | null>(null);
 
   return (
     <section aria-label="Devis / Appels d'offres">
       <h2>Devis par lot</h2>
-      <LotSelector onLoad={(organizationId, lotId) => setSelected({ organizationId, lotId })} />
-      {selected && (
-        <DevisListPanel key={`${selected.organizationId}-${selected.lotId}`} organizationId={selected.organizationId} lotId={selected.lotId} />
+
+      {selectedLot ? (
+        <div style={{ marginBottom: '16px' }}>
+          <p>
+            Lot sélectionné : <strong>{selectedLot.name}</strong> — {selectedLot.program.name} ({selectedLot.organization.name}){' '}
+            <button type="button" onClick={() => setSelectedLot(null)}>Changer de lot</button>
+          </p>
+        </div>
+      ) : (
+        <div style={{ marginBottom: '16px' }}>
+          <LotPicker onSelect={setSelectedLot} />
+        </div>
+      )}
+
+      {selectedLot && (
+        <DevisListPanel
+          key={`${selectedLot.organization.id}-${selectedLot.id}`}
+          organizationId={selectedLot.organization.id}
+          lotId={selectedLot.id}
+        />
       )}
     </section>
   );

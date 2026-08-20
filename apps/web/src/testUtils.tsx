@@ -21,6 +21,9 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     lockDevis: vi.fn(notMocked),
     listAjustements: vi.fn(notMocked),
     createAjustement: vi.fn(notMocked),
+    // Ticket B-028 (apps/procurement, recherche) :
+    searchLots: vi.fn(notMocked),
+    searchOrganizations: vi.fn(notMocked),
     ...overrides,
   };
 }

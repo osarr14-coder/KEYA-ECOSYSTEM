@@ -2,19 +2,30 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
-import type { Devis, DevisAjustement } from '../api/types';
+import type {
+  Devis, DevisAjustement, LotSearchResult, OrganizationSearchResult,
+} from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { DevisView } from './DevisView';
 
-const ORGANIZATION_ID = 'org-lot-1';
-const LOT_ID = 'lot-1';
+const LOT_RESULT: LotSearchResult = {
+  id: 'lot-1',
+  name: 'Lot A12',
+  organization: { id: 'org-lot-1', name: 'Org Constructeur Verif' },
+  program: { id: 'program-1', name: 'Programme Verif F027' },
+};
+
+const CANDIDATE_ORG_RESULT: OrganizationSearchResult = {
+  id: 'org-candidat-9',
+  name: 'Bati Senegal Verif SARL',
+};
 
 function makeDevis(overrides: Partial<Devis> = {}): Devis {
   return {
     id: 'devis-1',
-    organization: ORGANIZATION_ID,
+    organization: LOT_RESULT.organization.id,
     candidate_organization: 'org-candidat-1',
-    lot: LOT_ID,
+    lot: LOT_RESULT.id,
     amount: '12500000.00',
     marge_estimee: '1500000.00',
     logged_by: 'admin-1',
@@ -25,57 +36,94 @@ function makeDevis(overrides: Partial<Devis> = {}): Devis {
 }
 
 function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
-  const api = createMockApiClient(overrides);
+  const api = createMockApiClient({
+    searchLots: vi.fn().mockResolvedValue([LOT_RESULT]),
+    searchOrganizations: vi.fn().mockResolvedValue([CANDIDATE_ORG_RESULT]),
+    ...overrides,
+  });
   render(withApiClient(api, <DevisView />));
   return { api };
 }
 
-async function loadLot(organizationId = ORGANIZATION_ID, lotId = LOT_ID) {
-  fireEvent.change(screen.getByLabelText('Organisation du lot (UUID)'), { target: { value: organizationId } });
-  fireEvent.change(screen.getByLabelText('Lot (UUID)'), { target: { value: lotId } });
-  fireEvent.click(screen.getByRole('button', { name: 'Charger les devis de ce lot' }));
+/** Le debounce réel (250ms, `DevisView.tsx::SEARCH_DEBOUNCE_MS`) tourne sur
+ * de vrais timers ici — `findByRole`/`waitFor` de RTL pollent en temps réel
+ * (timeout par défaut 1000ms, largement suffisant), jamais de fake timers :
+ * combiner fake timers et le polling interne de RTL (qui utilise aussi
+ * `setTimeout`) bloquerait sans avancer manuellement chaque tick interne. */
+async function selectLot() {
+  fireEvent.change(screen.getByLabelText('Rechercher un lot (nom)'), { target: { value: 'A12' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Lot A12 — Programme Verif F027 (Org Constructeur Verif)' }));
 }
 
-describe('DevisView — sélection manuelle du lot (ticket 027, dépendance B-028)', () => {
-  it('affiche l\'avertissement sur l\'absence de sélecteur, aucun appel avant soumission', () => {
-    const listDevisForLot = vi.fn();
-    renderView({ listDevisForLot });
+async function selectCandidateOrganization() {
+  fireEvent.change(screen.getByLabelText('Rechercher une organisation candidate (nom)'), { target: { value: 'Bati' } });
+  fireEvent.click(await screen.findByRole('button', { name: CANDIDATE_ORG_RESULT.name }));
+}
 
-    expect(screen.getByText('Aucun sélecteur de lot/organisation disponible')).toBeInTheDocument();
-    expect(listDevisForLot).not.toHaveBeenCalled();
+describe('DevisView — recherche de lot en direct (ticket B-028/027)', () => {
+  it('aucun appel avant la première frappe', () => {
+    const searchLots = vi.fn();
+    renderView({ searchLots });
+
+    expect(searchLots).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('no-search-results')).not.toBeInTheDocument();
   });
 
-  it('soumettre le formulaire appelle listDevisForLot(lotId, organizationId) tel que saisi', async () => {
-    const listDevisForLot = vi.fn().mockResolvedValue([]);
-    renderView({ listDevisForLot });
+  it('après la saisie, appelle searchLots(query) et affiche les résultats désambiguïsés par le programme', async () => {
+    const searchLots = vi.fn().mockResolvedValue([LOT_RESULT]);
+    renderView({ searchLots });
 
-    await loadLot();
+    fireEvent.change(screen.getByLabelText('Rechercher un lot (nom)'), { target: { value: 'A12' } });
 
-    await waitFor(() => expect(listDevisForLot).toHaveBeenCalledWith(LOT_ID, ORGANIZATION_ID));
+    await waitFor(() => expect(searchLots).toHaveBeenCalledWith('A12'));
+    expect(await screen.findByRole('button', { name: 'Lot A12 — Programme Verif F027 (Org Constructeur Verif)' })).toBeInTheDocument();
   });
 
-  it('une liste vide affiche "Aucun devis enregistré pour ce lot.", jamais un tableau vide silencieux', async () => {
-    renderView({ listDevisForLot: vi.fn().mockResolvedValue([]) });
+  it('une recherche sans résultat affiche "Aucun résultat.", jamais une liste vide silencieuse', async () => {
+    renderView({ searchLots: vi.fn().mockResolvedValue([]) });
 
-    await loadLot();
+    fireEvent.change(screen.getByLabelText('Rechercher un lot (nom)'), { target: { value: 'introuvable' } });
 
-    expect(await screen.findByTestId('no-devis')).toBeInTheDocument();
+    expect(await screen.findByTestId('no-search-results')).toBeInTheDocument();
   });
 
   it('un échec réseau affiche une erreur explicite', async () => {
-    renderView({ listDevisForLot: vi.fn().mockRejectedValue(new Error('network down')) });
+    renderView({ searchLots: vi.fn().mockRejectedValue(new Error('network down')) });
 
-    await loadLot();
+    fireEvent.change(screen.getByLabelText('Rechercher un lot (nom)'), { target: { value: 'A12' } });
 
-    expect(await screen.findByText('Impossible de charger les devis de ce lot.')).toBeInTheDocument();
+    expect(await screen.findByText("Impossible d'effectuer la recherche.")).toBeInTheDocument();
+  });
+
+  it('sélectionner un résultat affiche le lot choisi et charge ses devis ; "Changer de lot" revient au sélecteur', async () => {
+    const listDevisForLot = vi.fn().mockResolvedValue([]);
+    renderView({ listDevisForLot });
+
+    await selectLot();
+
+    expect(screen.getByText('Lot A12', { selector: 'strong' })).toBeInTheDocument();
+    await waitFor(() => expect(listDevisForLot).toHaveBeenCalledWith(LOT_RESULT.id, LOT_RESULT.organization.id));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Changer de lot' }));
+
+    expect(screen.queryByText('Lot A12', { selector: 'strong' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Rechercher un lot (nom)')).toBeInTheDocument();
   });
 });
 
 describe('DevisView — liste des devis d\'un lot (ticket 022/027)', () => {
+  it('une liste vide affiche "Aucun devis enregistré pour ce lot."', async () => {
+    renderView({ listDevisForLot: vi.fn().mockResolvedValue([]) });
+
+    await selectLot();
+
+    expect(await screen.findByTestId('no-devis')).toBeInTheDocument();
+  });
+
   it('affiche les champs réels (montant, organisation candidate en UUID brut, saisi par, date, statut)', async () => {
     renderView({ listDevisForLot: vi.fn().mockResolvedValue([makeDevis()]) });
 
-    await loadLot();
+    await selectLot();
 
     expect(await screen.findByText('org-candidat-1')).toBeInTheDocument();
     expect(screen.getByText('12500000.00')).toBeInTheDocument();
@@ -86,7 +134,7 @@ describe('DevisView — liste des devis d\'un lot (ticket 022/027)', () => {
   it('un devis déjà verrouillé affiche "Verrouillé", jamais de bouton d\'action', async () => {
     renderView({ listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'devis_verrouille' })]) });
 
-    await loadLot();
+    await selectLot();
 
     expect(await screen.findByTestId('devis-status')).toHaveTextContent('Verrouillé');
     expect(screen.queryByRole('button', { name: 'Verrouiller' })).not.toBeInTheDocument();
@@ -101,10 +149,10 @@ describe('DevisView — verrouillage (ticket 022/027)', () => {
       .mockResolvedValueOnce([makeDevis({ status: 'devis_verrouille' })]);
     renderView({ listDevisForLot, lockDevis });
 
-    await loadLot();
+    await selectLot();
     fireEvent.click(await screen.findByRole('button', { name: 'Verrouiller' }));
 
-    await waitFor(() => expect(lockDevis).toHaveBeenCalledWith('devis-1', ORGANIZATION_ID));
+    await waitFor(() => expect(lockDevis).toHaveBeenCalledWith('devis-1', LOT_RESULT.organization.id));
     expect(await screen.findByTestId('devis-status')).toHaveTextContent('Verrouillé');
     expect(listDevisForLot).toHaveBeenCalledTimes(2);
   });
@@ -117,7 +165,7 @@ describe('DevisView — verrouillage (ticket 022/027)', () => {
       ]),
     });
 
-    await loadLot();
+    await selectLot();
 
     const lockedElsewhereButton = await screen.findByRole('button', { name: 'Lot déjà verrouillé' });
     expect(lockedElsewhereButton).toBeDisabled();
@@ -129,28 +177,43 @@ describe('DevisView — verrouillage (ticket 022/027)', () => {
     );
     renderView({ listDevisForLot: vi.fn().mockResolvedValue([makeDevis()]), lockDevis });
 
-    await loadLot();
+    await selectLot();
     fireEvent.click(await screen.findByRole('button', { name: 'Verrouiller' }));
 
     expect(await screen.findByText('Un devis est déjà verrouillé pour ce lot — un seul devis verrouillé par lot.')).toBeInTheDocument();
   });
 });
 
-describe('DevisView — enregistrer une candidature reçue hors plateforme (ticket 022/027)', () => {
-  it('soumettre le formulaire appelle createDevis avec organization/lot/candidate_organization/amount, recharge la liste', async () => {
+describe('DevisView — enregistrer une candidature reçue hors plateforme (ticket 022/027/B-028)', () => {
+  it('le bouton "Enregistrer la candidature" reste désactivé tant qu\'aucune organisation candidate n\'est sélectionnée', async () => {
+    renderView({ listDevisForLot: vi.fn().mockResolvedValue([]) });
+
+    await selectLot();
+    await screen.findByTestId('no-devis');
+
+    fireEvent.change(screen.getByLabelText('Montant'), { target: { value: '9000000.00' } });
+
+    expect(screen.getByRole('button', { name: 'Enregistrer la candidature' })).toBeDisabled();
+  });
+
+  it('recherche l\'organisation candidate en direct, puis soumettre appelle createDevis avec son id, recharge la liste', async () => {
     const createDevis = vi.fn().mockResolvedValue(makeDevis());
     const listDevisForLot = vi.fn().mockResolvedValue([]);
     renderView({ listDevisForLot, createDevis });
 
-    await loadLot();
-    fireEvent.change(await screen.findByLabelText('Organisation candidate (UUID)'), { target: { value: 'org-candidat-9' } });
+    await selectLot();
+    await screen.findByTestId('no-devis');
+
+    await selectCandidateOrganization();
+    expect(screen.getByText(CANDIDATE_ORG_RESULT.name, { selector: 'strong' })).toBeInTheDocument();
+
     fireEvent.change(screen.getByLabelText('Montant'), { target: { value: '9000000.00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la candidature' }));
 
     await waitFor(() => expect(createDevis).toHaveBeenCalledWith({
-      organization: ORGANIZATION_ID,
-      lot: LOT_ID,
-      candidate_organization: 'org-candidat-9',
+      organization: LOT_RESULT.organization.id,
+      lot: LOT_RESULT.id,
+      candidate_organization: CANDIDATE_ORG_RESULT.id,
       amount: '9000000.00',
     }));
     expect(listDevisForLot).toHaveBeenCalledTimes(2);
@@ -163,8 +226,10 @@ describe('DevisView — enregistrer une candidature reçue hors plateforme (tick
     const listDevisForLot = vi.fn().mockResolvedValue([]);
     renderView({ listDevisForLot, createDevis });
 
-    await loadLot();
-    fireEvent.change(await screen.findByLabelText('Organisation candidate (UUID)'), { target: { value: 'org-candidat-9' } });
+    await selectLot();
+    await screen.findByTestId('no-devis');
+    await selectCandidateOrganization();
+
     fireEvent.change(screen.getByLabelText('Montant'), { target: { value: '9000000.00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la candidature' }));
 
@@ -178,7 +243,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
     return {
       id: 'ajustement-1',
       devis: 'devis-1',
-      organization: ORGANIZATION_ID,
+      organization: LOT_RESULT.organization.id,
       ecart: '-200000.00',
       created_by: 'admin-1',
       created_at: '2026-03-10T10:05:00Z',
@@ -191,7 +256,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
       listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'candidat' })]),
     });
 
-    await loadLot();
+    await selectLot();
     await screen.findByText('org-candidat-1');
 
     expect(screen.queryByText('Aucun ajustement enregistré pour l\'instant.')).not.toBeInTheDocument();
@@ -203,7 +268,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
       listAjustements: vi.fn().mockResolvedValue([]),
     });
 
-    await loadLot();
+    await selectLot();
 
     const note = await screen.findByTestId('candidate-visible-status');
     expect(note).toHaveAttribute('data-status', 'candidat');
@@ -217,7 +282,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
       listAjustements: vi.fn().mockResolvedValue([makeAjustement()]),
     });
 
-    await loadLot();
+    await selectLot();
 
     const note = await screen.findByTestId('candidate-visible-status');
     expect(note).toHaveAttribute('data-status', 'gagnant');
@@ -236,14 +301,14 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
       createAjustement,
     });
 
-    await loadLot();
+    await selectLot();
     await screen.findByText('Aucun ajustement enregistré pour l\'instant.');
 
     fireEvent.change(screen.getByLabelText('Écart'), { target: { value: '-200000.00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer un ajustement' }));
 
     await waitFor(() => expect(createAjustement).toHaveBeenCalledWith('devis-1', {
-      organization: ORGANIZATION_ID,
+      organization: LOT_RESULT.organization.id,
       ecart: '-200000.00',
     }));
     expect(await screen.findByText('-200000.00')).toBeInTheDocument();
@@ -260,7 +325,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
       createAjustement,
     });
 
-    await loadLot();
+    await selectLot();
     await screen.findByText('Aucun ajustement enregistré pour l\'instant.');
 
     fireEvent.change(screen.getByLabelText('Écart'), { target: { value: '5000000.00' } });

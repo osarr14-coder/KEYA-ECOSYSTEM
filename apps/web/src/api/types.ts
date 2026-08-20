@@ -69,10 +69,13 @@ export type DevisStatus = 'candidat' | 'devis_verrouille';
 /** Miroir de `apps.procurement.serializers.DevisAdminSerializer` — seul
  * serializer de ce module à exposer `amount`/`marge_estimee` (ticket 027).
  * Tous les champs de relation (`organization`, `candidate_organization`,
- * `lot`, `logged_by`) sont des UUID bruts : aucun nom n'est résolu
- * côté backend (`ModelSerializer` par défaut, pas de champ imbriqué) —
- * limite documentée dans `F-027-devis-fonctionnel.md`, liée à l'absence
- * d'endpoint de recherche Lot/Organisation (ticket B-028, backend). */
+ * `lot`, `logged_by`) restent des UUID bruts : `ModelSerializer` par défaut,
+ * aucun champ imbriqué — B-028 (ticket suivant) a ajouté une recherche pour
+ * SÉLECTIONNER un lot/une organisation en amont (voir `LotSearchResult`/
+ * `OrganizationSearchResult` ci-dessous), mais n'a pas touché CE serializer :
+ * une fois un devis déjà créé, ses champs de relation dans la liste restent
+ * affichés en UUID brut ici, limite résiduelle documentée dans
+ * `F-027-devis-fonctionnel.md`. */
 export interface Devis {
   id: string;
   organization: string;
@@ -103,4 +106,25 @@ export interface DevisAjustement {
  * `apps.procurement.services.create_ajustement`, jamais recalculée ici). */
 export interface DevisAjustementCreateResult extends DevisAjustement {
   marge_resultante: string;
+}
+
+/** Miroir de `apps.procurement.serializers.OrganizationSearchResultSerializer`
+ * (`GET /api/procurement/admin/organizations/?q=`, ticket B-028). Aucun champ
+ * sensible — `Organization` n'en porte aucun côté backend. */
+export interface OrganizationSearchResult {
+  id: string;
+  name: string;
+}
+
+/** Miroir de `apps.procurement.serializers.LotSearchResultSerializer`
+ * (`GET /api/procurement/admin/lots/?q=`, ticket B-028) — `organization`/
+ * `program` imbriqués en id+name uniquement (jamais `asset`, pas nécessaire
+ * pour `POST /api/procurement/devis/`). Les lots DÉJÀ verrouillés sont
+ * exclus par le backend lui-même (`apps.procurement.services.
+ * search_lots_as_admin`, décision D) — jamais un filtre reconstruit ici. */
+export interface LotSearchResult {
+  id: string;
+  name: string;
+  organization: { id: string; name: string };
+  program: { id: string; name: string };
 }

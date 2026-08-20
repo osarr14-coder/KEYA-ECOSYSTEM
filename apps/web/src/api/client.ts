@@ -1,6 +1,7 @@
 import type {
   BackofficeUserDetail, BackofficeUserSummary, Devis, DevisAjustement,
-  DevisAjustementCreateResult, LoginResult, Me,
+  DevisAjustementCreateResult, LoginResult, LotSearchResult, Me,
+  OrganizationSearchResult,
 } from './types';
 
 export class ApiError extends Error {
@@ -184,6 +185,26 @@ export function createApiClient({ baseUrl, getAccessToken = () => null }: ApiCli
      */
     createAjustement: (devisId: string, payload: { organization: string; ecart: string }) =>
       request<DevisAjustementCreateResult>(`/api/procurement/devis/${devisId}/ajustements/`, { method: 'POST', json: payload }),
+
+    /**
+     * `GET /api/procurement/admin/lots/?q=...` (ticket B-028) — recherche de
+     * lot par nom, toutes organisations confondues (y compris celles dont
+     * l'admin n'est membre d'AUCUNE, voir `apps.procurement.services.
+     * search_lots_as_admin`). `q` vide renvoie une liste vide côté backend
+     * (jamais un dump complet, même discipline que `searchUsers`). Les lots
+     * DÉJÀ verrouillés sont exclus par le backend lui-même (décision D) —
+     * jamais un filtre reconstruit ici.
+     */
+    searchLots: (query: string) =>
+      request<LotSearchResult[]>(`/api/procurement/admin/lots/${toQueryString({ q: query })}`),
+
+    /**
+     * `GET /api/procurement/admin/organizations/?q=...` (ticket B-028) —
+     * recherche d'organisation par nom, pour résoudre `candidate_organization`
+     * avant `POST /api/procurement/devis/`. `q` vide renvoie une liste vide.
+     */
+    searchOrganizations: (query: string) =>
+      request<OrganizationSearchResult[]>(`/api/procurement/admin/organizations/${toQueryString({ q: query })}`),
   };
 }
 

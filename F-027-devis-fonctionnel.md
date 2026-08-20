@@ -39,7 +39,7 @@ une candidature reçue hors plateforme. `DevisView` reflète ce modèle tel
 quel plutôt que d'inventer une action « lancer l'appel d'offres » côté
 frontend qui n'aurait aucun endpoint à appeler.
 
-## Découverte bloquante — aucun endpoint de recherche Lot/Organisation pour admin_keyimmo
+## Découverte bloquante — aucun endpoint de recherche Lot/Organisation pour admin_keyimmo (RÉSOLUE, voir section dédiée ci-dessous)
 `GET /api/programs/lots/` et `GET /api/build/lots/` sont tous deux
 strictement scopés à `request.organization` (l'organisation dont
 l'utilisateur est MEMBRE) — aucun des deux n'expose même le champ
@@ -54,14 +54,83 @@ organisation cible, jamais une organisation dont l'acteur est membre).
 `GET /api/procurement/admin/organizations/?q=`, sur le modèle de `GET
 /api/backoffice/users/?q=`, ticket 011) transmis à la session backend,
 documenté ici comme DÉPENDANCE BLOQUANTE pour un sélecteur — pas encore
-fusionné au moment de ce ticket. En attendant, `DevisView` utilise une
-saisie manuelle d'UUID (`LotSelector`, deux champs texte + bouton
-« Charger ») avec un `AlertBanner` explicite expliquant pourquoi. Même
-limite pour les champs de relation déjà connus (`candidate_organization`,
-`logged_by`, `created_by` d'un ajustement) : `DevisAdminSerializer`/
-`DevisAjustementAdminSerializer` sérialisent ces FK en UUID bruts
-(`ModelSerializer` par défaut, aucun champ imbriqué côté backend) — affichés
-tels quels, jamais un faux libellé masquant cette limite.
+fusionné au moment de la livraison initiale de ce ticket. En attendant,
+`DevisView` utilisait une saisie manuelle d'UUID (`LotSelector`, deux champs
+texte + bouton « Charger ») avec un `AlertBanner` explicite expliquant
+pourquoi. **B-028 a depuis été fusionné dans `master` — voir la section
+« Levée de la dépendance B-028 » ci-dessous, qui remplace cette saisie
+manuelle par un vrai sélecteur.** Limite résiduelle, distincte et NON
+résolue par B-028 : les champs de relation d'un devis DÉJÀ créé
+(`candidate_organization`, `logged_by`, `created_by` d'un ajustement) restent
+des UUID bruts dans la table (`DevisAdminSerializer`/
+`DevisAjustementAdminSerializer`, `ModelSerializer` par défaut, aucun champ
+imbriqué) — affichés tels quels, jamais un faux libellé masquant cette
+limite.
+
+## Levée de la dépendance B-028 (sélecteur réel de lot/organisation)
+
+Suite directe de ce même ticket, une fois **B-028** (`feat(procurement):
+ticket B-028 — recherche Lot/Organisation pour admin_keyimmo`) fusionné dans
+`origin/master`. Contrat API revérifié directement dans le code backend
+avant tout changement, comme d'habitude — lecture complète de
+`backend/apps/procurement/{views,serializers,services}.py` :
+
+- `GET /api/procurement/admin/lots/?q=<recherche>` (`AdminLotSearchView`,
+  `IsAdminKeyimmo`) → `LotSearchResultSerializer`, liste de `{id, name,
+  organization: {id, name}, program: {id, name}}`. `q` vide → liste vide
+  (jamais un dump complet, même discipline que `GET /api/backoffice/
+  users/?q=`, ticket 011).
+- `GET /api/procurement/admin/organizations/?q=<recherche>`
+  (`AdminOrganizationSearchView`, `IsAdminKeyimmo`) → `{id, name}[]`.
+- **Lots DÉJÀ verrouillés exclus par le backend lui-même**
+  (`apps.procurement.services.search_lots_as_admin`, décision D : l'appel à
+  `is_lot_locked` a lieu DANS la boucle de recherche, sous la bascule RLS déjà
+  positionnée sur l'organisation du lot candidat) — vérifié à la fois en
+  lisant le code (`if is_lot_locked(lot.id): continue`) et en navigateur réel
+  (voir Vérification ci-dessous), jamais un filtre reconstruit côté
+  frontend.
+
+**Ce qui change dans `DevisView.tsx`** :
+- `LotSelector` (saisie manuelle de deux UUID) **supprimé**, remplacé par
+  `LotPicker` — recherche en direct (debounce 250ms,
+  `useDebouncedSearch`/`SEARCH_DEBOUNCE_MS`) sur `searchLots`, résultats
+  rendus `${lot.name} — ${lot.program.name} (${lot.organization.name})` :
+  le nom du programme désambiguïse deux lots homonymes dans des programmes
+  différents (cas réel testé, voir Vérification). Sélectionner un résultat
+  fournit DIRECTEMENT `organization.id`/`lot.id` — plus besoin de deux
+  champs séparés, la recherche par nom de lot suffit à elle seule.
+- `CreateDevisForm` : le champ `Organisation candidate (UUID)` **supprimé**,
+  remplacé par `OrganizationPicker` (même recherche en direct sur
+  `searchOrganizations`) — le bouton « Enregistrer la candidature » reste
+  désactivé tant qu'aucune organisation n'est sélectionnée.
+- `LiveSearchPicker<T>` : composant générique partagé entre les deux
+  sélecteurs (libellé/fonction de recherche/rendu de résultat en props) —
+  une seule implémentation du debounce et du rendu liste/erreur/vide,
+  jamais deux copies.
+- **Garde anti-course dans `useDebouncedSearch`** : un `clearTimeout` seul
+  n'annule que les requêtes pas encore PARTIES — une requête déjà en vol
+  quand une frappe plus récente la dépasse est explicitement ignorée à sa
+  résolution (comparaison contre `latestQueryRef.current`, jamais appliquée
+  par-dessus un résultat plus frais), même discipline anti-course que
+  `syncEngine.ts` (CONTROL PWA, tickets 015/016).
+- Aucun autre composant touché : `DevisListPanel`/`DevisRow`/`LockButton`/
+  `AjustementsPanel`/`CreateAjustementForm`/`CandidateVisibleStatusNote`
+  reçoivent toujours `organizationId`/`lotId` en props, désormais dérivés du
+  lot sélectionné plutôt que saisis à la main — comportement inchangé.
+
+**Critères d'acceptation F-027 concernés, réexaminés** :
+- « Sélection du lot/organisation candidate » : passe de « saisie manuelle
+  d'UUID, dépendance bloquante documentée » à **réellement satisfait** —
+  recherche en direct, résultats désambiguïsés par le programme.
+- « Aucune donnée de relation jamais masquée derrière un faux libellé » :
+  reste satisfait, sous une forme réduite — seules les lignes de devis DÉJÀ
+  créées (table `DevisRow`) affichent encore des UUID bruts pour
+  `candidate_organization`/`logged_by`, `DevisAdminSerializer` n'ayant pas
+  été touché par B-028. Documenté explicitement, pas silencieusement laissé
+  de côté.
+- Les autres critères (création, verrouillage, ajustement, gating candidat,
+  gestion des 409) sont inchangés par cette passe — aucune régression sur
+  leur comportement, seule la façon de désigner lot/organisation change.
 
 ## Ce qui a été construit
 - `apps/web/src/api/types.ts` : `DevisStatus`, `Devis`, `DevisAjustement`,
@@ -73,12 +142,17 @@ tels quels, jamais un faux libellé masquant cette limite.
   changer le comportement des appelants existants (back-office, ticket 021)
   qui n'en avaient jamais besoin.
 - `apps/web/src/views/DevisView.tsx` (remplace `DevisAppelOffreMockup.tsx`,
-  supprimée) : `LotSelector` (saisie manuelle UUID + avertissement B-028),
+  supprimée) : `LotPicker`/`OrganizationPicker` (recherche en direct via
+  `LiveSearchPicker<T>`, voir section « Levée de la dépendance B-028 »),
   `DevisListPanel` (liste réelle, `useApiResource` + `reloadKey`),
   `CreateDevisForm`, `LockButton`, `AjustementsPanel` (fetch à la demande
   par devis verrouillé) + `CreateAjustementForm`. Tous les 409 affichent le
   message backend exact (`ApiError.detail`) via `AlertBanner`, jamais un
   message générique reconstruit côté frontend.
+- `apps/web/src/api/types.ts`/`client.ts` : `LotSearchResult`,
+  `OrganizationSearchResult`, `searchLots`, `searchOrganizations` — miroirs
+  exacts de `LotSearchResultSerializer`/`OrganizationSearchResultSerializer`
+  (ticket B-028).
 - `CandidateVisibleStatusNote` : reprend TEL QUEL le composant de la
   maquette (ticket 026) — « Gagnant » / « encore Candidat » dérivé
   localement de `devis.status === 'devis_verrouille' && ajustements.length
@@ -89,7 +163,7 @@ tels quels, jamais un faux libellé masquant cette limite.
   second appel à `DevisCandidateSerializer` (réservé au rôle constructeur,
   hors périmètre admin de cet écran).
 
-## Vérification
+## Vérification (livraison initiale, sélection manuelle d'UUID)
 - **254 tests frontend** sur les 5 packages (web 79, dont 16 nouveaux pour
   `DevisView` — sélection manuelle, liste, verrouillage y compris
   `lotAlreadyLocked`, création de candidature, ajustements avec les deux
@@ -117,20 +191,67 @@ tels quels, jamais un faux libellé masquant cette limite.
   conservé, données de vérification `-verif`/F027 laissées en place pour de
   futures sessions, même convention que les tickets précédents).
 
+## Vérification (levée de la dépendance B-028, sélecteur réel)
+- **`DevisView.test.tsx` réécrit** (19 tests, contre 16 avant) : sélection
+  de lot par recherche (résultats désambiguïsés par programme, absence de
+  résultat, échec réseau, changement de lot), sélection d'organisation
+  candidate par recherche, bouton de candidature désactivé tant qu'aucune
+  organisation n'est choisie — le reste (verrouillage, ajustements, gating,
+  409) inchangé dans son comportement, adapté seulement dans son
+  déclenchement (sélection réelle au lieu de saisie d'UUID). **Piège de test
+  rencontré et corrigé avant tout lancement propre** : une première version
+  combinait `vi.useFakeTimers()` (pour avancer le debounce de 250ms) avec le
+  polling interne de `findByRole`/`waitFor` de Testing Library — qui utilise
+  aussi `setTimeout` en interne. Les deux minuteries faussées entraient en
+  conflit (15/19 tests en timeout à 5000ms) : corrigé en abandonnant les
+  fake timers, le debounce (250ms) étant assez court pour qu'un `findBy*`
+  en temps réel (timeout par défaut 1000ms) le couvre naturellement — plus
+  simple et plus proche de ce qu'un vrai navigateur exécute. 82/82 tests
+  `apps/web` (5 packages : 254 tests, inchangé ailleurs), `tsc --noEmit`
+  propre.
+- **Vérifié dans un vrai navigateur, avec un vrai backend** (compte
+  `admin_keyimmo` réel) : deux lots RÉELS nommés identiquement (« Lot A12 »)
+  dans deux programmes différents du même `Org Constructeur Verif`, seedés
+  spécifiquement pour prouver la désambiguïsation — recherche "A12" renvoie
+  bien les deux, distingués par leur libellé `{name} — {program.name}
+  ({organization.name})` (confirmé par `GET /api/procurement/admin/
+  lots/?q=A12` → 200, deux résultats). Sélection d'un lot, recherche et
+  sélection réelle de l'organisation candidate (`GET /api/procurement/
+  admin/organizations/?q=Bati` → 200), candidature créée, verrouillée.
+  **Critère d'exclusion vérifié explicitement** (pas seulement lu dans le
+  code) : après verrouillage, un retour à la recherche "A12" ne renvoie plus
+  que le second lot (non verrouillé) — le premier, désormais verrouillé, a
+  disparu des résultats, confirmant `search_lots_as_admin`/décision D en
+  conditions réelles. Zéro erreur console. Nettoyage complet (process `vite`
+  orphelin sur le port 5176 tué manuellement — même piège que la vérification
+  précédente —, conteneur Postgres retiré, volume conservé). **Anomalie
+  observée sans lien avec ce changement** : les lignes `Lot`/`Membership`
+  seedées lors de la vérification précédente avaient disparu du volume
+  Postgres persistant entre les deux sessions de vérification (`Organization`/
+  `PricingConfig`/`User` intacts) — cause non investiguée plus avant
+  (hypothèse la plus probable : une exécution de la suite backend complète
+  entre les deux, bien que `settings_test.py` devrait pointer sur une base
+  `test_*` distincte) ; re-seedé sans incident, comportement de ce ticket
+  non affecté.
+
 ## Explicitement hors scope
-- Tout sélecteur réel de lot/organisation (dépend de B-028, backend).
-- Toute résolution de nom pour les UUID de relation affichés bruts (même
-  dépendance).
+- Toute résolution de nom pour les UUID de relation déjà présentes sur un
+  devis créé (`candidate_organization`/`logged_by`/`created_by` dans
+  `DevisRow`/`AjustementsPanel`) — `DevisAdminSerializer`/
+  `DevisAjustementAdminSerializer` n'ont pas été touchés par B-028, seule la
+  phase de RECHERCHE/SÉLECTION en amont bénéficie désormais de noms
+  résolus.
 - Vue côté rôle `constructeur` (`DevisCandidateSerializer`,
   `MyCandidaturesListView`/`Detail`) — hors périmètre admin de ce ticket.
 
 ## Dépendances
 Ticket 011 (`GET /api/backoffice/users/?q=`, modèle de référence pour la
-future recherche B-028), ticket 021 (`ApiError`, back-office, patterns de
+recherche B-028), ticket 021 (`ApiError`, back-office, patterns de
 confirmation/rechargement réel après écriture), ticket 022 (`Devis`,
 `create_devis`/`lock_devis`), ticket 023 (`DevisAjustement`,
 `create_ajustement`), ticket 024 (`get_candidate_visible_devis_status`),
 ticket 025 (audit accessibilité + maquette initiale), ticket 026
 (`marge_estimee` auto-dérivée, statut gagnant dans la maquette — base directe
-de ce ticket), **B-028 (nouveau, transmis à la session backend — dépendance
-bloquante non résolue par ce ticket)**.
+de ce ticket), **ticket B-028 (backend, fusionné — endpoints de recherche
+Lot/Organisation, dépendance désormais LEVÉE par la section « Levée de la
+dépendance B-028 » ci-dessus)**.
