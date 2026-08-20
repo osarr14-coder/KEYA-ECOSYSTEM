@@ -36,6 +36,13 @@ class PricingConfigCreateView(APIView):
                 canal=data['canal'],
                 rate=data['rate'],
             )
+        except services.CountryPackInactiveError as exc:
+            # 409, pas 400 : le corps de la requête est valide (un
+            # country_pack_id qui existe réellement), c'est l'ÉTAT de ce
+            # CountryPack (inactif) qui rend l'opération impossible — même
+            # sémantique que LotAlreadyLockedError/NoPricingConfigError
+            # (apps.procurement.views, tickets 022/026).
+            return Response({'detail': str(exc)}, status=409)
         except DjangoValidationError as exc:
             raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
 
@@ -106,6 +113,10 @@ class LegalPaymentTierTemplateCreateView(APIView):
                 version=data['version'],
                 steps=data['steps'],
             )
+        except services.CountryPackInactiveError as exc:
+            # 409, pas 400 — même raisonnement que PricingConfigCreateView
+            # ci-dessus (ticket B-032).
+            return Response({'detail': str(exc)}, status=409)
         except DjangoValidationError as exc:
             raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
 
