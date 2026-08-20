@@ -35,6 +35,21 @@ ticket qui les a introduites.
   garde `TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo`
   (`apps/tasks/tests.py`) — ce test scanne le code source de chaque générateur enregistré,
   pas seulement le texte produit par ceux qui existent déjà.
+- **Une seule suite de tests complète à la fois contre la base de données de test
+  partagée.** Plusieurs worktrees actifs simultanément (un par ticket en cours, discipline
+  déjà établie dans ce projet) partagent la MÊME base Postgres — et donc la MÊME base de
+  test (`test_<nom_de_la_base>`), recréée puis détruite par pytest-django à chaque
+  invocation (aucun `--reuse-db` configuré dans `pytest.ini`). Lancer `pytest` (module ou
+  suite complète) depuis DEUX worktrees en même temps fait collisionner ces cycles de
+  création/destruction concurrents — schéma incomplet observé en plein run (colonne
+  manquante), violations de contrainte `UNIQUE` sur des données d'un autre run, échec de
+  teardown (« la base de données est en cours d'utilisation par d'autres utilisateurs ») —
+  et produit des échecs de test massifs et déroutants SANS AUCUN RAPPORT avec le code réel
+  des tickets en cours. **Déjà arrivé une fois** (tickets B-033/B-034, tous deux relancés
+  isolément ensuite pour confirmer 0 régression réelle). Avant de lancer une suite de tests
+  complète (ou tout module) : vérifier qu'aucune autre session ne fait tourner `pytest` en
+  ce moment sur ce projet — un seul worktree exécute sa suite à la fois, les autres
+  attendent leur tour.
 
 ## Invariants du modèle économique
 
@@ -2662,6 +2677,122 @@ manipulation manuelle.
 **Reste de la vague 4, non commencé** : `permission denied` dédiée,
 `sync failed` par photo, `resolveConflictByDiscarding` (même défaut,
 sévérité faible), stale data.
+
+## Coûts programme et répartition entre lots (ticket B-033, `apps/programs`)
+
+Voir `B-033-program-cost-repartition.md` pour le détail complet. Canal 1 :
+foncier et bureau d'études (BE) sont des coûts engagés au niveau du PROGRAMME
+entier, répartis ensuite entre ses lots. **`be_total` (bureau d'études) est
+DISTINCT du bureau de contrôle (BC)** — invariant 25.16 (budget BC
+sanctuarisé) ne concerne pas ce champ, deux acteurs différents du modèle
+économique (section 6).
+
+**`ProgramCost`, `apps/programs` (pas `apps/pricing`)** — rattaché à UN
+programme précis (donc une organisation), plus proche de `Devis`
+(`apps/procurement`) que de la configuration économique globale par pays.
+`admin_keyimmo` n'étant structurellement pas membre de cette organisation,
+même schéma de bascule RLS explicite que `create_inspection`/`create_devis` :
+`organization`/`organization_id` fourni EXPLICITEMENT par l'appelant (corps
+pour la création, paramètre de requête pour les lectures) — ne peut jamais
+être dérivé après coup depuis `program_id` seul.
+
+**`sequence` construit dès la conception** (comme `PricingConfig` aurait dû
+l'être avant le ticket B-031) — `LATEST_FIRST_ORDERING = ('-created_at',
+'-sequence')`, RLS `SELECT`/`INSERT` scopés organisation, **aucune policy
+`UPDATE`/`DELETE`** (immutabilité, même niveau que `Devis`).
+
+**`Lot.surface`** — nouveau champ, prérequis réel de `prorata_surface`
+(vérifié avant conception : absent du modèle). Nullable, aucune valeur par
+défaut inventée ; `compute_lot_repartition` refuse explicitement (erreur
+dédiée) si un seul lot du programme manque cette valeur — jamais un partage
+silencieux à zéro. Écrit via le `PATCH` générique déjà disponible sur
+`LotViewSet` (`ModelViewSet` complet) — pas de nouvel endpoint créé pour ça.
+
+**Répartition calculée À LA VOLÉE, jamais stockée** — réponse en LISTE
+indexée par lot (`[{lot_id, foncier_lot, be_lot}, ...]`), JAMAIS un objet
+agrégé (précision explicite de l'utilisateur). Arrondi `ROUND_HALF_UP` par
+lot, dérive assumée sans correction du reste — aucun mouvement de fonds réel
+n'existe dans ce projet, dette explicite pour un futur ticket.
+
+**Deux erreurs trouvées en écrivant les tests, sans lien avec la logique
+métier** : (1) piège RLS déjà documenté au ticket 022, reproduit par
+inattention — trois tests d'immutabilité relisaient `ProgramCost` sans
+bascule RLS explicite après restauration du contexte admin, corrigé
+(`set_rls_context` avant chaque relecture) ; (2) collision fortuite avec le
+test-garde `TestNoHardcodedMilestoneNames` (ticket 002) — deux codes de
+jalon réellement seedés (`foncier`, `conception`) coïncident avec le nom de
+champ `foncier_total` et le mot français ordinaire « conception » ; le
+garde-fou resserré sur le littéral de chaîne entre guillemets plutôt qu'une
+sous-chaîne brute — amélioration de précision, pas un affaiblissement.
+
+19 tests dédiés, suite `programs` 35 tests, suite complète du projet 304
+tests, tous verts.
+
+## Barème sectoriel du bureau de contrôle (ticket B-034, `apps/pricing`)
+
+Voir `B-034-control-office-rate.md` pour le détail complet. Invariant 25.16 :
+« le budget du bureau de contrôle (BC) est sanctuarisé, indexé sur un barème
+sectoriel, jamais soumis à l'arbitrage de marge de KEYIMMO ni à une
+négociation. » `ControlOfficeRate` construit ce concept, jusqu'ici marqué
+*pas encore applicable*.
+
+**`ControlOfficeRate` — SEULE source d'un montant bureau de contrôle dans
+TOUT ce projet, à lire IMPÉRATIVEMENT via `apps.pricing.services.
+get_active_control_office_rate(country_pack_id=..., jalon_type=...)`, JAMAIS
+recalculé ni dupliqué ailleurs.** Message adressé explicitement aux tickets
+**B-035/B-036** (grand-livre par lot, déjà annoncés) : quand ces tickets
+liront le montant bureau de contrôle d'un lot/jalon, ils DOIVENT appeler
+cette fonction — jamais réimplémenter la dérivation `calculation_mode` →
+`percentage` × coût de construction OU `fixed_amount` direct dans
+`apps/procurement`/un futur module de grand-livre. Une garde par test
+(`TestControlOfficeRateIsTheSoleSourceOfTruth`, `apps/pricing/tests.py`)
+scanne tous les modules `apps.*.services` du projet à la recherche de noms
+de fonction suspects, mais ne remplace pas cette note : un futur ticket qui
+recalculerait la même logique sous un autre nom légitime ne serait pas
+détecté par ce scan.
+
+**`be_total` (bureau d'études, `ProgramCost`, ticket B-033) est DISTINCT du
+bureau de contrôle (BC) de ce ticket-ci** — deux acteurs différents du
+modèle économique (section 6), aucun lien de conception entre les deux.
+
+**Même famille que `PricingConfig`/`LegalPaymentTierTemplate`, PAS le schéma
+RLS de `Devis`/`ProgramCost`** — donnée de référence par `CountryPack`,
+jamais liée à une organisation ; RLS `SELECT`/`INSERT` permissives, aucune
+policy `UPDATE`/`DELETE`, aucune bascule RLS nécessaire à la création
+(contrairement à `ProgramCost`, qui EST rattaché à une organisation via un
+programme).
+
+**`jalon_type` — référence LIBRE, jamais une FK** vers
+`MilestoneTemplateStep` (même raisonnement que `LegalPaymentTierStep.code`,
+ticket B-027, décision C) — vérifié avant conception : ce code est déjà
+réutilisé librement ailleurs dans ce projet
+(`apps/programs/migrations/0003_seed_senegal_milestone_template.py`).
+
+**Un seul des deux champs valeur actif à la fois, garanti par un
+`CheckConstraint` en base**, pas seulement une vérification applicative —
+prouvé par une tentative d'INSERT SQL brut qui le violerait directement.
+
+**`sequence` construit dès la conception** (comme `ProgramCost`, ticket
+B-033) — pas un retrofit après un flake comme `PricingConfig` a dû le faire
+au ticket B-031. Garde `is_active` du `CountryPack` posée dès ce ticket
+également (comme `ProgramCost`), en réutilisant `CountryPackInactiveError`
+(ticket B-032, même app).
+
+**Point vérifié avant rédaction du ticket** : « invariant 8.4 », cité dans
+la demande initiale, est introuvable dans `CLAUDE.md` et le document de
+référence (même vérification que « invariant 20.4 » au ticket B-030) — non
+utilisé comme référence dans ce ticket.
+
+**Piège opérationnel découvert en clôturant ce ticket, sans lien avec son
+code** : lancer deux suites de tests complètes en parallèle depuis deux
+worktrees différents contre la même base de données de test partagée
+(`test_keya_ecosystem_db`) provoque des collisions de cycle de vie
+(créations/destructions concurrentes) — de nombreux faux échecs. Aucune
+suite de tests de ce projet ne doit être lancée en parallèle d'une autre
+depuis une session différente.
+
+18 tests dédiés, suite `pricing` 56 tests, suite `procurement` 54 tests,
+suite complète du projet (base de cette branche) 303 tests, tous verts.
 
 ## Conventions de code
 

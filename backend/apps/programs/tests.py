@@ -1,15 +1,28 @@
+from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 import pytest
-from django.db import connection
+from django.db import connection, transaction
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
-from apps.organizations.models import CountryPack, Organization
+from apps.organizations.models import CountryPack, Membership, Organization, Role
 
-from .models import Asset, Lot, LotClient, MilestoneTemplate, MilestoneTemplateStep, Program
+from . import services
+from .models import (
+    Asset,
+    Lot,
+    LotClient,
+    MilestoneTemplate,
+    MilestoneTemplateStep,
+    Program,
+    ProgramCost,
+    ProgramCostRepartitionMethod,
+)
 
 PASSWORD = 'strongpass123'
 
@@ -36,8 +49,52 @@ def _create_asset(client, program_id, name='Bien Test'):
     return client.post(reverse('asset-list'), {'name': name, 'program': program_id}, format='json').data
 
 
-def _create_lot(client, asset_id, name='Lot Test'):
-    return client.post(reverse('lot-list'), {'name': name, 'asset': asset_id}, format='json').data
+def _create_lot(client, asset_id, name='Lot Test', surface=None):
+    payload = {'name': name, 'asset': asset_id}
+    if surface is not None:
+        payload['surface'] = str(surface)
+    return client.post(reverse('lot-list'), payload, format='json').data
+
+
+def _register_admin(email, organization_name):
+    """Même helper que les autres modules de test de ce projet — dupliqué
+    volontairement (discipline déjà assumée, voir apps/pricing/tests.py).
+    """
+    client = APIClient()
+    client.post(
+        reverse('register'),
+        {'email': email, 'password': PASSWORD, 'organization_name': organization_name},
+        format='json',
+    )
+    token = client.post(reverse('login'), {'email': email, 'password': PASSWORD}, format='json').data['access']
+    client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    user = User.objects.get(email=email)
+    organization = Organization.objects.get(name=organization_name)
+
+    set_rls_context(user_id=user.id, organization_id=organization.id)
+    role, _ = Role.objects.get_or_create(code='admin_keyimmo', defaults={'label': 'Admin Keyimmo'})
+    Membership.objects.filter(user=user, organization=organization).update(role=role)
+
+    return client, organization, user
+
+
+def _setup_sponsor_program_with_lots(suffix, lot_surfaces=(None,)):
+    """Programme réel d'une organisation SPONSOR, avec un ou plusieurs lots
+    — `lot_surfaces` : un `Decimal`/`None` par lot à créer. Retourne
+    `(sponsor_organization, program_dict, [lot_dict, ...])`.
+    """
+    sponsor_client = _register_and_authenticate(
+        f'sponsor-cost-{suffix}@example.com', f'Org Sponsor Cost {suffix}',
+    )
+    sponsor_org = Organization.objects.get(name=f'Org Sponsor Cost {suffix}')
+    program = _create_program(sponsor_client, f'Programme Cost {suffix}')
+    asset = _create_asset(sponsor_client, program['id'], f'Bien Cost {suffix}')
+    lots = [
+        _create_lot(sponsor_client, asset['id'], f'Lot {index} {suffix}', surface=surface)
+        for index, surface in enumerate(lot_surfaces)
+    ]
+    return sponsor_org, program, lots
 
 
 @pytest.mark.django_db
@@ -120,6 +177,18 @@ class TestNoHardcodedMilestoneNames:
         codes = list(MilestoneTemplateStep.objects.values_list('code', flat=True))
         assert codes, 'Aucun MilestoneTemplateStep en base — le seed a-t-il tourné ?'
 
+        # Correspondance sur le LITTÉRAL de chaîne (code entouré de
+        # guillemets simples ou doubles), pas une sous-chaîne brute —
+        # corrigé au ticket B-033 : deux codes seedés (l'un désignant
+        # l'acquisition du terrain, l'autre la phase d'étude) sont aussi
+        # des mots français ordinaires/des fragments de noms de champs
+        # légitimes ailleurs dans ce module (`ProgramCost.foncier_total`,
+        # le mot « conception » employé normalement dans des docstrings) —
+        # une sous-chaîne brute y déclenchait un faux positif sans rapport
+        # avec l'intention réelle de ce test (empêcher un CODE de jalon
+        # codé en dur comme littéral de chaîne quelque part dans le
+        # fichier). Toujours détecté avec cette précision — seule la
+        # fausse alerte disparaît.
         app_dir = Path(__file__).parent
         offending = []
         for filename in self.SCANNED_FILES:
@@ -128,7 +197,7 @@ class TestNoHardcodedMilestoneNames:
                 continue
             content = path.read_text(encoding='utf-8')
             for code in codes:
-                if code in content:
+                if f"'{code}'" in content or f'"{code}"' in content:
                     offending.append((filename, code))
 
         assert offending == [], (
@@ -336,3 +405,403 @@ class TestLotAssignedOrganization:
         )
 
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestLotSurfaceField:
+    """Ticket B-033 — prérequis réel : `Lot.surface` n'existait pas avant
+    ce ticket, vérifié avant conception.
+    """
+
+    def test_surface_can_be_set_via_the_existing_lot_endpoint(self):
+        client = _register_and_authenticate('lot-surface-set@example.com', 'Org Lot Surface Set')
+        program = _create_program(client)
+        asset = _create_asset(client, program['id'])
+
+        lot = _create_lot(client, asset['id'], surface=Decimal('120.50'))
+        assert Decimal(lot['surface']) == Decimal('120.50')
+
+    def test_surface_is_null_by_default_no_guessed_value(self):
+        client = _register_and_authenticate('lot-surface-default@example.com', 'Org Lot Surface Default')
+        program = _create_program(client)
+        asset = _create_asset(client, program['id'])
+
+        lot = _create_lot(client, asset['id'])
+        assert lot['surface'] is None
+
+
+@pytest.mark.django_db
+class TestProgramCostCreation:
+    def test_admin_keyimmo_can_create_a_program_cost_for_a_program_he_is_not_a_member_of(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('create')
+        admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-create-admin@example.com', 'Org Program Cost Create Admin',
+        )
+        assert sponsor_org.id != _admin_org.id  # organisations distinctes par construction — la bascule RLS est réellement exercée
+
+        response = admin_client.post(
+            reverse('program-cost-create', args=[program['id']]),
+            {
+                'organization': str(sponsor_org.id),
+                'foncier_total': '150000000.00',
+                'be_total': '10000000.00',
+                'repartition_method': ProgramCostRepartitionMethod.PARTS_EGALES,
+                'justification': 'Estimation initiale du foncier et du BE, validée par le sponsor.',
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert Decimal(response.data['foncier_total']) == Decimal('150000000.00')
+        assert Decimal(response.data['be_total']) == Decimal('10000000.00')
+        assert response.data['repartition_method'] == ProgramCostRepartitionMethod.PARTS_EGALES
+        assert response.data['created_by'] == admin_user.id
+
+    def test_a_sponsor_cannot_create_a_program_cost(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('forbidden')
+        _sponsor_client = _register_and_authenticate(
+            'program-cost-forbidden@example.com', 'Org Program Cost Forbidden',
+        )
+
+        response = _sponsor_client.post(
+            reverse('program-cost-create', args=[program['id']]),
+            {
+                'organization': str(sponsor_org.id),
+                'foncier_total': '1.00',
+                'be_total': '1.00',
+                'repartition_method': ProgramCostRepartitionMethod.PARTS_EGALES,
+                'justification': 'Tentative refusée.',
+            },
+            format='json',
+        )
+        assert response.status_code == 403
+
+    def test_an_empty_justification_is_rejected(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('empty-justif')
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'program-cost-empty-justif-admin@example.com', 'Org Program Cost Empty Justif Admin',
+        )
+
+        response = admin_client.post(
+            reverse('program-cost-create', args=[program['id']]),
+            {
+                'organization': str(sponsor_org.id),
+                'foncier_total': '1.00',
+                'be_total': '1.00',
+                'repartition_method': ProgramCostRepartitionMethod.PARTS_EGALES,
+                'justification': '   ',
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert not ProgramCost.objects.filter(program_id=program['id']).exists()
+
+    def test_an_invalid_repartition_method_is_rejected(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('bad-method')
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'program-cost-bad-method-admin@example.com', 'Org Program Cost Bad Method Admin',
+        )
+
+        response = admin_client.post(
+            reverse('program-cost-create', args=[program['id']]),
+            {
+                'organization': str(sponsor_org.id),
+                'foncier_total': '1.00',
+                'be_total': '1.00',
+                'repartition_method': 'methode_inconnue',
+                'justification': 'Justification valide.',
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+
+
+@pytest.mark.django_db
+class TestProgramCostCurrentAndHistory:
+    def test_current_returns_the_latest_revision(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('current')
+        admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-current-admin@example.com', 'Org Program Cost Current Admin',
+        )
+
+        services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('100.00'), be_total=Decimal('10.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Première estimation.',
+        )
+        services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('200.00'), be_total=Decimal('20.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Révision après négociation.',
+        )
+
+        response = admin_client.get(
+            reverse('program-cost-current', args=[program['id']]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        assert Decimal(response.data['foncier_total']) == Decimal('200.00')
+
+    def test_current_is_none_when_no_program_cost_exists_yet(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('current-empty')
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'program-cost-current-empty-admin@example.com', 'Org Program Cost Current Empty Admin',
+        )
+
+        response = admin_client.get(
+            reverse('program-cost-current', args=[program['id']]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        assert response.data is None
+
+    def test_history_returns_every_revision_in_chronological_order(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('history')
+        admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-history-admin@example.com', 'Org Program Cost History Admin',
+        )
+
+        first = services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('100.00'), be_total=Decimal('10.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Première estimation.',
+        )
+        second = services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('200.00'), be_total=Decimal('20.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Révision.',
+        )
+
+        response = admin_client.get(
+            reverse('program-cost-history', args=[program['id']]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        ids_in_order = [row['id'] for row in response.data]
+        assert ids_in_order == [str(first.id), str(second.id)]
+
+
+@pytest.mark.django_db
+class TestProgramCostImmutability:
+    """Même rigueur que `TestPricingConfigImmutability` (ticket 025) —
+    tentative EXPLICITE refusée, pas seulement une absence de route.
+    """
+
+    def test_no_put_patch_or_delete_method_is_accepted(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('immutable-405')
+        admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-405-admin@example.com', 'Org Program Cost 405 Admin',
+        )
+        program_cost = services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('100.00'), be_total=Decimal('10.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Estimation.',
+        )
+
+        url = reverse('program-cost-create', args=[program['id']])
+        assert admin_client.put(url, {'foncier_total': '999.00'}, format='json').status_code == 405
+        assert admin_client.patch(url, {'foncier_total': '999.00'}, format='json').status_code == 405
+        assert admin_client.delete(url).status_code == 405
+
+        # Relecture ORM directe non basculée après une bascule RLS déjà
+        # restaurée vers l'admin échouerait silencieusement (piège déjà
+        # documenté au ticket 022, CLAUDE.md) — programs_program_cost est
+        # scopée organisation (contrairement à pricing_pricingconfig).
+        set_rls_context(organization_id=sponsor_org.id)
+        program_cost.refresh_from_db()
+        assert program_cost.foncier_total == Decimal('100.00')
+
+    def test_direct_sql_update_is_blocked_by_rls_no_policy_defined(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('immutable-sql-update')
+        _admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-sql-update-admin@example.com', 'Org Program Cost SQL Update Admin',
+        )
+        program_cost = services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('100.00'), be_total=Decimal('10.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Estimation.',
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE programs_program_cost SET foncier_total = %s WHERE id = %s",
+                [str(Decimal('999.00')), str(program_cost.id)],
+            )
+            assert cursor.rowcount == 0
+
+        set_rls_context(organization_id=sponsor_org.id)
+        program_cost.refresh_from_db()
+        assert program_cost.foncier_total == Decimal('100.00')
+
+    def test_direct_sql_delete_is_blocked_by_rls_no_policy_defined(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('immutable-sql-delete')
+        _admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-sql-delete-admin@example.com', 'Org Program Cost SQL Delete Admin',
+        )
+        program_cost = services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('100.00'), be_total=Decimal('10.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Estimation.',
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM programs_program_cost WHERE id = %s", [str(program_cost.id)])
+            assert cursor.rowcount == 0
+
+        set_rls_context(organization_id=sponsor_org.id)
+        assert ProgramCost.objects.filter(id=program_cost.id).exists()
+
+    def test_no_update_or_delete_function_exists_in_the_service_module(self):
+        assert not hasattr(services, 'update_program_cost')
+        assert not hasattr(services, 'delete_program_cost')
+
+
+@pytest.mark.django_db
+class TestLotRepartition:
+    def test_parts_egales_splits_evenly_across_all_lots(self):
+        sponsor_org, program, lots = _setup_sponsor_program_with_lots('parts-egales', lot_surfaces=(None, None))
+        admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-parts-egales-admin@example.com', 'Org Program Cost Parts Egales Admin',
+        )
+        services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('100.00'), be_total=Decimal('20.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Deux lots égaux.',
+        )
+
+        response = admin_client.get(
+            reverse('program-cost-repartition', args=[program['id']]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        assert len(response.data) == 2
+        for row in response.data:
+            assert Decimal(row['foncier_lot']) == Decimal('50.00')
+            assert Decimal(row['be_lot']) == Decimal('10.00')
+
+    def test_prorata_surface_splits_proportionally_to_real_surfaces(self):
+        """Surfaces DIFFÉRENTES (pas égales) — preuve que la proportion est
+        réellement calculée, pas une coïncidence avec parts_egales.
+        """
+        sponsor_org, program, lots = _setup_sponsor_program_with_lots(
+            'prorata', lot_surfaces=(Decimal('100.00'), Decimal('300.00')),
+        )
+        admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-prorata-admin@example.com', 'Org Program Cost Prorata Admin',
+        )
+        services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('400.00'), be_total=Decimal('40.00'),
+            repartition_method=ProgramCostRepartitionMethod.PRORATA_SURFACE,
+            justification='Répartition proportionnelle aux surfaces réelles.',
+        )
+
+        response = admin_client.get(
+            reverse('program-cost-repartition', args=[program['id']]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        rows_by_lot_id = {row['lot_id']: row for row in response.data}
+
+        small_lot_row = rows_by_lot_id[lots[0]['id']]
+        big_lot_row = rows_by_lot_id[lots[1]['id']]
+        # 100/(100+300) = 25% ; 300/(100+300) = 75%
+        assert Decimal(small_lot_row['foncier_lot']) == Decimal('100.00')
+        assert Decimal(small_lot_row['be_lot']) == Decimal('10.00')
+        assert Decimal(big_lot_row['foncier_lot']) == Decimal('300.00')
+        assert Decimal(big_lot_row['be_lot']) == Decimal('30.00')
+
+    def test_prorata_surface_is_rejected_explicitly_when_a_lot_has_no_surface(self):
+        """Critère d'acceptation central — jamais un partage silencieux à
+        zéro pour le lot sans surface.
+        """
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots(
+            'missing-surface', lot_surfaces=(Decimal('100.00'), None),
+        )
+        admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-missing-surface-admin@example.com', 'Org Program Cost Missing Surface Admin',
+        )
+        services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('400.00'), be_total=Decimal('40.00'),
+            repartition_method=ProgramCostRepartitionMethod.PRORATA_SURFACE,
+            justification='Un lot sans surface — doit être refusé.',
+        )
+
+        response = admin_client.get(
+            reverse('program-cost-repartition', args=[program['id']]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 409
+
+    def test_repartition_response_is_a_list_indexed_by_lot_never_an_aggregated_object(self):
+        """Précision explicite de l'utilisateur (décision D) — testée
+        directement sur la FORME de la réponse.
+        """
+        sponsor_org, program, lots = _setup_sponsor_program_with_lots('shape', lot_surfaces=(None, None))
+        admin_client, _admin_org, admin_user = _register_admin(
+            'program-cost-shape-admin@example.com', 'Org Program Cost Shape Admin',
+        )
+        services.create_program_cost(
+            admin=admin_user, admin_organization_id=_admin_org.id, target_organization_id=sponsor_org.id,
+            program_id=program['id'], foncier_total=Decimal('100.00'), be_total=Decimal('10.00'),
+            repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Forme de la réponse.',
+        )
+
+        response = admin_client.get(
+            reverse('program-cost-repartition', args=[program['id']]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        assert isinstance(response.data, list)
+        assert len(response.data) == 2
+        expected_lot_ids = {lot['id'] for lot in lots}
+        for row in response.data:
+            assert set(row.keys()) == {'lot_id', 'foncier_lot', 'be_lot'}
+            assert row['lot_id'] in expected_lot_ids
+
+    def test_repartition_is_rejected_explicitly_when_no_program_cost_exists_yet(self):
+        sponsor_org, program, _lots = _setup_sponsor_program_with_lots('no-cost')
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'program-cost-no-cost-admin@example.com', 'Org Program Cost No Cost Admin',
+        )
+
+        response = admin_client.get(
+            reverse('program-cost-repartition', args=[program['id']]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 409
+
+
+@pytest.mark.django_db(transaction=True)
+class TestProgramCostSequenceForcedCollision:
+    """Ticket B-033 — même méthode que le ticket B-031 : `sequence`
+    construit dès la conception de ce modèle, prouvé par une collision
+    FORCÉE de `created_at` (jamais un espoir de reproduction hasardeuse).
+    `django_db(transaction=True)` requis pour `_register_admin`/
+    `_setup_sponsor_program_with_lots` qui passent par de vraies requêtes
+    HTTP (même piège déjà documenté au ticket B-031 : `set_rls_context`
+    n'a d'effet réel qu'à l'intérieur d'un `transaction.atomic()` explicite
+    sous ce mode — tout le setup est donc posé dans son propre bloc).
+    """
+
+    def test_two_program_costs_with_an_identical_created_at_are_resolved_by_sequence(self):
+        with transaction.atomic():
+            sponsor_org, program, _lots = _setup_sponsor_program_with_lots('tiebreak')
+            admin_client, admin_org, admin_user = _register_admin(
+                'program-cost-tiebreak-admin@example.com', 'Org Program Cost Tiebreak Admin',
+            )
+
+            frozen_now = timezone.now()
+            with mock.patch('django.utils.timezone.now', return_value=frozen_now):
+                first = services.create_program_cost(
+                    admin=admin_user, admin_organization_id=admin_org.id, target_organization_id=sponsor_org.id,
+                    program_id=program['id'], foncier_total=Decimal('100.00'), be_total=Decimal('10.00'),
+                    repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Première.',
+                )
+                second = services.create_program_cost(
+                    admin=admin_user, admin_organization_id=admin_org.id, target_organization_id=sponsor_org.id,
+                    program_id=program['id'], foncier_total=Decimal('200.00'), be_total=Decimal('20.00'),
+                    repartition_method=ProgramCostRepartitionMethod.PARTS_EGALES, justification='Seconde, même instant.',
+                )
+
+            assert first.created_at == second.created_at
+            assert second.sequence > first.sequence
+
+            current = services.get_current_program_cost(
+                admin_organization_id=admin_org.id, target_organization_id=sponsor_org.id,
+                program_id=program['id'],
+            )
+            assert current.id == second.id
+            assert current.foncier_total == Decimal('200.00')
