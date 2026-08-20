@@ -885,6 +885,11 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # pas avant ce ticket), réservée à `admin_keyimmo`, jamais
             # accessible au rôle constructeur.
             'country-pack-list',
+            # Ticket B-033 — ajout conscient : coûts programme (foncier/BE)
+            # et répartition entre lots, réservé à `admin_keyimmo`, jamais
+            # accessible au rôle constructeur/sponsor.
+            'program-cost-create', 'program-cost-current',
+            'program-cost-history', 'program-cost-repartition',
         }
         assert actual == expected
 

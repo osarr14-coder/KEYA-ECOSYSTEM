@@ -76,6 +76,16 @@ class Lot(models.Model):
         Organization, on_delete=models.PROTECT, related_name='assigned_lots',
         null=True, blank=True,
     )
+    # Ajouté au ticket B-033 : prérequis de la méthode de répartition
+    # `prorata_surface` de `ProgramCost` (foncier/BE répartis
+    # proportionnellement à la surface de chaque lot). `null=True` —
+    # AUCUNE valeur par défaut inventée pour les lots déjà existants
+    # (discipline déjà assumée dans ce projet, ex. `Lot.assigned_organization`
+    # ticket 009). `apps.programs.services.compute_lot_repartition` refuse
+    # explicitement `prorata_surface` si un seul lot du programme n'a pas
+    # cette valeur — jamais un partage silencieux à zéro. Unité m² implicite,
+    # comme le reste du projet n'a jamais eu besoin d'unité explicite.
+    surface = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -206,3 +216,90 @@ class LotClient(models.Model):
 
     def __str__(self):
         return f'{self.client.email} — {self.lot}'
+
+
+class ProgramCostRepartitionMethod(models.TextChoices):
+    """Vocabulaire fixe (comme `PricingCanal`/`TrustLevel`) — les deux
+    méthodes existent partout, seul le CHOIX par programme varie (posé sur
+    chaque révision `ProgramCost`, pas codé en dur dans le calcul).
+    """
+
+    PRORATA_SURFACE = 'prorata_surface', 'Prorata surface'
+    PARTS_EGALES = 'parts_egales', 'Parts égales'
+
+
+class ProgramCost(models.Model):
+    """Coûts foncier + bureau d'études (BE) engagés au niveau du PROGRAMME
+    entier (canal 1) — ticket B-033. Append-only, même doctrine que
+    `PricingConfig`/`LegalPaymentTierTemplate` : un changement de coût est
+    TOUJOURS un nouvel enregistrement, jamais une modification d'un
+    enregistrement existant — aucun champ `is_active`.
+
+    **`be_total` (bureau d'études) est DISTINCT du bureau de contrôle (BC)**
+    — invariant 25.16 (CLAUDE.md, budget BC sanctuarisé) ne concerne PAS ce
+    champ, deux acteurs différents du modèle économique (section 6,
+    `docs/economie/KEYIMMO_Modele_Economique_Consolide.md`).
+
+    Le coût COURANT d'un programme est le DERNIER `ProgramCost` créé
+    (`LATEST_FIRST_ORDERING`) — dérivé, jamais stocké séparément, doctrine
+    Visible Trust appliquée à une configuration économique (même principe
+    que `PricingConfig`, ticket 025).
+
+    `organization` dénormalisé depuis `program.organization` (même pattern
+    que `Asset.organization`) — permet une policy RLS simple par colonne.
+    Immutabilité protégée par RLS (voir migration
+    `0006_programcost_rls.py`) : `SELECT`/`INSERT` scopés organisation,
+    **aucune policy `UPDATE`/`DELETE`** — même niveau que `Devis`
+    (ticket 022), pas les trois couches de `TrustEvent` (pas de trigger
+    append-only ici).
+
+    `justification` est OBLIGATOIRE (`TextField`, pas `blank=True`) —
+    contrairement à `Inspection.note`/`Evidence.note` (tous deux
+    optionnels) : chaque révision d'un coût programme doit s'expliquer,
+    aucune exception.
+
+    `sequence` — même mécanisme que `TrustEvent.sequence`/
+    `PricingConfig.sequence` (`BigIntegerField` unique, `nextval()` sur une
+    séquence Postgres dédiée), construit dès la conception de ce modèle,
+    PAS un retrofit après un flake comme `PricingConfig` a dû le faire au
+    ticket B-031 : `-created_at` seul est ambigu entre deux révisions
+    créées à quelques millisecondes d'écart (deux requêtes HTTP quasi
+    simultanées) — la leçon du ticket B-031 est appliquée directement ici.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='program_costs',
+    )
+    program = models.ForeignKey(Program, on_delete=models.PROTECT, related_name='costs')
+    foncier_total = models.DecimalField(max_digits=16, decimal_places=2)
+    be_total = models.DecimalField(max_digits=16, decimal_places=2)
+    repartition_method = models.CharField(max_length=30, choices=ProgramCostRepartitionMethod.choices)
+    justification = models.TextField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='program_costs_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    sequence = models.BigIntegerField(unique=True, editable=False)
+
+    class Meta:
+        db_table = 'programs_program_cost'
+
+    def save(self, *args, **kwargs):
+        if self.sequence is None:
+            # `nextval()` explicite plutôt que de compter sur le DEFAULT
+            # côté DB — même raison que `TrustEvent.save()`/
+            # `PricingConfig.save()` : `sequence` n'est pas un `AutoField`
+            # (impossible avec la pk UUID de ce modèle), Django envoie donc
+            # TOUJOURS une valeur explicite pour ce champ à l'INSERT ; ne
+            # pas la poser ici enverrait NULL et écraserait silencieusement
+            # le DEFAULT côté DB.
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT nextval('programs_program_cost_sequence_seq')")
+                self.sequence = cursor.fetchone()[0]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.program} — foncier {self.foncier_total} / BE {self.be_total}'
