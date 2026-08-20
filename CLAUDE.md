@@ -3185,6 +3185,36 @@ une autre session), vérifier d'abord que la branche locale est à jour
 avec `master` (`git fetch`/`git log HEAD..origin/master`) — un constat
 basé sur un instantané périmé peut recadrer un ticket entier à tort.
 
+## Second sélecteur de lot pour le grand-livre (ticket F-036, backend B-037)
+
+Voir `F-036-selecteur-lot-grand-livre.md` pour le détail complet. Ferme le
+trou de joignabilité documenté par F-035 : `LotPicker` (`search_lots_as_admin`,
+B-028) exclut les lots verrouillés par construction — une fois
+`selectedLot` (état React local, `DevisView.tsx`) perdu (rechargement,
+navigation), un lot verrouillé devenait DÉFINITIVEMENT introuvable via
+l'UI. **Leçon F-035 bis appliquée dès le départ cette fois** :
+`git fetch`/`merge` faits AVANT d'écrire du code (cette branche était 3
+commits derrière), contrat backend revérifié directement dans
+`backend/apps/procurement/{urls,views}.py`.
+
+**`LotEligibleForLedgerPicker` — réutilise `LiveSearchPicker<T>` (B-028)
+TEL QUEL**, branché sur `api.searchLotsEligibleForLedger` (nouvelle
+méthode client, mince wrapper vers `GET .../lots/eligible-for-ledger/?q=`,
+B-037). Bouton radio dans `DevisView`, JAMAIS les deux sélecteurs
+affichés en même temps — les deux critères backend sont mutuellement
+exclusifs par construction. Une fois un lot sélectionné via l'un OU
+l'autre, `DevisListPanel` ne distingue jamais le chemin d'origine, aucune
+logique dupliquée.
+
+**Limite résiduelle assumée, PAS corrigée par ce ticket** : un lot qui a
+DÉJÀ un `LotLedger` reste introuvable une fois la session perdue —
+`search_lots_eligible_for_ledger_as_admin` l'exclut aussi (au plus un
+grand-livre par lot). Aucun endpoint actuel ne permet de rechercher un
+lot verrouillé indépendamment de l'existence de son grand-livre —
+candidat pour un futur ticket si ce second trou doit être fermé.
+
+5 tests dédiés, suite `web` 179 tests, `tsc --noEmit` propre.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

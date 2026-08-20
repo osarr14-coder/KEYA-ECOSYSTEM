@@ -244,6 +244,22 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
       request<LotSearchResult[]>(`/api/procurement/admin/lots/${toQueryString({ q: query })}`),
 
     /**
+     * `GET /api/procurement/admin/lots/eligible-for-ledger/?q=...` (ticket
+     * B-037) — CRITÈRE INVERSE de `searchLots` ci-dessus : lot déjà
+     * VERROUILLÉ, ET sans `LotLedger` (ticket B-035) existant encore. Même
+     * forme de réponse (`LotSearchResult`, réutilisé tel quel). Ferme le
+     * trou de joignabilité signalé dans `F-035-grand-livre-lot.md` : sans
+     * cet endpoint, un lot verrouillé redevenait introuvable via l'UI dès
+     * que l'état React local (`selectedLot`, `DevisView.tsx`) était perdu
+     * (rechargement de page, navigation), `searchLots` l'excluant par
+     * construction (décision D, B-028). Limite résiduelle assumée (ticket
+     * F-036) : un lot qui a DÉJÀ un `LotLedger` reste, lui, introuvable une
+     * fois la session perdue — aucun endpoint actuel ne couvre ce cas.
+     */
+    searchLotsEligibleForLedger: (query: string) =>
+      request<LotSearchResult[]>(`/api/procurement/admin/lots/eligible-for-ledger/${toQueryString({ q: query })}`),
+
+    /**
      * `GET /api/procurement/admin/organizations/?q=...` (ticket B-028) —
      * recherche d'organisation par nom, pour résoudre `candidate_organization`
      * avant `POST /api/procurement/devis/`. `q` vide renvoie une liste vide.
