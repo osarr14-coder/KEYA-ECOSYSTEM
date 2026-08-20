@@ -47,13 +47,26 @@ class PricingConfig(models.Model):
     organisationnelle/l'immutabilité, les permissions DRF protègent le
     rôle.
 
-    Pas de colonne `sequence` (contrairement à `TrustEvent`, ticket 013
-    bis) : le piège de tie-break de `TrustEvent` vient de DEUX événements
-    créés dans la MÊME transaction sans commit intermédiaire
-    (`_advance_existing_reserve`). Rien d'équivalent ici —
-    `apps.pricing.services.create_pricing_config` ne crée jamais qu'UN
-    SEUL enregistrement par appel : `-created_at` seul suffit à dériver le
-    dernier taux sans ambiguïté.
+    **Colonne `sequence` ajoutée au ticket B-031** — ce paragraphe affirmait
+    initialement (ticket 025) qu'aucune colonne `sequence` n'était
+    nécessaire, en raisonnant que `create_pricing_config` ne crée jamais
+    qu'un seul enregistrement par appel, contrairement au déclencheur réel
+    du bug `TrustEvent` (ticket 013 bis, deux événements créés dans la MÊME
+    transaction sans commit intermédiaire). Ce raisonnement structurel
+    reste correct — vérifié à nouveau au ticket B-031, `create_pricing_
+    config` n'est TOUJOURS appelé qu'à un seul endroit en production — mais
+    il ignorait un risque réel par un mécanisme DIFFÉRENT : rien n'empêche
+    deux requêtes HTTP quasi simultanées de créer deux `PricingConfig` pour
+    le même `(country_pack, canal)` avec un `created_at` trop proche pour
+    être départagé de façon fiable, et `get_active_rate` (qui dérive ce tri)
+    alimente directement le calcul RÉEL de marge KEYIMMO (`apps.procurement.
+    services._derive_marge_estimee`, invariant 25.15). `sequence` reprend
+    donc EXACTEMENT le mécanisme de `TrustEvent.sequence` (`BigIntegerField`
+    unique, alimenté par `nextval()` sur une séquence Postgres dédiée,
+    migration `0005_pricingconfig_sequence.py`) — ordre d'insertion strict,
+    jamais recalculable après coup, departage `(-created_at, -sequence)`
+    (`apps.pricing.services.LATEST_FIRST_ORDERING`) même quand deux lignes
+    partagent un `created_at` identique.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -66,9 +79,25 @@ class PricingConfig(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='pricing_configs_created',
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    sequence = models.BigIntegerField(unique=True, editable=False)
 
     class Meta:
         db_table = 'pricing_pricingconfig'
+
+    def save(self, *args, **kwargs):
+        if self.sequence is None:
+            # `nextval()` explicite plutôt que de compter sur le DEFAULT
+            # côté DB (migration 0005) — même raison que `TrustEvent.save()`
+            # (ticket 013 bis) : `sequence` n'est pas un `AutoField`, Django
+            # envoie donc TOUJOURS une valeur explicite pour ce champ à
+            # l'INSERT ; ne pas la poser ici enverrait NULL et écraserait
+            # silencieusement le DEFAULT côté DB.
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT nextval('pricing_pricingconfig_sequence_seq')")
+                self.sequence = cursor.fetchone()[0]
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.country_pack.code} — {self.get_canal_display()} : {self.rate}%'

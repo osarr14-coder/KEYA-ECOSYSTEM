@@ -14,11 +14,13 @@ from .models import (
     PricingConfig,
 )
 
-# Ordre canonique "plus récent d'abord" — pas de colonne `sequence` ici
-# (voir models.py, docstring de PricingConfig) : `-created_at` seul
-# suffit, un seul enregistrement créé par appel de service, jamais deux
-# dans la même transaction.
-LATEST_FIRST_ORDERING = ('-created_at',)
+# Ordre canonique "plus récent d'abord" — ticket B-031 : `-created_at` seul
+# est ambigu entre deux `PricingConfig` créés via deux requêtes HTTP quasi
+# simultanées (voir models.py, docstring de PricingConfig, et migration
+# 0005_pricingconfig_sequence.py) — `-sequence` départage de façon garantie,
+# même tuple que `apps.trust.repository.LATEST_FIRST_ORDERING` (ticket 013
+# bis).
+LATEST_FIRST_ORDERING = ('-created_at', '-sequence')
 
 
 def create_pricing_config(*, admin, country_pack_id, canal, rate):
@@ -79,11 +81,16 @@ def get_pricing_history(*, country_pack_id, canal):
     pas à afficher un historique). L'« ancien taux » d'un changement donné
     se lit en comparant deux entrées consécutives de cette liste, jamais
     un champ dédié.
+
+    Tie-break `sequence` symétrique à `LATEST_FIRST_ORDERING` (ticket
+    B-031) — cohérence complète, pas un correctif partiel : deux entrées au
+    même `created_at` mal départagées resteraient un bug d'affichage, même
+    moins grave qu'un mauvais taux dérivé « actif ».
     """
     return list(
         PricingConfig.objects.filter(
             country_pack_id=country_pack_id, canal=canal,
-        ).order_by('created_at'),
+        ).order_by('created_at', 'sequence'),
     )
 
 
