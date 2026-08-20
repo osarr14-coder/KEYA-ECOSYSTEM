@@ -1,5 +1,7 @@
+import { Blob as NodeBlob } from 'node:buffer';
+
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { LotRow, PaginatedResponse } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
@@ -126,5 +128,206 @@ describe('AllLotsView — pagination', () => {
     render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
 
     expect(await screen.findByText('Aucun lot ne correspond à ces critères.')).toBeInTheDocument();
+  });
+});
+
+describe('AllLotsView — export CSV (ticket F-032)', () => {
+  let createObjectURL: ReturnType<typeof vi.fn>;
+  let revokeObjectURL: ReturnType<typeof vi.fn>;
+  let clickSpy: { mockRestore: () => void };
+  let clickedAnchors: HTMLAnchorElement[];
+
+  beforeEach(() => {
+    createObjectURL = vi.fn().mockReturnValue('blob:mock-url');
+    revokeObjectURL = vi.fn();
+    (URL as unknown as { createObjectURL: typeof createObjectURL }).createObjectURL = createObjectURL;
+    (URL as unknown as { revokeObjectURL: typeof revokeObjectURL }).revokeObjectURL = revokeObjectURL;
+    clickedAnchors = [];
+    // `downloadCsv` retire l'ancre du DOM juste après le clic (synchrone) —
+    // capturer l'instance ICI (plutôt que la requêter après coup) est le
+    // seul moyen fiable d'inspecter son attribut `download`.
+    clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function mockClick(
+      this: HTMLAnchorElement,
+    ) {
+      clickedAnchors.push(this);
+    });
+    vi.stubGlobal('Blob', NodeBlob);
+  });
+
+  afterEach(() => {
+    clickSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  async function lastDownloadedCsv(): Promise<string> {
+    const [blob] = createObjectURL.mock.calls.at(-1) as [Blob];
+    const text = new TextDecoder('utf-8').decode(new Uint8Array(await blob.arrayBuffer()));
+    return text.slice(1); // retire le BOM UTF-8 pour comparer le contenu CSV
+  }
+
+  it(
+    'sous le seuil d\'avertissement : exporte directement TOUTES les lignes filtrées/triées '
+    + '(pas seulement la page affichée à l\'écran)',
+    async () => {
+      const getAllLots = vi.fn().mockImplementation(async (query: Record<string, unknown>) => {
+        if (query.page_size === 100) {
+          // Appel(s) d'export : deux pages pour prouver que la pagination
+          // de l'écran (25) n'est pas ce qui borne l'export.
+          if (query.page === 1) {
+            return makePage(
+              [makeRow({ id: 'a', name: 'Lot A' })],
+              { count: 2, next: 'http://x/?page=2&page_size=100' },
+            );
+          }
+          return makePage([makeRow({ id: 'b', name: 'Lot B' })], { count: 2, next: null });
+        }
+        // Chargement initial de l'écran (page_size: 25).
+        return makePage([makeRow({ id: 'a', name: 'Lot A' })], { count: 2 });
+      });
+      const api = createMockApiClient({ getAllLots });
+      render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+      await screen.findByText('Lot A');
+      fireEvent.click(screen.getByRole('button', { name: 'Exporter en CSV' }));
+
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+      const csv = await lastDownloadedCsv();
+      expect(csv).toContain('Lot A');
+      expect(csv).toContain('Lot B');
+
+      expect(getAllLots).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: 100 }));
+      expect(getAllLots).toHaveBeenCalledWith(expect.objectContaining({ page: 2, page_size: 100 }));
+    },
+  );
+
+  it('respecte le filtre et le tri actifs à l\'écran au moment de l\'export', async () => {
+    const getAllLots = vi.fn().mockImplementation(async (query: Record<string, unknown>) => {
+      if (query.page_size === 100) return makePage([makeRow()], { count: 1, next: null });
+      return makePage([makeRow()], { count: 1 });
+    });
+    const api = createMockApiClient({ getAllLots });
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+    await screen.findByText('Lot 12');
+    fireEvent.change(screen.getByLabelText('Rechercher un lot'), { target: { value: 'Ker' } });
+    await waitFor(() => expect(getAllLots).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Ker' })));
+    fireEvent.change(screen.getByLabelText('Trier par'), { target: { value: '-progress_percentage' } });
+    await waitFor(() => expect(getAllLots).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ordering: '-progress_percentage' }),
+    ));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exporter en CSV' }));
+
+    await waitFor(() => expect(getAllLots).toHaveBeenCalledWith(expect.objectContaining({
+      q: 'Ker', ordering: '-progress_percentage', page: 1, page_size: 100,
+    })));
+  });
+
+  it(
+    'au-delà du seuil de requêtes : affiche un avertissement AVANT de lancer le moindre '
+    + 'appel réseau d\'export, jamais un export silencieux',
+    async () => {
+      const getAllLots = vi.fn().mockImplementation(async (query: Record<string, unknown>) => {
+        if (query.page_size === 100) return makePage([makeRow()], { count: 1500, next: null });
+        return makePage([makeRow()], { count: 1500 });
+      });
+      const api = createMockApiClient({ getAllLots });
+      render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+      await screen.findByText('Lot 12');
+      const callsBeforeExport = getAllLots.mock.calls.length;
+      fireEvent.click(screen.getByRole('button', { name: 'Exporter en CSV' }));
+
+      expect(await screen.findByText(/1500 lot\(s\), 15 requêtes nécessaires/)).toBeInTheDocument();
+      expect(getAllLots).toHaveBeenCalledTimes(callsBeforeExport);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Continuer l\'export' }));
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+    },
+  );
+
+  it('"Annuler" referme l\'avertissement sans lancer l\'export', async () => {
+    const getAllLots = vi.fn().mockImplementation(async (query: Record<string, unknown>) => {
+      if (query.page_size === 100) return makePage([makeRow()], { count: 1500, next: null });
+      return makePage([makeRow()], { count: 1500 });
+    });
+    const api = createMockApiClient({ getAllLots });
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+    await screen.findByText('Lot 12');
+    fireEvent.click(screen.getByRole('button', { name: 'Exporter en CSV' }));
+    await screen.findByText(/requêtes nécessaires/);
+    const callsAfterWarning = getAllLots.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+
+    expect(screen.queryByText(/requêtes nécessaires/)).not.toBeInTheDocument();
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(getAllLots).toHaveBeenCalledTimes(callsAfterWarning);
+  });
+
+  it('affiche un état de chargement explicite pendant l\'export, bouton désactivé', async () => {
+    let resolveExportPage: ((value: PaginatedResponse<LotRow>) => void) | undefined;
+    const getAllLots = vi.fn().mockImplementation(async (query: Record<string, unknown>) => {
+      if (query.page_size === 100) {
+        return new Promise<PaginatedResponse<LotRow>>((resolve) => { resolveExportPage = resolve; });
+      }
+      return makePage([makeRow()], { count: 1 });
+    });
+    const api = createMockApiClient({ getAllLots });
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+    await screen.findByText('Lot 12');
+    fireEvent.click(screen.getByRole('button', { name: 'Exporter en CSV' }));
+
+    const exportingButton = await screen.findByRole('button', { name: 'Export en cours…' });
+    expect(exportingButton).toBeDisabled();
+
+    resolveExportPage!(makePage([makeRow()], { count: 1, next: null }));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+  });
+
+  it(
+    'un échec réseau pendant l\'export affiche une erreur explicite, ne télécharge rien, '
+    + 'et reste réessayable (bouton réactivé)',
+    async () => {
+      const getAllLots = vi.fn().mockImplementation(async (query: Record<string, unknown>) => {
+        if (query.page_size === 100) throw new Error('network down');
+        return makePage([makeRow()], { count: 1 });
+      });
+      const api = createMockApiClient({ getAllLots });
+      render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+      await screen.findByText('Lot 12');
+      fireEvent.click(screen.getByRole('button', { name: 'Exporter en CSV' }));
+
+      expect(await screen.findByText('Échec de l\'export CSV. Réessayez.')).toBeInTheDocument();
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: 'Exporter en CSV' })).not.toBeDisabled();
+    },
+  );
+
+  it('nomme le fichier téléchargé avec la date du jour (tous-les-lots-YYYY-MM-DD.csv)', async () => {
+    // `toFake: ['Date']` seul — piège déjà documenté au ticket F-027 :
+    // faker aussi `setTimeout` casserait le polling interne de
+    // `waitFor`/`findBy*` (Testing Library), qui s'appuie dessus.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-20T10:00:00Z'));
+    try {
+      const getAllLots = vi.fn().mockImplementation(async (query: Record<string, unknown>) => {
+        if (query.page_size === 100) return makePage([makeRow()], { count: 1, next: null });
+        return makePage([makeRow()], { count: 1 });
+      });
+      const api = createMockApiClient({ getAllLots });
+      render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+      await screen.findByText('Lot 12');
+      fireEvent.click(screen.getByRole('button', { name: 'Exporter en CSV' }));
+
+      await waitFor(() => expect(clickedAnchors).toHaveLength(1));
+      expect(clickedAnchors[0].download).toBe('tous-les-lots-2026-08-20.csv');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

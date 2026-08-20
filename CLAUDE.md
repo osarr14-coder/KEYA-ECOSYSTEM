@@ -2391,6 +2391,57 @@ de production (nginx/Netlify...) — ce projet n'a aucune config de
 déploiement à ce jour (dette déjà notée au ticket 021) ; interception des
 clics sidebar `AppShell` ; tout routage pour HOME/BUILD/CONTROL PWA.
 
+## Export CSV « Tous les lots » (ticket F-032, `apps/build`)
+
+Voir `F-032-export-csv-tous-les-lots.md` pour le détail complet. Bouton
+« Exporter en CSV » (`AllLotsView.tsx`) — explicitement noté « hors
+scope, utile mais non bloquant » au ticket 009, jamais construit depuis.
+
+**État des lieux vérifié avant tout code (demande explicite)** :
+`AllLotsView` ne charge JAMAIS toutes les données côté client — `PAGE_SIZE
+= 25`, pagination backend réelle (`state.data.results` = seulement la
+page courante). Exporter cette page telle quelle aurait silencieusement
+tronqué l'export dès qu'il y a plus d'une page. **Mais aucun nouvel
+endpoint n'est nécessaire pour autant** : `LotPagination.max_page_size =
+100` (backend) et `AllLotsView.get` calcule déjà le filtre+tri complet en
+mémoire AVANT de paginer (ticket 009) — l'endpoint existant peut renvoyer
+l'intégralité du jeu filtré/trié en quelques appels supplémentaires.
+
+**Approche validée par l'utilisateur AVANT implémentation** — une
+troisième option découverte en creusant, ni « déjà tout chargé » ni « il
+faut un nouvel endpoint » : au clic, reparcourir le MÊME endpoint (même
+filtre/tri que l'écran, `page_size=100`, `apps/build/src/export/
+fetchAllLotRows.ts`) jusqu'à épuiser les pages, puis générer le CSV
+entièrement côté client (`lotsCsvExport.ts` — colonnes/formatage
+IDENTIQUES au tableau affiché, BOM UTF-8 pour Excel/caractères accentués
+français). Deux exigences ajoutées par l'utilisateur à la confirmation :
+état de chargement explicite pendant la récupération, et un avertissement
+(nombre de lots + de requêtes) AVANT de lancer l'export si le nombre de
+requêtes dépasse un seuil (`EXPORT_REQUEST_WARNING_THRESHOLD = 10`) —
+calculé à partir du `count` déjà connu, aucun appel réseau avant
+confirmation explicite (même discipline « jamais `window.confirm()` » que
+`BackofficeView`, ticket 021 : `AlertBanner` + second bouton dédié).
+
+**Piège de test — le BOM UTF-8 disparaît d'un texte décodé, par
+conception** : une assertion sur `blob.text()` échouait systématiquement
+(un décodeur UTF-8 conforme retire volontairement un BOM en tête au
+décodage — c'est ce qui le rend invisible pour tout lecteur correct tout
+en restant détectable par Excel) — corrigé en vérifiant les 3 octets bruts
+`EF BB BF` via `blob.arrayBuffer()`, jamais le texte déjà décodé.
+
+**Même piège `Blob` jsdom que CONTROL PWA (ticket 010)** : réassigné au
+`Blob` natif de Node, scopé au describe `downloadCsv` uniquement
+(`vi.stubGlobal`/`vi.unstubAllGlobals`), jamais dans `setupTests.ts`.
+
+**26 nouveaux tests**. **333 tests frontend** (5 packages :
+44+62+54+40+133), zéro régression, `tsc --noEmit` propre. **Vérifié dans
+un vrai navigateur, avec un vrai backend** (compte constructeur réel, 4
+lots réels) : CSV intercepté avant téléchargement — contenu identique aux
+lignes affichées après tri appliqué, un seul appel réseau supplémentaire
+(`page_size=100`, aucun nouvel endpoint), nom de fichier daté correct ;
+seuil d'avertissement vérifié en simulant `count=1234` (bandeau affiché,
+zéro requête d'export avant confirmation, « Annuler » fonctionnel).
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

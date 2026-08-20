@@ -7,6 +7,8 @@ import {
 import { useApiClient } from '../api/ApiClientContext';
 import type { AllLotsQuery } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
+import { fetchAllLotRows } from '../export/fetchAllLotRows';
+import { buildLotsCsv, buildLotsExportFilename, downloadCsv } from '../export/lotsCsvExport';
 
 export interface AllLotsViewProps {
   /** Préremplit la recherche — utilisé par le lien "Voir dans Tous les
@@ -31,6 +33,28 @@ const ORDERING_OPTIONS: { value: string; label: string }[] = [
 const PAGE_SIZE = 25;
 
 /**
+ * Ticket F-032 — page_size utilisé POUR L'EXPORT uniquement (distinct de
+ * `PAGE_SIZE`, celui de l'écran) : le maximum autorisé côté backend
+ * (`LotPagination.max_page_size`, apps/build/pagination.py) — minimise le
+ * nombre de requêtes nécessaires pour reconstituer le jeu filtré/trié
+ * complet.
+ */
+const EXPORT_PAGE_SIZE = 100;
+
+/**
+ * Au-delà de ce nombre de requêtes, l'export prévient l'utilisateur AVANT
+ * de le lancer plutôt que de le laisser attendre sans explication (demande
+ * explicite, ticket F-032) — un clic supplémentaire suffit à confirmer.
+ */
+const EXPORT_REQUEST_WARNING_THRESHOLD = 10;
+
+type ExportState =
+  | { status: 'idle' }
+  | { status: 'confirming'; requestCount: number; totalCount: number }
+  | { status: 'exporting' }
+  | { status: 'error' };
+
+/**
  * Tableau « Tous les lots » (ticket 009) — écran d'usage intensif : tri,
  * filtres, pagination et densité réglable, PAS de version simplifiée. Tri/
  * filtre/pagination sont transmis en query params à
@@ -44,6 +68,7 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
   const [assignedFilter, setAssignedFilter] = useState<'' | 'true' | 'false'>('');
   const [density, setDensity] = useState<Density>('dense');
   const [page, setPage] = useState(1);
+  const [exportState, setExportState] = useState<ExportState>({ status: 'idle' });
 
   useEffect(() => {
     setSearch(initialSearch);
@@ -63,6 +88,38 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
   );
 
   const tokens = densityTokens[density];
+
+  /**
+   * Ticket F-032 — l'export doit refléter ce que l'utilisateur voit à
+   * l'écran APRÈS filtre/tri, jamais la page seule ni un dump brut : même
+   * `ordering`/`q`/`assigned` que l'écran, mais SANS `page`/`page_size`
+   * (`fetchAllLotRows` les pose lui-même, page par page, à
+   * `EXPORT_PAGE_SIZE`).
+   */
+  async function runExport() {
+    setExportState({ status: 'exporting' });
+    try {
+      const exportQuery: AllLotsQuery = {
+        ordering, q: search || undefined, assigned: assignedFilter || undefined,
+      };
+      const rows = await fetchAllLotRows(api.getAllLots, exportQuery, EXPORT_PAGE_SIZE);
+      downloadCsv(buildLotsExportFilename(new Date()), buildLotsCsv(rows));
+      setExportState({ status: 'idle' });
+    } catch {
+      setExportState({ status: 'error' });
+    }
+  }
+
+  function handleExportClick() {
+    if (state.status !== 'success') return;
+    const totalCount = state.data.count;
+    const requestCount = Math.max(1, Math.ceil(totalCount / EXPORT_PAGE_SIZE));
+    if (requestCount > EXPORT_REQUEST_WARNING_THRESHOLD) {
+      setExportState({ status: 'confirming', requestCount, totalCount });
+      return;
+    }
+    void runExport();
+  }
 
   return (
     <section aria-label="Tous les lots">
@@ -125,6 +182,28 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
           </button>
         </div>
       </form>
+
+      <div style={{ marginBottom: '12px' }}>
+        <button
+          type="button"
+          onClick={handleExportClick}
+          disabled={state.status !== 'success' || exportState.status === 'exporting'}
+        >
+          {exportState.status === 'exporting' ? 'Export en cours…' : 'Exporter en CSV'}
+        </button>
+
+        {exportState.status === 'confirming' && (
+          <AlertBanner title={`Export volumineux : ${exportState.totalCount} lot(s), ${exportState.requestCount} requêtes nécessaires.`}>
+            <p>Cela peut prendre un moment. Continuer ?</p>
+            <button type="button" onClick={() => void runExport()}>Continuer l&apos;export</button>
+            <button type="button" onClick={() => setExportState({ status: 'idle' })}>Annuler</button>
+          </AlertBanner>
+        )}
+
+        {exportState.status === 'error' && (
+          <AlertBanner title="Échec de l'export CSV. Réessayez." />
+        )}
+      </div>
 
       {state.status === 'loading' && <p>Chargement…</p>}
       {state.status === 'error' && <AlertBanner title="Impossible de charger les lots." />}
