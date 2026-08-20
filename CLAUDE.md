@@ -3472,13 +3472,32 @@ de l'utilisateur.
 (inchangés à l'unité près, 2 exécutions consécutives propres), `tsc
 --noEmit` propre sur les 5 packages.
 
-**Statut** : committé sur `feature/frontend-round-2`, PAS fusionné vers
-`master`. Décision explicite de l'utilisateur : la vérification visuelle
-reste **en attente d'un contrôle humain réel**, pas d'un outil
-automatisé — le code/tokens/tests sont livrés et vérifiés, seul le rendu
-visuel effectif de HOME (navy/or réellement appliqués) doit être confirmé
-par un humain avant toute fusion. Voir `F-039-identite-marque-home.md`,
-section « Pour un contrôle humain manuel ».
+**Vérification visuelle finalement obtenue, avec une connexion réelle**
+(pas une injection manuelle de JWT) : formulaire de connexion `apps/web`
+rempli pour un utilisateur `client` réel, redirection automatique vers
+HOME confirmée (`resolveRedirectApp`), en-tête navy + bordure or +
+repère « K+ KEYIMMO AFRIC » et CTA (bordure or, texte navy) observés
+réellement, stables sur les 3 onglets de HOME. Focus clavier réel testé
+(touche Tab physique) : atterrit sur le CTA, anneau de focus visible,
+bordure or intacte. Console/réseau propres pour la session active.
+**Revue volontairement critique demandée par l'utilisateur** (« connecte-
+toi et challenge le rendu »), pas une simple confirmation — a révélé un
+défaut réel (voir dette ci-dessous) et une dissonance mineure hors scope
+(le bouton « Actualiser » d'`OverviewView` reste un `<button>` brut non
+stylé, jamais migré vers `Button`, F-038 n'ayant migré que
+`BackofficeView`). Fusionné vers `master` sur autorisation explicite de
+l'utilisateur une fois cette vérification jugée suffisante.
+
+**Dette connue, documentée mais PAS corrigée par ce ticket** :
+`AppShell` ne s'adapte pas du tout à un viewport mobile (375px) — grille
+sidebar+contenu fixe (`gridTemplateColumns`, jamais responsive depuis sa
+création au ticket 007), débordement horizontal réel, champ de
+recherche et CTA principal coupés au bord droit de l'écran. Trouvé
+pendant la revue critique de F-039, sans lien avec ce ticket
+(F-039 n'a touché ni la structure de grille ni le comportement
+responsive d'`AppShell`) — mais jamais corrigé avant non plus. Priorité
+à évaluer selon l'usage réel attendu de HOME (mobile vs desktop) avant
+qu'un futur ticket (F-040 ou suivant) ne s'y attaque.
 
 ## Conventions de code
 

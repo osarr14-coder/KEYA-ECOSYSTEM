@@ -28,7 +28,7 @@ Ces deux valeurs, et uniquement elles — pas de nuances dérivées inventées s
 - [x] `brandColors` existe comme groupe de tokens séparé, testé (existence des deux valeurs exactes)
 - [x] Un test de garde vérifie qu'aucun composant partagé (`AlertBanner`, `StatusBadge`, `ProgressBar`, `Button`, `Input`, `Select`) ne référence `brandColors` — seule la variante HOME d'`AppShell` (et éventuellement un bouton CTA précis identifié pendant l'implémentation) y a accès
 - [x] `levelMeta.ts` (TrustLevel) reste strictement inchangé — vérifié par diff, pas par affirmation
-- [ ] Vérification visuelle réelle — NON obtenue par l'outillage automatisé malgré deux tentatives complètes et méthodiques (voir section dédiée) ; documentée honnêtement, **en attente d'un contrôle humain réel** avant fusion vers `master`, pas d'un outil automatisé
+- [x] Vérification visuelle réelle — obtenue lors d'une 3ᵉ tentative (panneau Browser stabilisé), via une connexion réelle et une revue volontairement critique (« challenge le rendu ») ; deux échecs précédents documentés honnêtement (voir section dédiée) plutôt que dissimulés
 - [x] Aucune régression sur les écrans BUILD/CONTROL/apps/web — suite complète verte
 
 ## Explicitement hors scope
@@ -43,17 +43,57 @@ Aucune dépendance backend. S'appuie sur la variante HOME déjà distincte d'`Ap
 ---
 
 ## Statut final
-Committé sur `feature/frontend-round-2` (PAS fusionné vers `master`).
-**Vérification visuelle en attente d'un contrôle humain réel** — voir
-section ci-dessous : deux tentatives complètes d'inspection en
-navigateur réel ont échoué pour des raisons d'environnement (outil
-Browser incapable de joindre un port localhost de cette machine, malgré
-une investigation méthodique de la cause), jamais par manque d'effort.
-Le code, les tokens et les tests sont livrés et vérifiés (suite
-complète verte, `tsc --noEmit` propre, gardes de gouvernance vertes) —
-seul le rendu visuel réel de l'écran HOME (navy/or effectivement
-appliqués, lisibilité du repère de marque, cohérence globale) reste à
-confirmer par un humain avant toute fusion vers `master`.
+Livré, fusionné vers `master`. Les deux premières tentatives
+d'inspection en navigateur réel avaient échoué pour des raisons
+d'environnement (voir section ci-dessous, conservée telle quelle pour
+la trace) — le panneau Browser s'est stabilisé lors d'une tentative
+ultérieure, permettant une vérification RÉELLE (voir « Vérification
+visuelle finalement obtenue » ci-dessous). Fusion autorisée explicitement
+par l'utilisateur une fois cette vérification jugée suffisante.
+
+## Vérification visuelle finalement obtenue (connexion réelle, pas d'injection JWT)
+
+Formulaire de connexion `apps/web` rempli pour `client-f039@example.com`
+(mot de passe réinitialisé pour l'occasion) — redirection automatique
+vers HOME confirmée (`resolveRedirectApp`, rôle `client`). Backend
+réellement démarré, données réelles (organisation, programme, bien, lot,
+tâche prioritaire seedés pour ce ticket).
+
+**Résultats observés** (capture d'écran réelle + `getComputedStyle()`
+sur les éléments réellement rendus) :
+- En-tête : `background: rgb(11, 29, 58)` (`#0B1D3A`), `color: rgb(255,
+  255, 255)`, `borderBottom: 2px solid rgb(196, 154, 44)` (`#C49A2C`) —
+  repère de marque « K+ KEYIMMO AFRIC » affiché, stable sur les 3 onglets
+  de HOME (Vue d'ensemble / Avancement & preuves / Mes actions).
+- CTA « Voir toutes mes actions » : `borderColor: rgb(196, 154, 44)`,
+  `color: rgb(11, 29, 58)`, fond transparent.
+- Focus clavier RÉEL (touche Tab physique, 9 pressions jusqu'au CTA) :
+  `matches(':focus-visible') === true`, anneau de focus visible
+  (`box-shadow: rgba(17, 24, 39, 0.12) 0 0 0 3px`).
+- Console/réseau propres pour la session active (tous les appels
+  `/api/me/`, `/api/me/lots/`, `.../overview/`, `/api/me/tasks/` en
+  `200 OK`).
+
+**Revue volontairement CRITIQUE (« challenge le rendu »), pas une simple
+confirmation** — a délibérément cherché des défauts plutôt que de
+confirmer ce qui était attendu :
+- **Bug réel trouvé, HORS SCOPE de ce ticket** : `AppShell` ne s'adapte
+  pas du tout à un viewport mobile (375px) — grille sidebar+contenu
+  fixe, débordement horizontal, champ de recherche et CTA coupés au bord
+  droit. Préexistant depuis le ticket 007, sans lien avec F-039 (aucune
+  structure de grille ni comportement responsive touché par ce ticket).
+  Documenté comme dette connue dans CLAUDE.md, candidat à un futur
+  ticket (F-040 ou suivant) — PAS corrigé ici, sur demande explicite.
+- **Observation mineure, hors scope** : le bouton « Actualiser »
+  (`OverviewView`) reste un `<button>` brut non stylé — dissonance
+  visuelle à côté du CTA désormais stylé. F-038 n'a migré que
+  `BackofficeView` vers `Button` ; `OverviewView` n'était pas dans son
+  périmètre ni dans celui de F-039.
+- Comparaison live avec BUILD abandonnée (blocage de connexion sans
+  rapport avec F-039, pas creusé plus loin) — la non-régression BUILD
+  reste appuyée sur le grep de code (aucune référence à `brandColors`
+  hors `AppShell`) et la suite de tests BUILD inchangée (75 tests),
+  pas sur une vérification visuelle live cette fois-ci.
 
 ## Vérification préalable — capture d'écran (demandée explicitement avant de commencer)
 
