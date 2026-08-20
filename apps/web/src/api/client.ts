@@ -1,8 +1,9 @@
 import type {
   BackofficeUserDetail, BackofficeUserSummary, CountryPackSummary,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
-  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, LotLedger,
-  LotSearchResult, Me, OrganizationSearchResult, PricingCanal, PricingConfig,
+  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult,
+  LotBcCharge, LotLedger, LotSearchResult, Me, OrganizationSearchResult,
+  PricingCanal, PricingConfig,
 } from './types';
 
 export class ApiError extends Error {
@@ -371,6 +372,16 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
      */
     createLotLedger: (payload: { organization: string; lot: string; prix_client: string }) =>
       request<LotLedger>('/api/procurement/lot-ledgers/', { method: 'POST', json: payload }),
+
+    /**
+     * `GET /api/procurement/lot-ledgers/{lot_id}/bc-charges/?organization_id=...`
+     * (ticket B-036) — historique COMPLET des charges bureau de contrôle
+     * d'un lot, chronologique. Liste VIDE (jamais 404) si aucune charge
+     * n'existe encore — un lot peut accumuler des charges AVANT même que
+     * son `LotLedger` n'existe (voir `LotBcCharge`, FK directe vers `Lot`).
+     */
+    getLotBcCharges: (lotId: string, organizationId: string) =>
+      request<LotBcCharge[]>(`/api/procurement/lot-ledgers/${lotId}/bc-charges/${toQueryString({ organization_id: organizationId })}`),
   };
 }
 

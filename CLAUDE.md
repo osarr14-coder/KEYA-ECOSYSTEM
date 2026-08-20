@@ -3072,25 +3072,23 @@ B-035, `apps/procurement`) — jamais consommé côté frontend jusqu'ici.
 Contrat API revérifié directement dans `backend/apps/procurement/
 {models,services,views,serializers}.py` avant tout code.
 
-**Trois découvertes qui ont changé le périmètre, vérifiées avant
-implémentation** : (1) `LotBcCharge` (ticket B-036) n'existe toujours pas
-côté backend (aucun modèle, confirmé par `git log`) — aucune liste de
-charges BC n'est affichable ; (2) « construction courante » n'est PAS
-exposée comme poste isolé par `GET .../margin/` (seule la marge finale
-l'est) — la recalculer côté frontend (`devis.amount + Σ écarts`)
-violerait la doctrine « aucun calcul frontend » ; (3) le lien avec
-`DevisView` n'est pas qu'une commodité — `search_lots_as_admin` (ticket
-B-028) exclut les lots déjà verrouillés de ses résultats, donc un nouvel
-onglet avec sa propre recherche de lot n'aurait jamais pu retrouver un lot
-une fois son devis verrouillé.
+**Trois découvertes initiales qui ont changé le périmètre — LA PREMIÈRE
+S'EST RÉVÉLÉE FAUSSE, voir « Correction post-fusion » plus bas** : (1)
+`LotBcCharge` (ticket B-036) « n'existe pas côté backend » — FAUX, cette
+branche n'était simplement pas synchronisée avec `master`, qui avait déjà
+fusionné B-036 AVANT le début de ce ticket ; (2) « construction courante »
+n'est PAS exposée comme poste isolé par `GET .../margin/` (seule la marge
+finale l'est) — TOUJOURS VRAI après correction — la recalculer côté
+frontend (`devis.amount + Σ écarts`) violerait la doctrine « aucun calcul
+frontend » ; (3) le lien avec `DevisView` n'est pas qu'une commodité —
+`search_lots_as_admin` (ticket B-028) exclut les lots déjà verrouillés de
+ses résultats, donc un nouvel onglet avec sa propre recherche de lot
+n'aurait jamais pu retrouver un lot une fois son devis verrouillé.
 
-**Décision validée avec l'utilisateur** : ni la construction courante, ni
-les charges BC ne sont affichées dans ce ticket — documentées comme
-dépendances backend BLOQUANTES, mentionnées EXPLICITEMENT dans
-l'interface elle-même (jamais un silence), même pattern que B-028/B-030
-pour de précédents tickets frontend. Nouveau ticket backend à cadrer
-séparément (numéro à déterminer côté session backend) pour étendre
-l'endpoint de marge et exposer la décomposition complète.
+**Décision validée avec l'utilisateur (livraison initiale, avant
+correction)** : ni la construction courante, ni les charges BC n'étaient
+affichées — documentées comme dépendances backend BLOQUANTES. **Seule la
+construction courante reste réellement bloquante après correction.**
 
 **`LotLedgerPanel.tsx`, monté depuis `DevisView.tsx::DevisListPanel`,
 JAMAIS un nouvel onglet** — uniquement une fois `lotAlreadyLocked`. Marge
@@ -3100,34 +3098,61 @@ avec l'usage déjà établi partout dans ce projet). `isNegative` est une
 simple lecture de SIGNE sur une valeur déjà calculée backend, pas un
 calcul métier.
 
-**Task ALERT (ticket 024) vérifié, aucun rapport avec ce ticket** :
-`create_task_for_devis_ajustement_refuse` ne se déclenche que sur un
-`DevisAjustement` refusé (marge du DEVIS), jamais sur une marge de
-GRAND-LIVRE négative — et `apps/web` ne consomme de toute façon pas
-`GET /api/me/tasks/` (seul `apps/home` le fait). Zéro risque de
-duplication, zéro mécanisme existant à réutiliser.
+**Task ALERT (ticket 024) vérifié à nouveau après correction — conclusion
+INCHANGÉE malgré B-036** : `create_task_for_devis_ajustement_refuse`
+(ticket 024) ne se déclenche toujours que sur un `DevisAjustement` refusé
+— mais B-036 a bien ajouté un SECOND mécanisme distinct, réutilisant
+exactement le même (`record_bc_charge_for_mission`, alerte sur marge de
+GRAND-LIVRE négative, `subject = LotLedger`). Conclusion inchangée : `apps/web`
+ne consomme toujours pas `GET /api/me/tasks/` (seul `apps/home` le fait),
+donc cette alerte reste invisible pour `admin_keyimmo` aujourd'hui — zéro
+risque de duplication avec `LotLedgerMargin` de ce ticket.
 
-**Piège de test rencontré** : 5 tests préexistants de `DevisView.test.tsx`
-(section « devis verrouillé ») utilisaient `status: 'devis_verrouille'`
-sans mocker `getLotLedger` — une fois `LotLedgerPanel` monté, son propre
-état d'erreur par défaut (« not mocked ») affichait un second bouton
-« Réessayer », rendant `getByRole` ambigu. Corrigé en fournissant
-`getLotLedger: vi.fn().mockResolvedValue(null)` à ces 5 tests.
+**Piège de test rencontré DEUX FOIS, même classe** : à chaque nouvel appel
+API introduit par `LotLedgerPanel` (`getLotLedger`, puis `getLotBcCharges`
+lors de la correction), les tests préexistants qui montent ce panneau sans
+mocker le nouvel appel affichaient un second bandeau d'erreur générique
+(mock par défaut « not mocked »), rendant `getByRole('Réessayer')` ambigu.
+Corrigé la première fois en patchant 5 tests individuellement ; corrigé la
+seconde fois plus robustement via un mock par défaut neutre directement
+dans les helpers `renderPanel`/`renderView`.
 
-12 tests dédiés (10 `LotLedgerPanel.test.tsx` + 2 intégration
-`DevisView.test.tsx`). **437 tests frontend** (5 packages :
-64+75+73+55+170), zéro régression, `tsc --noEmit` propre. **Pas de
-vérification en navigateur réel** : aucun backend/Docker n'était démarré
-dans cet environnement au moment de ce ticket — monter l'infrastructure
-complète (seed `PricingConfig`/`ProgramCost`/`Devis` verrouillé) pour
-cette seule vérification aurait été disproportionné face à la couverture
-automatisée déjà obtenue (messages d'erreur backend EXACTS reproduits via
-`ApiError`).
+## Correction post-fusion : `LotBcCharge` existe bien (ticket F-035 bis)
 
-**Mise à jour post-fusion (voir ticket F-035 bis ci-dessous)** : cette
-section décrit l'état LIVRÉ INITIALEMENT de F-035, avant la découverte
-que B-036 (LotBcCharge, section ci-dessus) était déjà fusionné dans
-`master` sans que cette branche ne l'ait synchronisé — corrigé séparément.
+Signalé par l'utilisateur : `master` avait fusionné B-036 (commit
+`5de9293`) AVANT le début de F-035, mais cette branche était restée
+synchronisée sur un point antérieur (`5b90a23`) — jamais de `git fetch`/
+`merge` refait avant d'écrire F-035. Le contrat backend « vérifié
+directement dans le code » l'a donc été sur un instantané périmé.
+
+**Après `git fetch origin master` + `merge`** : `LotBcCharge` existe bien
+— `GET /api/procurement/lot-ledgers/{lot_id}/bc-charges/?organization_id=...`
+(liste VIDE, jamais 404). `get_lot_ledger_margin` intègre déjà
+`- Σ LotBcCharge.montant` — `LotLedgerMargin` (déjà livré) n'a nécessité
+AUCUN changement, la marge reflète désormais les charges automatiquement.
+`LotBcCharge.lot` est une FK DIRECTE vers `Lot`, PAS vers `LotLedger` —
+les charges s'accumulent dès la première `InspectionMission`, INDÉPENDAMMENT
+de l'existence du grand-livre (décision backend explicite : « une charge
+BC doit TOUJOURS pouvoir être enregistrée »).
+
+**`LotBcChargesPanel` (nouveau composant, `LotLedgerPanel.tsx`)** — rendu
+comme SIBLING de `CreateLotLedgerForm`/`LotLedgerDetail`, jamais imbriqué
+dans l'un ou l'autre, visible AVANT et APRÈS la création du grand-livre.
+Liste chaque charge telle que reçue (jalon, montant, type, date) —
+**aucun total affiché** : la somme est déjà intégrée à la marge mais
+n'est exposée par aucun endpoint comme valeur isolée, la recalculer ici
+aurait été un calcul frontend, même limite que la construction courante.
+
+4 nouveaux tests dédiés aux charges BC (état vide, visible même sans
+grand-livre, liste sans total calculé, erreur avec retry). **441 tests
+frontend** (5 packages : 64+75+73+55+174), zéro régression (2 exécutions
+consécutives propres après fusion de `master`), `tsc --noEmit` propre.
+
+**Leçon générale pour ce projet** : avant de conclure qu'une
+fonctionnalité backend « n'existe pas encore » (dépendance transmise à
+une autre session), vérifier d'abord que la branche locale est à jour
+avec `master` (`git fetch`/`git log HEAD..origin/master`) — un constat
+basé sur un instantané périmé peut recadrer un ticket entier à tort.
 
 ## Conventions de code
 

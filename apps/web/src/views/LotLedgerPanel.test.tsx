@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
-import type { LotLedger } from '../api/types';
+import type { LotBcCharge, LotLedger } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { LotLedgerPanel } from './LotLedgerPanel';
 
@@ -23,8 +23,30 @@ function makeLedger(overrides: Partial<LotLedger> = {}): LotLedger {
   };
 }
 
+function makeBcCharge(overrides: Partial<LotBcCharge> = {}): LotBcCharge {
+  return {
+    id: 'bc-charge-1',
+    organization: ORGANIZATION_ID,
+    lot: LOT_ID,
+    mission: 'mission-1',
+    jalon_type: 'conception',
+    montant: '150000.00',
+    is_global_reference: false,
+    created_by: 'admin-1',
+    created_at: '2026-08-10T09:00:00Z',
+    ...overrides,
+  };
+}
+
 function renderPanel(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
-  const api = createMockApiClient(overrides);
+  const api = createMockApiClient({
+    // Ticket F-035 bis (B-036) — mock par défaut pour que les tests
+    // écrits AVANT l'intégration des charges BC n'aient pas besoin d'être
+    // touchés un par un : `LotBcChargesPanel` se monte désormais sur
+    // CHAQUE rendu du panneau, quel que soit l'état du grand-livre.
+    getLotBcCharges: vi.fn().mockResolvedValue([]),
+    ...overrides,
+  });
   render(withApiClient(api, <LotLedgerPanel organizationId={ORGANIZATION_ID} lotId={LOT_ID} />));
   return { api };
 }
@@ -127,8 +149,8 @@ describe('LotLedgerPanel — détail d\'un grand-livre existant (ticket F-035)',
   });
 
   it(
-    'mentionne explicitement que la construction courante et les charges bureau de contrôle '
-    + 'ne sont pas encore intégrées (dépendance backend, jamais un silence)',
+    'mentionne explicitement que la construction courante n\'est pas exposée comme poste '
+    + 'isolé (dépendance backend, jamais un silence)',
     async () => {
       renderPanel({
         getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
@@ -136,7 +158,7 @@ describe('LotLedgerPanel — détail d\'un grand-livre existant (ticket F-035)',
       });
 
       expect(await screen.findByText(/Détail de la construction/)).toBeInTheDocument();
-      expect(screen.getByText(/charges du bureau de contrôle ne sont pas encore intégrées/)).toBeInTheDocument();
+      expect(screen.getByText(/n'est pas encore exposé comme poste séparé/)).toBeInTheDocument();
     },
   );
 
@@ -180,3 +202,74 @@ describe('LotLedgerPanel — détail d\'un grand-livre existant (ticket F-035)',
     expect(await screen.findByTestId('lot-ledger-margin')).toHaveTextContent('3000000.00');
   });
 });
+
+describe(
+  'LotLedgerPanel — charges bureau de contrôle (ticket F-035 bis, backend B-036, LotBcCharge)',
+  () => {
+    it('affiche un état vide explicite quand aucune charge n\'existe encore', async () => {
+      renderPanel({
+        getLotLedger: vi.fn().mockResolvedValue(null),
+        getLotBcCharges: vi.fn().mockResolvedValue([]),
+      });
+
+      expect(await screen.findByText('Charges bureau de contrôle')).toBeInTheDocument();
+      expect(
+        await screen.findByText('Aucune charge bureau de contrôle enregistrée pour l\'instant.'),
+      ).toBeInTheDocument();
+    });
+
+    it(
+      'reste visible et appelle getLotBcCharges MÊME quand aucun grand-livre n\'existe encore '
+      + '(LotBcCharge a une FK directe vers Lot, indépendante de LotLedger)',
+      async () => {
+        const getLotBcCharges = vi.fn().mockResolvedValue([]);
+        renderPanel({
+          getLotLedger: vi.fn().mockResolvedValue(null),
+          getLotBcCharges,
+        });
+
+        expect(await screen.findByLabelText('Prix client')).toBeInTheDocument();
+        expect(await screen.findByText('Charges bureau de contrôle')).toBeInTheDocument();
+        await waitFor(() => expect(getLotBcCharges).toHaveBeenCalledWith(LOT_ID, ORGANIZATION_ID));
+      },
+    );
+
+    it(
+      'liste chaque charge telle que renvoyée par l\'API, sans afficher de total calculé côté frontend',
+      async () => {
+        renderPanel({
+          getLotLedger: vi.fn().mockResolvedValue(makeLedger()),
+          getLotLedgerMargin: vi.fn().mockResolvedValue({ margin: '2700000.00' }),
+          getLotBcCharges: vi.fn().mockResolvedValue([
+            makeBcCharge({ id: 'bc-1', jalon_type: 'conception', montant: '150000.00', is_global_reference: false }),
+            makeBcCharge({ id: 'bc-2', jalon_type: 'global', montant: '150000.00', is_global_reference: true }),
+          ]),
+        });
+
+        expect(await screen.findByText('conception')).toBeInTheDocument();
+        expect(screen.getAllByText('150000.00')).toHaveLength(2);
+        expect(screen.getByText('Tarif fixe (jalon)')).toBeInTheDocument();
+        expect(screen.getByText('Forfait global')).toBeInTheDocument();
+        // Aucun total (ex. "300000.00") n'est calculé/affiché ici — la
+        // somme est déjà intégrée à la marge, jamais recalculée côté
+        // frontend (voir docstring de LotBcChargesPanel).
+        expect(screen.queryByText('300000.00')).not.toBeInTheDocument();
+      },
+    );
+
+    it('un échec de chargement affiche une erreur distincte, avec "Réessayer"', async () => {
+      const getLotBcCharges = vi.fn()
+        .mockRejectedValueOnce(new Error('network down'))
+        .mockResolvedValueOnce([makeBcCharge()]);
+      renderPanel({
+        getLotLedger: vi.fn().mockResolvedValue(null),
+        getLotBcCharges,
+      });
+
+      await screen.findByText('Impossible de charger les charges bureau de contrôle.');
+      fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+      expect(await screen.findByText('conception')).toBeInTheDocument();
+    });
+  },
+);

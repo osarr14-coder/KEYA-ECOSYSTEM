@@ -4,7 +4,7 @@ import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
-import type { LotLedger } from '../api/types';
+import type { LotBcCharge, LotLedger } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 
 /**
@@ -22,14 +22,15 @@ import { useApiResource } from '../api/useApiResource';
  * `DevisView` — intégrer ce panneau là (une fois `lotAlreadyLocked`) n'est
  * donc pas qu'un choix pratique, c'est la SEULE option qui fonctionne.
  *
- * **Deux dépendances backend bloquantes, documentées explicitement dans
- * l'interface elle-même (jamais un silence) — voir
- * `F-035-grand-livre-lot.md`** : ni la construction courante
- * (`devis.amount + Σ écarts`, jamais recalculée ici — violerait la
- * doctrine « aucun calcul frontend »), ni les charges bureau de contrôle
- * (`LotBcCharge`, ticket B-036, n'existe pas encore côté backend) ne sont
- * exposées comme postes du grand-livre. `get_lot_ledger_margin` le confirme
- * lui-même : TODO nommé pour B-036, formule volontairement incomplète.
+ * **Correctif post-livraison (F-035 bis)** : la livraison initiale
+ * affirmait que `LotBcCharge` (ticket B-036) n'existait pas côté backend
+ * — FAUX, `master` avait déjà fusionné B-036 (commit `5de9293`) AVANT le
+ * début de ce ticket, mais cette branche n'avait jamais synchronisé ce
+ * commit avant d'écrire ce fichier. Une fois `git fetch`/`merge` refaits,
+ * `LotBcCharge`/`GET .../bc-charges/` existent bel et bien — voir
+ * `LotBcChargesPanel` ci-dessous. Seule la « construction courante »
+ * reste une dépendance backend bloquante réelle (voir
+ * `F-035-grand-livre-lot.md`, section « Correction post-fusion »).
  */
 
 function CreateLotLedgerForm({
@@ -155,20 +156,90 @@ function LotLedgerDetail({
         <dd style={{ margin: 0 }} data-testid="lot-ledger-be-alloue">{ledger.be_alloue}</dd>
       </dl>
 
-      {/* Ticket F-035 — mention EXPLICITE des deux dépendances backend
-          bloquantes (jamais un silence) : ni la construction courante, ni
-          les charges bureau de contrôle ne sont exposées par l'API
-          aujourd'hui. Le détail de la construction (devis + ajustements)
-          reste consultable dans le tableau de devis ci-dessus, sur ce
-          MÊME écran — jamais un renvoi vers un autre onglet, ce panneau
-          est intégré à DevisView. */}
+      {/* Ticket F-035 — mention EXPLICITE de la dépendance backend
+          bloquante restante (jamais un silence) : la construction courante
+          n'est toujours pas exposée comme poste isolé par l'API (seule la
+          marge finale, déjà nette de ce terme, l'est). Le détail de la
+          construction (devis + ajustements) reste consultable dans le
+          tableau de devis ci-dessus, sur ce MÊME écran — jamais un renvoi
+          vers un autre onglet, ce panneau est intégré à DevisView. Les
+          charges bureau de contrôle, elles, sont bien listées ci-dessous
+          (`LotBcChargesPanel`) — B-036, fusionné dans master avant ce
+          ticket sans que cette branche ne l'ait synchronisé à temps. */}
       <p style={{ margin: '8px 0 0', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
         Détail de la construction (devis verrouillé + ajustements) : voir le tableau de devis ci-dessus.
-        Les charges du bureau de contrôle ne sont pas encore intégrées à ce grand-livre — dépendance
-        backend non construite à ce jour.
+        La marge disponible ci-dessous est déjà nette de la construction courante — son montant isolé
+        n&apos;est pas encore exposé comme poste séparé par l&apos;API (dépendance backend).
       </p>
 
       <LotLedgerMargin organizationId={organizationId} lotId={lotId} />
+    </div>
+  );
+}
+
+/**
+ * Ticket F-035 bis (ticket B-036 backend, LotBcCharge) — historique
+ * COMPLET des charges bureau de contrôle d'un lot. Rendu comme SIBLING de
+ * `CreateLotLedgerForm`/`LotLedgerDetail` dans `LotLedgerPanel`, jamais
+ * imbriqué dans l'un ou l'autre : `LotBcCharge` a une FK DIRECTE vers
+ * `Lot`, PAS vers `LotLedger` (voir `backend/apps/procurement/models.py`)
+ * — les charges s'accumulent dès la première mission d'inspection, quel
+ * que soit l'état du grand-livre (même avant sa création). Ce panneau
+ * reste donc visible dans les DEUX états.
+ *
+ * **Aucun total affiché** : la somme des charges est déjà intégrée à la
+ * marge disponible (`get_lot_ledger_margin`, `- Σ LotBcCharge.montant`),
+ * mais cette somme elle-même n'est exposée par AUCUN endpoint comme valeur
+ * isolée — la recalculer ici en sommant les lignes listées serait un
+ * calcul frontend, même limite que « construction courante » ci-dessus.
+ * Seules les lignes individuelles (valeurs API directes) sont affichées.
+ */
+function LotBcChargesPanel({ organizationId, lotId }: { organizationId: string; lotId: string }) {
+  const api = useApiClient();
+  const state = useApiResource(() => api.getLotBcCharges(lotId, organizationId), [lotId, organizationId]);
+
+  return (
+    <div style={{ marginTop: '16px' }}>
+      <h4 style={{ margin: '0 0 4px' }}>Charges bureau de contrôle</h4>
+
+      {state.status === 'loading' && <p style={{ fontSize: '13px' }}>Chargement des charges…</p>}
+      {state.status === 'error' && (
+        <ApiErrorBanner
+          error={state.error}
+          title="Impossible de charger les charges bureau de contrôle."
+          onRetry={state.refetch}
+        />
+      )}
+      {state.status === 'success' && (
+        state.data.length === 0 ? (
+          <p style={{ fontSize: '13px', margin: 0, color: semanticColors.neutral.textMuted }}>
+            Aucune charge bureau de contrôle enregistrée pour l&apos;instant.
+          </p>
+        ) : (
+          <table style={{ borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: semanticColors.neutral.textMuted }}>
+                <th style={{ padding: '4px 8px' }}>Jalon</th>
+                <th style={{ padding: '4px 8px' }}>Montant</th>
+                <th style={{ padding: '4px 8px' }}>Type</th>
+                <th style={{ padding: '4px 8px' }}>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.data.map((charge: LotBcCharge) => (
+                <tr key={charge.id}>
+                  <td style={{ padding: '4px 8px' }}>{charge.jalon_type}</td>
+                  <td style={{ padding: '4px 8px' }}>{charge.montant}</td>
+                  <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>
+                    {charge.is_global_reference ? 'Forfait global' : 'Tarif fixe (jalon)'}
+                  </td>
+                  <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>{charge.created_at}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      )}
     </div>
   );
 }
@@ -205,6 +276,11 @@ export function LotLedgerPanel({
           <LotLedgerDetail ledger={state.data} organizationId={organizationId} lotId={lotId} />
         )
       )}
+
+      {/* Sibling des deux branches ci-dessus, jamais imbriqué — les
+          charges BC s'accumulent indépendamment de l'existence du
+          grand-livre (voir docstring de LotBcChargesPanel). */}
+      <LotBcChargesPanel organizationId={organizationId} lotId={lotId} />
     </section>
   );
 }

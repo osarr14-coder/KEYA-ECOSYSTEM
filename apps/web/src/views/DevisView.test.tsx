@@ -50,6 +50,11 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
     searchLots: vi.fn().mockResolvedValue([LOT_RESULT]),
     searchOrganizations: vi.fn().mockResolvedValue([CANDIDATE_ORG_RESULT]),
+    // Ticket F-035 bis (backend B-036) — `LotBcChargesPanel` se monte sur
+    // CHAQUE rendu de `LotLedgerPanel` (voir son propre fichier de test) ;
+    // défaut neutre ici pour que les tests de ce fichier qui ne
+    // s'intéressent pas au grand-livre n'aient pas à le mocker un par un.
+    getLotBcCharges: vi.fn().mockResolvedValue([]),
     ...overrides,
   });
   render(withApiClient(api, <DevisView />));
