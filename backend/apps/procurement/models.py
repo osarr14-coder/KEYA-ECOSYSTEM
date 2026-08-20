@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from apps.inspections.models import InspectionMission
 from apps.organizations.models import Organization
 from apps.programs.models import Lot
 
@@ -167,3 +168,98 @@ class LotLedger(models.Model):
 
     def __str__(self):
         return f'Grand-livre — {self.lot}'
+
+
+class LotBcCharge(models.Model):
+    """Charge bureau de contrôle (BC) — ticket B-036, effet de bord de
+    chaque `InspectionMission` (ticket 012) créée sur un lot. S'accumule
+    PROGRESSIVEMENT au fil du chantier (contrairement à foncier/BE, figés
+    une fois pour toutes par `LotLedger` — B-035, décision utilisateur).
+
+    `lot` en FK DIRECTE, PAS vers `LotLedger` : une charge BC doit
+    TOUJOURS pouvoir être enregistrée (indépendance du contrôle — décision
+    3 du ticket), y compris pour un lot dont le grand-livre n'existe pas
+    ENCORE (`prix_client` est posé manuellement par `admin_keyimmo`, un
+    geste distinct du verrouillage du devis construction, B-035). La marge
+    (`apps.procurement.services.get_lot_ledger_margin`) reste indéfinie
+    tant qu'aucun `LotLedger` n'existe, mais les charges, elles,
+    s'accumulent dès la première mission, quel que soit l'état du
+    grand-livre.
+
+    `mission` en `OneToOneField` : au plus une charge par mission, garantie
+    DB (bien qu'aucune course réelle ne soit attendue ici — chaque charge
+    provient d'un seul appel synchrone à la création de la mission). Une
+    mission peut simplement n'avoir AUCUNE ligne associée (accessoire
+    `mission.bc_charge` lève alors `DoesNotExist`) — voir
+    `record_bc_charge_for_mission` : aucune entrée de barème applicable
+    (ni fixe pour ce jalon, ni globale disponible), ou entrée globale déjà
+    consommée pour ce lot, ou devis du lot pas encore verrouillé au moment
+    du mode global — trois cas où aucune ligne n'est créée, jamais une
+    erreur.
+
+    `jalon_type` — snapshot du jalon de la mission au moment de la charge,
+    `CharField` LIBRE, jamais une FK — même raisonnement que
+    `ControlOfficeRate.jalon_type` (B-034) : ce champ ne sert qu'à
+    l'audit, jamais à une relecture du taux appliqué (le taux lui-même
+    n'est jamais référencé, seul le montant qui en a résulté est figé ici,
+    même doctrine append-only que `DevisAjustement`/`ProgramCost`).
+
+    `is_global_reference` distingue une charge issue du mode
+    `percentage`/« global » (générée AU PLUS UNE FOIS PAR LOT) d'une
+    charge issue d'un tarif `fixed_amount` réel (cumulative, une par
+    mission qui y correspond). Sert de trace de consommation du mode
+    global pour CE lot — `LotBcCharge.objects.filter(lot=lot,
+    is_global_reference=True).exists()`, interrogée plutôt que stockée sur
+    un champ séparé de `Lot`/`LotLedger` (choix d'implémentation,
+    décision E du ticket) : la trace elle-même EST la preuve de
+    consommation, jamais un pointeur mutable supplémentaire.
+
+    Append-only, immuable après création — RLS `SELECT`/`INSERT` scopés
+    organisation, aucune policy `UPDATE`/`DELETE` (voir migration RLS
+    dédiée), même niveau que `DevisAjustement`/`LotLedger`.
+
+    `sequence` construit DÈS LA CONCEPTION (leçon B-031/B-033/B-034) — une
+    vraie collision est peu probable ici (chaque charge provient d'une
+    requête HTTP distincte de création de mission, jamais deux écritures
+    dans la MÊME transaction comme le flake originel de `PricingConfig`),
+    mais la discipline du projet est de ne jamais s'appuyer sur
+    `-created_at` seul dès qu'un tri chronologique existe (liste des
+    charges d'un lot, `list_bc_charges_for_lot`).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='lot_bc_charges',
+    )
+    lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name='bc_charges')
+    mission = models.OneToOneField(InspectionMission, on_delete=models.PROTECT, related_name='bc_charge')
+    jalon_type = models.CharField(max_length=50)
+    montant = models.DecimalField(max_digits=16, decimal_places=2)
+    is_global_reference = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='lot_bc_charges_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    sequence = models.BigIntegerField(unique=True, editable=False)
+
+    class Meta:
+        db_table = 'procurement_lot_bc_charge'
+
+    def save(self, *args, **kwargs):
+        if self.sequence is None:
+            # `nextval()` explicite plutôt que de compter sur le DEFAULT
+            # côté DB — même raison que `ProgramCost.save()`/
+            # `ControlOfficeRate.save()` : `sequence` n'est pas un
+            # `AutoField` (impossible avec la pk UUID de ce modèle), Django
+            # envoie donc TOUJOURS une valeur explicite pour ce champ à
+            # l'INSERT ; ne pas la poser ici enverrait NULL et écraserait
+            # silencieusement le DEFAULT côté DB.
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT nextval('procurement_lot_bc_charge_sequence_seq')")
+                self.sequence = cursor.fetchone()[0]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'Charge BC {self.montant} — {self.lot}'

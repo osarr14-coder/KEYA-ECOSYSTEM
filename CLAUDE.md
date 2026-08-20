@@ -2979,6 +2979,91 @@ vérifiée et confirmée exploitable avant la rédaction de ce ticket.
 immutabilité), suite `procurement` 71 tests, suite complète du projet 339
 tests, tous verts.
 
+## Charges bureau de contrôle, second sous-ticket (ticket B-036, `apps/procurement`)
+
+Voir `B-036-lot-bc-charge.md` pour le détail complet. Second sous-ticket du
+chantier grand-livre (canal 1) — ferme le TODO laissé par B-035 :
+`get_lot_ledger_margin` inclut désormais les charges bureau de contrôle
+(BC), générées automatiquement en effet de bord de chaque
+`InspectionMission` (ticket 012).
+
+**`LotBcCharge` en FK DIRECTE vers `Lot`, PAS vers `LotLedger`** — une
+charge BC doit TOUJOURS pouvoir être enregistrée (indépendance du
+contrôle), y compris pour un lot dont le grand-livre n'existe pas encore
+(`prix_client` posé manuellement par `admin_keyimmo`, geste distinct du
+verrouillage du devis, B-035). `mission` en `OneToOneField` (au plus une
+charge par mission). `sequence` construite dès la conception (leçon
+B-031/B-033/B-034/B-035), même si une vraie collision est peu probable ici
+(chaque charge provient d'une requête HTTP distincte). Append-only, RLS
+`SELECT`/`INSERT` scopés organisation, aucune policy `UPDATE`/`DELETE`.
+
+**`GLOBAL_CONTROL_OFFICE_JALON_TYPE = 'global'`, définie dans
+`apps.pricing.services`, PAS `apps.procurement`** — nécessaire pour que la
+nouvelle garde de validation à la création (voir ci-dessous) la connaisse ;
+`apps.procurement.services` importe déjà `apps.pricing.services`/
+`apps.pricing.models`, jamais l'inverse, ce placement évite tout cycle
+d'import.
+
+**Garde ajoutée à `apps.pricing.services.create_control_office_rate`
+(B-034) : `calculation_mode='percentage'` ET `jalon_type` différent de la
+valeur réservée → refus explicite (400), aucune ligne créée.** Une entrée
+`percentage` sur un `jalon_type` réel ne serait JAMAIS consommée
+(`record_bc_charge_for_mission` ne cherche une entrée `percentage` que sous
+la valeur réservée) — mieux vaut un refus à la source qu'un silence en
+aval. Trois tests dédiés à `apps/pricing/tests.py`
+(`TestControlOfficeRatePercentageJalonTypeGuard`) ; trois tests existants
+de B-034 (`current`/`history`/tie-break par `sequence`) adaptés pour ne
+plus mélanger `percentage`/`fixed_amount` sur le même `jalon_type` réel —
+non-régressions, pas des corrections de bug.
+
+**`record_bc_charge_for_mission(*, mission, actor)`
+(`apps.procurement.services`) — appelée SYNCHRONEMENT, DANS le même bloc
+`transaction.atomic()` et sous la MÊME bascule RLS que la création de la
+mission elle-même** (`apps.inspections.services.create_mission`, entre
+`_create_mission_row(...)` et le `finally:`), jamais `.delay()`'d : une
+charge BC perdue/retardée corromprait irrémédiablement le calcul de marge
+du grand-livre — contrairement à `Task` (notification, effet de bord
+secondaire). Ne lève JAMAIS d'exception par conception : soit elle crée
+une charge, soit rien.
+
+**Logique de résolution du taux applicable** : (1) entrée `fixed_amount`
+pour le `jalon_type` PRÉCIS de la mission → charge cumulative (une par
+mission qui y correspond) ; (2) sinon, entrée `percentage` sous
+`GLOBAL_CONTROL_OFFICE_JALON_TYPE`, consommée AU PLUS UNE FOIS PAR LOT —
+suivi de consommation par REQUÊTE sur `LotBcCharge.is_global_reference`
+(`.filter(lot=lot, is_global_reference=True).exists()`), PAS un champ
+dédié mutable sur `Lot`/`LotLedger` ; (3) devis du lot pas encore
+verrouillé au moment où le mode global s'appliquerait → aucune charge,
+l'entrée globale N'EST PAS marquée consommée (aucune ligne créée), reste
+disponible pour une mission ultérieure une fois le devis verrouillé —
+découle naturellement du choix (2), aucun code dédié nécessaire.
+
+**Alerte `ALERT` sur marge négative — réutilise EXACTEMENT le mécanisme du
+ticket 024** (`create_task_for_devis_ajustement_refuse`) :
+`_get_or_create_task` (dédoublonnage, ticket 017), `subject` = le
+`LotLedger`, `assignee` = l'admin qui vient de créer la mission. **Limite
+héritée, pas nouvelle** : la contrainte `UniqueConstraint` sur `Task`
+n'est pas scopée par statut — une fois une alerte résolue, une nouvelle
+dérive de marge sur le même grand-livre ne regénère pas d'alerte
+(comportement déjà présent pour `DevisAjustement` refusé).
+
+**Nouvel endpoint** `GET /api/procurement/lot-ledgers/{lot_id}/bc-charges/`
+— historique complet des charges d'un lot, chronologique, réservé
+`admin_keyimmo`.
+
+**Tests de mission via l'endpoint RÉEL** (`backoffice-mission-create`,
+pas un appel direct à `apps.inspections.services.create_mission`) — exerce
+la chaîne complète vue → service → effet de bord BC, pas seulement la
+fonction de service en isolation. Nouveau helper `_create_mission_for_lot`
+(`apps/procurement/tests.py`) : instancie les jalons du lot à la première
+utilisation (`_setup_lot_up_for_bid` n'en avait jamais eu besoin avant ce
+ticket), crée une `WorkDeclaration` et un inspecteur frais dans sa propre
+organisation (règle d'indépendance, ticket 005).
+
+14 tests dédiés (`apps/procurement/tests.py`) + 3 tests de garde
+(`apps/pricing/tests.py`), suite `procurement` 85 tests, suite `pricing` 59
+tests, suite complète du projet à confirmer après fusion.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

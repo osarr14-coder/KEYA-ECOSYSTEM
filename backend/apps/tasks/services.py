@@ -104,10 +104,20 @@ def _devis_ajustement_refuse_label(devis, admin):
     )
 
 
+def _lot_ledger_margin_negative_label(ledger):
+    """Ticket B-036 — cette Task ne fait qu'annoncer un FAIT calculé
+    (`get_lot_ledger_margin`), jamais une décision : aucun risque
+    d'attribution KEYIMMO à couvrir ici, mais le générateur reste soumis
+    au même registre par discipline, comme les trois précédents.
+    """
+    return f'Marge du grand-livre du lot « {ledger.lot.name} » passée sous zéro — vérification requise'
+
+
 LABEL_GENERATORS = [
     _reserve_opened_label,
     _mission_assigned_label,
     _devis_ajustement_refuse_label,
+    _lot_ledger_margin_negative_label,
 ]
 
 
@@ -213,6 +223,51 @@ def create_task_for_devis_ajustement_refuse(devis, admin):
         'program': devis.lot.asset.program,
         'assignee': admin,
         'label': _devis_ajustement_refuse_label(devis, admin),
+        'priority': TaskPriority.HIGH,
+    }
+    task, _created = _get_or_create_task(lookup, defaults)
+    return task
+
+
+LOT_LEDGER_MARGIN_NEGATIVE_SOURCE = 'lot_ledger_margin_negative'
+
+
+def create_task_for_lot_ledger_margin_negative(ledger, actor):
+    """Ticket B-036 : notifie `admin_keyimmo` que la marge disponible du
+    grand-livre d'un lot vient de passer sous zéro, suite à la création
+    d'une charge bureau de contrôle (`apps.procurement.services.
+    record_bc_charge_for_mission`). Réutilise EXACTEMENT le même schéma
+    que `create_task_for_devis_ajustement_refuse` (ticket 024) :
+    `subject` = le `LotLedger` (la marge du GRAND-LIVRE est en alerte, pas
+    la charge ni le lot), auto-assignée à `actor` (l'admin qui vient de
+    créer la mission qui a fait basculer la marge).
+
+    Appelée SYNCHRONEMENT depuis `record_bc_charge_for_mission`, sous la
+    MÊME bascule RLS que la mission — jamais via `.delay()`, même
+    raisonnement que `create_task_for_devis_ajustement_refuse` (trace
+    durable d'un événement déjà survenu DANS la requête courante, pas un
+    traitement à découpler).
+
+    **Limite héritée de `_get_or_create_task` (ticket 017), pas nouvelle
+    ici** : la contrainte `UniqueConstraint` sur `(subject_type,
+    subject_id, source)` n'est pas scopée par statut — une fois une
+    première alerte créée puis marquée `DONE`, une DEUXIÈME dérive de
+    marge ultérieure sur le MÊME grand-livre ne génère PAS de nouvelle
+    alerte (`_get_or_create_task` retrouve l'ancienne, déjà traitée,
+    silencieusement). Comportement déjà présent pour `DevisAjustement`
+    refusé, pas une régression introduite par ce ticket.
+    """
+    lookup = {
+        'subject_type': ContentType.objects.get_for_model(ledger),
+        'subject_id': ledger.id,
+        'source': LOT_LEDGER_MARGIN_NEGATIVE_SOURCE,
+    }
+    defaults = {
+        'organization': ledger.organization,
+        'type': TaskType.ALERT,
+        'program': ledger.lot.asset.program,
+        'assignee': actor,
+        'label': _lot_ledger_margin_negative_label(ledger),
         'priority': TaskPriority.HIGH,
     }
     task, _created = _get_or_create_task(lookup, defaults)

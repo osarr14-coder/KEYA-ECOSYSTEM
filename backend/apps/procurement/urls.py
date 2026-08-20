@@ -7,6 +7,7 @@ from .views import (
     DevisAjustementView,
     DevisCreateView,
     DevisLockView,
+    LotBcChargeListView,
     LotLedgerCreateView,
     LotLedgerDetailView,
     LotLedgerMarginView,
@@ -50,5 +51,11 @@ urlpatterns = [
     path(
         'procurement/lot-ledgers/<uuid:lot_id>/margin/',
         LotLedgerMarginView.as_view(), name='lot-ledger-margin',
+    ),
+    # Ticket B-036 — charges bureau de contrôle (canal 1), second
+    # sous-ticket : historique des charges d'un lot.
+    path(
+        'procurement/lot-ledgers/<uuid:lot_id>/bc-charges/',
+        LotBcChargeListView.as_view(), name='lot-bc-charge-list',
     ),
 ]
