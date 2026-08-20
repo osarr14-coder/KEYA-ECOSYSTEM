@@ -2210,6 +2210,34 @@ d'un template invalide (dernier palier ≠ 100) refusée avec le message
 backend EXACT, aucun template fantôme créé. 291 tests frontend (5
 packages : 44+37+54+40+116), zéro régression, `tsc --noEmit` propre.
 
+## Liste des CountryPack (ticket B-030, `apps/organizations`)
+
+Voir `B-030-country-pack-list.md` pour le détail complet. Découvert par la
+session frontend en préparant F-028 (écran de tarification admin) :
+`PricingConfig`/`LegalPaymentTierTemplate` exigent tous un `country_pack_id`,
+mais aucun endpoint n'exposait la liste des `CountryPack` pour construire un
+sélecteur. `apps/organizations` gagne sa PREMIÈRE route dans ce projet —
+`views.py` était encore le stub Django par défaut, `urls.py` n'existait pas.
+
+**`GET /api/organizations/country-packs/` (`admin_keyimmo` uniquement)** —
+`{id, label, code}[]`, triés par `label`. Filtre `is_active=True` : **premier
+usage réel de ce champ dans tout le projet** — les deux seules lectures
+existantes d'un `CountryPack` (`apps.pricing.services.create_pricing_config`/
+`create_legal_payment_tier_template`) résolvent par `id` uniquement, sans
+jamais vérifier ce statut. Décision assumée : un sélecteur destiné à préparer
+la création de taux/paliers légaux réels ne doit jamais proposer un pays non
+encore activé.
+
+**Point de vigilance explicitement noté, NON corrigé dans ce ticket** : un
+`admin_keyimmo` qui soumettrait directement un `country_pack_id` inactif
+(deviné, ou copié d'un autre contexte) à `create_pricing_config`/`create_legal_
+payment_tier_template` pourrait contourner le filtre de CET endpoint de
+liste — ces deux fonctions ne vérifient elles-mêmes aucun statut `is_active`.
+Candidat explicite pour un futur ticket de durcissement.
+
+5 tests dédiés, suite `organizations` 10 tests, suite complète du projet 280
+tests, tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

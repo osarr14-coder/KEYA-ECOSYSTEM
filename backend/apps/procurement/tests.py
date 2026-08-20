@@ -880,6 +880,11 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # constructeur, mêmes principes que toutes les autres routes
             # admin de ce module).
             'procurement-admin-lot-search', 'procurement-admin-organization-search',
+            # Ticket B-030 — ajout conscient : `apps/organizations` gagne
+            # sa première route (`apps/organizations/urls.py` n'existait
+            # pas avant ce ticket), réservée à `admin_keyimmo`, jamais
+            # accessible au rôle constructeur.
+            'country-pack-list',
         }
         assert actual == expected
 
