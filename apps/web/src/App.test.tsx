@@ -1,5 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  act, fireEvent, render, screen, waitFor,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from './api/client';
 import type { BackofficeUserDetail, Me } from './api/types';
@@ -10,6 +12,13 @@ beforeEach(() => {
   // Ticket 021 : un token en localStorage bascule App vers le back-office —
   // jamais laisser un test précédent en contaminer un autre.
   localStorage.clear();
+});
+
+afterEach(() => {
+  // Ticket F-031 : l'onglet actif est désormais dérivé du pathname — jamais
+  // laisser un test qui navigue (ci-dessous) contaminer le pathname d'un
+  // test suivant dans ce même fichier (jsdom partage `window` par fichier).
+  window.history.replaceState(null, '', '/');
 });
 
 function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}, redirect = vi.fn()) {
@@ -255,6 +264,66 @@ describe(
         expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
       },
     );
+  },
+);
+
+describe(
+  'App — navigation par URL des écrans admin (ticket F-031)',
+  () => {
+    function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
+      localStorage.setItem('keya_access_token', 'stored-admin-token');
+      const api = createMockApiClient(overrides);
+      render(withApiClient(api, <App />));
+      return { api };
+    }
+
+    const getMeAdmin = () => vi.fn().mockResolvedValue({
+      id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
+      memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+    });
+
+    it('charger directement /tarifs affiche l\'onglet Tarifs actif, jamais Back-office par défaut', async () => {
+      window.history.replaceState(null, '', '/tarifs');
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      expect(screen.getByRole('button', { name: 'Tarifs' })).toHaveAttribute('aria-current', 'page');
+      expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
+    });
+
+    it('changer d\'onglet via TabBar met à jour l\'URL (pushState), sans recharger la page', async () => {
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      fireEvent.click(screen.getByRole('button', { name: "Devis / Appels d'offres" }));
+
+      await screen.findByLabelText('Rechercher un lot (nom)');
+      expect(window.location.pathname).toBe('/devis');
+    });
+
+    it('le bouton retour du navigateur restaure l\'onglet précédent', async () => {
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      fireEvent.click(screen.getByRole('button', { name: 'Paliers légaux' }));
+      await screen.findByRole('heading', { name: /paliers légaux/i });
+
+      act(() => {
+        window.history.replaceState(null, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+
+      expect(await screen.findByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('un chemin admin inconnu retombe sur Back-office et corrige l\'URL affichée', async () => {
+      window.history.replaceState(null, '', '/ecran-qui-n-existe-pas');
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      expect(screen.getByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
+      expect(window.location.pathname).toBe('/');
+    });
   },
 );
 

@@ -2332,6 +2332,65 @@ point — la garde est purement préventive.
 3 tests dédiés, suite `pricing` 36 tests, suite complète du projet 283 tests,
 tous verts.
 
+## Navigation par URL des écrans admin (ticket F-031, `apps/web`)
+
+Voir `F-031-navigation-url-admin.md` pour le détail complet. Avant ce
+ticket, les 4 écrans admin (`BackofficeView`/`DevisView`/`PricingView`/
+`LegalPaymentTiersView`) basculaient via un simple `useState` dans
+`AuthenticatedTabs` (`App.tsx`) — aucune synchronisation avec l'URL, le
+bouton retour ne faisait rien, un rechargement retombait toujours sur
+`backoffice`. `AppShell` (sidebar) rendait déjà de vrais `<a href="/devis">`
+etc. (`MODULES[].href`, ticket 025) mais c'étaient des ancres inertes :
+rien ne les parsait au chargement.
+
+**Approche validée par l'utilisateur AVANT implémentation** (demande
+explicite du ticket) : pas de routeur (`react-router`...) — 4 onglets
+plats derrière une seule garde `admin_keyimmo` ne le justifient pas.
+Retenu : un hook local à `apps/web`, zéro dépendance —
+`useUrlSyncedTab` (`src/navigation/useUrlSyncedTab.ts`), appuyé sur des
+fonctions pures testables sans DOM (`src/navigation/tabRouting.ts` :
+`resolveTabFromPath`/`pathForTab`). `pushState`/`replaceState`
+UNIQUEMENT — jamais une navigation complète, qui redémarrerait `main.tsx`
+depuis zéro et perdrait le profil `/me` déjà chargé pour un simple
+changement d'onglet.
+
+**Périmètre délibérément restreint — `AppShell` non touché** : composant
+PARTAGÉ avec HOME/BUILD (ticket 007/023), son API n'a pas changé. Ses
+ancres de sidebar restent des navigations plein-page classiques (elles
+pointent déjà vers les bons chemins depuis le ticket 025) — elles
+fonctionnent désormais CORRECTEMENT (le hook lit le pathname au montage),
+juste sans la fluidité d'une navigation SPA. `TabBar`, le mécanisme
+réellement utilisé au quotidien pour changer d'onglet, est lui câblé au
+hook.
+
+**Anti-duplication au passage** : `MODULES` (sidebar) et `TABS` (`TabBar`)
+étaient deux tableaux id/label maintenus séparément à la main depuis le
+ticket F-030 — remplacés par une source unique, `TAB_DEFINITIONS`
+(`App.tsx`), dont `MODULES`/`TABS`/`TAB_ROUTES` sont tous dérivés.
+
+**Piège de test rencontré** : `window.history.back()` sous jsdom ne
+déclenchait pas fiablement de `popstate` pour des entrées `pushState`
+sans navigation réelle (alors que `history.length` progressait
+correctement à chaque `pushState`, testé séparément) — corrigé en testant
+directement le CONTRAT documenté par le hook (écouter `popstate`) plutôt
+que l'implémentation interne de jsdom : le test simule ce qu'un vrai
+bouton retour produit (`history.replaceState` + `dispatchEvent(new
+PopStateEvent('popstate'))`) au lieu de `history.back()`.
+
+**15 nouveaux tests** (5 `tabRouting.test.ts` + 6 `useUrlSyncedTab.test.tsx`
++ 4 `App.test.tsx`). **308 tests frontend** (5 packages :
+44+37+54+40+133), zéro régression, `tsc --noEmit` propre. **Vérifié dans un
+vrai navigateur, avec un vrai backend** (compte `admin_keyimmo` réel) :
+clic d'onglet sans rechargement, rechargement direct sur `/tarifs` affiche
+le bon écran avec `aria-current` cohérent sidebar+`TabBar`, bouton retour
+réel restaure l'onglet précédent, chemin inconnu retombe sur Back-office
+et corrige l'URL, lien direct vers `/devis` fonctionne de bout en bout.
+
+**Hors scope explicite** : configuration de repli SPA pour un hébergement
+de production (nginx/Netlify...) — ce projet n'a aucune config de
+déploiement à ce jour (dette déjà notée au ticket 021) ; interception des
+clics sidebar `AppShell` ; tout routage pour HOME/BUILD/CONTROL PWA.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

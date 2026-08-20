@@ -11,35 +11,44 @@ import { deriveAllRoleCodes, hasAdminKeyimmoAccess } from './auth/adminAccess';
 import {
   buildRedirectUrl, isSameOriginRedirect, resolveAppOrigins, resolveRedirectApp,
 } from './auth/redirectTarget';
+import type { TabRoute } from './navigation/tabRouting';
+import { useUrlSyncedTab } from './navigation/useUrlSyncedTab';
 import { BackofficeView } from './views/BackofficeView';
 import { DevisView } from './views/DevisView';
 import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
 import { PricingView } from './views/PricingView';
 
-// Ticket 021 — réservé à admin_keyimmo, `requiredRoles` reste posé malgré la
-// garde déjà faite dans `AuthenticatedApp` (ci-dessous) — défense en
-// profondeur, même discipline que RLS + filtre applicatif ailleurs dans ce
-// projet (CLAUDE.md). Ticket 025 — un second module apparaît
-// (« Devis / Appels d'offres ») : apps/web n'héberge plus un seul écran
-// depuis ce ticket, sur le MÊME schéma d'onglets déjà établi pour HOME/BUILD
-// (`TabBar`, voir ci-dessous) plutôt qu'un mécanisme parallèle. Ticket
-// F-028 — un troisième module (« Tarifs ») suit le même schéma. Ticket
-// F-030 — un quatrième module (« Paliers légaux ») suit le même schéma.
-const MODULES: AppModule[] = [
-  { id: 'backoffice', label: 'Back-office', href: '/', requiredRoles: ['admin_keyimmo'] },
-  { id: 'devis', label: 'Devis / Appels d\'offres', href: '/devis', requiredRoles: ['admin_keyimmo'] },
-  { id: 'pricing', label: 'Tarifs', href: '/tarifs', requiredRoles: ['admin_keyimmo'] },
-  { id: 'legal-tiers', label: 'Paliers légaux', href: '/paliers-legaux', requiredRoles: ['admin_keyimmo'] },
-];
-
 type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers';
 
-const TABS: { id: AuthenticatedTabId; label: string }[] = [
-  { id: 'backoffice', label: 'Back-office' },
-  { id: 'devis', label: 'Devis / Appels d\'offres' },
-  { id: 'pricing', label: 'Tarifs' },
-  { id: 'legal-tiers', label: 'Paliers légaux' },
+/**
+ * Source UNIQUE id/label/chemin des 4 onglets admin — ticket F-031 :
+ * `MODULES` (sidebar `AppShell`) et `TABS` (`TabBar`) en étaient deux copies
+ * manuellement synchronisées depuis le ticket F-030 (id/label dupliqués,
+ * jamais le chemin pour `TabBar`, qui ne connaissait pas encore l'URL avant
+ * ce ticket) — dérivés ci-dessous plutôt que dupliqués une troisième fois.
+ * `path` alimente aussi `TAB_ROUTES` (`useUrlSyncedTab`, ci-dessous) :
+ * réservé à admin_keyimmo (`requiredRoles`), défense en profondeur en plus
+ * de la garde déjà faite dans `AuthenticatedApp`, même discipline que RLS +
+ * filtre applicatif ailleurs dans ce projet (CLAUDE.md).
+ */
+const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string }[] = [
+  { id: 'backoffice', label: 'Back-office', path: '/' },
+  { id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis' },
+  { id: 'pricing', label: 'Tarifs', path: '/tarifs' },
+  { id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux' },
 ];
+
+const MODULES: AppModule[] = TAB_DEFINITIONS.map(({ id, label, path }) => ({
+  id, label, href: path, requiredRoles: ['admin_keyimmo'],
+}));
+
+const TABS: { id: AuthenticatedTabId; label: string }[] = TAB_DEFINITIONS.map(
+  ({ id, label }) => ({ id, label }),
+);
+
+const TAB_ROUTES: TabRoute<AuthenticatedTabId>[] = TAB_DEFINITIONS.map(
+  ({ id, path }) => ({ id, path }),
+);
 
 export interface AppProps {
   redirect?: (url: string) => void;
@@ -131,9 +140,14 @@ function AuthenticatedApp() {
  * l'écran Devis/Appels d'offres (maquette au ticket 025/026, fonctionnel
  * depuis le ticket 027, voir `DevisView.tsx`). Même `TabBar` déjà réutilisé
  * par HOME/BUILD (ticket 023), jamais un second mécanisme d'onglets.
+ *
+ * Ticket F-031 : l'onglet actif est désormais synchronisé avec l'URL
+ * (`useUrlSyncedTab`) plutôt qu'un simple `useState` — chaque écran admin a
+ * sa propre URL, le bouton retour du navigateur fonctionne, un lien direct
+ * survit à un rechargement de page.
  */
 function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
-  const [activeTab, setActiveTab] = useState<AuthenticatedTabId>('backoffice');
+  const [activeTab, setActiveTab] = useUrlSyncedTab(TAB_ROUTES, 'backoffice');
 
   return (
     <AppShell
