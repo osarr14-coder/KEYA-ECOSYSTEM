@@ -11,17 +11,18 @@ from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
 from apps.organizations.models import CountryPack, Membership, Organization, Role
-from apps.pricing.models import PricingCanal
+from apps.pricing.models import ControlOfficeCalculationMode, PricingCanal
 from apps.pricing import services as pricing_services
+from apps.pricing.services import GLOBAL_CONTROL_OFFICE_JALON_TYPE
 from apps.programs import services as programs_services
 from apps.programs.models import Asset, Lot, Program, ProgramCostRepartitionMethod
 from apps.programs.services import instantiate_milestones_for_lot
 from apps.tasks.models import Task, TaskStatus, TaskType
-from apps.tasks.services import DEVIS_AJUSTEMENT_REFUSE_SOURCE
+from apps.tasks.services import DEVIS_AJUSTEMENT_REFUSE_SOURCE, LOT_LEDGER_MARGIN_NEGATIVE_SOURCE
 from apps.trust.models import TrustEvent
 
 from . import services
-from .models import Devis, DevisAjustement, LotLedger
+from .models import Devis, DevisAjustement, LotBcCharge, LotLedger
 
 PASSWORD = 'strongpass123'
 
@@ -899,6 +900,10 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # (canal 1), première partie, réservé à `admin_keyimmo`, jamais
             # accessible au rôle constructeur/sponsor.
             'lot-ledger-create', 'lot-ledger-detail', 'lot-ledger-margin',
+            # Ticket B-036 — ajout conscient : charges bureau de contrôle
+            # (canal 1), second sous-ticket, réservé à `admin_keyimmo`,
+            # jamais accessible au rôle constructeur/sponsor.
+            'lot-bc-charge-list',
         }
         assert actual == expected
 
@@ -1689,6 +1694,47 @@ def _setup_lot_ledger_ready(
     return admin_client, admin_org, admin_user, sponsor_org, lot, devis, candidate_a, candidate_b
 
 
+def _create_mission_for_lot(*, admin_client, admin_user, admin_org, sponsor_org, lot, milestone_code, suffix):
+    """Ticket B-036 : crée une VRAIE `InspectionMission` via l'endpoint réel
+    `backoffice-mission-create` (pas un raccourci `apps.inspections.
+    services.create_mission` appelé directement) — exerce la chaîne
+    complète vue → service → `record_bc_charge_for_mission`, effet de bord
+    au cœur de ce ticket.
+
+    Les jalons du lot ne sont PAS instanciés par `_setup_lot_up_for_bid`
+    (helper générique du module, jamais eu besoin de jalons avant ce
+    ticket) — instanciés ici, une seule fois par lot (`lot.milestones.
+    exists()` évite un second appel s'il y a plusieurs missions sur le
+    même lot dans un même test).
+
+    Un inspecteur FRAÎCHEMENT enregistré dans SA PROPRE organisation à
+    chaque appel — la règle d'indépendance du contrôle (ticket 005)
+    interdit un inspecteur membre de l'organisation cible ; `suffix` doit
+    être unique par appel pour éviter toute collision d'email/organisation
+    entre deux missions du même test.
+    """
+    set_rls_context(organization_id=sponsor_org.id)
+    if not lot.milestones.exists():
+        instantiate_milestones_for_lot(lot)
+    milestone = lot.milestones.get(code=milestone_code)
+    declaration = create_work_declaration(organization=sponsor_org, milestone=milestone, declared_by=admin_user)
+    set_rls_context(organization_id=admin_org.id)
+
+    _inspecteur_client, _inspecteur_org, inspecteur_user = _register(
+        f'inspecteur-{suffix}@example.com', f'Org Inspecteur {suffix}', role_code='inspecteur',
+    )
+
+    return admin_client.post(
+        reverse('backoffice-mission-create'),
+        {
+            'organization': str(sponsor_org.id),
+            'work_declaration': str(declaration.id),
+            'assigned_inspector': str(inspecteur_user.id),
+        },
+        format='json',
+    )
+
+
 @pytest.mark.django_db
 class TestLotLedgerCreation:
     """Ticket B-035 — grand-livre de coûts par lot (canal 1), première
@@ -2064,3 +2110,421 @@ class TestLotLedgerImmutability:
             assert cursor.rowcount == 0
 
         assert LotLedger.objects.filter(id=ledger_id).exists()
+
+
+@pytest.mark.django_db
+class TestLotBcChargeFixedAmount:
+    """Ticket B-036, décision 1 : une entrée `fixed_amount` pour le
+    `jalon_type` PRÉCIS d'une mission produit une charge CUMULATIVE — une
+    par mission qui y correspond, jamais consommée une seule fois.
+    """
+
+    def test_two_missions_on_the_same_fixed_amount_jalon_produce_two_cumulative_charges(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-fixed-cumulative')
+        )
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type='fondations', calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+            fixed_amount=Decimal('50000.00'),
+        )
+
+        first_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='fixed-cumulative-1',
+        )
+        assert first_response.status_code == 201, first_response.data
+        second_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='fixed-cumulative-2',
+        )
+        assert second_response.status_code == 201, second_response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        charges = list(LotBcCharge.objects.filter(lot=lot).order_by('created_at', 'sequence'))
+        assert len(charges) == 2
+        assert all(charge.montant == Decimal('50000.00') for charge in charges)
+        assert all(not charge.is_global_reference for charge in charges)
+
+
+@pytest.mark.django_db
+class TestLotBcChargeGlobalPercentage:
+    """Ticket B-036, décisions 2/C/E : le mode `percentage`/« global » se
+    déclenche AU PLUS UNE FOIS PAR LOT, à la première mission pour
+    laquelle aucune entrée `fixed_amount` n'existe pour son `jalon_type`
+    précis — jamais répété aux missions suivantes du même lot.
+    """
+
+    def test_first_mission_without_a_fixed_rate_consumes_the_global_entry(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-global-first', devis_amount=Decimal('1000000.00'))
+        )
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type=GLOBAL_CONTROL_OFFICE_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('5.00'),
+        )
+
+        response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='conception', suffix='global-first',
+        )
+        assert response.status_code == 201, response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        charge = LotBcCharge.objects.get(lot=lot)
+        assert charge.is_global_reference is True
+        assert charge.montant == Decimal('50000.00')  # 1 000 000 × 5 %
+        assert charge.jalon_type == 'conception'
+
+    def test_second_mission_on_a_different_jalon_without_fixed_rate_produces_no_charge(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-global-second', devis_amount=Decimal('1000000.00'))
+        )
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type=GLOBAL_CONTROL_OFFICE_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('5.00'),
+        )
+
+        first_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='conception', suffix='global-second-1',
+        )
+        assert first_response.status_code == 201, first_response.data
+        second_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='gros_oeuvre', suffix='global-second-2',
+        )
+        assert second_response.status_code == 201, second_response.data  # jamais bloquée
+
+        set_rls_context(organization_id=sponsor_org.id)
+        assert LotBcCharge.objects.filter(lot=lot).count() == 1
+
+
+@pytest.mark.django_db
+class TestLotBcChargeNoRateConfigured:
+    """Ticket B-036, décision 3 : aucune entrée applicable (ni fixe ni
+    globale) → la mission est créée normalement, AUCUNE charge, jamais un
+    blocage.
+    """
+
+    def test_mission_created_normally_with_no_applicable_rate_at_all(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-no-rate')
+        )
+
+        response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='conception', suffix='no-rate',
+        )
+        assert response.status_code == 201, response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        assert not LotBcCharge.objects.filter(lot=lot).exists()
+
+
+@pytest.mark.django_db
+class TestLotBcChargeDevisNotLockedYet:
+    """Ticket B-036, décision G : le mode global s'applique au montant
+    construction courant, indéfinissable sans devis verrouillé — aucune
+    charge n'est créée dans ce cas, ET l'entrée globale N'EST PAS marquée
+    consommée : elle reste disponible pour une mission ultérieure sur ce
+    même lot, une fois le devis verrouillé.
+    """
+
+    def test_global_mode_without_a_locked_devis_produces_no_charge_and_stays_available(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('bc-devis-not-locked')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type=GLOBAL_CONTROL_OFFICE_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('5.00'),
+        )
+        # Aucun devis verrouillé pour ce lot à ce stade.
+
+        first_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='conception', suffix='devis-not-locked-1',
+        )
+        assert first_response.status_code == 201, first_response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        assert not LotBcCharge.objects.filter(lot=lot).exists()
+
+        # Verrouille le devis APRÈS la première mission.
+        _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=Decimal('1000000.00'),
+        )
+
+        second_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='gros_oeuvre', suffix='devis-not-locked-2',
+        )
+        assert second_response.status_code == 201, second_response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        charge = LotBcCharge.objects.get(lot=lot)
+        assert charge.is_global_reference is True
+        assert charge.montant == Decimal('50000.00')
+        assert charge.jalon_type == 'gros_oeuvre'
+
+
+@pytest.mark.django_db
+class TestLotLedgerMarginIncludesBcCharges:
+    """Ticket B-036, décision H : `get_lot_ledger_margin` ferme le TODO
+    laissé par B-035 — la marge soustrait désormais la somme des charges
+    BC du lot, fixes et globale confondues.
+    """
+
+    def test_margin_subtracts_cumulative_bc_charges(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready(
+                'bc-margin', devis_amount=Decimal('1000000.00'),
+                foncier_total=Decimal('5000000.00'), be_total=Decimal('1000000.00'),
+            )
+        )
+        create_response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '20000000.00'},
+            format='json',
+        )
+        assert create_response.status_code == 201, create_response.data
+
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type='fondations', calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+            fixed_amount=Decimal('50000.00'),
+        )
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type=GLOBAL_CONTROL_OFFICE_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('2.00'),
+        )
+
+        fixed_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='margin-fixed',
+        )
+        assert fixed_response.status_code == 201, fixed_response.data
+        global_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='conception', suffix='margin-global',
+        )
+        assert global_response.status_code == 201, global_response.data
+
+        margin_response = admin_client.get(
+            reverse('lot-ledger-margin', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert margin_response.status_code == 200
+        # prix_client 20 000 000 - foncier 5 000 000 - be 1 000 000
+        # - construction 1 000 000 - charge fixe 50 000
+        # - charge globale (1 000 000 × 2 % = 20 000).
+        expected_margin = (
+            Decimal('20000000.00') - Decimal('5000000.00') - Decimal('1000000.00')
+            - Decimal('1000000.00') - Decimal('50000.00') - Decimal('20000.00')
+        )
+        assert margin_response.data['margin'] == expected_margin
+
+
+@pytest.mark.django_db
+class TestLotBcChargeNegativeMarginAlert:
+    """Ticket B-036, décisions 3/I : la création d'une charge BC n'est
+    JAMAIS bloquée par la marge disponible — si elle passe sous zéro, une
+    Task ALERT se déclenche, jamais un rejet de la mission.
+    """
+
+    def test_mission_creation_succeeds_and_triggers_an_alert_when_margin_goes_negative(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready(
+                'bc-alert', devis_amount=Decimal('1000000.00'),
+                foncier_total=Decimal('500000.00'), be_total=Decimal('100000.00'),
+            )
+        )
+        # prix_client délibérément TRÈS bas : foncier + BE + construction
+        # seuls dépassent déjà ce montant, la charge BC n'a même pas besoin
+        # d'être grande pour faire basculer la marge sous zéro.
+        create_response = admin_client.post(
+            reverse('lot-ledger-create'),
+            {'organization': str(sponsor_org.id), 'lot': str(lot.id), 'prix_client': '1000000.00'},
+            format='json',
+        )
+        assert create_response.status_code == 201, create_response.data
+
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type='fondations', calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+            fixed_amount=Decimal('50000.00'),
+        )
+
+        response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='alert',
+        )
+        assert response.status_code == 201, response.data  # jamais bloquée par la marge
+
+        set_rls_context(organization_id=sponsor_org.id)
+        ledger = LotLedger.objects.get(lot=lot)
+        assert services.get_lot_ledger_margin(ledger) < Decimal('0')
+
+        task = Task.objects.get(subject_type__model='lotledger', subject_id=ledger.id)
+        assert task.source == LOT_LEDGER_MARGIN_NEGATIVE_SOURCE
+        assert task.type == TaskType.ALERT
+        assert task.assignee_id == admin_user.id
+        assert task.status == TaskStatus.PENDING
+        assert lot.name in task.label
+
+
+@pytest.mark.django_db
+class TestLotBcChargeWithoutLedger:
+    """Ticket B-036, décision A : une charge BC doit TOUJOURS pouvoir être
+    enregistrée, y compris pour un lot dont le grand-livre n'existe pas
+    ENCORE — la marge reste indéfinie, mais la charge, elle, s'accumule.
+    """
+
+    def test_mission_and_charge_created_normally_even_without_a_lot_ledger(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('bc-no-ledger')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org, lot=lot,
+            candidate_org=candidate_a_org, amount=Decimal('1000000.00'),
+        )
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type='fondations', calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+            fixed_amount=Decimal('50000.00'),
+        )
+        # Aucun LotLedger créé pour ce lot.
+
+        response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='no-ledger',
+        )
+        assert response.status_code == 201, response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        assert LotBcCharge.objects.filter(lot=lot).exists()
+        assert not Task.objects.filter(source=LOT_LEDGER_MARGIN_NEGATIVE_SOURCE).exists()
+
+
+@pytest.mark.django_db
+class TestLotBcChargeImmutability:
+    """`LotBcCharge` est append-only, jamais révisé après création — même
+    niveau que `DevisAjustement`/`LotLedger` (aucune policy RLS
+    `UPDATE`/`DELETE`).
+    """
+
+    def test_no_update_or_delete_function_exists_in_services(self):
+        assert not hasattr(services, 'update_lot_bc_charge')
+        assert not hasattr(services, 'delete_lot_bc_charge')
+
+    def test_direct_sql_update_on_lot_bc_charge_is_blocked_by_rls_no_policy_defined(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-immutable-update')
+        )
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type='fondations', calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+            fixed_amount=Decimal('50000.00'),
+        )
+        response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='immutable-update',
+        )
+        assert response.status_code == 201, response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        charge = LotBcCharge.objects.get(lot=lot)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE procurement_lot_bc_charge SET montant = %s WHERE id = %s",
+                [str(Decimal('1.00')), str(charge.id)],
+            )
+            assert cursor.rowcount == 0
+
+        charge.refresh_from_db()
+        assert charge.montant == Decimal('50000.00')
+
+    def test_direct_sql_delete_on_lot_bc_charge_is_blocked_by_rls_no_policy_defined(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-immutable-delete')
+        )
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type='fondations', calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+            fixed_amount=Decimal('50000.00'),
+        )
+        response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='immutable-delete',
+        )
+        assert response.status_code == 201, response.data
+
+        set_rls_context(organization_id=sponsor_org.id)
+        charge = LotBcCharge.objects.get(lot=lot)
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM procurement_lot_bc_charge WHERE id = %s", [str(charge.id)])
+            assert cursor.rowcount == 0
+
+        assert LotBcCharge.objects.filter(id=charge.id).exists()
+
+
+@pytest.mark.django_db
+class TestLotBcChargeListEndpoint:
+    """Ticket B-036, décision J : historique complet des charges BC d'un
+    lot, chronologique, réservé `admin_keyimmo`.
+    """
+
+    def test_lists_all_charges_for_a_lot_chronologically(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-list')
+        )
+        pricing_services.create_control_office_rate(
+            admin=admin_user, country_pack_id=sponsor_org.country_pack_id,
+            jalon_type='fondations', calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+            fixed_amount=Decimal('50000.00'),
+        )
+        first_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='list-1',
+        )
+        assert first_response.status_code == 201, first_response.data
+        second_response = _create_mission_for_lot(
+            admin_client=admin_client, admin_user=admin_user, admin_org=admin_org,
+            sponsor_org=sponsor_org, lot=lot, milestone_code='fondations', suffix='list-2',
+        )
+        assert second_response.status_code == 201, second_response.data
+
+        response = admin_client.get(
+            reverse('lot-bc-charge-list', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        assert len(response.data) == 2
+        assert [Decimal(row['montant']) for row in response.data] == [Decimal('50000.00'), Decimal('50000.00')]
+
+    def test_empty_list_when_no_charge_exists_yet(self):
+        admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, _candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-list-empty')
+        )
+
+        response = admin_client.get(
+            reverse('lot-bc-charge-list', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_a_constructeur_cannot_list_bc_charges(self):
+        _admin_client, _admin_org, _admin_user, sponsor_org, lot, _devis, candidate_a, _candidate_b = (
+            _setup_lot_ledger_ready('bc-list-forbidden')
+        )
+        candidate_a_client, _candidate_a_org = candidate_a
+
+        response = candidate_a_client.get(
+            reverse('lot-bc-charge-list', args=[lot.id]), {'organization_id': str(sponsor_org.id)},
+        )
+        assert response.status_code == 403

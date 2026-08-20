@@ -16,6 +16,7 @@ from .serializers import (
     DevisAjustementCreateSerializer,
     DevisCandidateSerializer,
     DevisCreateSerializer,
+    LotBcChargeSerializer,
     LotLedgerCreateSerializer,
     LotLedgerSerializer,
     LotSearchResultSerializer,
@@ -312,10 +313,11 @@ class LotLedgerMarginView(APIView):
     """`GET /api/procurement/lot-ledgers/{lot_id}/margin/?organization_id=<id>`
     — ticket B-035, réservé à `admin_keyimmo`. Marge disponible COURANTE
     du grand-livre de ce lot — voir `apps.procurement.services.
-    get_lot_ledger_margin` pour la formule (VOLONTAIREMENT incomplète dans
-    ce ticket, TODO B-036). 404 si aucun grand-livre n'existe encore pour
-    ce lot — contrairement à `LotLedgerDetailView`, une marge n'a aucun
-    sens tant que le grand-livre lui-même n'existe pas.
+    get_lot_ledger_margin` pour la formule (COMPLÉTÉE par le ticket B-036,
+    inclut désormais les charges bureau de contrôle). 404 si aucun
+    grand-livre n'existe encore pour ce lot — contrairement à
+    `LotLedgerDetailView`, une marge n'a aucun sens tant que le
+    grand-livre lui-même n'existe pas.
     """
 
     permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
@@ -333,6 +335,31 @@ class LotLedgerMarginView(APIView):
         if ledger is None:
             raise NotFound("Aucun grand-livre n'existe pour ce lot.")
         return Response({'margin': margin})
+
+
+class LotBcChargeListView(APIView):
+    """`GET /api/procurement/lot-ledgers/{lot_id}/bc-charges/?organization_id=<id>`
+    — ticket B-036, décision J, réservé à `admin_keyimmo`. Historique
+    COMPLET des charges bureau de contrôle d'un lot, chronologique — voir
+    `apps.procurement.services.list_bc_charges_for_lot`. Liste VIDE (pas
+    404) si aucune charge n'existe encore — même convention que
+    `DevisAjustementView.get`/`ProgramCostHistoryView` : une absence de
+    charge est un état normal, pas une erreur.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request, lot_id):
+        target_organization_id = request.query_params.get('organization_id')
+        if not target_organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+
+        charges = services.list_bc_charges_for_lot(
+            admin_organization_id=request.organization.id if request.organization else None,
+            target_organization_id=target_organization_id,
+            lot_id=lot_id,
+        )
+        return Response(LotBcChargeSerializer(charges, many=True).data)
 
 
 class AdminOrganizationSearchView(APIView):

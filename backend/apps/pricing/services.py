@@ -24,6 +24,18 @@ from .models import (
 # bis).
 LATEST_FIRST_ORDERING = ('-created_at', '-sequence')
 
+# Ticket B-036 — valeur de `jalon_type` réservée pour l'entrée `percentage`
+# qui sert de référence GLOBALE du barème bureau de contrôle d'un pays (voir
+# `apps.procurement.services.record_bc_charge_for_mission`, seul
+# consommateur). `jalon_type` reste un `CharField` LIBRE au niveau du
+# modèle `ControlOfficeRate` (aucun changement de schéma) — cette constante
+# vit ICI, pas dans `apps.procurement`, car `apps.procurement.services`
+# importe déjà `apps.pricing.services`/`apps.pricing.models`
+# (`get_active_rate`, `PricingCanal`), jamais l'inverse : la définir dans
+# `apps.pricing` évite tout risque de cycle d'import une fois la garde
+# ci-dessous posée (`create_control_office_rate` a besoin de la connaître).
+GLOBAL_CONTROL_OFFICE_JALON_TYPE = 'global'
+
 
 class CountryPackInactiveError(Exception):
     """Ticket B-032 — ferme la dette signalée au ticket B-030 : un
@@ -289,6 +301,14 @@ def create_control_office_rate(
     `LegalPaymentTierTemplate` APRÈS coup ; ici directement, en réutilisant
     `CountryPackInactiveError` (même app, même exception).
 
+    **Garde `jalon_type` en mode `percentage` (ticket B-036, décision
+    C-bis)** — une entrée `percentage` n'est acceptée QUE pour
+    `jalon_type=GLOBAL_CONTROL_OFFICE_JALON_TYPE` : `apps.procurement.
+    services.record_bc_charge_for_mission` ne cherche JAMAIS une entrée
+    `percentage` sous le `jalon_type` précis d'une mission, seulement sous
+    cette valeur réservée — toute autre entrée `percentage` serait acceptée
+    mais ne produirait jamais aucun effet.
+
     **Un seul des deux champs valeur actif à la fois (décision B)** —
     vérifié explicitement AVANT toute écriture (même discipline que
     `LotAlreadyLockedError`/validation des plafonds cumulés du ticket
@@ -310,6 +330,22 @@ def create_control_office_rate(
             raise ValidationError({
                 'calculation_mode': (
                     "Mode 'percentage' : « percentage » est requis et « fixed_amount » doit être absent."
+                ),
+            })
+        # Ticket B-036, décision C-bis : une entrée `percentage` sur un
+        # `jalon_type` RÉEL (pas la valeur réservée) ne serait JAMAIS
+        # consommée — `record_bc_charge_for_mission` ne cherche une entrée
+        # `percentage` que sous `GLOBAL_CONTROL_OFFICE_JALON_TYPE`, jamais
+        # sous le `jalon_type` précis d'une mission. Refusé explicitement à
+        # la source plutôt qu'accepté silencieusement sans jamais produire
+        # d'effet — discipline déjà appliquée à `is_active` (B-032) et à
+        # l'exclusivité `percentage`/`fixed_amount` juste au-dessus.
+        if jalon_type != GLOBAL_CONTROL_OFFICE_JALON_TYPE:
+            raise ValidationError({
+                'jalon_type': (
+                    f"Mode 'percentage' : « jalon_type » doit être la valeur réservée "
+                    f"« {GLOBAL_CONTROL_OFFICE_JALON_TYPE} » — une entrée percentage sur un jalon "
+                    f"précis ne serait jamais appliquée."
                 ),
             })
     elif calculation_mode == ControlOfficeCalculationMode.FIXED_AMOUNT:

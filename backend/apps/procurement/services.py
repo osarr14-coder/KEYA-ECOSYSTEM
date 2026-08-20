@@ -6,14 +6,14 @@ from django.db.models import Sum
 
 from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
-from apps.pricing.models import PricingCanal
-from apps.pricing.services import get_active_rate
+from apps.pricing.models import ControlOfficeCalculationMode, PricingCanal
+from apps.pricing.services import GLOBAL_CONTROL_OFFICE_JALON_TYPE, get_active_control_office_rate, get_active_rate
 from apps.programs import services as programs_services
 from apps.programs.models import Lot
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
 
-from .models import Devis, DevisAjustement, LotLedger
+from .models import Devis, DevisAjustement, LotBcCharge, LotLedger
 
 # Source de TrustEvent qui marque LE devis retenu pour un lot — un devis
 # sans TrustEvent de ce type est un simple candidat (voir get_devis_status).
@@ -457,26 +457,153 @@ def get_construction_amount(devis):
 
 
 def get_lot_ledger_margin(ledger):
-    """Marge disponible COURANTE d'un grand-livre — ticket B-035. Calculée
-    À LA VOLÉE, JAMAIS stockée (doctrine Visible Trust) :
-    `prix_client - foncier_alloue - be_alloue - construction_courante`.
-
-    **TODO B-036 — formule VOLONTAIREMENT INCOMPLÈTE dans ce ticket** :
-    n'inclut PAS encore le terme bureau de contrôle
-    (`- Σ LotBcCharge` pour ce lot, futur). Le ticket B-036 doit ÉTENDRE
-    cette fonction pour soustraire ce terme une fois `LotBcCharge` créé —
-    ne jamais dupliquer cette formule ailleurs, toujours passer par cette
+    """Marge disponible COURANTE d'un grand-livre — ticket B-035, formule
+    COMPLÉTÉE par le ticket B-036 (fermeture du TODO laissé par B-035).
+    Calculée À LA VOLÉE, JAMAIS stockée (doctrine Visible Trust) :
+    `prix_client - foncier_alloue - be_alloue - construction_courante -
+    Σ LotBcCharge.montant` (toutes les charges bureau de contrôle du lot,
+    fixes et globale confondues — voir `record_bc_charge_for_mission`).
+    Ne jamais dupliquer cette formule ailleurs, toujours passer par cette
     fonction (même discipline que `apps.pricing.services.
     get_active_control_office_rate`, seule source de vérité).
 
     Lecture DIRECTE, sans bascule : appelée uniquement depuis un appelant
     déjà basculé sur l'organisation du lot (la même que `ledger.
-    organization` et que le devis verrouillé de ce lot) — même discipline
-    que `available_margin`.
+    organization`, le devis verrouillé de ce lot, et ses `LotBcCharge`) —
+    même discipline que `available_margin`.
     """
     devis = get_locked_devis_for_lot(ledger.lot_id)
     construction_courante = get_construction_amount(devis)
-    return ledger.prix_client - ledger.foncier_alloue - ledger.be_alloue - construction_courante
+    total_bc_charges = LotBcCharge.objects.filter(lot_id=ledger.lot_id).aggregate(
+        total=Sum('montant'),
+    )['total'] or Decimal('0')
+    return (
+        ledger.prix_client - ledger.foncier_alloue - ledger.be_alloue
+        - construction_courante - total_bc_charges
+    )
+
+
+def record_bc_charge_for_mission(*, mission, actor):
+    """Effet de bord de `create_mission` (ticket 012) — ticket B-036,
+    décisions 1/2/3/A/C/F/G. Appelée SYNCHRONEMENT, DANS le même bloc
+    `transaction.atomic()` et sous la MÊME bascule RLS que la création de
+    la mission elle-même (déjà positionnée par l'appelant sur
+    l'organisation du lot) — jamais `.delay()`'d : une charge BC perdue ou
+    retardée corromprait irrémédiablement le calcul de marge du
+    grand-livre (donnée financière de premier ordre, pas une simple
+    notification comme `Task`).
+
+    **Ne lève JAMAIS d'exception par conception (décision 3)** : soit une
+    `LotBcCharge` est créée, soit rien ne l'est — aucun chemin d'erreur
+    attendu qui bloquerait la création de la mission.
+
+    **Décision 1** : une entrée `fixed_amount` pour le `jalon_type` PRÉCIS
+    de la mission → charge cumulative (une par mission qui y correspond).
+    **Décision 2/C** : sinon, une entrée `percentage` sous
+    `GLOBAL_CONTROL_OFFICE_JALON_TYPE`, consommée AU PLUS UNE FOIS PAR LOT
+    (voir `_record_global_bc_charge_if_available`, `is_global_reference`,
+    décision E). Aucune entrée applicable des deux côtés : aucune charge,
+    jamais une erreur.
+    """
+    lot = mission.work_declaration.milestone.lot
+    jalon_type = mission.work_declaration.milestone.code
+    country_pack_id = lot.organization.country_pack_id
+
+    fixed_rate = get_active_control_office_rate(country_pack_id=country_pack_id, jalon_type=jalon_type)
+    if fixed_rate is not None and fixed_rate.calculation_mode == ControlOfficeCalculationMode.FIXED_AMOUNT:
+        charge = LotBcCharge.objects.create(
+            organization=lot.organization,
+            lot=lot,
+            mission=mission,
+            jalon_type=jalon_type,
+            montant=fixed_rate.fixed_amount,
+            is_global_reference=False,
+            created_by=actor,
+        )
+    else:
+        charge = _record_global_bc_charge_if_available(
+            lot=lot, jalon_type=jalon_type, actor=actor, mission=mission,
+        )
+
+    if charge is not None:
+        _maybe_alert_negative_margin(lot=lot, actor=actor)
+    return charge
+
+
+def _record_global_bc_charge_if_available(*, lot, jalon_type, actor, mission):
+    """Mode `percentage`/« global » — décisions 2/C/E/G. Consommation AU
+    PLUS UNE FOIS PAR LOT, suivie par REQUÊTE sur `is_global_reference`
+    (décision E) plutôt qu'un champ dédié sur `Lot`/`LotLedger`.
+
+    **Décision G** : le pourcentage s'applique au montant construction
+    courant (`get_construction_amount`), indéfinissable sans devis
+    verrouillé — si le devis du lot n'est pas encore verrouillé, AUCUNE
+    charge n'est créée ET l'entrée globale N'EST PAS marquée consommée
+    (aucune ligne créée ici, donc `is_global_reference=True` n'existe pas
+    encore pour ce lot) : elle reste disponible pour une mission
+    ultérieure sur ce même lot, une fois le devis verrouillé. Découle
+    naturellement de l'utilisation d'une REQUÊTE (pas un pointeur figé dès
+    la première tentative) pour le suivi de consommation.
+    """
+    already_consumed = LotBcCharge.objects.filter(lot=lot, is_global_reference=True).exists()
+    if already_consumed:
+        return None
+
+    global_rate = get_active_control_office_rate(
+        country_pack_id=lot.organization.country_pack_id, jalon_type=GLOBAL_CONTROL_OFFICE_JALON_TYPE,
+    )
+    if global_rate is None or global_rate.calculation_mode != ControlOfficeCalculationMode.PERCENTAGE:
+        return None
+
+    devis = get_locked_devis_for_lot(lot.id)
+    if devis is None:
+        return None
+
+    construction_courante = get_construction_amount(devis)
+    montant = (construction_courante * global_rate.percentage / Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP,
+    )
+    return LotBcCharge.objects.create(
+        organization=lot.organization,
+        lot=lot,
+        mission=mission,
+        jalon_type=jalon_type,
+        montant=montant,
+        is_global_reference=True,
+        created_by=actor,
+    )
+
+
+def _maybe_alert_negative_margin(*, lot, actor):
+    """Décision 3/I : si la marge du grand-livre de ce lot passe sous
+    zéro, déclenche une `Task` `ALERT` — jamais un blocage de la mission
+    ni de la charge qui vient d'être créée. Aucun `LotLedger` pour ce lot
+    → rien à évaluer, retour silencieux (la marge n'a alors aucun sens,
+    voir décision A).
+    """
+    ledger = LotLedger.objects.filter(lot=lot).first()
+    if ledger is None:
+        return
+    if get_lot_ledger_margin(ledger) >= Decimal('0'):
+        return
+
+    # Import différé : même raison que `create_ajustement`/`create_mission`
+    # (évite un cycle au chargement des tasks Celery).
+    from apps.tasks.services import create_task_for_lot_ledger_margin_negative
+
+    create_task_for_lot_ledger_margin_negative(ledger, actor)
+
+
+def list_bc_charges_for_lot(*, admin_organization_id, target_organization_id, lot_id):
+    """Historique COMPLET des charges BC d'un lot, chronologique — ticket
+    B-036, décision J. Même schéma de bascule RLS en lecture seule que
+    `get_lot_ledger`/`list_devis_for_lot_as_admin`.
+    """
+    set_rls_context(organization_id=target_organization_id)
+    try:
+        return list(LotBcCharge.objects.filter(lot_id=lot_id).order_by('created_at', 'sequence'))
+    finally:
+        set_rls_context(organization_id=admin_organization_id)
 
 
 def create_lot_ledger(*, admin, admin_organization_id, target_organization_id, lot_id, prix_client):

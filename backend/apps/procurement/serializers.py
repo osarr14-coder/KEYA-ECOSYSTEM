@@ -3,7 +3,7 @@ from rest_framework import serializers
 from apps.organizations.models import Organization
 
 from . import services
-from .models import Devis, DevisAjustement, LotLedger
+from .models import Devis, DevisAjustement, LotBcCharge, LotLedger
 
 
 class DevisCreateSerializer(serializers.Serializer):
@@ -177,6 +177,21 @@ class LotLedgerSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'organization', 'lot', 'prix_client',
             'foncier_alloue', 'be_alloue', 'created_by', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+class LotBcChargeSerializer(serializers.ModelSerializer):
+    """Réponse admin_keyimmo — ticket B-036, décision J. Seule audience de
+    `LotBcCharge` (aucune lecture candidate/sponsor, même famille que
+    `LotLedgerSerializer`).
+    """
+
+    class Meta:
+        model = LotBcCharge
+        fields = [
+            'id', 'organization', 'lot', 'mission', 'jalon_type', 'montant',
+            'is_global_reference', 'created_by', 'created_at',
         ]
         read_only_fields = fields
 
