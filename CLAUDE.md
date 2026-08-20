@@ -2767,8 +2767,49 @@ propre. Pas de vérification en navigateur réel (les deux correctifs sont
 vérifiables de façon déterministe par mocks à réponses successives
 distinctes).
 
-**Reste de la vague 4, non commencé** :
-`resolveConflictByDiscarding` (même défaut, sévérité faible).
+**F-033 clos** — le seul point restant de la vague 4
+(`resolveConflictByDiscarding`, même défaut que `persist()`, sévérité
+faible) a été traité séparément par le ticket **F-034**, voir section
+dédiée ci-dessous.
+
+## Échec silencieux d'abandon d'une saisie en conflit (ticket F-034, `apps/control-pwa`)
+
+Voir `F-034-abandon-conflit-silencieux.md` pour le détail complet. Ticket
+de suivi direct de F-033 (vague 4) : ferme la dette explicitement laissée
+de côté à l'audit (« pas d'état trompeur, l'inspecteur peut simplement
+recliquer ») — `resolveConflictByDiscarding()` (bouton « Ignorer ma saisie
+et recommencer », CONTROL PWA) appelait `deleteDraft(draft.id)` sans aucun
+`try/catch` : un échec IndexedDB devenait une rejection non gérée, jamais
+un signal visible.
+
+**Même mécanisme de correctif que `persist()`, sévérité réellement plus
+faible confirmée avant implémentation** : contrairement à `persist()`, ici
+aucune file d'écriture partagée n'est poisonnée par l'échec (le bandeau de
+conflit + le bouton restent affichés tels quels, techniquement
+recliquables) — mais l'absence de feedback explicite et la rejection non
+gérée restaient un défaut réel. Corrigé par le même portillon EXPLICITE en
+état React (`resolveConflictError`, jamais une promesse rejetée
+silencieusement) et un `AlertBanner` dédié (`onRetry`/`retryLabel`, vague 3)
+en SIBLING du bandeau de conflit — jamais imbriqué dans un autre
+`AlertBanner` (deux régions `role="alert"` imbriquées auraient été un
+problème d'accessibilité).
+
+**Différence assumée avec `retryPersist()`** : `deleteDraft` +
+`createEmptyDraft` est une action IDEMPOTENTE, sans saisie intermédiaire à
+fusionner — rejouer exactement la même fonction comme retry suffit,
+contrairement à `persist()` où un retry naïf aurait perdu les saisies
+accumulées pendant la panne. Aucun second chemin d'écriture parallèle.
+
+**Tests confirmés ROUGES avant correctif** (vérifié en isolant
+temporairement le correctif via `git stash`, puis en le restaurant) —
+l'échec observé est littéralement une **rejection non gérée**
+(`Unhandled Rejection: QuotaExceededError`), preuve directe du défaut
+décrit. 2 nouveaux tests (`apps/control-pwa` : 22 → 24). **425 tests
+frontend** (5 packages : 64+75+73+55+158), zéro régression (2 exécutions
+consécutives propres), `tsc --noEmit` propre. Pas de vérification en
+navigateur réel (même rationale que `persist()`) : un vrai échec
+`deleteDraft` exige une vraie panne IndexedDB, plus fiable à reproduire
+via `vi.spyOn`.
 
 ## Coûts programme et répartition entre lots (ticket B-033, `apps/programs`)
 

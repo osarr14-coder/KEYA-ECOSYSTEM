@@ -1,11 +1,13 @@
 # Ticket F-033 — Audit des états système (doctrine 17.5 V3.0)
 
 ## Statut
-En cours, par vagues. **Vagues 1, 2, 3 livrées, et `persist()` silencieux
-de la vague 4 livré** (branche `feature/frontend-round-2`). Reste de la
-vague 4 (permission denied dédiée, `sync failed` par photo CONTROL PWA,
-`resolveConflictByDiscarding`, stale data) toujours à prioriser avec
-l'utilisateur — non commencé.
+**Clos.** Vagues 1, 2, 3 livrées ; vague 4 livrée intégralement (`persist()`
+silencieux, `sync failed` par photo CONTROL PWA, permission denied
+401 vs 403, stale data OverviewView/back-office). Seul
+`resolveConflictByDiscarding` (même défaut que `persist()`, sévérité
+faible, identifié dès l'étape 1) a été volontairement laissé hors de ce
+ticket — corrigé séparément par le ticket **F-034**
+(`F-034-abandon-conflit-silencieux.md`), même mécanisme de correctif.
 
 ## Étape 1 — audit exhaustif (aucune correction), livré et discuté
 

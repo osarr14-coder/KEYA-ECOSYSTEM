@@ -81,6 +81,12 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   // d'écriture individuelles pendant une panne, jusqu'à un retry réussi.
   const [persistError, setPersistError] = useState(false);
   const [retryingPersist, setRetryingPersist] = useState(false);
+  // Ticket F-034 — même défaut que `persist()` avant son correctif (F-033
+  // vague 4), voir `resolveConflictByDiscarding` plus bas : portillon
+  // EXPLICITE (pas une promesse rejetée silencieusement) pour signaler un
+  // échec d'abandon de saisie en conflit.
+  const [resolveConflictError, setResolveConflictError] = useState(false);
+  const [resolvingConflict, setResolvingConflict] = useState(false);
 
   // Ticket 015 — cause du bug confirmée en le reproduisant AVANT ce
   // correctif (`InspectionFormView.test.tsx`) : DOUBLE, les deux se
@@ -333,15 +339,38 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
    * Une résolution plus fine (fusion, "un rôle habilité" distinct de
    * l'inspecteur lui-même — voir le ticket) reste un point d'extension non
    * couvert ici.
+   *
+   * Ticket F-034 — AVANT ce ticket, un échec `deleteDraft` (quota dépassé,
+   * IndexedDB bloquée, navigation privée...) n'était jamais catché : la
+   * promesse rejetait silencieusement (rejection non gérée), le bouton
+   * « Ignorer ma saisie et recommencer » semblait ne rien faire, sans le
+   * moindre signal — même classe de bug que `persist()` avant son propre
+   * correctif (F-033 vague 4), sévérité plus faible ici (aucune file
+   * d'écriture partagée n'est poisonnée par cet échec : le brouillon en
+   * conflit reste affiché tel quel, rien n'est perdu). Corrigé avec le
+   * MÊME mécanisme que `persist()`/`retryPersist()` : portillon EXPLICITE
+   * en état React (jamais une promesse rejetée silencieusement), bandeau
+   * dédié visible avec un retry. Contrairement à `persist()`, aucune
+   * saisie accumulée à fusionner lors d'un retry : `deleteDraft` +
+   * `createEmptyDraft` est une action idempotente, rejouer EXACTEMENT la
+   * même fonction suffit — pas de second chemin parallèle à construire.
    */
   async function resolveConflictByDiscarding() {
     if (!draft) return;
-    await deleteDraft(draft.id);
-    const fresh = createEmptyDraft(missionId, CHECKLIST_TEMPLATE);
-    setDraft(fresh);
-    // Repart d'une file neuve sur ce brouillon neuf — jamais chaînée sur la
-    // file de l'ancien brouillon abandonné (voir `persist` ci-dessus).
-    persistChainRef.current = Promise.resolve(fresh);
+    setResolvingConflict(true);
+    try {
+      await deleteDraft(draft.id);
+      const fresh = createEmptyDraft(missionId, CHECKLIST_TEMPLATE);
+      setDraft(fresh);
+      // Repart d'une file neuve sur ce brouillon neuf — jamais chaînée sur
+      // la file de l'ancien brouillon abandonné (voir `persist` ci-dessus).
+      persistChainRef.current = Promise.resolve(fresh);
+      setResolveConflictError(false);
+    } catch {
+      setResolveConflictError(true);
+    } finally {
+      setResolvingConflict(false);
+    }
   }
 
   if (loading) {
@@ -400,20 +429,32 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       )}
 
       {draft.syncStatus === 'conflict' && (
-        <AlertBanner title="Conflit à résoudre">
-          Cette inspection a déjà été modifiée par ailleurs depuis votre dernière saisie
-          {draft.conflict?.currentEventSource ? ` (dernier événement serveur : ${draft.conflict.currentEventSource})` : ''}.
-          Votre saisie n'a PAS été envoyée pour éviter d'écraser cette modification.
-          <div>
-            <button
-              type="button"
-              onClick={() => void resolveConflictByDiscarding()}
-              style={{ minHeight: '44px' }}
+        <>
+          <AlertBanner title="Conflit à résoudre">
+            Cette inspection a déjà été modifiée par ailleurs depuis votre dernière saisie
+            {draft.conflict?.currentEventSource ? ` (dernier événement serveur : ${draft.conflict.currentEventSource})` : ''}.
+            Votre saisie n'a PAS été envoyée pour éviter d'écraser cette modification.
+            <div>
+              <button
+                type="button"
+                onClick={() => void resolveConflictByDiscarding()}
+                style={{ minHeight: '44px' }}
+                disabled={resolvingConflict}
+              >
+                {resolvingConflict ? 'Abandon en cours…' : 'Ignorer ma saisie et recommencer'}
+              </button>
+            </div>
+          </AlertBanner>
+          {resolveConflictError && (
+            <AlertBanner
+              title="Échec de l'abandon de la saisie."
+              onRetry={() => void resolveConflictByDiscarding()}
+              retryLabel={resolvingConflict ? 'Nouvelle tentative…' : 'Réessayer'}
             >
-              Ignorer ma saisie et recommencer
-            </button>
-          </div>
-        </AlertBanner>
+              Votre saisie en conflit reste affichée telle quelle — rien n&apos;a été perdu ni modifié.
+            </AlertBanner>
+          )}
+        </>
       )}
 
       <fieldset style={FIELDSET_STYLE}>
