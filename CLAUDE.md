@@ -2596,6 +2596,73 @@ affiché, sans rechargement de page.
 photo CONTROL PWA, `persist()`/`resolveConflictByDiscarding`, stale data)
 — listée explicitement dans `F-033-audit-etats-systeme.md`.
 
+## Audit des états système — vague 4 partielle : `persist()` silencieux (ticket F-033)
+
+Voir `F-033-audit-etats-systeme.md` pour le détail complet. Premier
+élément de la vague 4 : `InspectionFormView::persist()` (CONTROL PWA)
+écrivait de façon silencieusement défaillante après un échec IndexedDB.
+
+**État des lieux demandé explicitement avant toute proposition** : `persist()`
+découple la mise à jour optimiste (synchrone, toujours affichée) de
+l'écriture IndexedDB (mise en file via `persistChainRef`). Avant ce
+correctif, UNE SEULE écriture en échec laissait `persistChainRef.current`
+sur une promesse REJETÉE — chaque `persist()` suivant devenait un no-op
+d'écriture PERMANENT et SILENCIEUX (`queue.then(onFulfilled)` sur une
+promesse rejetée ne s'exécute jamais) : la saisie continuait de s'afficher
+normalement, mais plus rien n'était plus jamais enregistré, jusqu'à la
+fermeture de l'app.
+
+**Pourquoi « juste un catch » ne suffisait pas** — montré à l'utilisateur
+avant tout code : un retry naïf qui rejoue uniquement la DERNIÈRE mutation
+sur la base IndexedDB (périmée depuis la panne) perdrait silencieusement
+toutes les saisies faites ENTRE-TEMPS. Le retry doit sauvegarder l'état
+COMPLET actuellement en mémoire (`draftRef.current`), jamais une mutation
+isolée.
+
+**Contrainte explicite de l'utilisateur, vérifiée avant de committer** :
+pas de second chemin d'écriture parallèle (risque de réintroduire la
+classe de race déjà corrigée au ticket 015). Résolu via un état React
+`persistError` comme portillon EXPLICITE dans `persist()` (plutôt que de
+s'appuyer sur l'état de la promesse) : la chaîne catche désormais sa
+propre erreur et RÉSOUT (jamais ne rejette), donc `persistChainRef.current`
+reste TOUJOURS sain — c'est `persistError`, pas la promesse, qui empêche
+les écritures individuelles suivantes tant qu'un retry explicite n'a pas
+réussi. `retryPersist()` s'enchaîne sur cette MÊME `persistChainRef`/
+`draftRef`, jamais un chemin séparé.
+
+**Nouveau bandeau** (`AlertBanner`, réutilisant `onRetry`/`retryLabel` de
+la vague 3) : « Échec de l'enregistrement local. » + « Réessayer
+l'enregistrement » — distinct du bandeau « Conflit » (deux problèmes
+indépendants, coexistence possible).
+
+**Tests écrits AVANT correction, confirmés ROUGES** (4 rejets non gérés
+observés avant tout changement de code de production) — dont la preuve
+directe contre un retry naïf : deux saisies DIFFÉRENTES pendant la panne,
+un seul clic « Réessayer » enregistre les DEUX, jamais seulement la
+dernière.
+
+**Flake IndexedDB préexistant (ticket 026), rencontré en testant — PAS
+causé par ce correctif** : un nouveau test échouait de façon intermittente
+en suite complète (jamais isolé). Investigué avant d'accepter cette
+explication : le test isolé passait de façon fiable (logique correcte),
+un timeout `waitFor` porté à 3000ms l'a stabilisé ; le run suivant a
+ensuite fait échouer un AUTRE test préexistant et NON MODIFIÉ de ce même
+fichier, déjà nommément documenté flaky au ticket 026 — confirme le même
+défaut systémique (contention IndexedDB en suite complète), pas un bug
+introduit ici. Non corrigé, fréquence semblant augmenter avec le volume
+croissant de tests du fichier — candidat à un ticket dédié si besoin.
+
+**380 tests frontend** (5 packages : 51+68+65+48+148), `tsc --noEmit`
+propre. **Pas de vérification en navigateur réel, décision assumée**
+(même rationale que la vague 1) : purement additif, seule une VRAIE panne
+d'écriture IndexedDB déclenche la nouvelle branche — les tests automatisés
+(`vi.spyOn` sur `saveDraft`) la reproduisent plus fidèlement qu'une
+manipulation manuelle.
+
+**Reste de la vague 4, non commencé** : `permission denied` dédiée,
+`sync failed` par photo, `resolveConflictByDiscarding` (même défaut,
+sévérité faible), stale data.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

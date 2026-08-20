@@ -1,10 +1,11 @@
 # Ticket F-033 — Audit des états système (doctrine 17.5 V3.0)
 
 ## Statut
-En cours, par vagues. **Vagues 1, 2 et 3 livrées** (branche
-`feature/frontend-round-2`). Vague 4 (permission denied dédiée, `sync
-failed` par photo CONTROL PWA, incohérences résiduelles) reste à prioriser
-avec l'utilisateur — non commencée.
+En cours, par vagues. **Vagues 1, 2, 3 livrées, et `persist()` silencieux
+de la vague 4 livré** (branche `feature/frontend-round-2`). Reste de la
+vague 4 (permission denied dédiée, `sync failed` par photo CONTROL PWA,
+`resolveConflictByDiscarding`, stale data) toujours à prioriser avec
+l'utilisateur — non commencé.
 
 ## Étape 1 — audit exhaustif (aucune correction), livré et discuté
 
@@ -153,16 +154,96 @@ ticket).
   pour rejeter le premier appel) → bouton « Réessayer » affiché → clic →
   résultat réel affiché, sans rechargement de page.
 
-## Explicitement hors vague 1/2/3 (vague 4, non commencée)
+## Vague 4 (partielle) — `InspectionFormView::persist()`, échec d'écriture silencieux
+
+**État des lieux vérifié avant toute proposition (demande explicite)** :
+tracé le mécanisme exact plutôt que de supposer qu'un `catch` suffirait.
+`persist()` découple la mise à jour optimiste (synchrone, toujours
+affichée) de l'écriture IndexedDB (mise en file via `persistChainRef`).
+Avant ce correctif, une SEULE écriture en échec (quota dépassé, IndexedDB
+bloquée par une mise à jour de version, navigation privée...) laissait
+`persistChainRef.current` sur une promesse REJETÉE — chaque `persist()`
+suivant, `queue.then(onFulfilled)` sur une promesse déjà rejetée ne
+s'exécutant JAMAIS, devenait un no-op d'écriture PERMANENT et SILENCIEUX :
+la saisie continuait de s'afficher normalement à l'écran, mais plus rien
+n'était plus jamais réellement enregistré, jusqu'à la fermeture de l'app.
+
+**Pourquoi « juste un catch » ne suffisait pas** : un retry naïf qui
+rejoue uniquement la DERNIÈRE mutation sur la base lue en IndexedDB
+(périmée depuis la panne) perdrait silencieusement toutes les saisies
+faites ENTRE-TEMPS. Le retry doit sauvegarder l'état COMPLET actuellement
+en mémoire (`draftRef.current`), jamais une mutation isolée — exactement
+ce qui distingue ce correctif d'un simple `catch`, et ce qui a été montré
+à l'utilisateur avant tout code.
+
+**Contrainte explicite de l'utilisateur, vérifiée avant de committer** :
+le retry ne doit PAS créer un second chemin d'écriture parallèle, sous
+peine de réintroduire la classe de race déjà corrigée au ticket 015.
+Résolu en utilisant un état React `persistError` comme portillon EXPLICITE
+dans `persist()` lui-même (plutôt que de s'appuyer sur la promesse
+rejetée) : la chaîne interne catche désormais sa propre erreur (`.catch`
+→ `setPersistError(true)`, RÉSOUT au lieu de rejeter), donc
+`persistChainRef.current` reste TOUJOURS une promesse SAINE — c'est
+`persistError`, pas l'état de la promesse, qui empêche les tentatives
+d'écriture individuelles suivantes. `retryPersist()` s'enchaîne sur cette
+MÊME `persistChainRef`/`draftRef`, jamais un chemin séparé — les deux
+fonctions ne peuvent jamais écrire en même temps (persist() se met en
+pause via `persistError` dès qu'une panne est connue, seul `retryPersist`
+écrit tant qu'elle dure).
+
+**Nouveau bandeau** (`AlertBanner`, réutilisant `onRetry`/`retryLabel` de
+la vague 3) : « Échec de l'enregistrement local. » + « Réessayer
+l'enregistrement » — distinct du bandeau « Conflit » existant (deux
+problèmes réellement indépendants, coexistence possible).
+
+**Tests écrits AVANT correction** (confirmés ROUGES — 4 rejets non gérés
+observés en conditions réelles avant tout changement de code de
+production) : bandeau affiché sur échec (saisie optimiste jamais annulée
+à l'écran) ; **preuve directe contre un retry naïf** — deux saisies
+DIFFÉRENTES faites pendant la panne, un seul clic sur « Réessayer »
+enregistre les DEUX, jamais seulement la dernière ; un échec au retry
+laisse le bandeau réessayable à volonté ; après un retry réussi, la file
+n'est pas restée bloquée (une saisie suivante s'enregistre normalement).
+
+**Flake IndexedDB préexistant, déjà documenté (ticket 026), rencontré
+en testant — PAS causé par ce correctif** : le nouveau test « après un
+retry réussi... » échouait de façon intermittente en suite complète
+(jamais en isolant le fichier, ni en isolant ce seul test) — exactement
+la même classe déjà documentée pour ce fichier (« dette de fiabilité
+résiduelle », ticket 026). Investigation menée avant d'accepter cette
+explication : le test isolé passait de façon fiable (confirmant la LOGIQUE
+correcte), seule la version en suite complète échouait — un timeout de
+`waitFor` porté à 3000ms (au lieu du défaut 1000ms) a stabilisé CE test ;
+un run suivant a ensuite fait échouer un AUTRE test préexistant et
+NON-MODIFIÉ de ce même fichier (« un conflit... affiche le conflit et la
+saisie locale intacte », déjà nommément documenté comme flaky au ticket
+026), confirmant qu'il s'agit bien du même défaut systémique du fichier
+(contention IndexedDB sous suite complète), pas d'un bug introduit ici.
+Non corrigé (hors scope de ce correctif) — la fréquence semble avoir
+augmenté avec le volume croissant de tests dans ce fichier au fil des
+tickets ; à surveiller, candidat à un ticket dédié si la gêne devient
+réelle.
+
+**23 tests `apps/control-pwa`** ajoutés au total sur la session
+(`InspectionFormView.test.tsx` : 16 → 20, +4). **380 tests frontend** (5
+packages : 51+68+65+48+148), `tsc --noEmit` propre partout.
+
+**Pas de vérification en navigateur réel pour ce correctif, décision
+assumée** (même rationale que la vague 1) : purement additif, la seule
+façon de provoquer la nouvelle branche d'erreur est un VRAI échec
+d'écriture IndexedDB — les tests automatisés (qui interceptent précisément
+`saveDraft` via `vi.spyOn`) reproduisent ce scénario de façon plus
+déterministe qu'une manipulation manuelle de navigateur.
+
+## Explicitement hors vague 4 (reste à prioriser)
 
 - États `permission denied` dédiés au-delà du gate `admin_keyimmo`
   d'`apps/web`.
 - `sync failed` par photo (`LocalPhoto.mediaSyncStatus === 'failed'`)
   jamais affiché dans `PhotoThumbnail`.
-- `InspectionFormView::persist()` — échec d'écriture silencieux malgré
-  mise à jour optimiste déjà affichée.
-- `resolveConflictByDiscarding` — même absence de `catch`, sévérité
-  faible.
+- `resolveConflictByDiscarding` — même absence de `catch` que `persist()`
+  avait, sévérité faible (pas d'état trompeur, l'inspecteur peut
+  simplement recliquer).
 - Stale data (`OverviewView`, missions/`knownLatestEventId` CONTROL PWA).
 
 ## Dépendances
