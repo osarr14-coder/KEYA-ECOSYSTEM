@@ -30,6 +30,30 @@ const GLOBAL_CSS = `
     color: inherit;
     text-decoration: none;
   }
+
+  /*
+   * Ticket F-038 — premier écart du projet vis-à-vis du "100% inline" :
+   * ":hover"/":focus-visible"/":disabled" sont des pseudo-classes CSS,
+   * inexprimables via un prop style={{}} React seul. Toutes les VALEURS
+   * (couleurs, tailles) restent pilotées par les tokens JS dans les
+   * composants eux-mêmes (Button/Input/Select) — ces règles ne gèrent QUE
+   * le changement d'état, jamais une couleur nouvelle non dérivée d'un
+   * token.
+   */
+  .keya-btn:hover:not(:disabled) {
+    opacity: 0.85;
+  }
+  .keya-btn:focus-visible,
+  .keya-input:focus-visible,
+  .keya-select:focus-visible {
+    outline: none;
+    border-color: ${semanticColors.neutral.text};
+    box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.12);
+  }
+  .keya-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 `;
 
 export function GlobalStyles() {

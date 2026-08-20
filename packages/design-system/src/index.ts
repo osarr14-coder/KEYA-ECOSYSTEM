@@ -13,7 +13,13 @@ export type {
   Breadcrumb,
 } from './components/AppShell/AppShell';
 
+export { Button } from './components/Button/Button';
+export type { ButtonProps } from './components/Button/Button';
+
 export { GlobalStyles } from './components/GlobalStyles/GlobalStyles';
+
+export { Input } from './components/Input/Input';
+export type { InputProps } from './components/Input/Input';
 
 export { isForbiddenError } from './errors/isForbiddenError';
 
@@ -21,6 +27,9 @@ export { useOnlineStatus } from './hooks/useOnlineStatus';
 
 export { ProgressBar } from './components/ProgressBar/ProgressBar';
 export type { ProgressBarProps } from './components/ProgressBar/ProgressBar';
+
+export { Select } from './components/Select/Select';
+export type { SelectProps } from './components/Select/Select';
 
 export { ALL_TRUST_LEVELS, LEVEL_META, StatusBadge } from './components/StatusBadge/StatusBadge';
 export type { StatusBadgeProps, TrustEventData, TrustLevel } from './components/StatusBadge/StatusBadge';

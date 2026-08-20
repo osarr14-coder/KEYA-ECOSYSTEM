@@ -45,6 +45,7 @@ export interface ProgressColorTokens {
 
 export const semanticColors: {
   alert: SemanticColorTokens;
+  danger: SemanticColorTokens;
   neutral: NeutralColorTokens;
   progress: ProgressColorTokens;
 } = {
@@ -53,6 +54,22 @@ export const semanticColors: {
     border: '#D97706',
     icon: '#D97706',
     text: '#92400E',
+  },
+  // Ticket F-038 — dédié EXCLUSIVEMENT à la confirmation d'une action
+  // irréversible (ex : `Button` variante `danger`, désactivation de compte).
+  // Jamais réutilisé pour une alerte non-bloquante (qui reste `alert`,
+  // ambre) — catégorie sémantique différente, décision explicite de
+  // l'utilisateur pour éviter toute confusion entre les deux. `#B91C1C`
+  // choisi plutôt que `#DC2626` : la même leçon de contraste que
+  // `neutral.textMuted` (ticket 024) appliquée par anticipation — `#DC2626`
+  // sur blanc mesure ~4,83:1 (marge jugée trop faible pour un ton
+  // volontairement destiné à être vu et compris rapidement), `#B91C1C`
+  // porte ce ratio à ~6,47:1.
+  danger: {
+    background: '#FEF2F2',
+    border: '#B91C1C',
+    icon: '#B91C1C',
+    text: '#7F1D1D',
   },
   neutral: {
     border: '#E5E7EB',

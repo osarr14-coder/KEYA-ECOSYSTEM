@@ -2,7 +2,9 @@ import {
   type FormEvent, useRef, useState,
 } from 'react';
 
-import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
+import {
+  AlertBanner, ApiErrorBanner, Button, Input, semanticColors,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { useApiResource } from '../api/useApiResource';
@@ -110,12 +112,17 @@ function UserDetailPanel({
               Aucune donnée n&apos;est supprimée — l&apos;historique de cet utilisateur reste intact.
             </AlertBanner>
             <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-              <button type="button" onClick={() => { void handleConfirmDeactivate(); }} disabled={deactivating}>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => { void handleConfirmDeactivate(); }}
+                disabled={deactivating}
+              >
                 {deactivating ? 'Désactivation…' : 'Confirmer la désactivation'}
-              </button>
-              <button type="button" onClick={() => setConfirming(false)} disabled={deactivating}>
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setConfirming(false)} disabled={deactivating}>
                 Annuler
-              </button>
+              </Button>
             </div>
             {deactivateError && (
               <div style={{ marginTop: '8px' }}>
@@ -124,9 +131,9 @@ function UserDetailPanel({
             )}
           </div>
         ) : (
-          <button type="button" onClick={() => setConfirming(true)} style={{ marginTop: '12px' }}>
+          <Button type="button" variant="secondary" onClick={() => setConfirming(true)} style={{ marginTop: '12px' }}>
             Désactiver ce compte
-          </button>
+          </Button>
         )
       )}
     </section>
@@ -192,15 +199,15 @@ export function BackofficeView() {
       >
         <label>
           Rechercher un utilisateur par email
-          <input
+          <Input
             type="search"
             aria-label="Rechercher un utilisateur par email"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            style={{ display: 'block', marginTop: '4px' }}
+            style={{ marginTop: '4px' }}
           />
         </label>
-        <button type="submit">Rechercher</button>
+        <Button type="submit">Rechercher</Button>
       </form>
 
       {searchState.status === 'loading' && <p>Recherche…</p>}
@@ -218,10 +225,15 @@ export function BackofficeView() {
           <ul style={{ listStyle: 'none', padding: 0, marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {searchState.results.map((user) => (
               <li key={user.id}>
-                <button type="button" onClick={() => setSelectedUserId(user.id)} style={{ width: '100%', textAlign: 'left' }}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setSelectedUserId(user.id)}
+                  style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left' }}
+                >
                   {user.email} — {user.full_name}
                   {!user.is_active && ' (compte désactivé)'}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

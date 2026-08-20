@@ -3302,6 +3302,96 @@ construction courante 30 000 000,00 − charges BC 0,00 = marge
 effectué après vérification (serveurs arrêtés, conteneur Docker
 supprimé, scripts de seed temporaires retirés du dépôt).
 
+## Composants de base du design system — Button, Input, Select (ticket F-038)
+
+Voir `F-038-composants-base-design-system.md` pour le détail complet.
+Né d'un rapport utilisateur (« apps/web, back-office, rendu quasi sans
+style ») — diagnostic rigoureux AVANT tout correctif (demande explicite) :
+confirmé que ce n'est ni une régression ni un problème d'environnement
+(dev/prod/cache), mais un manque structurel jamais comblé — `packages/
+design-system/src/components/` n'avait jamais contenu de `Button`/
+`Input`/`Select`, chaque écran du projet (4 apps) écrivant ses propres
+`<button>`/`<input>`/`<select>` bruts, sans traitement visuel au-delà de
+la mise en page. Le « chrome » applicatif (`AppShell`, `TabBar`) était,
+lui, réellement bien stylé — seuls les CONTRÔLES DE FORMULAIRE natifs
+n'avaient jamais reçu ce traitement, invisible aux audits précédents
+(tickets 023/024/025) qui vérifiaient chacun un point réel mais précis,
+jamais « l'apparence des boutons/champs » eux-mêmes.
+
+**`Button`/`Input`/`Select`, tous basés sur les tokens EXISTANTS**
+(`semanticColors.neutral`, ton « encre » `#111827` déjà établi comme
+couleur d'emphase du projet depuis le ticket 023 — jamais une couleur de
+marque inventée) — `border-radius: 8px` réutilisé depuis `AlertBanner`,
+`min-height: 44px` sur `Button` (cible tactile WCAG 2.5.5, discipline déjà
+établie ticket 024).
+
+**`semanticColors.danger`, nouveau token, décision explicite de
+l'utilisateur** — dédié EXCLUSIVEMENT à la confirmation d'une action
+irréversible (`Button variant="danger"`, ex. « Confirmer la
+désactivation », `BackofficeView`), jamais réutilisé pour une alerte
+non-bloquante (qui reste `alert`, ambre) — catégorie sémantique
+différente, risque de confusion si les deux partageaient la même couleur.
+`#B91C1C`/`#FEF2F2`/`#7F1D1D` — même rigueur de contraste que la leçon
+`neutral.textMuted` (ticket 024) : `#DC2626` (≈4,83:1 sur blanc) écarté
+pour la même raison que ce précédent (marge jugée trop faible), `#B91C1C`
+porte ce ratio à ≈6,47:1.
+
+**Premier écart du projet vis-à-vis du "100% inline React"** — `:hover`/
+`:focus-visible`/`:disabled` sont des pseudo-classes CSS, inexprimables
+via `style={{}}` seul. Trois règles minimales ajoutées à `GlobalStyles`
+(`.keya-btn`/`.keya-input`/`.keya-select`), commentées explicitement comme
+tel dans le code source — toutes les VALEURS (couleurs de variante,
+tailles) restent pilotées par les tokens JS dans les composants
+eux-mêmes, ces règles ne gèrent QUE le changement d'état lui-même.
+
+**Périmètre de migration confirmé par l'utilisateur : UNIQUEMENT
+`BackofficeView`** (l'écran qui a révélé le problème) — pas les autres
+écrans d'`apps/web`, pas HOME/BUILD/CONTROL PWA, listés explicitement
+comme suite à traiter dans des tickets séparés (`F-038-composants-base-
+design-system.md`, section « Prochaines étapes »). Nuance appliquée dans
+cette migration : seul le bouton qui EXÉCUTE l'action irréversible
+(« Confirmer la désactivation ») reçoit `danger` — celui qui ne fait que
+l'armer (« Désactiver ce compte », premier clic) reste `secondary`,
+cohérent avec la formulation exacte de la décision utilisateur. Le bouton
+de sélection de ligne dans la liste de résultats est aussi migré
+(`variant="secondary"`, alignement à gauche préservé via `justifyContent`)
+— un contrôle interactif réel, pas un élément de mise en page. `Select`
+construit avec ses tests mais SANS consommateur dans ce ticket
+(`BackofficeView` ne contient aucun `<select>`, vérifié en lisant le
+fichier en entier avant la migration) — prêt pour le prochain écran qui
+en aura besoin.
+
+**Limite d'outillage rencontrée et signalée explicitement, pas contournée
+silencieusement** : `computer{action:"screenshot"}` a échoué de façon
+reproductible dans cet environnement (« the Browser pane is not
+displayed »), testé 3 fois y compris après avoir amené l'onglet au
+premier plan — jamais transitoire. Une vraie capture d'écran pixel n'a
+donc pas pu être produite malgré la demande explicite de l'utilisateur.
+Substitué par une inspection DOM/CSS RÉELLE (`getComputedStyle()` sur les
+éléments réellement rendus par le navigateur, backend réellement démarré,
+authentification réelle) — fiable, mais reste un texte structuré, pas une
+image, différence documentée pour transparence plutôt que présentée comme
+équivalente.
+
+**Vérifié en navigateur réel, backend réellement démarré** (Postgres/
+volume du ticket F-037 réutilisé, `Membership admin_keyimmo` recréée —
+aucune ne subsistait sur les données réutilisées) : bouton « Rechercher »
+(`#111827`/blanc, `border-radius: 8px`, `min-height: 44px`) ; lignes de
+résultats + « Annuler » (transparent, bordure `#E5E7EB`, texte encre) ;
+« Confirmer la désactivation » (`#B91C1C`/blanc, visuellement distinct de
+l'ambre `alert`) ; champ de recherche (bordure `#E5E7EB`, `border-radius:
+8px`). **Focus clavier RÉEL** (touche Tab physique, pas un `.focus()`
+scripté — écarté après test, ne déclenche pas `:focus-visible` de façon
+fiable) : anneau de focus confirmé (`box-shadow: rgba(17, 24, 39, 0.12)
+0px 0px 0px 3px`) sur l'élément réellement atteint par Tab. Aucune action
+destructive exécutée (« Annuler » cliqué, jamais la confirmation).
+Nettoyage effectué après vérification (serveurs arrêtés, conteneur Docker
+supprimé, volume préservé).
+
+18 tests dédiés (9 Button + 5 Input + 4 Select). 465 tests frontend (5
+packages : 82+75+73+55+180), zéro régression (2 exécutions consécutives
+propres), `tsc --noEmit` propre sur les 5 packages.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
