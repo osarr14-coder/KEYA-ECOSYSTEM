@@ -332,6 +332,15 @@ def create_mission(
     Même schéma de bascule RLS que `create_inspection` : contexte basculé
     vers l'organisation cible pour la durée de l'écriture, restauré dans un
     `finally` vers celle de l'appelant.
+
+    **Ticket B-036** : `record_bc_charge_for_mission` est appelée ICI,
+    DANS le `try:`, APRÈS la création de la mission mais AVANT le
+    `finally` qui restaure le contexte RLS de l'appelant — la bascule vers
+    l'organisation cible (celle du lot) doit encore être active, la charge
+    BC étant une donnée financière de premier ordre, jamais un effet de
+    bord asynchrone comme `process_mission_assigned` ci-dessous. Import
+    différé pour la même raison (`apps.procurement` n'est jamais importé
+    au niveau module par `apps.inspections`).
     """
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)
@@ -342,6 +351,10 @@ def create_mission(
                 work_declaration_id=work_declaration_id,
                 assigned_inspector=assigned_inspector,
             )
+
+            from apps.procurement.services import record_bc_charge_for_mission
+
+            record_bc_charge_for_mission(mission=mission, actor=assigned_by)
         finally:
             set_rls_context(organization_id=assigned_by_organization_id)
 

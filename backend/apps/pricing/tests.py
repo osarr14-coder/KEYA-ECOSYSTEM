@@ -21,6 +21,7 @@ from apps.core.rls import set_rls_context
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 
 from . import services
+from .services import GLOBAL_CONTROL_OFFICE_JALON_TYPE
 from .models import (
     ActiveLegalPaymentTierTemplate,
     ControlOfficeCalculationMode,
@@ -1027,6 +1028,11 @@ SENEGAL_JALON_TYPE = 'fondations'
 @pytest.mark.django_db
 class TestControlOfficeRateCreation:
     def test_admin_can_create_a_percentage_mode_rate(self):
+        """Ticket B-036, décision C-bis : le mode `percentage` n'est
+        accepté QUE pour `jalon_type=GLOBAL_CONTROL_OFFICE_JALON_TYPE` —
+        voir `TestControlOfficeRatePercentageJalonTypeGuard` plus bas pour
+        la preuve du refus sur un jalon réel.
+        """
         admin_client, _admin_org, admin_user = _register_admin(
             'bc-rate-create-percentage-admin@example.com', 'Org BC Rate Create Percentage Admin',
         )
@@ -1036,7 +1042,7 @@ class TestControlOfficeRateCreation:
             reverse('control-office-rate-create'),
             {
                 'country_pack': str(senegal.id),
-                'jalon_type': SENEGAL_JALON_TYPE,
+                'jalon_type': GLOBAL_CONTROL_OFFICE_JALON_TYPE,
                 'calculation_mode': ControlOfficeCalculationMode.PERCENTAGE,
                 'percentage': '1.50',
             },
@@ -1162,6 +1168,82 @@ class TestControlOfficeRateCreation:
 
 
 @pytest.mark.django_db
+class TestControlOfficeRatePercentageJalonTypeGuard:
+    """Ticket B-036, décision C-bis : une entrée `percentage` sur un
+    `jalon_type` autre que la valeur réservée
+    `GLOBAL_CONTROL_OFFICE_JALON_TYPE` n'aurait jamais aucun effet
+    (`apps.procurement.services.record_bc_charge_for_mission` ne cherche
+    une entrée `percentage` que sous cette valeur réservée) — refusée
+    explicitement à la source plutôt qu'acceptée silencieusement sans
+    jamais produire d'effet.
+    """
+
+    def test_percentage_mode_on_a_real_jalon_type_is_rejected(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-global-guard-admin@example.com', 'Org BC Rate Global Guard Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.PERCENTAGE,
+                'percentage': '1.50',
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert not ControlOfficeRate.objects.filter(country_pack=senegal, jalon_type=SENEGAL_JALON_TYPE).exists()
+
+    def test_percentage_mode_on_the_reserved_global_jalon_type_is_accepted(self):
+        """Non-régression explicite — la garde ne bloque QUE les
+        `jalon_type` réels, jamais la valeur réservée elle-même.
+        """
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-global-guard-allowed-admin@example.com', 'Org BC Rate Global Guard Allowed Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': GLOBAL_CONTROL_OFFICE_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.PERCENTAGE,
+                'percentage': '1.50',
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+
+    def test_fixed_amount_mode_on_any_jalon_type_is_unaffected_by_the_guard(self):
+        """La garde est SPÉCIFIQUE au mode `percentage` — `fixed_amount`
+        reste acceptable sur n'importe quel `jalon_type` réel, y compris
+        (par coïncidence) la valeur réservée elle-même : rien n'empêche un
+        `fixed_amount` littéralement nommé `'global'`, seul le mode
+        `percentage` est contraint.
+        """
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-global-guard-fixed-admin@example.com', 'Org BC Rate Global Guard Fixed Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.FIXED_AMOUNT,
+                'fixed_amount': '300000.00',
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+
+
+@pytest.mark.django_db
 class TestControlOfficeRateCheckConstraint:
     """Décision B — la garantie « un seul des deux champs valeur actif »
     est posée en BASE (`CheckConstraint`), pas seulement côté service —
@@ -1196,6 +1278,11 @@ class TestControlOfficeRateCheckConstraint:
 @pytest.mark.django_db
 class TestControlOfficeRateCurrentAndHistory:
     def test_current_returns_the_latest_entry(self):
+        """Deux révisions `fixed_amount` (pas `percentage` — ticket B-036,
+        décision C-bis, réservé au jalon global) : la preuve « la plus
+        récente gagne » ne dépend pas du mode de calcul, seulement de
+        l'ordre — ce test n'a besoin que de deux valeurs distinctes.
+        """
         admin_client, _admin_org, admin_user = _register_admin(
             'bc-rate-current-admin@example.com', 'Org BC Rate Current Admin',
         )
@@ -1203,7 +1290,7 @@ class TestControlOfficeRateCurrentAndHistory:
 
         services.create_control_office_rate(
             admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
-            calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('1.50'),
+            calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('100000.00'),
         )
         services.create_control_office_rate(
             admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
@@ -1232,6 +1319,10 @@ class TestControlOfficeRateCurrentAndHistory:
         assert response.data is None
 
     def test_history_returns_every_entry_in_chronological_order(self):
+        """Deux révisions `fixed_amount` — même raison que
+        `test_current_returns_the_latest_entry` ci-dessus (B-036,
+        décision C-bis).
+        """
         admin_client, _admin_org, admin_user = _register_admin(
             'bc-rate-history-admin@example.com', 'Org BC Rate History Admin',
         )
@@ -1239,7 +1330,7 @@ class TestControlOfficeRateCurrentAndHistory:
 
         first = services.create_control_office_rate(
             admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
-            calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('1.50'),
+            calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('100000.00'),
         )
         second = services.create_control_office_rate(
             admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
@@ -1381,6 +1472,10 @@ class TestControlOfficeRateSequenceForcedCollision:
     """
 
     def test_two_rates_with_an_identical_created_at_are_resolved_by_sequence(self):
+        """Deux révisions `fixed_amount` (pas `percentage` — ticket B-036,
+        décision C-bis) : la preuve du tie-break par `sequence` ne dépend
+        pas du mode de calcul.
+        """
         _admin_client, _admin_org, admin_user = _register_admin(
             'bc-rate-tiebreak-admin@example.com', 'Org BC Rate Tiebreak Admin',
         )
@@ -1390,7 +1485,7 @@ class TestControlOfficeRateSequenceForcedCollision:
         with mock.patch('django.utils.timezone.now', return_value=frozen_now):
             first = services.create_control_office_rate(
                 admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
-                calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('1.50'),
+                calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('100000.00'),
             )
             second = services.create_control_office_rate(
                 admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
