@@ -50,6 +50,11 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
     searchLots: vi.fn().mockResolvedValue([LOT_RESULT]),
     searchOrganizations: vi.fn().mockResolvedValue([CANDIDATE_ORG_RESULT]),
+    // Ticket F-035 bis (backend B-036) — `LotBcChargesPanel` se monte sur
+    // CHAQUE rendu de `LotLedgerPanel` (voir son propre fichier de test) ;
+    // défaut neutre ici pour que les tests de ce fichier qui ne
+    // s'intéressent pas au grand-livre n'aient pas à le mocker un par un.
+    getLotBcCharges: vi.fn().mockResolvedValue([]),
     ...overrides,
   });
   render(withApiClient(api, <DevisView />));
@@ -371,6 +376,10 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
     renderView({
       listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'devis_verrouille' })]),
       listAjustements: vi.fn().mockResolvedValue([]),
+      // Ticket F-035 — le lot est désormais verrouillé, LotLedgerPanel se
+      // monte aussi : `null` évite que son propre état d'erreur (mock
+      // getLotLedger non fourni par défaut) n'interfère avec ce test.
+      getLotLedger: vi.fn().mockResolvedValue(null),
     });
 
     await selectLot();
@@ -385,6 +394,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
     renderView({
       listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'devis_verrouille' })]),
       listAjustements: vi.fn().mockResolvedValue([makeAjustement()]),
+      getLotLedger: vi.fn().mockResolvedValue(null),
     });
 
     await selectLot();
@@ -402,6 +412,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
     renderView({
       listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'devis_verrouille' })]),
       listAjustements,
+      getLotLedger: vi.fn().mockResolvedValue(null),
     });
 
     await selectLot();
@@ -421,6 +432,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
       listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'devis_verrouille' })]),
       listAjustements,
       createAjustement,
+      getLotLedger: vi.fn().mockResolvedValue(null),
     });
 
     await selectLot();
@@ -445,6 +457,7 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
       listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'devis_verrouille' })]),
       listAjustements: vi.fn().mockResolvedValue([]),
       createAjustement,
+      getLotLedger: vi.fn().mockResolvedValue(null),
     });
 
     await selectLot();
@@ -454,5 +467,32 @@ describe('DevisView — réconciliation / ajustements (ticket 023/024/027)', () 
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer un ajustement' }));
 
     expect(await screen.findByText('Écart (5000000.00) au-delà de la marge disponible (1500000.00).')).toBeInTheDocument();
+  });
+});
+
+describe('DevisView — panneau grand-livre monté une fois un devis verrouillé (ticket F-035)', () => {
+  it('n\'apparaît PAS tant qu\'aucun devis n\'est verrouillé sur le lot', async () => {
+    renderView({
+      listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'candidat' })]),
+    });
+
+    await selectLot();
+    await screen.findByText(DEFAULT_CANDIDATE_DETAIL.name);
+
+    expect(screen.queryByText('Grand-livre de coûts')).not.toBeInTheDocument();
+  });
+
+  it('apparaît une fois un devis verrouillé, appelle getLotLedger(lotId, organizationId)', async () => {
+    const getLotLedger = vi.fn().mockResolvedValue(null);
+    renderView({
+      listDevisForLot: vi.fn().mockResolvedValue([makeDevis({ status: 'devis_verrouille' })]),
+      listAjustements: vi.fn().mockResolvedValue([]),
+      getLotLedger,
+    });
+
+    await selectLot();
+
+    expect(await screen.findByText('Grand-livre de coûts')).toBeInTheDocument();
+    await waitFor(() => expect(getLotLedger).toHaveBeenCalledWith('lot-1', LOT_RESULT.organization.id));
   });
 });

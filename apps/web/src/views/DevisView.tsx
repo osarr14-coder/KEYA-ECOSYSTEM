@@ -10,6 +10,7 @@ import type {
   Devis, DevisAjustement, LotSearchResult, OrganizationSearchResult,
 } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
+import { LotLedgerPanel } from './LotLedgerPanel';
 
 /**
  * Ticket 027 — écran fonctionnel réel (remplace la maquette visuelle du
@@ -33,6 +34,10 @@ import { useApiResource } from '../api/useApiResource';
  * simplement masqués : `title` (infobulle navigateur) + `data-*` sur chaque
  * cellule concernée. `logged_by` reste un UUID brut, sans équivalent
  * `_detail` côté backend — hors scope de B-029/F-029.
+ *
+ * **Grand-livre de coûts par lot (ticket F-035, backend B-035)** —
+ * `LotLedgerPanel` (`./LotLedgerPanel.tsx`), monté une fois un devis
+ * verrouillé sur le lot sélectionné. Voir `F-035-grand-livre-lot.md`.
  */
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -530,6 +535,17 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
 
           <h3 style={{ marginTop: '16px' }}>Enregistrer une candidature reçue hors plateforme</h3>
           <CreateDevisForm organizationId={organizationId} lotId={lotId} onCreated={handleChanged} />
+
+          {/* Ticket F-035 — grand-livre de coûts, uniquement une fois un
+              devis verrouillé sur ce lot (précondition backend,
+              LotDevisNotLockedError sinon). Intégré ICI plutôt qu'un
+              nouvel onglet : search_lots_as_admin (ticket B-028) exclut
+              les lots déjà verrouillés de ses résultats — ce lot ne
+              redeviendrait plus jamais trouvable par une recherche neuve,
+              seul cet état déjà sélectionné y donne accès. */}
+          {state.data.some((devis) => devis.status === 'devis_verrouille') && (
+            <LotLedgerPanel organizationId={organizationId} lotId={lotId} />
+          )}
         </>
       )}
     </section>

@@ -131,6 +131,50 @@ export interface LotSearchResult {
   program: { id: string; name: string };
 }
 
+/**
+ * Miroir de `apps.procurement.serializers.LotLedgerSerializer` (ticket
+ * B-035) — grand-livre de coûts par lot (canal 1). `foncier_alloue`/
+ * `be_alloue` sont un SNAPSHOT figé à la création (jamais recalculés,
+ * même si `ProgramCost` change ensuite) — voir F-035-grand-livre-lot.md.
+ * Ne porte PAS `construction_courante` ni les charges bureau de contrôle
+ * (`LotBcCharge`, ticket B-036) : aucun des deux n'existe/n'est exposé par
+ * l'API à ce jour, voir le même fichier pour la dépendance backend
+ * transmise.
+ */
+export interface LotLedger {
+  id: string;
+  organization: string;
+  lot: string;
+  prix_client: string;
+  foncier_alloue: string;
+  be_alloue: string;
+  created_by: string;
+  created_at: string;
+}
+
+/**
+ * Miroir de `apps.procurement.serializers.LotBcChargeSerializer` (ticket
+ * B-036) — charge bureau de contrôle, effet de bord de chaque
+ * `InspectionMission` créée sur ce lot. S'accumule INDÉPENDAMMENT de
+ * l'existence d'un `LotLedger` (voir `apps/procurement/models.py::
+ * LotBcCharge`, FK directe vers `Lot`, jamais vers `LotLedger`) — déjà
+ * intégrée à la marge disponible (`GET .../margin/`), mais son montant
+ * individuel n'était jamais visible avant ce ticket F-035. `jalon_type`
+ * reste une référence LIBRE (jamais une FK), affichée telle quelle,
+ * jamais réinterprétée.
+ */
+export interface LotBcCharge {
+  id: string;
+  organization: string;
+  lot: string;
+  mission: string;
+  jalon_type: string;
+  montant: string;
+  is_global_reference: boolean;
+  created_by: string;
+  created_at: string;
+}
+
 /** Vocabulaire de doctrine fixe (`apps.pricing.models.PricingCanal`, ticket
  * 025-backend) — les DEUX canaux existent partout, seul leur TAUX varie par
  * pays (`PricingConfig.country_pack`). Sans risque à coder en dur ici, même
