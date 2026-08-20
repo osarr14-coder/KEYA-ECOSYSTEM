@@ -89,4 +89,19 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
     fireEvent.click(await screen.findByRole('button', { name: 'Voir toutes mes actions' }));
     expect(onSeeAllActions).toHaveBeenCalledOnce();
   });
+
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {
+    const getMyTasks = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([]);
+    const api = createMockApiClient({ getMyTasks });
+
+    render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByText("Rien à faire pour l'instant.");
+    expect(getMyTasks).toHaveBeenCalledTimes(2);
+  });
 });

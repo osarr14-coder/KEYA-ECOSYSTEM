@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { semanticColors } from '../../tokens/colors';
 import { AlertBanner } from './AlertBanner';
@@ -34,5 +34,29 @@ describe('AlertBanner — ressort clairement sans lecture attentive du texte', (
     // <div> vide généré pour rien.
     const textContainer = screen.getByText('Réserve ouverte').parentElement;
     expect(textContainer?.children).toHaveLength(1);
+  });
+});
+
+describe('AlertBanner — bouton Réessayer optionnel (ticket F-033, vague 3)', () => {
+  it("n'affiche aucun bouton par défaut (onRetry absent)", () => {
+    render(<AlertBanner title="Impossible de charger." />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('affiche un bouton "Réessayer" quand onRetry est fourni, et l\'appelle au clic', () => {
+    const onRetry = vi.fn();
+    render(<AlertBanner title="Impossible de charger." onRetry={onRetry} />);
+
+    const button = screen.getByRole('button', { name: 'Réessayer' });
+    fireEvent.click(button);
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('utilise retryLabel à la place du libellé par défaut, si fourni', () => {
+    render(<AlertBanner title="Recherche…" onRetry={() => {}} retryLabel="Relancer la recherche" />);
+
+    expect(screen.getByRole('button', { name: 'Relancer la recherche' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
   });
 });

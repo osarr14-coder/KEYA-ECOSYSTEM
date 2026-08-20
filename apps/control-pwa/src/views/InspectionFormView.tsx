@@ -68,6 +68,10 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
   // aucune erreur, laissant `loading` bloqué à `true` pour toujours en cas
   // d'échec IndexedDB, sans le moindre message.
   const [loadError, setLoadError] = useState(false);
+  // Ticket F-033 (vague 3) — même principe que `useApiResource.refetch()` :
+  // un compteur inclus dans les deps de l'effet, pour que le bouton
+  // "Réessayer" relance le chargement sans dupliquer sa logique.
+  const [reloadToken, setReloadToken] = useState(0);
 
   // Ticket 015 — cause du bug confirmée en le reproduisant AVANT ce
   // correctif (`InspectionFormView.test.tsx`) : DOUBLE, les deux se
@@ -129,7 +133,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     return () => {
       cancelled = true;
     };
-  }, [missionId]);
+  }, [missionId, reloadToken]);
 
   function persist(mutate: (current: InspectionDraft) => InspectionDraft): Promise<InspectionDraft> | undefined {
     const current = draftRef.current;
@@ -248,7 +252,12 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
     return <p>Chargement…</p>;
   }
   if (loadError) {
-    return <AlertBanner title="Impossible de charger cette mission." />;
+    return (
+      <AlertBanner
+        title="Impossible de charger cette mission."
+        onRetry={() => setReloadToken((token) => token + 1)}
+      />
+    );
   }
   if (!draft) {
     return <p>Chargement…</p>;

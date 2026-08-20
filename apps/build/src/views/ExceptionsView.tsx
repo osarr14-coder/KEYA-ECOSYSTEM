@@ -219,7 +219,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger les exceptions." />;
+    return <AlertBanner title="Impossible de charger les exceptions." onRetry={state.refetch} />;
   }
 
   const exceptions = state.data;

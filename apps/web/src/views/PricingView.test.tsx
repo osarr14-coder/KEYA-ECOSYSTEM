@@ -66,6 +66,19 @@ describe('PricingView — sélection du pays (ticket F-028, dépendance B-030 le
     expect(await screen.findByText('Impossible de charger la liste des pays.')).toBeInTheDocument();
   });
 
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {
+    const listCountryPacks = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([COUNTRY_PACK]);
+    renderView({ listCountryPacks });
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByRole('button', { name: 'Sénégal (SN)' });
+    expect(listCountryPacks).toHaveBeenCalledTimes(2);
+  });
+
   it('le filtre (purement client) réduit la liste par label ou code, sans second appel réseau', async () => {
     const listCountryPacks = vi.fn().mockResolvedValue([
       COUNTRY_PACK,
@@ -132,6 +145,20 @@ describe('PricingView — taux actuels (ticket 025-backend/F-028)', () => {
 
     expect(await screen.findByText('Impossible de charger les taux actuels.')).toBeInTheDocument();
   });
+
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {
+    const getCurrentPricingRates = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(EMPTY_CURRENT_RATES);
+    renderView({ getCurrentPricingRates });
+
+    await selectCountry();
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByTestId('current-rate-canal_1_marge');
+    expect(getCurrentPricingRates).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('PricingView — historique par canal (ticket 025-backend/F-028)', () => {
@@ -161,6 +188,24 @@ describe('PricingView — historique par canal (ticket 025-backend/F-028)', () =
     // ligne 0 = en-têtes, ligne 1 = première entrée (pas d'ancien taux), ligne 2 = seconde (ancien = 10.00 %)
     expect(rows[1]).toHaveTextContent('—10.00 %admin-1');
     expect(rows[2]).toHaveTextContent('10.00 %12.00 %admin-2');
+  });
+
+  it('un échec réseau affiche une erreur explicite, avec un bouton "Réessayer" (ticket F-033)', async () => {
+    // Rejette le premier appel (canal 1) uniquement — les suivants (canal 2,
+    // puis le retry du canal 1) réussissent : preuve que seul le panneau en
+    // échec affiche l'erreur, et que "Réessayer" ne relance QUE lui.
+    const getPricingHistory = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValue([]);
+    renderView({ getPricingHistory });
+
+    await selectCountry();
+
+    expect(await screen.findAllByText("Impossible de charger l'historique.")).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await waitFor(() => expect(screen.queryByText("Impossible de charger l'historique.")).not.toBeInTheDocument());
+    expect(getPricingHistory).toHaveBeenCalledTimes(3);
   });
 });
 

@@ -145,5 +145,20 @@ describe(
         await waitFor(() => expect(screen.getByText('En attente de synchronisation')).toBeInTheDocument());
       },
     );
+
+    it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033, vague 3)', async () => {
+      const getCachedMissions = vi.fn()
+        .mockRejectedValueOnce(new Error('IndexedDB indisponible'))
+        .mockResolvedValueOnce(FIXTURE_MISSIONS);
+      vi.spyOn(repository, 'getCachedMissions').mockImplementation(getCachedMissions);
+
+      render(<MissionsListView onSelectMission={() => {}} />);
+
+      await screen.findByRole('alert');
+      fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+      await screen.findByText(FIXTURE_MISSIONS[0].lotName);
+      expect(getCachedMissions).toHaveBeenCalledTimes(2);
+    });
   },
 );

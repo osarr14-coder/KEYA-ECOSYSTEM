@@ -48,7 +48,9 @@ function CurrentRatesPanel({ countryPackId, reloadKey }: { countryPackId: string
     <section aria-label="Taux actuels">
       <h3>Taux actuels</h3>
       {state.status === 'loading' && <p>Chargement des taux actuels…</p>}
-      {state.status === 'error' && <AlertBanner title="Impossible de charger les taux actuels." />}
+      {state.status === 'error' && (
+        <AlertBanner title="Impossible de charger les taux actuels." onRetry={state.refetch} />
+      )}
       {state.status === 'success' && (
         <ul style={{ listStyle: 'none', padding: 0 }}>
           {CANALS.map(({ id, label }) => {
@@ -95,7 +97,9 @@ function CanalHistoryPanel({
     <section aria-label={`Historique — ${canalLabel(canal)}`} style={{ marginTop: '16px' }}>
       <h4>{canalLabel(canal)}</h4>
       {state.status === 'loading' && <p>Chargement de l&apos;historique…</p>}
-      {state.status === 'error' && <AlertBanner title="Impossible de charger l'historique." />}
+      {state.status === 'error' && (
+        <AlertBanner title="Impossible de charger l'historique." onRetry={state.refetch} />
+      )}
       {state.status === 'success' && (
         state.data.length === 0 ? (
           <p data-testid={`no-history-${canal}`}>Aucun taux enregistré pour l&apos;instant.</p>

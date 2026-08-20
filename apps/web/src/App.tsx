@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, AppShell, TabBar, type AppModule,
+  AlertBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -89,12 +89,24 @@ function defaultRedirect(url: string) {
  */
 export function App({ redirect = defaultRedirect }: AppProps) {
   const [storedAccessToken] = useState(() => localStorage.getItem('keya_access_token'));
+  // Ticket F-033 (vague 2) — implémentation UNIQUE promue au design system
+  // (`useOnlineStatus`, extraite de CONTROL PWA, ticket 010 passe 2) :
+  // couvre à la fois l'écran de connexion et le back-office authentifié,
+  // une coupure réseau ne doit plus ressembler à une erreur générique.
+  const isOnline = useOnlineStatus();
 
-  if (storedAccessToken) {
-    return <AuthenticatedApp />;
-  }
-
-  return <LoginView redirect={redirect} />;
+  return (
+    <>
+      {!isOnline && (
+        <div style={{ padding: '12px' }}>
+          <AlertBanner title="Hors ligne">
+            Les actions nécessitant le réseau échoueront tant que la connexion n&apos;est pas rétablie.
+          </AlertBanner>
+        </div>
+      )}
+      {storedAccessToken ? <AuthenticatedApp /> : <LoginView redirect={redirect} />}
+    </>
+  );
 }
 
 function AuthenticatedApp() {
@@ -107,7 +119,7 @@ function AuthenticatedApp() {
   if (meState.status === 'error') {
     return (
       <main style={{ padding: '24px' }}>
-        <AlertBanner title="Impossible de charger votre profil." />
+        <AlertBanner title="Impossible de charger votre profil." onRetry={meState.refetch} />
       </main>
     );
   }

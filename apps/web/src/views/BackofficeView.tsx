@@ -59,7 +59,7 @@ function UserDetailPanel({ userId }: { userId: string }) {
     return <p>Chargement du profil…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger ce profil." />;
+    return <AlertBanner title="Impossible de charger ce profil." onRetry={state.refetch} />;
   }
 
   const { user, memberships } = state.data;
@@ -128,8 +128,10 @@ export function BackofficeView() {
   const [searchState, setSearchState] = useState<SearchState>({ status: 'idle' });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
-  async function handleSearch(event: FormEvent) {
-    event.preventDefault();
+  // Ticket F-033 (vague 3) — extrait de `handleSearch` pour que le bouton
+  // "Réessayer" (pas de `FormEvent` à disposition) puisse relancer
+  // EXACTEMENT la même recherche que le formulaire.
+  async function runSearch() {
     setSearchState({ status: 'loading' });
     setSelectedUserId(null);
     try {
@@ -138,6 +140,11 @@ export function BackofficeView() {
     } catch {
       setSearchState({ status: 'error' });
     }
+  }
+
+  function handleSearch(event: FormEvent) {
+    event.preventDefault();
+    void runSearch();
   }
 
   return (
@@ -162,7 +169,9 @@ export function BackofficeView() {
       </form>
 
       {searchState.status === 'loading' && <p>Recherche…</p>}
-      {searchState.status === 'error' && <AlertBanner title="Impossible d'effectuer la recherche." />}
+      {searchState.status === 'error' && (
+        <AlertBanner title="Impossible d'effectuer la recherche." onRetry={() => { void runSearch(); }} />
+      )}
       {searchState.status === 'success' && (
         searchState.results.length === 0 ? (
           <p data-testid="no-results">Aucun utilisateur trouvé.</p>

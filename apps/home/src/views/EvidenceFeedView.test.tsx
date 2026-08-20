@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { EvidenceFeedView } from './EvidenceFeedView';
@@ -57,5 +57,20 @@ describe('EvidenceFeedView', () => {
     render(withApiClient(api, <EvidenceFeedView lotId="lot-1" />));
 
     expect(await screen.findByText(/aucune preuve/i)).toBeInTheDocument();
+  });
+
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {
+    const getLotEvidenceFeed = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([]);
+    const api = createMockApiClient({ getLotEvidenceFeed });
+
+    render(withApiClient(api, <EvidenceFeedView lotId="lot-1" />));
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByText(/aucune preuve/i);
+    expect(getLotEvidenceFeed).toHaveBeenCalledTimes(2);
   });
 });

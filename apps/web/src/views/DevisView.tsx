@@ -48,6 +48,13 @@ const SEARCH_DEBOUNCE_MS = 250;
 function useDebouncedSearch<T>(searchFn: (query: string) => Promise<T[]>, query: string) {
   const [results, setResults] = useState<T[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
+  // Ticket F-033 (vague 3) — même principe que `useApiResource.refetch()` :
+  // un compteur inclus dans les deps de l'effet, pour qu'un bouton
+  // "Réessayer" relance EXACTEMENT la même recherche sans dupliquer sa
+  // logique. Toujours au travers du MÊME debounce (250ms, imperceptible) —
+  // jamais un second chemin direct qui contournerait les gardes anti-course
+  // ci-dessous (`cancelled`/`latestQueryRef`).
+  const [reloadToken, setReloadToken] = useState(0);
   const latestQueryRef = useRef(query);
 
   useEffect(() => {
@@ -80,9 +87,9 @@ function useDebouncedSearch<T>(searchFn: (query: string) => Promise<T[]>, query:
       clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, searchFn]);
+  }, [query, searchFn, reloadToken]);
 
-  return { results, status };
+  return { results, status, retry: () => setReloadToken((token) => token + 1) };
 }
 
 /**
@@ -101,7 +108,7 @@ function LiveSearchPicker<T>({
   onSelect: (item: T) => void;
 }) {
   const [query, setQuery] = useState('');
-  const { results, status } = useDebouncedSearch(searchFn, query);
+  const { results, status, retry } = useDebouncedSearch(searchFn, query);
 
   return (
     <div>
@@ -117,7 +124,9 @@ function LiveSearchPicker<T>({
         />
       </label>
       {status === 'loading' && <p style={{ fontSize: '13px' }}>Recherche…</p>}
-      {status === 'error' && <AlertBanner title="Impossible d'effectuer la recherche." />}
+      {status === 'error' && (
+        <AlertBanner title="Impossible d'effectuer la recherche." onRetry={retry} />
+      )}
       {status === 'success' && results.length === 0 && (
         <p data-testid="no-search-results" style={{ fontSize: '13px' }}>Aucun résultat.</p>
       )}
@@ -393,7 +402,9 @@ function AjustementsPanel({ devis, organizationId }: { devis: Devis; organizatio
       <CandidateVisibleStatusNote devis={devis} ajustementsCount={ajustements.length} />
 
       {state.status === 'loading' && <p style={{ fontSize: '13px' }}>Chargement des ajustements…</p>}
-      {state.status === 'error' && <AlertBanner title="Impossible de charger les ajustements." />}
+      {state.status === 'error' && (
+        <AlertBanner title="Impossible de charger les ajustements." onRetry={state.refetch} />
+      )}
       {state.status === 'success' && (
         ajustements.length === 0 ? (
           <p style={{ margin: '4px 0', fontSize: '13px' }}>Aucun ajustement enregistré pour l&apos;instant.</p>
@@ -476,7 +487,9 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
   return (
     <section aria-label={`Devis pour le lot ${lotId}`}>
       {state.status === 'loading' && <p>Chargement des devis…</p>}
-      {state.status === 'error' && <AlertBanner title="Impossible de charger les devis de ce lot." />}
+      {state.status === 'error' && (
+        <AlertBanner title="Impossible de charger les devis de ce lot." onRetry={state.refetch} />
+      )}
       {state.status === 'success' && (
         <>
           {state.data.length === 0 ? (

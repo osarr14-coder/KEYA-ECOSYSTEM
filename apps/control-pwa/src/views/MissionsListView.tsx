@@ -67,6 +67,10 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [statusByMission, setStatusByMission] = useState<Record<string, SyncStatus>>({});
   const [loadState, setLoadState] = useState<LoadState>('loading');
+  // Ticket F-033 (vague 3) — même principe que `useApiResource.refetch()` :
+  // un compteur inclus dans les deps de l'effet, pour que le bouton
+  // "Réessayer" relance le chargement sans dupliquer sa logique.
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,13 +105,18 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadToken]);
 
   return (
     <section aria-label="Mes missions">
       <h1>Mes missions</h1>
       {loadState === 'loading' && <p>Chargement…</p>}
-      {loadState === 'error' && <AlertBanner title="Impossible de charger vos missions." />}
+      {loadState === 'error' && (
+        <AlertBanner
+          title="Impossible de charger vos missions."
+          onRetry={() => setReloadToken((token) => token + 1)}
+        />
+      )}
       {loadState === 'ready' && missions.length === 0 && <p>Aucune mission pour le moment.</p>}
       {loadState === 'ready' && missions.length > 0 && (
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>

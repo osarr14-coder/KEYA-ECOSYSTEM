@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { MyActionsView } from './MyActionsView';
@@ -29,5 +29,20 @@ describe('MyActionsView', () => {
     render(withApiClient(api, <MyActionsView activeOrganizationId={null} />));
 
     expect(await screen.findByText(/aucune action en attente/i)).toBeInTheDocument();
+  });
+
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {
+    const getMyTasks = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([]);
+    const api = createMockApiClient({ getMyTasks });
+
+    render(withApiClient(api, <MyActionsView activeOrganizationId={null} />));
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByText(/aucune action en attente/i);
+    expect(getMyTasks).toHaveBeenCalledTimes(2);
   });
 });

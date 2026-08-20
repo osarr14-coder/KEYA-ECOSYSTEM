@@ -206,7 +206,9 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
       </div>
 
       {state.status === 'loading' && <p>Chargement…</p>}
-      {state.status === 'error' && <AlertBanner title="Impossible de charger les lots." />}
+      {state.status === 'error' && (
+        <AlertBanner title="Impossible de charger les lots." onRetry={state.refetch} />
+      )}
 
       {state.status === 'success' && (
         <>

@@ -41,7 +41,7 @@ export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: P
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger vos actions." />;
+    return <AlertBanner title="Impossible de charger vos actions." onRetry={state.refetch} />;
   }
 
   const priorityTask = state.data[0] ?? null;

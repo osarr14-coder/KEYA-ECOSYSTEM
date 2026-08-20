@@ -37,7 +37,7 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
     return <p>Chargement…</p>;
   }
   if (state.status === 'error') {
-    return <AlertBanner title="Impossible de charger votre bien." />;
+    return <AlertBanner title="Impossible de charger votre bien." onRetry={state.refetch} />;
   }
 
   const overview = state.data;

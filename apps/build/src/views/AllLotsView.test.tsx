@@ -331,3 +331,21 @@ describe('AllLotsView — export CSV (ticket F-032)', () => {
     }
   });
 });
+
+describe('AllLotsView — erreur de chargement générique (ticket F-033, vague 3)', () => {
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement sans changer les filtres', async () => {
+    const getAllLots = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(makePage([makeRow()]));
+    const api = createMockApiClient({ getAllLots });
+    render(withApiClient(api, <AllLotsView activeOrganizationId={null} />));
+
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    await screen.findByText('Lot 12');
+    expect(getAllLots).toHaveBeenCalledTimes(2);
+    // Le même filtre/tri est retransmis, pas réinitialisé par le retry.
+    expect(getAllLots).toHaveBeenLastCalledWith(expect.objectContaining({ ordering: 'name' }));
+  });
+});

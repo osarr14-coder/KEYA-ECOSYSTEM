@@ -2469,7 +2469,7 @@ l'écrivant, contrairement à la plupart des tickets précédents de cette séri
 2 tests dédiés, suite `pricing` 38 tests, suite complète du projet 285 tests,
 tous verts.
 
-## Audit des états système — vague 1 (ticket F-033, `apps/control-pwa`)
+## Audit des états système — vague 1 (ticket F-033)
 
 Voir `F-033-audit-etats-systeme.md` pour le détail complet. Premier audit
 exhaustif de la doctrine 17.5 (V3.0) sur tous les écrans admin d'`apps/web`
@@ -2528,6 +2528,73 @@ listées explicitement dans `F-033-audit-etats-systeme.md` : `persist()`/
 `permission denied` dédiés, bouton « Réessayer » générique, `sync failed`
 par photo jamais affiché, incohérence `<p role="alert">` vs `AlertBanner`
 (HOME/BUILD), stale data.
+
+## Audit des états système — vagues 2+3 (ticket F-033)
+
+Voir `F-033-audit-etats-systeme.md` pour le détail complet. Suite directe
+de la vague 1 : détection réseau hors CONTROL PWA (vague 2) et bouton
+« Réessayer » sur les erreurs génériques (vague 3), traitées ensemble.
+
+**État des lieux vérifié avant tout code (demande explicite)** :
+`useOnlineStatus` (offline) était un hook LOCAL à `apps/control-pwa/src/
+App.tsx`, jamais partagé. `packages/design-system/src` ne contenait AUCUN
+hook logique, seulement des composants visuels + tokens.
+
+**Décision initiale proposée puis CORRIGÉE par l'utilisateur avant
+implémentation** : j'avais d'abord proposé de dupliquer ce hook par app
+(par analogie avec `createApiClient`/`useApiResource`, déjà dupliqués
+entre apps dans ce projet). L'utilisateur a rappelé la règle constante du
+projet — « toujours réutiliser, jamais redéfinir », déjà appliquée à
+`CountryPackSelector` (ticket F-030) et `StatusBadge`/`AppShell` (ticket
+007) — et a tranché : `useOnlineStatus` est purement générique, sans rien
+de spécifique à une app, il doit avoir UNE SEULE implémentation. Promu à
+`packages/design-system/src/hooks/useOnlineStatus.ts` (premier hook du
+package, jusque-là uniquement composants/tokens) — CONTROL PWA importe
+désormais cette implémentation UNIQUE au lieu de sa copie locale, retirée.
+HOME/BUILD/`apps/web` l'importent aussi, avec `AlertBanner` (déjà
+partagé) pour le bandeau — texte volontairement DIFFÉRENT de CONTROL PWA
+(qui promet une synchronisation automatique différée, vraie SEULEMENT
+là-bas) : « Les actions nécessitant le réseau échoueront tant que la
+connexion n'est pas rétablie. », honnête sur l'absence de file
+offline-first dans ces 3 apps.
+
+**Vague 3** : `AlertBanner` gagne `onRetry?`/`retryLabel?` (optionnels,
+rétrocompatibles). `useApiResource` (dupliqué dans home/build/web) gagne
+un `refetch()` — compteur interne (`reloadToken`) inclus dans les deps de
+l'effet EN PLUS de celles de l'appelant, nouveau type exporté
+`ApiResourceState<T>`. Deux mécanismes hors `useApiResource` reçoivent le
+même traitement séparément : `BackofficeView::handleSearch` (extrait en
+`runSearch()`, appelable sans `FormEvent`) et `DevisView::
+useDebouncedSearch` (compteur dans ses propres deps, retry TOUJOURS via
+le même debounce 250ms, jamais un chemin direct qui contournerait ses
+gardes anti-course). Les 2 banners CONTROL PWA de la vague 1
+(`MissionsListView`/`InspectionFormView`, IndexedDB direct) reçoivent un
+`reloadToken` local à chaque fichier, même principe.
+
+**Incohérence corrigée au passage, pas silencieusement smuggled** :
+HOME/BUILD `App.tsx` utilisaient un `<p role="alert">` brut au lieu
+d'`AlertBanner` pour l'erreur `/me` (déjà notée à l'audit étape 1) —
+corrigé en même temps que l'ajout du retry sur ces mêmes lignes, plutôt
+que d'ajouter un bouton à un `<p>` et laisser l'incohérence stylistique.
+
+**20 sites câblés avec retry** (sur ~37 `AlertBanner` du projet,
+énumération exhaustive par `grep` dans `F-033-audit-etats-systeme.md`) —
+les ~17 restants (erreurs de soumission déjà retentables via leur propre
+bouton, bandeaux informationnels, conflit CONTROL PWA, « Accès refusé »,
+export CSV volumineux) laissés INTACTS, un retry y serait redondant ou
+dénué de sens.
+
+**376 tests frontend** (5 packages : 51+68+61+48+148), zéro régression,
+`tsc --noEmit` propre. **Vérifié dans un vrai navigateur, avec un vrai
+backend** (compte `admin_keyimmo` réel) : bandeau « Hors ligne » affiché
+sur l'écran de connexion ET le back-office authentifié (`navigator.
+onLine` simulé + événement `offline`) ; recherche back-office avec échec
+réseau simulé (`fetch` intercepté) → bouton « Réessayer » → résultat réel
+affiché, sans rechargement de page.
+
+**Vague 4 non commencée** (permission denied dédiée, `sync failed` par
+photo CONTROL PWA, `persist()`/`resolveConflictByDiscarding`, stale data)
+— listée explicitement dans `F-033-audit-etats-systeme.md`.
 
 ## Conventions de code
 

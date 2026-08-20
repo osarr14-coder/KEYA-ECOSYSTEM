@@ -340,5 +340,19 @@ describe(
 
       expect(await screen.findByRole('alert')).toHaveTextContent('Impossible de charger cette mission.');
     });
+
+    it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033, vague 3)', async () => {
+      const getDraftForMissionSpy = vi.spyOn(repository, 'getDraftForMission')
+        .mockRejectedValueOnce(new Error('IndexedDB indisponible'));
+
+      render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
+
+      await screen.findByRole('alert');
+      getDraftForMissionSpy.mockRestore();
+      fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+      await screen.findByText('Checklist');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
   },
 );

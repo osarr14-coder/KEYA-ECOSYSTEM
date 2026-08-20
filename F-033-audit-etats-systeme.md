@@ -1,129 +1,170 @@
 # Ticket F-033 — Audit des états système (doctrine 17.5 V3.0)
 
 ## Statut
-En cours, par vagues. **Vague 1 livrée** (branche `feature/frontend-round-2`) :
-deux défauts de robustesse trouvés et corrigés dans CONTROL PWA
-(`MissionsListView`/`InspectionFormView`), tests écrits avant correctif.
-Vagues 2/3/4 (offline hors CONTROL PWA, permission denied, retry sur les
-erreurs génériques, `sync failed` par photo, stale data) restent à
-prioriser avec l'utilisateur — non commencées.
+En cours, par vagues. **Vagues 1, 2 et 3 livrées** (branche
+`feature/frontend-round-2`). Vague 4 (permission denied dédiée, `sync
+failed` par photo CONTROL PWA, incohérences résiduelles) reste à prioriser
+avec l'utilisateur — non commencée.
 
-## Étape 1 — audit exhaustif (aucune correction), livré et discuté avec l'utilisateur
+## Étape 1 — audit exhaustif (aucune correction), livré et discuté
 
-Tous les écrans admin d'`apps/web` (BackofficeView, DevisView, PricingView,
-LegalPaymentTiersView) et les 3 apps (HOME, BUILD, CONTROL PWA) ont été lus
-intégralement — pas d'extrapolation depuis CLAUDE.md seul. Tableau complet
-(écran × état pertinent × géré/manquant/à vérifier) livré en conversation.
+Tous les écrans admin d'`apps/web` et les 3 apps (HOME/BUILD/CONTROL PWA)
+lus intégralement. Tableau complet (écran × état pertinent ×
+géré/manquant/à vérifier) livré en conversation. Constats transversaux
+majeurs : `offline` n'avait de détection réelle que dans CONTROL PWA ;
+`permission denied` n'avait un vrai état dédié qu'au gate `admin_keyimmo`
+d'`apps/web` ; aucun bouton « Réessayer » nulle part ; `sync failed` par
+photo tracké en données mais jamais affiché.
 
-**Constats transversaux les plus significatifs** (au-delà de la grille
-écran par écran) :
-1. `offline` n'a de détection réelle que dans CONTROL PWA
-   (`App.tsx::useOnlineStatus`) — les 6 autres écrans/apps n'ont aucune
-   détection réseau, une coupure y ressemble à une erreur serveur
-   générique.
-2. `permission denied` n'a un vrai état dédié qu'à un seul endroit
-   (`apps/web::App.tsx`, gate `admin_keyimmo`) — partout ailleurs, un
-   401/403 en cours de session tombe dans le même message générique
-   qu'une panne serveur (`grep` confirmé : `status === 401` n'apparaît
-   nulle part ailleurs que le formulaire de connexion).
-3. Aucun bouton « Réessayer » nulle part sur les ~25 `AlertBanner`
-   d'erreur du projet.
-4. **Deux bugs de robustesse réels trouvés en lisant le code** (pas de
-   simples manques de style) — objet de la vague 1, voir ci-dessous.
-5. `sync failed` (photos) tracké en données (`LocalPhoto.mediaSyncStatus
-   === 'failed'`) mais jamais affiché nulle part dans `PhotoThumbnail`.
+## Vague 1 (déjà livrée séparément)
+Voir la section CLAUDE.md dédiée — deux bugs de robustesse IndexedDB
+corrigés dans `MissionsListView`/`InspectionFormView` (CONTROL PWA).
 
-## Vague 1 — vérification de l'étendue avant correction (demande explicite)
+## Vague 2 — détection réseau hors CONTROL PWA
 
-Avant de corriger le point 4, l'utilisateur a demandé de vérifier si le
-même défaut (échec IndexedDB jamais catché) existait ailleurs que
-`MissionsListView`, pour ne pas en laisser un autre en place.
+**État des lieux vérifié avant tout code (demande explicite)** :
+`apps/control-pwa/src/App.tsx::useOnlineStatus()` était un hook LOCAL, non
+exporté, non partagé (~15 lignes — `navigator.onLine` + listeners
+`online`/`offline`). `packages/design-system/src` ne contenait AUCUN hook
+logique, seulement des composants visuels + tokens.
 
-**Méthode** : lecture intégrale de `db/repository.ts` (9 fonctions
-exportées) et `grep` de tous leurs appelants dans `apps/control-pwa/src`
-(hors tests).
+**Décision initiale proposée puis CORRIGÉE par l'utilisateur avant
+implémentation** : j'avais d'abord proposé de dupliquer ce hook par app
+(par analogie avec `createApiClient`/`useApiResource`, déjà dupliqués).
+L'utilisateur a rappelé la règle constante du projet (« toujours
+réutiliser, jamais redéfinir », déjà appliquée à `CountryPackSelector`
+ticket F-030, `StatusBadge`/`AppShell` ticket 007) : `useOnlineStatus` est
+un hook PUREMENT générique, sans rien de spécifique à une app — il doit
+avoir UNE SEULE implémentation, dans `packages/design-system`, jamais
+copiée-collée.
 
-**Constat** : chaque fonction de `repository.ts` utilise `try { ... }
-finally { db.close(); }` — **jamais** de `catch`, ce qui est en fait le
-comportement CORRECT pour une couche de données (elle doit propager les
-erreurs, pas les avaler). Le vrai défaut est côté appelants — recensement
-exhaustif :
+**Réalisé** : `packages/design-system/src/hooks/useOnlineStatus.ts` (+ 4
+tests), exporté depuis `index.ts` — premier hook du package (jusque-là
+uniquement composants/tokens). CONTROL PWA (`App.tsx`) importe désormais
+CETTE implémentation au lieu de sa copie locale, retirée. HOME/BUILD/
+`apps/web` (`App.tsx`, un seul montage par shell) l'importent aussi,
+réutilisant `AlertBanner` (déjà partagé) pour le bandeau « Hors ligne » —
+texte volontairement DIFFÉRENT de celui de CONTROL PWA (« Vos saisies sont
+enregistrées... seront synchronisées ») : ces 3 apps n'ont AUCUNE file
+locale/offline-first, un message promettant une synchronisation
+automatique serait FAUX pour elles. Message retenu : « Les actions
+nécessitant le réseau échoueront tant que la connexion n'est pas
+rétablie. ». `apps/web` couvre à la fois l'écran de connexion et le
+back-office authentifié (un seul point d'insertion, dans `App()`).
 
-| Appelant | Défaut trouvé | Sévérité | Décision |
-|---|---|---|---|
-| `MissionsListView` (effet de montage) | `getCachedMissions()` jamais catché → rejection non gérée, aucun état d'erreur | Élevée — écran figé sur un « vide » trompeur | **Corrigé (vague 1)** |
-| `MissionsListView` (statuts par mission) | `Promise.all` sur `getDraftForMission` — un échec vide le statut de TOUTES les missions | Élevée | **Corrigé (vague 1)** |
-| `InspectionFormView` (effet de montage) | Même défaut exact (IIFE sans `catch`) → `loading` bloqué à `true` indéfiniment | Élevée — écran figé sur un spinner infini | **Corrigé (vague 1)** — même forme, même correctif trivial |
-| `InspectionFormView::persist()` | Chaîne de promesses sans `catch` — la mise à jour optimiste (`setDraft`) a déjà eu lieu de façon SYNCHRONE avant l'écriture : un échec silencieux ferait croire à l'utilisateur que sa saisie est enregistrée alors qu'elle ne l'est pas | Élevée mais correctif DIFFÉRENT (nécessite une nouvelle UI « échec d'enregistrement local », pas juste un `catch` qui logge) | **Hors vague 1** — noté explicitement comme suite à prévoir, jamais oublié silencieusement |
-| `InspectionFormView::resolveConflictByDiscarding` | Même absence de `catch` sur `deleteDraft` | Faible — aucun état trompeur, l'écran de conflit reste affiché tel quel si ça échoue, l'inspecteur peut réessayer | **Hors vague 1** — décision consciente, pas un oubli |
-| `syncEngine.ts::runSyncCycle` (`getAllDrafts`) | Pas de `catch` autour de l'appel | Nulle — **auto-cicatrisant** (retenté toutes les 15s / à la reconnexion), aucun état UI n'en dépend directement | **Aucune correction nécessaire** — vérifié, pas un défaut réel |
-| `syncEngine.ts::refreshMissions` | — | — | Déjà correct : `try/catch` existant et documenté (échec silencieux volontaire, retenté au cycle suivant) |
+## Vague 3 — bouton « Réessayer » sur les erreurs génériques
 
-## Correctifs (vague 1)
+**Mécanisme retenu** : `AlertBanner` (design-system) gagne deux props
+optionnelles `onRetry?`/`retryLabel?` — rétrocompatible, absent par défaut
+(la plupart des `AlertBanner` ne sont PAS des erreurs de chargement
+génériques : formulaires déjà retentables via leur propre bouton,
+bandeaux informationnels, conflit avec sa propre action dédiée,
+« Accès refusé » où réessayer ne change rien).
 
-**`MissionsListView.tsx`** — nouvel état `LoadState` (`'loading' |
-'error' | 'ready'`) remplaçant le simple `missions.length === 0` comme
-seul signal : `getCachedMissions()` est désormais dans un `try/catch`
-explicite (`AlertBanner` sur échec, jamais un « Aucune mission » trompeur).
-Le `Promise.all` sur les statuts de synchro par mission devient
-`Promise.allSettled` : une mission dont la lecture échoue n'affiche
-simplement aucun statut (comportement déjà accepté pour une mission
-jamais entamée), les autres gardent le leur.
+`useApiResource` (dupliqué dans `apps/{home,build,web}`) gagne un
+`refetch()` — un compteur interne (`reloadToken`) inclus dans les deps de
+l'effet EN PLUS de celles fournies par l'appelant, sans changer leur
+contrat. Nouveau type exporté `ApiResourceState<T> = ResourceState<T> &
+{ refetch: () => void }`, utilisé aussi comme type de prop partout où un
+état de ressource est passé en enfant (`LegalPaymentTiersView::
+ActiveTemplatePanel`, seul cas trouvé dans tout le projet).
 
-**`InspectionFormView.tsx`** — nouvel état `loadError` à côté de `loading` :
-l'effet de montage capture désormais l'échec de
-`Promise.all([getDraftForMission, getCachedMission])` dans un `try/catch`,
-affiche `AlertBanner` plutôt que de laisser `loading` bloqué à `true` pour
-toujours.
+**Deux mécanismes de recherche NE PASSENT PAS par `useApiResource`** —
+retry implémenté séparément, même principe (compteur inclus dans les
+deps) :
+- `BackofficeView::handleSearch` (déclenché par soumission de formulaire,
+  pas un effet) — extrait en `runSearch()` (sans `FormEvent`), appelé à
+  la fois par le formulaire et le bouton Réessayer.
+- `DevisView::useDebouncedSearch` (utilisé par `LotPicker`/
+  `OrganizationPicker`) — gagne un `reloadToken` dans ses propres deps
+  d'effet ; le retry passe TOUJOURS par le même debounce (250ms,
+  imperceptible), jamais un second chemin direct qui contournerait les
+  gardes anti-course déjà en place (`cancelled`/`latestQueryRef`).
 
-## Tests écrits AVANT correction (même discipline que le ticket 015)
+**CONTROL PWA — les 2 banners ajoutés en vague 1** (`MissionsListView`/
+`InspectionFormView`, IndexedDB direct, pas `useApiResource`) suivent le
+MÊME traitement : compteur `reloadToken` local à chaque fichier, inclus
+dans les deps de leur effet de montage.
 
-- `MissionsListView.test.tsx` (+3 tests) : état de chargement explicite ;
-  `getCachedMissions()` en échec → `AlertBanner`, jamais un vide
-  silencieux ; **le test central demandé explicitement** — deux missions,
-  `getDraftForMission` échoue pour l'une, la mission dont la lecture
-  RÉUSSIT garde son vrai statut affiché (`Promise.allSettled`). Les trois
-  tests ont été lancés et confirmés ROUGES contre le code non corrigé
-  AVANT toute modification de `MissionsListView.tsx` (deux « Unhandled
-  Rejection » observées, preuve directe du bug) — capture figée dans
-  l'historique de la session, pas juste affirmée.
-- `InspectionFormView.test.tsx` (+2 tests) : échec de
-  `getDraftForMission`/`getCachedMission` au montage → `AlertBanner`,
-  jamais un blocage indéfini sur « Chargement… ». Rouge confirmé avant
-  correctif (même mécanisme d'« Unhandled Rejection » observé).
+**Incohérence corrigée au passage, pas silencieusement smuggled** :
+`HOME`/`BUILD::App.tsx` utilisaient un `<p role="alert">` brut au lieu
+d'`AlertBanner` pour l'erreur de `/me` — déjà notée comme dette à l'audit
+(étape 1). Puisque ces exactes lignes devaient de toute façon être
+modifiées pour ajouter le retry (même défaut — erreur de chargement
+générique — que toutes les autres cibles de cette vague), corrigé en même
+temps plutôt que d'ajouter un bouton "Réessayer" à un `<p>` et laisser
+l'incohérence stylistique en place.
+
+## Enumération complète — 20 sites câblés avec retry
+
+`grep` exhaustif de tous les `<AlertBanner>` du projet (~37 occurrences
+avant ce ticket) : 20 sites correspondent à une erreur de chargement
+générique, câblés avec `onRetry` ; les ~17 restants (erreurs de
+soumission de formulaire déjà retentables via leur propre bouton,
+bandeaux informationnels, conflit CONTROL PWA, « Accès refusé », export
+CSV volumineux) laissés INTACTS délibérément — ajouter un retry y aurait
+été redondant ou dénué de sens.
+
+| Site | Mécanisme |
+|---|---|
+| `apps/web/App.tsx` (`meState`, back-office) | `useApiResource.refetch` |
+| `apps/web/CountryPackSelector.tsx` | `useApiResource.refetch` |
+| `apps/web/BackofficeView.tsx` — recherche | `runSearch()` extrait |
+| `apps/web/BackofficeView.tsx` — profil (`UserDetailPanel`) | `useApiResource.refetch` |
+| `apps/web/DevisView.tsx` — recherche lot (`LotPicker`) | `useDebouncedSearch.retry` |
+| `apps/web/DevisView.tsx` — `DevisListPanel` | `useApiResource.refetch` |
+| `apps/web/DevisView.tsx` — `AjustementsPanel` | `useApiResource.refetch` |
+| `apps/web/PricingView.tsx` — taux actuels | `useApiResource.refetch` |
+| `apps/web/PricingView.tsx` — historique (×1 composant, ×2 canaux) | `useApiResource.refetch` |
+| `apps/web/LegalPaymentTiersView.tsx` — template actif | `useApiResource.refetch` |
+| `apps/web/LegalPaymentTiersView.tsx` — historique | `useApiResource.refetch` |
+| `apps/home/App.tsx` (`meState`) | `useApiResource.refetch` + `<p>`→`AlertBanner` |
+| `apps/home/App.tsx` (`lotsState`) | `useApiResource.refetch` + `<p>`→`AlertBanner` |
+| `apps/home/OverviewView.tsx` | `useApiResource.refetch` |
+| `apps/home/EvidenceFeedView.tsx` | `useApiResource.refetch` |
+| `apps/home/MyActionsView.tsx` | `useApiResource.refetch` |
+| `apps/home/PriorityTaskSummary.tsx` | `useApiResource.refetch` |
+| `apps/build/App.tsx` (`meState`) | `useApiResource.refetch` + `<p>`→`AlertBanner` |
+| `apps/build/ExceptionsView.tsx` | `useApiResource.refetch` |
+| `apps/build/AllLotsView.tsx` | `useApiResource.refetch` |
+| `apps/control-pwa/MissionsListView.tsx` | `reloadToken` local |
+| `apps/control-pwa/InspectionFormView.tsx` | `reloadToken` local |
+
+(`OrganizationPicker` de `DevisView` partage le MÊME `useDebouncedSearch`
+que `LotPicker` — mécanisme déjà prouvé, pas dupliqué en test séparé.)
 
 ## Vérification
 
-**59 tests `apps/control-pwa`** (was 54, +5), **338 tests frontend** au
-total (5 packages : 44+62+59+40+133), zéro régression, `tsc --noEmit`
-propre.
+**376 tests frontend** (5 packages : design-system 51, build 68,
+control-pwa 61, home 48, web 148), zéro régression, `tsc --noEmit` propre
+partout. Suite relancée deux fois pour confirmer la stabilité (aucun
+flake observé sur ce tour — le flake IndexedDB déjà documenté de
+`InspectionFormView.test.tsx` avait été observé UNE fois lors du premier
+run de suite complète après ces changements, non reproductible en
+isolation ni au rerun suivant — même classe déjà connue, pas causé par ce
+ticket).
 
-**Pas de vérification en navigateur réel pour cette vague** — décision
-assumée, pas un oubli : les deux correctifs sont purement additifs (aucun
-chemin nominal modifié, seulement de nouvelles branches d'erreur
-atteignables uniquement par un VRAI échec IndexedDB). Provoquer un tel
-échec de façon authentique dans un navigateur réel serait lui-même
-artificiel — les tests automatisés, qui interceptent précisément
-`getCachedMissions`/`getDraftForMission`/`getCachedMission` via
-`vi.spyOn`, reproduisent le scénario de façon plus déterministe qu'une
-manipulation manuelle. Le chemin nominal (missions/inspection réelles)
-reste couvert par les tests déjà existants de ces deux fichiers,
-inchangés et toujours verts.
+**Vérifié dans un vrai navigateur, avec un vrai backend** (compte
+`admin_keyimmo` réel) :
+- bandeau « Hors ligne » affiché sur l'écran de connexion (avant
+  authentification) ET sur le back-office authentifié, en simulant
+  `navigator.onLine = false` + événement `offline` ;
+- recherche back-office avec un échec réseau simulé (`fetch` intercepté
+  pour rejeter le premier appel) → bouton « Réessayer » affiché → clic →
+  résultat réel affiché, sans rechargement de page.
 
-## Explicitement hors vague 1 (vagues 2/3/4, non commencées)
+## Explicitement hors vague 1/2/3 (vague 4, non commencée)
 
+- États `permission denied` dédiés au-delà du gate `admin_keyimmo`
+  d'`apps/web`.
+- `sync failed` par photo (`LocalPhoto.mediaSyncStatus === 'failed'`)
+  jamais affiché dans `PhotoThumbnail`.
 - `InspectionFormView::persist()` — échec d'écriture silencieux malgré
-  mise à jour optimiste déjà affichée (nécessite une nouvelle UI, pas
-  juste un `catch`).
-- `resolveConflictByDiscarding` — même absence de `catch`, sévérité faible.
-- Détection `offline` hors CONTROL PWA (HOME/BUILD/`apps/web`).
-- États `permission denied` dédiés au-delà du gate `admin_keyimmo`.
-- Bouton « Réessayer » sur les erreurs génériques.
-- `sync failed` par photo (`mediaSyncStatus === 'failed'`) jamais affiché
-  dans `PhotoThumbnail`.
-- Incohérence `<p role="alert">` vs `AlertBanner` (HOME/BUILD `App.tsx`).
+  mise à jour optimiste déjà affichée.
+- `resolveConflictByDiscarding` — même absence de `catch`, sévérité
+  faible.
 - Stale data (`OverviewView`, missions/`knownLatestEventId` CONTROL PWA).
 
 ## Dépendances
-Aucune — ticket purement frontend, `apps/control-pwa` uniquement pour
-cette vague, zéro changement backend.
+Aucune — ticket purement frontend, `packages/design-system` +
+`apps/{home,build,control-pwa,web}`, zéro changement backend.

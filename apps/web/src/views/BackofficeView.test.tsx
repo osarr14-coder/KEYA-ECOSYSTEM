@@ -55,6 +55,20 @@ describe('BackofficeView — recherche d\'utilisateur (ticket 011/021)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Impossible d'effectuer la recherche.");
   });
 
+  it('affiche un bouton "Réessayer" sur l\'erreur, qui relance EXACTEMENT la même recherche (ticket F-033)', async () => {
+    const searchUsers = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce([SEARCH_RESULT]);
+    renderView({ searchUsers });
+
+    await search('cible');
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    expect(await screen.findByRole('button', { name: /cible@example.com/ })).toBeInTheDocument();
+    expect(searchUsers).toHaveBeenNthCalledWith(2, 'cible');
+  });
+
   it('un compte désactivé est signalé directement dans la liste de résultats', async () => {
     renderView({
       searchUsers: vi.fn().mockResolvedValue([{ ...SEARCH_RESULT, is_active: false }]),
@@ -102,6 +116,21 @@ describe('BackofficeView — consultation organisation/rôle (ticket 011/021)', 
 
     await waitFor(() => expect(screen.queryByText('Org Constructeur — constructeur')).not.toBeInTheDocument());
     expect(await screen.findByText('Aucune organisation.')).toBeInTheDocument();
+  });
+
+  it('un échec réseau affiche une erreur explicite, avec un bouton "Réessayer" (ticket F-033)', async () => {
+    const getUserDetail = vi.fn()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(USER_DETAIL);
+    renderView({ searchUsers: vi.fn().mockResolvedValue([SEARCH_RESULT]), getUserDetail });
+
+    await search();
+    fireEvent.click(await screen.findByRole('button', { name: /cible@example.com/ }));
+    await screen.findByText('Impossible de charger ce profil.');
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    expect(await screen.findByText('Org Constructeur — constructeur')).toBeInTheDocument();
+    expect(getUserDetail).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -73,7 +73,9 @@ export function CountryPackSelector({ onLoad }: { onLoad: (pack: CountryPackSumm
   return (
     <section aria-label="Sélectionner un pays" style={{ marginBottom: '16px' }}>
       {state.status === 'loading' && <p>Chargement des pays…</p>}
-      {state.status === 'error' && <AlertBanner title="Impossible de charger la liste des pays." />}
+      {state.status === 'error' && (
+        <AlertBanner title="Impossible de charger la liste des pays." onRetry={state.refetch} />
+      )}
       {state.status === 'success' && (
         state.data.length === 0 ? (
           <p data-testid="no-country-packs">Aucun pays actif disponible.</p>
