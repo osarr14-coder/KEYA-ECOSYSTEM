@@ -2238,6 +2238,60 @@ Candidat explicite pour un futur ticket de durcissement.
 5 tests dédiés, suite `organizations` 10 tests, suite complète du projet 280
 tests, tous verts.
 
+## Tie-break `sequence` sur PricingConfig (ticket B-031, `apps/pricing`)
+
+Voir `B-031-pricingconfig-sequence.md` pour le détail complet. Corrige le flake
+documenté depuis le ticket B-027 (`TestPricingConfigCurrentAndHistory::
+test_current_returns_the_latest_rate_per_canal`) : `get_active_rate` triait
+uniquement par `-created_at`, ambigu entre deux `PricingConfig` créés à
+quelques millisecondes d'écart (résolution d'horloge, particulièrement
+visible sur Windows) — risque financier direct, `get_active_rate` alimente
+`apps.procurement.services._derive_marge_estimee` (invariant 25.15).
+
+**Vérification structurelle avant implémentation (comme pour tout ticket de
+cette famille)** : `PricingConfig` NE reproduit PAS le déclencheur réel de
+`TrustEvent` (ticket 013 bis, deux événements chaînés dans une même
+transaction sans commit intermédiaire, `_advance_existing_reserve`) —
+`create_pricing_config` n'est appelé qu'à UN SEUL endroit en production, un
+enregistrement par appel. Le même remède reste justifié par un risque
+DIFFÉRENT : rien n'empêche deux requêtes HTTP quasi simultanées (deux onglets
+admin) de créer deux `PricingConfig` pour le même `(country_pack, canal)`
+avec un `created_at` trop proche pour être départagé de façon fiable, sans
+aucune contrainte DB pour l'empêcher.
+
+**`sequence` reprend EXACTEMENT le mécanisme de `TrustEvent.sequence`**
+(`BigIntegerField` unique, `nextval()` sur une séquence Postgres dédiée,
+`LATEST_FIRST_ORDERING = ('-created_at', '-sequence')`, même tuple que
+`apps.trust.repository`) — migration plus simple (`pricing_pricingconfig`
+n'a aucun trigger append-only à basculer, seulement `FORCE ROW LEVEL
+SECURITY`). `PricingConfig.save()` gagne la même surcharge que
+`TrustEvent.save()` (`nextval()` explicite, `sequence` n'étant pas un
+`AutoField`), sans reprendre sa garde d'immutabilité Python (hors scope).
+`get_pricing_history` gagne le tie-break symétrique `(created_at, sequence)`
+pour l'ordre chronologique ascendant — cohérence complète, pas un correctif
+partiel.
+
+**Test de collision FORCÉE, pas un espoir de reproduction hasardeuse** —
+exigence explicite de l'utilisateur : `django.utils.timezone.now` gelé à la
+MÊME valeur pour DEUX créations séparées (pas une seule comme le pattern
+`apps/build/tests.py`, qui reproduit le déclencheur chaîné propre à
+`TrustEvent` — ici, deux appels distincts simulent deux requêtes HTTP
+concurrentes), chaque test vérifiant explicitement que la collision visée a
+bien eu lieu avant d'affirmer quoi que ce soit sur le départage. Le test
+flaky historique n'est pas modifié : il cesse d'être flaky comme effet de
+bord, mais ne PROUVE pas le tie-break lui-même.
+
+**Garde par analyse statique scopée à `PricingConfig`** (même famille que
+`apps.trust.tests.TestNoDirectTrustEventOrderingOutsideRepository`) — vérifié
+avant conception : aucun autre module ne requêtait `PricingConfig`
+directement (`apps.procurement.services` passait déjà exclusivement par
+`get_active_rate`), contrairement à ce qui avait été TROUVÉ pour `TrustEvent`
+au ticket 013 bis dans `apps.build`/`apps.home`. Rien à corriger sur ce
+point — la garde est purement préventive.
+
+3 tests dédiés, suite `pricing` 36 tests, suite complète du projet 283 tests,
+tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

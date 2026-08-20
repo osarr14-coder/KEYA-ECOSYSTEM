@@ -1,3 +1,5 @@
+import ast
+import os
 import threading
 from decimal import Decimal
 from itertools import count
@@ -6,6 +8,7 @@ from unittest import mock
 import pytest
 from django.db import IntegrityError, connection, transaction
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
@@ -225,6 +228,71 @@ class TestPricingConfigCurrentAndHistory:
             {'country_pack_id': str(senegal.id), 'canal': PricingCanal.CANAL_1_MARGE},
         )
         assert history_response.status_code == 403
+
+    def test_get_active_rate_resolves_a_forced_created_at_collision_via_sequence(self):
+        """Ticket B-031 — collision FORCÉE, pas un test qui espère
+        reproduire le bug par hasard (le test ci-dessus,
+        `test_current_returns_the_latest_rate_per_canal`, cesse d'être
+        flaky comme effet de bord du correctif, mais ses timestamps réels
+        ont de fortes chances de rester distincts même après ce correctif
+        — il ne PROUVE pas le tie-break). `django.utils.timezone.now` gelé
+        à la MÊME valeur pour les DEUX créations, simulant deux requêtes
+        HTTP quasi simultanées (deux onglets admin) — même pattern déjà
+        établi dans ce projet pour ce type de preuve (`apps/build/tests.py`/
+        `apps/home/tests.py`).
+        """
+        _admin_client, _admin_org, admin_user = _register_admin(
+            'pricing-tiebreak-admin@example.com', 'Org Pricing Tiebreak Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        frozen_now = timezone.now()
+        with mock.patch('django.utils.timezone.now', return_value=frozen_now):
+            first = services.create_pricing_config(
+                admin=admin_user, country_pack_id=senegal.id,
+                canal=PricingCanal.CANAL_1_MARGE, rate=Decimal('10.00'),
+            )
+            second = services.create_pricing_config(
+                admin=admin_user, country_pack_id=senegal.id,
+                canal=PricingCanal.CANAL_1_MARGE, rate=Decimal('20.00'),
+            )
+
+        # La collision est bien celle visée : même created_at, sequence
+        # strictement croissante malgré tout.
+        assert first.created_at == second.created_at
+        assert second.sequence > first.sequence
+
+        active = services.get_active_rate(country_pack_id=senegal.id, canal=PricingCanal.CANAL_1_MARGE)
+        assert active.id == second.id
+        assert active.rate == Decimal('20.00')
+
+    def test_get_pricing_history_resolves_a_forced_created_at_collision_via_sequence(self):
+        """Symétrique du test précédent, pour l'ordre chronologique
+        ascendant de `get_pricing_history` (décision C : tie-break
+        `(created_at, sequence)`, cohérence complète, pas un correctif
+        partiel).
+        """
+        _admin_client, _admin_org, admin_user = _register_admin(
+            'pricing-tiebreak-history-admin@example.com', 'Org Pricing Tiebreak History Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        frozen_now = timezone.now()
+        with mock.patch('django.utils.timezone.now', return_value=frozen_now):
+            first = services.create_pricing_config(
+                admin=admin_user, country_pack_id=senegal.id,
+                canal=PricingCanal.CANAL_1_MARGE, rate=Decimal('10.00'),
+            )
+            second = services.create_pricing_config(
+                admin=admin_user, country_pack_id=senegal.id,
+                canal=PricingCanal.CANAL_1_MARGE, rate=Decimal('20.00'),
+            )
+
+        assert first.created_at == second.created_at
+
+        history = services.get_pricing_history(country_pack_id=senegal.id, canal=PricingCanal.CANAL_1_MARGE)
+        ids_in_order = [row.id for row in history]
+        assert ids_in_order == [first.id, second.id]
 
 
 @pytest.mark.django_db
@@ -776,3 +844,110 @@ class TestActiveLegalPaymentTierTemplateRaceUnderConcurrency:
         pointers = list(ActiveLegalPaymentTierTemplate.objects.filter(country_pack=senegal))
         assert len(pointers) == 1
         assert pointers[0].template_id in {template_a.id, template_b.id}
+
+
+def _functions_referencing_pricing_config(tree):
+    """Ticket B-031, même schéma que
+    `apps.trust.tests._functions_referencing_trust_event` (ticket 013 bis) :
+    noms des fonctions (à tout niveau) dont le CORPS référence
+    `PricingConfig` — un `.order_by(...)` chaîné sur LEUR appel doit être
+    traité comme un `.order_by(...)` sur `PricingConfig`, même si
+    `PricingConfig` n'apparaît pas littéralement dans l'expression de
+    l'appel lui-même.
+    """
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Name) and sub.id == 'PricingConfig':
+                    names.add(node.name)
+                    break
+    return names
+
+
+def _order_by_created_at_without_sequence_violations_for_pricing_config(tree, pricing_helper_names):
+    """Repère tout `.order_by(...)` appliqué (directement ou via une
+    fonction locale qui référence `PricingConfig`) à un queryset
+    `PricingConfig`, dont les arguments littéraux contiennent `created_at`
+    sans `sequence` — même défaut de tri corrigé au ticket B-031
+    (`get_active_rate`/`get_pricing_history`, `apps/pricing/services.py`).
+    """
+    violations = []
+    for node in ast.walk(tree):
+        is_order_by_call = (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == 'order_by'
+        )
+        if not is_order_by_call:
+            continue
+
+        receiver = node.func.value
+        references_pricing_config = any(
+            (isinstance(sub, ast.Name) and sub.id == 'PricingConfig')
+            or (
+                isinstance(sub, ast.Call)
+                and isinstance(sub.func, ast.Name)
+                and sub.func.id in pricing_helper_names
+            )
+            for sub in ast.walk(receiver)
+        )
+        if not references_pricing_config:
+            continue
+
+        string_args = [
+            arg.value for arg in node.args
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+        ]
+        has_created_at = any('created_at' in value for value in string_args)
+        has_sequence = any('sequence' in value for value in string_args)
+        if has_created_at and not has_sequence:
+            violations.append(node.lineno)
+    return violations
+
+
+class TestNoDirectPricingConfigOrderingOutsideServices:
+    """Ticket B-031 — garde préventive, même famille que
+    `apps.trust.tests.TestNoDirectTrustEventOrderingOutsideRepository`
+    (ticket 013 bis), scopée à `PricingConfig`. Aucune violation trouvée en
+    écrivant ce ticket (`apps.procurement.services` passe déjà exclusivement
+    par `get_active_rate`, jamais un `PricingConfig.objects.order_by(...)`
+    dupliqué ailleurs) — cette garde protège contre une régression FUTURE,
+    pas un problème actuel : un futur `.order_by('-created_at')` sur un
+    queryset `PricingConfig` ailleurs dans le projet réintroduirait
+    silencieusement la même classe de bug déjà trouvée pour `TrustEvent`
+    dans `apps.build.services`/`apps.home.services` (ticket 013 bis).
+    """
+
+    EXEMPT_RELATIVE_PATH = os.path.join('pricing', 'services.py')
+
+    def test_no_order_by_created_at_alone_on_pricing_config_outside_services(self):
+        apps_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        violations = []
+
+        for root, dirs, files in os.walk(apps_dir):
+            dirs[:] = [d for d in dirs if d not in ('migrations', '__pycache__')]
+            for filename in files:
+                if not filename.endswith('.py'):
+                    continue
+                if filename == 'tests.py' or filename.startswith('test_'):
+                    continue
+
+                path = os.path.join(root, filename)
+                if os.path.relpath(path, apps_dir) == self.EXEMPT_RELATIVE_PATH:
+                    continue
+
+                with open(path, encoding='utf-8') as source_file:
+                    source = source_file.read()
+                tree = ast.parse(source, filename=path)
+
+                pricing_helpers = _functions_referencing_pricing_config(tree)
+                for lineno in _order_by_created_at_without_sequence_violations_for_pricing_config(
+                    tree, pricing_helpers,
+                ):
+                    violations.append(f'{os.path.relpath(path, apps_dir)}:{lineno}')
+
+        assert violations == [], (
+            'PricingConfig trié par -created_at sans le tie-break sequence, en dehors de '
+            f'apps/pricing/services.py : {violations}'
+        )
