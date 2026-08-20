@@ -2741,8 +2741,34 @@ vérification en navigateur réel (même rationale que les points
 précédents) : provoquer un VRAI 401/403 en cours de session exige un état
 serveur réel — les tests automatisés le reproduisent plus fidèlement.
 
+**Stale data — OverviewView et liste back-office (même vague)** : deux cas
+concrets, distincts de la limite déjà documentée « missions/
+`knownLatestEventId` CONTROL PWA » (ticket 010 passe 2, reste hors scope).
+`OverviewView` (HOME) ne se rafraîchissait jamais une fois chargée (aucun
+sondage, aucune action visible) — corrigé par un bouton « Actualiser »
+permanent réutilisant `state.refetch` (vague 3, jusque-là seulement sur
+erreur), jamais un sondage automatique en arrière-plan. `BackofficeView` :
+`searchState.results` et `UserDetailPanel::state` sont deux états React
+indépendants — désactiver un compte depuis le panneau rafraîchissait CE
+panneau mais jamais la liste de résultats derrière lui, qui gardait
+l'ancien `is_active: true`. Corrigé par un callback `onDeactivated` qui
+relance la RECHERCHE RÉELLE déjà affichée, jamais un patch local optimiste
+(même doctrine que `UserDetailPanel` lui-même). **Piège trouvé en
+écrivant l'implémentation** : la query qui a produit les résultats
+affichés (`lastSearchedQueryRef`) doit être distincte de la query LIVE de
+l'input — un admin peut modifier le champ sans soumettre pendant qu'un
+profil reste ouvert. **Second piège, trouvé en écrivant le test** : la
+désélection du profil (`setSelectedUserId(null)`) doit rester dans
+`handleSearch` (nouvelle recherche) SEULE, jamais dans `runSearch`/
+`refreshCurrentSearch` — sinon rafraîchir après désactivation fermerait le
+panneau que l'admin vient de confirmer avoir désactivé. **423 tests
+frontend** (5 packages : 64+75+71+55+158), zéro régression, `tsc --noEmit`
+propre. Pas de vérification en navigateur réel (les deux correctifs sont
+vérifiables de façon déterministe par mocks à réponses successives
+distinctes).
+
 **Reste de la vague 4, non commencé** :
-`resolveConflictByDiscarding` (même défaut, sévérité faible), stale data.
+`resolveConflictByDiscarding` (même défaut, sévérité faible).
 
 ## Coûts programme et répartition entre lots (ticket B-033, `apps/programs`)
 

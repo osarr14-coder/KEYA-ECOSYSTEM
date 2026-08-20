@@ -1,4 +1,6 @@
-import { type FormEvent, useState } from 'react';
+import {
+  type FormEvent, useRef, useState,
+} from 'react';
 
 import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
 
@@ -32,7 +34,9 @@ type SearchState =
  * liste de formulations interdites (`BackofficeView.test.tsx`), même
  * pattern que `apps/build/src/views/ExceptionsView.test.tsx` (ticket 009).
  */
-function UserDetailPanel({ userId }: { userId: string }) {
+function UserDetailPanel({
+  userId, onDeactivated,
+}: { userId: string; onDeactivated: () => void }) {
   const api = useApiClient();
   const [reloadKey, setReloadKey] = useState(0);
   const state = useApiResource(() => api.getUserDetail(userId), [userId, reloadKey]);
@@ -50,6 +54,11 @@ function UserDetailPanel({ userId }: { userId: string }) {
       // optimiste locale — aucun calcul frontend, même discipline que le
       // reste du projet (CLAUDE.md, doctrine Visible Trust).
       setReloadKey((key) => key + 1);
+      // Ticket F-033 (vague 4, stale data) — la liste de résultats du
+      // parent affichait toujours ce compte comme actif, jusqu'à une
+      // nouvelle recherche manuelle : ce profil n'est qu'UNE des entrées
+      // possibles de cette liste, jamais rafraîchie par ce panneau seul.
+      onDeactivated();
     } catch {
       setDeactivateError('Échec de la désactivation.');
     } finally {
@@ -129,24 +138,48 @@ export function BackofficeView() {
   const [query, setQuery] = useState('');
   const [searchState, setSearchState] = useState<SearchState>({ status: 'idle' });
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  // Ticket F-033 (vague 4) — la query qui a PRODUIT `searchState.results`,
+  // distincte de `query` (l'input live) : un admin peut modifier le champ
+  // de recherche SANS soumettre pendant qu'un profil reste ouvert —
+  // rafraîchir la liste après une désactivation doit toujours relancer la
+  // recherche RÉELLEMENT affichée, jamais une query différente en cours de
+  // saisie.
+  const lastSearchedQueryRef = useRef('');
 
   // Ticket F-033 (vague 3) — extrait de `handleSearch` pour que le bouton
   // "Réessayer" (pas de `FormEvent` à disposition) puisse relancer
-  // EXACTEMENT la même recherche que le formulaire.
-  async function runSearch() {
+  // EXACTEMENT la même recherche que le formulaire. Ticket F-033 (vague 4)
+  // — ne touche PLUS `selectedUserId` : un rafraîchissement de la MÊME
+  // recherche (retry, ou après désactivation — voir `refreshCurrentSearch`
+  // ci-dessous) ne doit jamais fermer le panneau de détail actuellement
+  // ouvert, contrairement à une NOUVELLE recherche soumise par l'admin
+  // (`handleSearch`, qui la déselectionne explicitement lui-même).
+  async function runSearch(searchQuery: string) {
+    lastSearchedQueryRef.current = searchQuery;
     setSearchState({ status: 'loading' });
-    setSelectedUserId(null);
     try {
-      const results = await api.searchUsers(query);
+      const results = await api.searchUsers(searchQuery);
       setSearchState({ status: 'success', results });
     } catch (error) {
       setSearchState({ status: 'error', error });
     }
   }
 
+  // Ticket F-033 (vague 4, stale data) — la liste restait PÉRIMÉE après une
+  // désactivation réussie depuis `UserDetailPanel` (l'entrée concernée
+  // gardait `is_active: true` jusqu'à une nouvelle recherche manuelle).
+  // Jamais une mise à jour optimiste locale (patcher `is_active` sur
+  // l'entrée) — même doctrine que `UserDetailPanel` lui-même : relit
+  // l'état réel depuis le backend, via la MÊME recherche déjà affichée,
+  // SANS fermer le panneau de détail ouvert (voir `runSearch` ci-dessus).
+  function refreshCurrentSearch() {
+    void runSearch(lastSearchedQueryRef.current);
+  }
+
   function handleSearch(event: FormEvent) {
     event.preventDefault();
-    void runSearch();
+    setSelectedUserId(null);
+    void runSearch(query);
   }
 
   return (
@@ -175,7 +208,7 @@ export function BackofficeView() {
         <ApiErrorBanner
           error={searchState.error}
           title="Impossible d'effectuer la recherche."
-          onRetry={() => { void runSearch(); }}
+          onRetry={refreshCurrentSearch}
         />
       )}
       {searchState.status === 'success' && (
@@ -195,7 +228,9 @@ export function BackofficeView() {
         )
       )}
 
-      {selectedUserId && <UserDetailPanel key={selectedUserId} userId={selectedUserId} />}
+      {selectedUserId && (
+        <UserDetailPanel key={selectedUserId} userId={selectedUserId} onDeactivated={refreshCurrentSearch} />
+      )}
     </section>
   );
 }

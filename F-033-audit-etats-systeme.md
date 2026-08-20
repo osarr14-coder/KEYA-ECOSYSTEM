@@ -375,12 +375,90 @@ compte désactivé, rôle retiré) — les tests automatisés (`ApiError`/
 `vi.fn().mockRejectedValue`) reproduisent ces scénarios de façon plus
 déterministe qu'une manipulation manuelle.
 
+## Stale data — OverviewView et liste back-office (ticket F-033, vague 4)
+
+Deux cas concrets, PAS le point plus large « missions/`knownLatestEventId`
+CONTROL PWA » (limite déjà documentée, ticket 010 passe 2 — reste hors
+scope, dépend d'un mécanisme de rafraîchissement de l'état connu jamais
+construit) :
+
+**`OverviewView` (HOME)** — `useApiResource(() => api.getLotOverview(lotId),
+[lotId])` ne charge qu'UNE FOIS par `lotId` : aucun sondage périodique
+(aucun écran de ce type n'en a dans ce projet), aucune action visible pour
+tirer des données fraîches. Un client resté sur cet écran pendant qu'un
+événement réel survient côté serveur (nouvelle preuve, jalon franchi,
+réserve ouverte) ne le saurait qu'en quittant l'écran puis en y revenant
+(démontage/remontage du composant). Corrigé par un bouton « Actualiser »
+visible en permanence (pas seulement sur erreur), réutilisant
+`state.refetch` (`useApiResource`, ticket F-033 vague 3 — jusque-là utilisé
+UNIQUEMENT sur l'état d'erreur). Action MANUELLE, jamais un sondage
+automatique en arrière-plan — cohérent avec le reste du projet, et honnête
+: rien ne garantit qu'une donnée affichée soit RÉELLEMENT périmée à un
+instant donné, seulement que l'utilisateur peut désormais vérifier
+explicitement plutôt que de ne jamais savoir.
+
+**Liste de résultats back-office, après désactivation d'un compte qui y
+figure** — bug concret, pas une simple absence de sondage :
+`BackofficeView::searchState.results` (peuplé UNE FOIS par
+`api.searchUsers(query)`) et `UserDetailPanel::state` (son propre
+`useApiResource`, ticket 011/021) sont deux états React totalement
+INDÉPENDANTS. Désactiver un compte depuis le panneau de détail rafraîchit
+CE panneau (déjà correct depuis le ticket 021 — relit `getUserDetail` via
+`reloadKey`), mais jamais la LISTE derrière lui : l'entrée concernée
+continuait d'afficher un compte actif (aucun suffixe « (compte
+désactivé) ») jusqu'à ce que l'admin relance une recherche manuelle.
+
+**Jamais une mise à jour optimiste locale** (patcher `is_active` sur
+l'entrée concernée dans `searchState.results`) — même doctrine que
+`UserDetailPanel` lui-même (« aucun calcul frontend, relit l'état réel
+depuis le backend », ticket 021) : `UserDetailPanel` reçoit désormais un
+callback `onDeactivated`, appelé juste après une désactivation réussie, qui
+relance la RECHERCHE RÉELLE déjà affichée (`api.searchUsers`), jamais un
+patch local.
+
+**Piège de conception évité, trouvé en écrivant l'implémentation** : la
+query qui a PRODUIT les résultats actuellement affichés
+(`lastSearchedQueryRef`) est désormais distincte de `query` (l'état de
+l'input, live) — un admin peut modifier le champ de recherche SANS
+soumettre pendant qu'un profil reste ouvert ; rafraîchir avec la query LIVE
+aurait silencieusement remplacé la liste affichée par des résultats pour un
+texte différent de celui réellement recherché. `refreshCurrentSearch()`
+(utilisée à la fois par le retry sur erreur ET par `onDeactivated`) relance
+toujours `lastSearchedQueryRef.current`, jamais `query`.
+
+**Second piège, trouvé en écrivant le test** : la première version faisait
+encore `setSelectedUserId(null)` à l'intérieur de `runSearch` (hérité du
+comportement existant, pensé pour une NOUVELLE recherche soumise par
+l'admin) — un rafraîchissement après désactivation aurait donc fermé le
+panneau de détail que l'admin venait juste de confirmer avoir désactivé,
+perdant la confirmation visuelle de sa propre action. Corrigé en déplaçant
+cette désélection dans `handleSearch` (le SEUL appelant qui doit
+réellement fermer le panneau — une nouvelle recherche peut légitimement ne
+plus contenir l'utilisateur sélectionné), jamais dans `runSearch`/
+`refreshCurrentSearch`, qui rafraîchissent toujours la MÊME recherche déjà
+affichée.
+
+**2 nouveaux tests** (bouton « Actualiser », OverviewView ; liste
+rafraîchie + panneau resté ouvert après désactivation, BackofficeView).
+**423 tests frontend** (5 packages : 64+75+71+55+158), zéro régression
+(2 exécutions consécutives propres de la suite complète), `tsc --noEmit`
+propre.
+
+**Pas de vérification en navigateur réel, décision assumée** : les deux
+correctifs sont vérifiables de façon déterministe par les tests
+automatisés (mocks de `getLotOverview`/`searchUsers`/`deactivateUser`
+renvoyant des valeurs distinctes à deux appels successifs) — une
+vérification manuelle n'aurait rien révélé de plus que ce que ces tests
+prouvent déjà explicitement.
+
 ## Explicitement hors vague 4 (reste à prioriser)
 
 - `resolveConflictByDiscarding` — même absence de `catch` que `persist()`
   avait, sévérité faible (pas d'état trompeur, l'inspecteur peut
   simplement recliquer).
-- Stale data (`OverviewView`, missions/`knownLatestEventId` CONTROL PWA).
+- Missions/`knownLatestEventId` CONTROL PWA — limite déjà documentée,
+  ticket 010 passe 2 (dépend d'un mécanisme de rafraîchissement de l'état
+  connu jamais construit).
 
 ## Dépendances
 Aucune — ticket purement frontend, `packages/design-system` +

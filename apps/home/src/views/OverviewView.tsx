@@ -44,12 +44,26 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
 
   return (
     <section aria-label="Vue d'ensemble" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <header data-testid="hero">
-        <h1 style={{ marginBottom: '4px' }}>{overview.asset_name}</h1>
-        <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
-          {overview.program_name} — {overview.lot_name}
-        </p>
-        <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{overview.asset_location}</p>
+      <header data-testid="hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+        <div>
+          <h1 style={{ marginBottom: '4px' }}>{overview.asset_name}</h1>
+          <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
+            {overview.program_name} — {overview.lot_name}
+          </p>
+          <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{overview.asset_location}</p>
+        </div>
+        {/* Ticket F-033 (vague 4) — cet écran n'avait AUCUN moyen de tirer
+            des données fraîches une fois chargées : ni sondage périodique
+            (aucun écran de ce projet n'en a), ni action visible — seule une
+            navigation hors de l'écran puis un retour déclenchait un nouveau
+            chargement (démontage/remontage). `state.refetch` (ticket F-033
+            vague 3) existait déjà mais n'était utilisé que sur l'état
+            d'erreur. Action manuelle, jamais un sondage automatique en
+            arrière-plan — cohérent avec le reste du projet (aucun autre
+            écran de ce type ne sonde), et honnête : rien ne garantit qu'une
+            donnée soit RÉELLEMENT périmée, seulement que l'utilisateur peut
+            désormais vérifier explicitement plutôt que de ne jamais savoir. */}
+        <button type="button" onClick={state.refetch}>Actualiser</button>
       </header>
 
       <div aria-label="Progression" data-testid="progress">

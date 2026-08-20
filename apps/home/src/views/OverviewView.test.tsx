@@ -124,6 +124,33 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
     await screen.findByText("60% d'avancement");
     expect(getLotOverview).toHaveBeenCalledTimes(2);
   });
+
+  it(
+    'un bouton "Actualiser" redéclenche le chargement même sans erreur — ticket F-033 '
+    + '(vague 4, stale data) : rien ne rafraîchissait cette vue une fois chargée',
+    async () => {
+      const getLotOverview = vi.fn()
+        .mockResolvedValueOnce({
+          lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
+          asset_location: 'Dakar', program_name: 'Programme',
+          progress_percentage: 40, milestones: [], latest_notable_event: null, open_reserve: null,
+        })
+        .mockResolvedValueOnce({
+          lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
+          asset_location: 'Dakar', program_name: 'Programme',
+          progress_percentage: 65, milestones: [], latest_notable_event: null, open_reserve: null,
+        });
+      const api = createMockApiClient({ getLotOverview, getMyTasks: NO_PENDING_TASKS });
+
+      render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
+
+      await screen.findByText("40% d'avancement");
+      fireEvent.click(screen.getByRole('button', { name: 'Actualiser' }));
+
+      await screen.findByText("65% d'avancement");
+      expect(getLotOverview).toHaveBeenCalledTimes(2);
+    },
+  );
 });
 
 describe('OverviewView — résumé de la tâche prioritaire (« prochaine action »)', () => {
