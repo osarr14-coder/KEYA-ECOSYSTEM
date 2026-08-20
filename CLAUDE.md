@@ -35,6 +35,21 @@ ticket qui les a introduites.
   garde `TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo`
   (`apps/tasks/tests.py`) — ce test scanne le code source de chaque générateur enregistré,
   pas seulement le texte produit par ceux qui existent déjà.
+- **Une seule suite de tests complète à la fois contre la base de données de test
+  partagée.** Plusieurs worktrees actifs simultanément (un par ticket en cours, discipline
+  déjà établie dans ce projet) partagent la MÊME base Postgres — et donc la MÊME base de
+  test (`test_<nom_de_la_base>`), recréée puis détruite par pytest-django à chaque
+  invocation (aucun `--reuse-db` configuré dans `pytest.ini`). Lancer `pytest` (module ou
+  suite complète) depuis DEUX worktrees en même temps fait collisionner ces cycles de
+  création/destruction concurrents — schéma incomplet observé en plein run (colonne
+  manquante), violations de contrainte `UNIQUE` sur des données d'un autre run, échec de
+  teardown (« la base de données est en cours d'utilisation par d'autres utilisateurs ») —
+  et produit des échecs de test massifs et déroutants SANS AUCUN RAPPORT avec le code réel
+  des tickets en cours. **Déjà arrivé une fois** (tickets B-033/B-034, tous deux relancés
+  isolément ensuite pour confirmer 0 régression réelle). Avant de lancer une suite de tests
+  complète (ou tout module) : vérifier qu'aucune autre session ne fait tourner `pytest` en
+  ce moment sur ce projet — un seul worktree exécute sa suite à la fois, les autres
+  attendent leur tour.
 
 ## Invariants du modèle économique
 
