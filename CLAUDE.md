@@ -2469,6 +2469,56 @@ l'écrivant, contrairement à la plupart des tickets précédents de cette séri
 2 tests dédiés, suite `pricing` 38 tests, suite complète du projet 285 tests,
 tous verts.
 
+## Coûts programme et répartition entre lots (ticket B-033, `apps/programs`)
+
+Voir `B-033-program-cost-repartition.md` pour le détail complet. Canal 1 :
+foncier et bureau d'études (BE) sont des coûts engagés au niveau du PROGRAMME
+entier, répartis ensuite entre ses lots. **`be_total` (bureau d'études) est
+DISTINCT du bureau de contrôle (BC)** — invariant 25.16 (budget BC
+sanctuarisé) ne concerne pas ce champ, deux acteurs différents du modèle
+économique (section 6).
+
+**`ProgramCost`, `apps/programs` (pas `apps/pricing`)** — rattaché à UN
+programme précis (donc une organisation), plus proche de `Devis`
+(`apps/procurement`) que de la configuration économique globale par pays.
+`admin_keyimmo` n'étant structurellement pas membre de cette organisation,
+même schéma de bascule RLS explicite que `create_inspection`/`create_devis` :
+`organization`/`organization_id` fourni EXPLICITEMENT par l'appelant (corps
+pour la création, paramètre de requête pour les lectures) — ne peut jamais
+être dérivé après coup depuis `program_id` seul.
+
+**`sequence` construit dès la conception** (comme `PricingConfig` aurait dû
+l'être avant le ticket B-031) — `LATEST_FIRST_ORDERING = ('-created_at',
+'-sequence')`, RLS `SELECT`/`INSERT` scopés organisation, **aucune policy
+`UPDATE`/`DELETE`** (immutabilité, même niveau que `Devis`).
+
+**`Lot.surface`** — nouveau champ, prérequis réel de `prorata_surface`
+(vérifié avant conception : absent du modèle). Nullable, aucune valeur par
+défaut inventée ; `compute_lot_repartition` refuse explicitement (erreur
+dédiée) si un seul lot du programme manque cette valeur — jamais un partage
+silencieux à zéro. Écrit via le `PATCH` générique déjà disponible sur
+`LotViewSet` (`ModelViewSet` complet) — pas de nouvel endpoint créé pour ça.
+
+**Répartition calculée À LA VOLÉE, jamais stockée** — réponse en LISTE
+indexée par lot (`[{lot_id, foncier_lot, be_lot}, ...]`), JAMAIS un objet
+agrégé (précision explicite de l'utilisateur). Arrondi `ROUND_HALF_UP` par
+lot, dérive assumée sans correction du reste — aucun mouvement de fonds réel
+n'existe dans ce projet, dette explicite pour un futur ticket.
+
+**Deux erreurs trouvées en écrivant les tests, sans lien avec la logique
+métier** : (1) piège RLS déjà documenté au ticket 022, reproduit par
+inattention — trois tests d'immutabilité relisaient `ProgramCost` sans
+bascule RLS explicite après restauration du contexte admin, corrigé
+(`set_rls_context` avant chaque relecture) ; (2) collision fortuite avec le
+test-garde `TestNoHardcodedMilestoneNames` (ticket 002) — deux codes de
+jalon réellement seedés (`foncier`, `conception`) coïncident avec le nom de
+champ `foncier_total` et le mot français ordinaire « conception » ; le
+garde-fou resserré sur le littéral de chaîne entre guillemets plutôt qu'une
+sous-chaîne brute — amélioration de précision, pas un affaiblissement.
+
+19 tests dédiés, suite `programs` 35 tests, suite complète du projet 304
+tests, tous verts.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
