@@ -1,6 +1,9 @@
 from django.urls import path
 
 from .views import (
+    ControlOfficeRateCreateView,
+    ControlOfficeRateCurrentView,
+    ControlOfficeRateHistoryView,
     LegalPaymentTierTemplateActivateView,
     LegalPaymentTierTemplateActiveView,
     LegalPaymentTierTemplateCreateView,
@@ -29,5 +32,17 @@ urlpatterns = [
     path(
         'pricing/legal-payment-tier-templates/history/',
         LegalPaymentTierTemplateHistoryView.as_view(), name='legal-payment-tier-template-history',
+    ),
+    path(
+        'pricing/control-office-rates/',
+        ControlOfficeRateCreateView.as_view(), name='control-office-rate-create',
+    ),
+    path(
+        'pricing/control-office-rates/current/',
+        ControlOfficeRateCurrentView.as_view(), name='control-office-rate-current',
+    ),
+    path(
+        'pricing/control-office-rates/history/',
+        ControlOfficeRateHistoryView.as_view(), name='control-office-rate-history',
     ),
 ]

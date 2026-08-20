@@ -236,3 +236,109 @@ class ActiveLegalPaymentTierTemplate(models.Model):
 
     def __str__(self):
         return f'{self.country_pack.code} → {self.template}'
+
+
+class ControlOfficeCalculationMode(models.TextChoices):
+    """Vocabulaire fixe (comme `PricingCanal`) — les deux modes de calcul
+    existent partout, seul le CHOIX par entrée de barème varie.
+    """
+
+    PERCENTAGE = 'percentage', 'Pourcentage du coût de construction'
+    FIXED_AMOUNT = 'fixed_amount', 'Montant fixe'
+
+
+class ControlOfficeRate(models.Model):
+    """Barème sectoriel du bureau de contrôle (BC) — ticket B-034, invariant
+    25.16 (CLAUDE.md) : « le budget du bureau de contrôle est sanctuarisé,
+    indexé sur un barème sectoriel, jamais soumis à l'arbitrage de marge de
+    KEYIMMO ni à une négociation. » **CE barème est LA SEULE source d'un
+    montant bureau de contrôle dans tout ce projet** — jamais une saisie
+    libre par mission, jamais un montant modifiable au cas par cas ailleurs
+    dans le code (voir `apps.pricing.services.get_active_control_office_rate`,
+    seul point de lecture, et la note dédiée dans `CLAUDE.md` adressée
+    explicitement aux tickets B-035/B-036).
+
+    **`be_total` (bureau d'études, `ProgramCost`, ticket B-033) est DISTINCT
+    du bureau de contrôle (BC) de ce modèle-ci** — deux acteurs différents
+    du modèle économique (section 6, `docs/economie/
+    KEYIMMO_Modele_Economique_Consolide.md`), aucun lien de conception entre
+    les deux.
+
+    Même famille que `PricingConfig`/`LegalPaymentTierTemplate` (donnée de
+    référence par `CountryPack`, jamais liée à une organisation précise) —
+    PAS le schéma RLS de `Devis`/`ProgramCost` (ticket B-033, qui EST
+    rattaché à une organisation via un programme). Append-only, même
+    doctrine : un changement de barème est TOUJOURS un nouvel
+    enregistrement, jamais une modification d'un enregistrement existant —
+    aucun champ `is_active`.
+
+    `jalon_type` est un `CharField` LIBRE (même raisonnement que
+    `LegalPaymentTierStep.code`, ticket B-027, décision C) — AUCUNE FK vers
+    `MilestoneTemplateStep` : les deux structures évoluent indépendamment,
+    un barème BC peut changer sans toucher la séquence de jalons de
+    construction, et réciproquement. Vérifié avant conception : ce code est
+    déjà réutilisé librement ailleurs dans ce projet
+    (`apps/programs/migrations/0003_seed_senegal_milestone_template.py`).
+
+    **Un seul des deux champs valeur actif à la fois, garanti par une
+    contrainte DB** (`CheckConstraint`, voir `Meta.constraints`) — pas
+    seulement une vérification applicative contournable, même rigueur que
+    la contrainte `UNIQUE` d'`ActiveLegalPaymentTierTemplate` (décision
+    D-bis, ticket B-027) pour un type de garantie différent.
+
+    `sequence` construit DÈS LA CONCEPTION (comme `ProgramCost`, ticket
+    B-033) — pas un retrofit après un flake comme `PricingConfig` a dû le
+    faire au ticket B-031.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    country_pack = models.ForeignKey(
+        CountryPack, on_delete=models.PROTECT, related_name='control_office_rates',
+    )
+    jalon_type = models.CharField(max_length=50)
+    calculation_mode = models.CharField(max_length=20, choices=ControlOfficeCalculationMode.choices)
+    percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    fixed_amount = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='control_office_rates_created',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    sequence = models.BigIntegerField(unique=True, editable=False)
+
+    class Meta:
+        db_table = 'pricing_control_office_rate'
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(
+                        calculation_mode=ControlOfficeCalculationMode.PERCENTAGE,
+                        percentage__isnull=False, fixed_amount__isnull=True,
+                    )
+                    | models.Q(
+                        calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT,
+                        fixed_amount__isnull=False, percentage__isnull=True,
+                    )
+                ),
+                name='control_office_rate_exactly_one_value_active',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.sequence is None:
+            # `nextval()` explicite plutôt que de compter sur le DEFAULT
+            # côté DB — même raison que `PricingConfig.save()`/
+            # `ProgramCost.save()` : `sequence` n'est pas un `AutoField`,
+            # Django envoie donc TOUJOURS une valeur explicite pour ce
+            # champ à l'INSERT ; ne pas la poser ici enverrait NULL et
+            # écraserait silencieusement le DEFAULT côté DB.
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT nextval('pricing_control_office_rate_sequence_seq')")
+                self.sequence = cursor.fetchone()[0]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        value = f'{self.percentage}%' if self.calculation_mode == ControlOfficeCalculationMode.PERCENTAGE \
+            else f'{self.fixed_amount}'
+        return f'{self.country_pack.code} — {self.jalon_type} : {value}'

@@ -1,11 +1,16 @@
 import ast
+import importlib
 import os
+import pkgutil
 import threading
+import uuid
 from decimal import Decimal
 from itertools import count
 from unittest import mock
 
 import pytest
+
+import apps as apps_package
 from django.db import IntegrityError, connection, transaction
 from django.urls import reverse
 from django.utils import timezone
@@ -16,7 +21,14 @@ from apps.core.rls import set_rls_context
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 
 from . import services
-from .models import ActiveLegalPaymentTierTemplate, LegalPaymentTierTemplate, PricingCanal, PricingConfig
+from .models import (
+    ActiveLegalPaymentTierTemplate,
+    ControlOfficeCalculationMode,
+    ControlOfficeRate,
+    LegalPaymentTierTemplate,
+    PricingCanal,
+    PricingConfig,
+)
 
 PASSWORD = 'strongpass123'
 
@@ -411,7 +423,8 @@ class TestPricingConfigImmutability:
         sans mise à jour consciente de ce test le fait échouer, même
         famille de garde que les modules précédents (`apps.backoffice`,
         `apps.procurement`). Mise à jour ticket B-027 : 4 nouvelles routes
-        `legal-payment-tier-template-*` ajoutées à la liste.
+        `legal-payment-tier-template-*` ajoutées à la liste. Mise à jour
+        ticket B-034 : 3 nouvelles routes `control-office-rate-*`.
         """
         from apps.pricing.urls import urlpatterns
         names = {pattern.name for pattern in urlpatterns}
@@ -419,6 +432,7 @@ class TestPricingConfigImmutability:
             'pricing-config-create', 'pricing-config-current', 'pricing-config-history',
             'legal-payment-tier-template-create', 'legal-payment-tier-template-activate',
             'legal-payment-tier-template-active', 'legal-payment-tier-template-history',
+            'control-office-rate-create', 'control-office-rate-current', 'control-office-rate-history',
         }
 
 
@@ -1005,3 +1019,389 @@ class TestNoDirectPricingConfigOrderingOutsideServices:
             'PricingConfig trié par -created_at sans le tie-break sequence, en dehors de '
             f'apps/pricing/services.py : {violations}'
         )
+
+
+SENEGAL_JALON_TYPE = 'fondations'
+
+
+@pytest.mark.django_db
+class TestControlOfficeRateCreation:
+    def test_admin_can_create_a_percentage_mode_rate(self):
+        admin_client, _admin_org, admin_user = _register_admin(
+            'bc-rate-create-percentage-admin@example.com', 'Org BC Rate Create Percentage Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.PERCENTAGE,
+                'percentage': '1.50',
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert Decimal(response.data['percentage']) == Decimal('1.50')
+        assert response.data['fixed_amount'] is None
+        assert response.data['created_by'] == admin_user.id
+
+    def test_admin_can_create_a_fixed_amount_mode_rate(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-create-fixed-admin@example.com', 'Org BC Rate Create Fixed Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.FIXED_AMOUNT,
+                'fixed_amount': '300000.00',
+            },
+            format='json',
+        )
+        assert response.status_code == 201, response.data
+        assert Decimal(response.data['fixed_amount']) == Decimal('300000.00')
+        assert response.data['percentage'] is None
+
+    def test_a_constructeur_cannot_create_a_rate(self):
+        constructeur_client, _org, _user = _register_constructeur(
+            'bc-rate-create-forbidden@example.com', 'Org BC Rate Create Forbidden',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = constructeur_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.FIXED_AMOUNT,
+                'fixed_amount': '1.00',
+            },
+            format='json',
+        )
+        assert response.status_code == 403
+
+    def test_percentage_mode_with_fixed_amount_also_set_is_rejected(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-both-set-admin@example.com', 'Org BC Rate Both Set Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.PERCENTAGE,
+                'percentage': '1.50',
+                'fixed_amount': '300000.00',
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert not ControlOfficeRate.objects.filter(country_pack=senegal, jalon_type=SENEGAL_JALON_TYPE).exists()
+
+    def test_percentage_mode_without_percentage_is_rejected(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-missing-percentage-admin@example.com', 'Org BC Rate Missing Percentage Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.PERCENTAGE,
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert not ControlOfficeRate.objects.filter(country_pack=senegal, jalon_type=SENEGAL_JALON_TYPE).exists()
+
+    def test_fixed_amount_mode_without_fixed_amount_is_rejected(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-missing-fixed-admin@example.com', 'Org BC Rate Missing Fixed Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(senegal.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.FIXED_AMOUNT,
+            },
+            format='json',
+        )
+        assert response.status_code == 400
+        assert not ControlOfficeRate.objects.filter(country_pack=senegal, jalon_type=SENEGAL_JALON_TYPE).exists()
+
+    def test_creating_for_an_inactive_country_pack_is_rejected(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-inactive-admin@example.com', 'Org BC Rate Inactive Admin',
+        )
+        inactive_pack = CountryPack.objects.create(code='ZB', label='Pays Inactif BC', is_active=False)
+
+        response = admin_client.post(
+            reverse('control-office-rate-create'),
+            {
+                'country_pack': str(inactive_pack.id),
+                'jalon_type': SENEGAL_JALON_TYPE,
+                'calculation_mode': ControlOfficeCalculationMode.FIXED_AMOUNT,
+                'fixed_amount': '1.00',
+            },
+            format='json',
+        )
+        assert response.status_code == 409
+        assert inactive_pack.label in response.data['detail']
+
+
+@pytest.mark.django_db
+class TestControlOfficeRateCheckConstraint:
+    """Décision B — la garantie « un seul des deux champs valeur actif »
+    est posée en BASE (`CheckConstraint`), pas seulement côté service —
+    prouvé en tentant de la violer directement en SQL brut, hors de toute
+    validation applicative.
+    """
+
+    def test_direct_sql_insert_violating_the_constraint_is_rejected_by_the_db(self):
+        _admin_client, _admin_org, admin_user = _register_admin(
+            'bc-rate-constraint-admin@example.com', 'Org BC Rate Constraint Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        with pytest.raises(IntegrityError):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO pricing_control_office_rate
+                            (id, country_pack_id, jalon_type, calculation_mode, percentage,
+                             fixed_amount, created_by_id, created_at, sequence)
+                        VALUES (%s, %s, %s, 'percentage', %s, %s, %s, now(),
+                                nextval('pricing_control_office_rate_sequence_seq'))
+                        """,
+                        [
+                            str(uuid.uuid4()), str(senegal.id), SENEGAL_JALON_TYPE,
+                            '1.50', '300000.00', str(admin_user.id),
+                        ],
+                    )
+
+
+@pytest.mark.django_db
+class TestControlOfficeRateCurrentAndHistory:
+    def test_current_returns_the_latest_entry(self):
+        admin_client, _admin_org, admin_user = _register_admin(
+            'bc-rate-current-admin@example.com', 'Org BC Rate Current Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        services.create_control_office_rate(
+            admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('1.50'),
+        )
+        services.create_control_office_rate(
+            admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('300000.00'),
+        )
+
+        response = admin_client.get(
+            reverse('control-office-rate-current'),
+            {'country_pack_id': str(senegal.id), 'jalon_type': SENEGAL_JALON_TYPE},
+        )
+        assert response.status_code == 200
+        assert response.data['calculation_mode'] == ControlOfficeCalculationMode.FIXED_AMOUNT
+        assert Decimal(response.data['fixed_amount']) == Decimal('300000.00')
+
+    def test_current_is_none_when_no_rate_exists_yet(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'bc-rate-current-empty-admin@example.com', 'Org BC Rate Current Empty Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        response = admin_client.get(
+            reverse('control-office-rate-current'),
+            {'country_pack_id': str(senegal.id), 'jalon_type': SENEGAL_JALON_TYPE},
+        )
+        assert response.status_code == 200
+        assert response.data is None
+
+    def test_history_returns_every_entry_in_chronological_order(self):
+        admin_client, _admin_org, admin_user = _register_admin(
+            'bc-rate-history-admin@example.com', 'Org BC Rate History Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        first = services.create_control_office_rate(
+            admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('1.50'),
+        )
+        second = services.create_control_office_rate(
+            admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('300000.00'),
+        )
+
+        response = admin_client.get(
+            reverse('control-office-rate-history'),
+            {'country_pack_id': str(senegal.id), 'jalon_type': SENEGAL_JALON_TYPE},
+        )
+        assert response.status_code == 200
+        ids_in_order = [row['id'] for row in response.data]
+        assert ids_in_order == [str(first.id), str(second.id)]
+
+    def test_a_constructeur_cannot_read_current_or_history(self):
+        constructeur_client, _org, _user = _register_constructeur(
+            'bc-rate-read-forbidden@example.com', 'Org BC Rate Read Forbidden',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        current_response = constructeur_client.get(
+            reverse('control-office-rate-current'),
+            {'country_pack_id': str(senegal.id), 'jalon_type': SENEGAL_JALON_TYPE},
+        )
+        assert current_response.status_code == 403
+
+        history_response = constructeur_client.get(
+            reverse('control-office-rate-history'),
+            {'country_pack_id': str(senegal.id), 'jalon_type': SENEGAL_JALON_TYPE},
+        )
+        assert history_response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestControlOfficeRateImmutability:
+    """Même rigueur que `TestPricingConfigImmutability` (ticket 025) —
+    tentative EXPLICITE refusée, pas seulement une absence de route.
+    """
+
+    def test_no_put_patch_or_delete_method_is_accepted(self):
+        admin_client, _admin_org, admin_user = _register_admin(
+            'bc-rate-405-admin@example.com', 'Org BC Rate 405 Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+        rate = services.create_control_office_rate(
+            admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('300000.00'),
+        )
+
+        url = reverse('control-office-rate-create')
+        assert admin_client.put(url, {'fixed_amount': '999.00'}, format='json').status_code == 405
+        assert admin_client.patch(url, {'fixed_amount': '999.00'}, format='json').status_code == 405
+        assert admin_client.delete(url).status_code == 405
+
+        rate.refresh_from_db()
+        assert rate.fixed_amount == Decimal('300000.00')
+
+    def test_direct_sql_update_is_blocked_by_rls_no_policy_defined(self):
+        _admin_client, _admin_org, admin_user = _register_admin(
+            'bc-rate-sql-update-admin@example.com', 'Org BC Rate SQL Update Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+        rate = services.create_control_office_rate(
+            admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('300000.00'),
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE pricing_control_office_rate SET fixed_amount = %s WHERE id = %s",
+                [str(Decimal('999.00')), str(rate.id)],
+            )
+            assert cursor.rowcount == 0
+
+        rate.refresh_from_db()
+        assert rate.fixed_amount == Decimal('300000.00')
+
+    def test_direct_sql_delete_is_blocked_by_rls_no_policy_defined(self):
+        _admin_client, _admin_org, admin_user = _register_admin(
+            'bc-rate-sql-delete-admin@example.com', 'Org BC Rate SQL Delete Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+        rate = services.create_control_office_rate(
+            admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+            calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('300000.00'),
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM pricing_control_office_rate WHERE id = %s", [str(rate.id)])
+            assert cursor.rowcount == 0
+
+        assert ControlOfficeRate.objects.filter(id=rate.id).exists()
+
+    def test_no_update_or_delete_function_exists_in_the_service_module(self):
+        assert not hasattr(services, 'update_control_office_rate')
+        assert not hasattr(services, 'delete_control_office_rate')
+
+
+@pytest.mark.django_db
+class TestControlOfficeRateIsTheSoleSourceOfTruth:
+    """Ticket B-034, décision D — critère d'acceptation CENTRAL : aucune
+    fonction de service, nulle part dans ce projet, ne doit exposer de
+    mécanisme alternatif de calcul/saisie d'un montant bureau de contrôle
+    (invariant 25.16, jamais une saisie libre par mission).
+    """
+
+    ALTERNATIVE_CREATION_NAMES = [
+        'create_control_office_amount', 'set_control_office_amount',
+        'create_bc_rate', 'set_bc_amount', 'override_control_office_rate',
+    ]
+
+    def test_no_alternative_control_office_amount_function_exists_anywhere(self):
+        offending = []
+        for module_info in pkgutil.walk_packages(apps_package.__path__, prefix='apps.'):
+            if not module_info.name.endswith('.services'):
+                continue
+            module = importlib.import_module(module_info.name)
+            for name in self.ALTERNATIVE_CREATION_NAMES:
+                if hasattr(module, name):
+                    offending.append((module_info.name, name))
+
+        assert offending == [], (
+            f'Mécanisme alternatif de montant bureau de contrôle trouvé : {offending} — '
+            'apps.pricing.services.create_control_office_rate doit rester la SEULE source.'
+        )
+
+
+@pytest.mark.django_db
+class TestControlOfficeRateSequenceForcedCollision:
+    """Ticket B-034 — même méthode que B-031/B-033 : `sequence` construit
+    dès la conception, prouvé par une collision FORCÉE de `created_at`
+    (jamais un espoir de reproduction hasardeuse). Pas besoin de
+    `django_db(transaction=True)` ici : `create_control_office_rate`
+    n'appelle jamais `set_rls_context` (aucune bascule RLS, décision F),
+    contrairement à `create_program_cost` (ticket B-033) — la transaction
+    implicite standard de `@pytest.mark.django_db` suffit, même schéma que
+    le test équivalent de `PricingConfig` (ticket B-031) plus haut dans ce
+    fichier.
+    """
+
+    def test_two_rates_with_an_identical_created_at_are_resolved_by_sequence(self):
+        _admin_client, _admin_org, admin_user = _register_admin(
+            'bc-rate-tiebreak-admin@example.com', 'Org BC Rate Tiebreak Admin',
+        )
+        senegal = CountryPack.objects.get(code='SN')
+
+        frozen_now = timezone.now()
+        with mock.patch('django.utils.timezone.now', return_value=frozen_now):
+            first = services.create_control_office_rate(
+                admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+                calculation_mode=ControlOfficeCalculationMode.PERCENTAGE, percentage=Decimal('1.50'),
+            )
+            second = services.create_control_office_rate(
+                admin=admin_user, country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+                calculation_mode=ControlOfficeCalculationMode.FIXED_AMOUNT, fixed_amount=Decimal('300000.00'),
+            )
+
+        assert first.created_at == second.created_at
+        assert second.sequence > first.sequence
+
+        current = services.get_active_control_office_rate(
+            country_pack_id=senegal.id, jalon_type=SENEGAL_JALON_TYPE,
+        )
+        assert current.id == second.id
+        assert current.calculation_mode == ControlOfficeCalculationMode.FIXED_AMOUNT

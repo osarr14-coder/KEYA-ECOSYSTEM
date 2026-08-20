@@ -8,6 +8,8 @@ from apps.backoffice.permissions import IsAdminKeyimmo
 
 from . import services
 from .serializers import (
+    ControlOfficeRateCreateSerializer,
+    ControlOfficeRateSerializer,
     LegalPaymentTierTemplateCreateSerializer,
     LegalPaymentTierTemplateSerializer,
     PricingConfigCreateSerializer,
@@ -178,3 +180,81 @@ class LegalPaymentTierTemplateHistoryView(APIView):
 
         history = services.get_legal_payment_tier_template_history(country_pack_id)
         return Response(LegalPaymentTierTemplateSerializer(history, many=True).data)
+
+
+class ControlOfficeRateCreateView(APIView):
+    """`POST /api/pricing/control-office-rates/` — ticket B-034, réservé à
+    `admin_keyimmo`. Crée une NOUVELLE entrée de barème sectoriel du bureau
+    de contrôle (BC) — aucun endpoint `PUT`/`PATCH`/`DELETE` n'existe nulle
+    part pour cette ressource (append-only, invariant 25.16).
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def post(self, request):
+        serializer = ControlOfficeRateCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            rate = services.create_control_office_rate(
+                admin=request.user,
+                country_pack_id=data['country_pack'],
+                jalon_type=data['jalon_type'],
+                calculation_mode=data['calculation_mode'],
+                percentage=data.get('percentage'),
+                fixed_amount=data.get('fixed_amount'),
+            )
+        except services.CountryPackInactiveError as exc:
+            # 409, pas 400 — même raisonnement que PricingConfigCreateView
+            # (ticket B-032).
+            return Response({'detail': str(exc)}, status=409)
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+
+        return Response(ControlOfficeRateSerializer(rate).data, status=201)
+
+
+class ControlOfficeRateCurrentView(APIView):
+    """`GET /api/pricing/control-office-rates/current/?country_pack_id=<id>&jalon_type=<type>`
+    — ticket B-034, réservé à `admin_keyimmo`. Entrée ACTUELLE pour ce
+    `(country_pack, jalon_type)`, `null` si aucune n'existe encore. Les
+    DEUX paramètres sont requis (décision E) — `jalon_type` est une chaîne
+    libre sans liste connue à l'avance, contrairement aux canaux fixes de
+    `PricingConfig`.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        country_pack_id = request.query_params.get('country_pack_id')
+        jalon_type = request.query_params.get('jalon_type')
+        if not country_pack_id:
+            raise ValidationError({'country_pack_id': 'Ce paramètre de requête est requis.'})
+        if not jalon_type:
+            raise ValidationError({'jalon_type': 'Ce paramètre de requête est requis.'})
+
+        rate = services.get_active_control_office_rate(country_pack_id=country_pack_id, jalon_type=jalon_type)
+        if rate is None:
+            return Response(None)
+        return Response(ControlOfficeRateSerializer(rate).data)
+
+
+class ControlOfficeRateHistoryView(APIView):
+    """`GET /api/pricing/control-office-rates/history/?country_pack_id=<id>&jalon_type=<type>`
+    — ticket B-034, réservé à `admin_keyimmo`. Historique COMPLET pour ce
+    `(country_pack, jalon_type)`, chronologique.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        country_pack_id = request.query_params.get('country_pack_id')
+        jalon_type = request.query_params.get('jalon_type')
+        if not country_pack_id:
+            raise ValidationError({'country_pack_id': 'Ce paramètre de requête est requis.'})
+        if not jalon_type:
+            raise ValidationError({'jalon_type': 'Ce paramètre de requête est requis.'})
+
+        history = services.get_control_office_rate_history(country_pack_id=country_pack_id, jalon_type=jalon_type)
+        return Response(ControlOfficeRateSerializer(history, many=True).data)

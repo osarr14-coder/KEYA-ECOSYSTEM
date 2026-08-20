@@ -8,6 +8,8 @@ from apps.organizations.models import CountryPack
 
 from .models import (
     ActiveLegalPaymentTierTemplate,
+    ControlOfficeCalculationMode,
+    ControlOfficeRate,
     LegalPaymentTierStep,
     LegalPaymentTierTemplate,
     PricingCanal,
@@ -270,4 +272,93 @@ def get_legal_payment_tier_template_history(country_pack_id):
         LegalPaymentTierTemplate.objects.filter(
             country_pack_id=country_pack_id,
         ).order_by('version'),
+    )
+
+
+def create_control_office_rate(
+    *, admin, country_pack_id, jalon_type, calculation_mode, percentage=None, fixed_amount=None,
+):
+    """Point d'entrée unique pour créer une entrée de barème sectoriel du
+    bureau de contrôle (BC) — ticket B-034, invariant 25.16. **SEULE**
+    fonction de tout ce projet qui crée un montant BC — voir la docstring
+    de `ControlOfficeRate` pour le raisonnement complet et la note
+    `CLAUDE.md` adressée aux tickets consommateurs (B-035/B-036).
+
+    **Garde `is_active` dès la conception (décision C, ticket B-034)** —
+    B-032 a fermé cette dette pour `PricingConfig`/
+    `LegalPaymentTierTemplate` APRÈS coup ; ici directement, en réutilisant
+    `CountryPackInactiveError` (même app, même exception).
+
+    **Un seul des deux champs valeur actif à la fois (décision B)** —
+    vérifié explicitement AVANT toute écriture (même discipline que
+    `LotAlreadyLockedError`/validation des plafonds cumulés du ticket
+    B-027 : refus explicite, aucune ligne créée), en PLUS du
+    `CheckConstraint` posé en base (`Meta.constraints`) — cette vérification
+    applicative donne un message d'erreur clair au client, la contrainte DB
+    reste le filet de sécurité ultime, non contournable.
+    """
+    country_pack = CountryPack.objects.filter(id=country_pack_id).first()
+    if country_pack is None:
+        raise ValidationError({'country_pack': 'Country Pack introuvable.'})
+    if not country_pack.is_active:
+        raise CountryPackInactiveError(
+            f"Le Country Pack « {country_pack.label} » n'est pas actif — aucun barème ne peut y être créé.",
+        )
+
+    if calculation_mode == ControlOfficeCalculationMode.PERCENTAGE:
+        if percentage is None or fixed_amount is not None:
+            raise ValidationError({
+                'calculation_mode': (
+                    "Mode 'percentage' : « percentage » est requis et « fixed_amount » doit être absent."
+                ),
+            })
+    elif calculation_mode == ControlOfficeCalculationMode.FIXED_AMOUNT:
+        if fixed_amount is None or percentage is not None:
+            raise ValidationError({
+                'calculation_mode': (
+                    "Mode 'fixed_amount' : « fixed_amount » est requis et « percentage » doit être absent."
+                ),
+            })
+    else:
+        raise ValidationError({'calculation_mode': 'Mode de calcul invalide.'})
+
+    return ControlOfficeRate.objects.create(
+        country_pack=country_pack,
+        jalon_type=jalon_type,
+        calculation_mode=calculation_mode,
+        percentage=percentage,
+        fixed_amount=fixed_amount,
+        created_by=admin,
+    )
+
+
+def get_active_control_office_rate(*, country_pack_id, jalon_type):
+    """Le `ControlOfficeRate` ACTUEL (dernier créé, `LATEST_FIRST_ORDERING`)
+    pour UN SEUL `(country_pack, jalon_type)` — `None` si aucun n'existe
+    encore. **Point d'entrée UNIQUE pour lire un montant bureau de
+    contrôle** — voir la docstring de `ControlOfficeRate` (décision D) :
+    tout futur ticket (B-035/B-036 annoncés) qui a besoin du montant BC
+    d'un lot/jalon DOIT appeler cette fonction, jamais recalculer le
+    pourcentage/montant lui-même ni dupliquer cette dérivation ailleurs
+    dans le projet.
+
+    Contrairement à `get_current_rates` (`PricingConfig`, ticket 026), il
+    n'existe pas d'équivalent « tous les jalons à la fois » : `jalon_type`
+    est une chaîne libre sans liste connue à l'avance (décision E) — les
+    DEUX paramètres sont toujours requis par l'appelant.
+    """
+    return (
+        ControlOfficeRate.objects.filter(country_pack_id=country_pack_id, jalon_type=jalon_type)
+        .order_by(*LATEST_FIRST_ORDERING).first()
+    )
+
+
+def get_control_office_rate_history(*, country_pack_id, jalon_type):
+    """Historique COMPLET d'un `(country_pack, jalon_type)`, du plus ancien
+    au plus récent — tie-break `sequence` symétrique à
+    `LATEST_FIRST_ORDERING`.
+    """
+    return list(
+        ControlOfficeRate.objects.filter(country_pack_id=country_pack_id, jalon_type=jalon_type)
+        .order_by('created_at', 'sequence'),
     )
