@@ -3625,6 +3625,23 @@ F-041) : h4 (13px/600/encre) > `td` (13px/400/encre) > `th`
 (11,05px/500/muted) — hiérarchie à trois niveaux confirmée, pas
 seulement chaque règle testée isolément.
 
+## Grille d'espacement modulaire (ticket F-043)
+
+`tokens/spacing.ts` — six paliers (`xs` 4px à `xxl` 24px), tous multiples
+exacts d'une unité de base 4px. Inventaire réel avant conception (grep
+`margin`/`padding`/`gap` sur les 4 apps) : 106 valeurs sur 108 déjà des
+multiples de 4px — la discipline existait déjà dans le code, ce ticket
+la formalise en token, il ne l'invente pas. Deux valeurs hors grille
+identifiées (`6px` dans `StatusDot`, `2px` dans `InspectionFormView`,
+apps/control-pwa) — signalées, jamais modifiées sans vérification visuelle
+dédiée.
+
+**Portée volontairement limitée au token seul** — aucun fichier de vue
+migré (décision explicite de l'utilisateur). Les valeurs en dur restent
+dans les 4 apps jusqu'à un futur ticket de migration séquencée (même
+précédent que F-038 pour Button/Input/Select : liste suggérée, jamais
+imposée en un seul ticket — voir `F-043-grille-espacement.md`).
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

@@ -48,4 +48,7 @@ export type {
 export { ALL_DENSITIES, densityTokens } from './tokens/density';
 export type { Density, DensityTokens } from './tokens/density';
 
+export { spacing } from './tokens/spacing';
+export type { SpacingTokens } from './tokens/spacing';
+
 export { typography } from './tokens/typography';
