@@ -3575,6 +3575,30 @@ PAS redondant et doit rester, sous peine que le padding en `em` ne suive
 plus la bascule Dense/Confortable (régression réelle trouvée puis
 corrigée pendant ce ticket, voir `F-041-consolidation-styles-tableau.md`).
 
+## Discipline de vérification — donnée créée en navigateur réel via les fonctions de service (ticket F-041)
+
+**Toute donnée créée pour une vérification en navigateur réel via les
+fonctions de service normales (jamais un accès SQL direct) devient
+PERMANENTE par construction, dès qu'elle touche une table append-only**
+(`Devis`, `TrustEvent`, `InspectionMission`, `LotBcCharge`,
+`DevisAjustement`, etc.) — c'est la doctrine « Visible Trust » appliquée
+jusqu'au bout (aucune de ces tables n'a de politique RLS `DELETE`,
+volontairement, même raisonnement que l'enforcement triple de
+`TrustEvent`), **pas une limite d'outillage à contourner**. Constaté au
+ticket F-041 : un lot de vérification (« Lot Verif F-041 », créé via
+`create_devis`/`lock_devis`/`create_work_declaration`/`create_mission`
+pour obtenir une vraie charge BC à afficher) s'est révélé indélébile —
+`Devis`/`InspectionMission`/`LotBcCharge` n'ont que `SELECT`/`INSERT`,
+et `Lot` reste protégé (`PROTECT`) tant qu'un `Devis` le référence.
+
+La convention de nommage explicite (`Lot Verif <ticket>`, ou équivalent)
+suffit à distinguer cette donnée des vraies données de démo — jamais
+besoin de tenter une suppression, et surtout jamais de contourner le RLS
+(désactiver `FORCE ROW LEVEL SECURITY` temporairement, écriture SQL
+brute) pour y arriver : ce serait aller délibérément à l'encontre de la
+doctrine de sécurité/traçabilité de tout ce projet pour un simple
+nettoyage de confort.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
