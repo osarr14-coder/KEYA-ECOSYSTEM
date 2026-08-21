@@ -7,6 +7,17 @@ dédiés), `tsc --noEmit` propre sur les 5 packages. Portée volontairement
 limitée au token seul — pas de migration de vue (voir Explicitement hors
 scope).
 
+**Vérification de discipline (post-fusion)** : contrairement à
+F-038/F-039/F-041/F-042, aucune capture d'écran/`getComputedStyle` n'a
+été faite au moment de l'implémentation. Reconfirmé après-coup par
+`grep -r "from '@keya/design-system'"` sur les 4 apps : **aucun fichier
+n'importe `spacing`**. Ce ticket n'a donc littéralement rien à vérifier
+visuellement — le token n'est consommé nulle part, contrairement à
+F-040 qui, lui, changeait un rendu réel et méritait une vérification
+navigateur qui manquait (voir `F-040-navigation-inter-apps-reelle.md`).
+Ce n'est pas un défaut de F-043, c'est l'état de fait de sa portée
+strictement additive.
+
 ## Origine
 
 Demande de refonte dans l'esprit Josef Müller-Brockmann (discipline
