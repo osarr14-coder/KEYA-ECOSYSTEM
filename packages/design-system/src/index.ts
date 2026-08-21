@@ -23,6 +23,9 @@ export type { InputProps } from './components/Input/Input';
 
 export { isForbiddenError } from './errors/isForbiddenError';
 
+export { buildCrossAppUrl, resolveAppOrigins } from './navigation/appOrigins';
+export type { AppOrigins } from './navigation/appOrigins';
+
 export { useOnlineStatus } from './hooks/useOnlineStatus';
 
 export { ProgressBar } from './components/ProgressBar/ProgressBar';

@@ -127,15 +127,69 @@ describe('App — critère produit 26.1 : les 5 éléments identifiables sans in
 });
 
 describe('App — réutilise AppShell tel quel, aucun module professionnel sans rôle', () => {
-  it('ne montre BUILD/FINANCE/NOTARY à aucun moment pour un utilisateur client', async () => {
+  it('ne montre BUILD/CONTROL/FINANCE/NOTARY à aucun moment pour un utilisateur client', async () => {
     renderApp();
 
     await screen.findByText('Résidence Ker');
     expect(screen.queryByText('BUILD')).not.toBeInTheDocument();
+    expect(screen.queryByText('CONTROL')).not.toBeInTheDocument();
     expect(screen.queryByText('FINANCE')).not.toBeInTheDocument();
     expect(screen.queryByText('NOTARY')).not.toBeInTheDocument();
   });
 });
+
+describe(
+  'App — modules BUILD/CONTROL (ticket F-040) : mapping rôle -> app correct, jamais BUILD '
+  + 'pour un inspecteur (qui doit atterrir sur CONTROL, comme au login — voir resolveRedirectApp), '
+  + 'et vraie navigation cross-origine avec transfert de session, jamais un chemin relatif mort',
+  () => {
+    const CONSTRUCTEUR_ME = {
+      id: 'user-1', email: 'constructeur@example.com', full_name: 'Constructeur Test',
+      memberships: [
+        {
+          organization_id: 'org-1', organization_name: 'Org Constructeur',
+          role_code: 'constructeur', role_label: 'Constructeur',
+        },
+      ],
+    };
+    const INSPECTEUR_ME = {
+      id: 'user-2', email: 'inspecteur@example.com', full_name: 'Inspecteur Test',
+      memberships: [
+        {
+          organization_id: 'org-1', organization_name: 'Org Inspecteur',
+          role_code: 'inspecteur', role_label: 'Inspecteur',
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      localStorage.setItem('keya_access_token', 'my-access');
+      localStorage.setItem('keya_refresh_token', 'my-refresh');
+    });
+
+    it('un constructeur voit BUILD (vers apps/build) mais jamais CONTROL', async () => {
+      renderApp({ getMe: async () => CONSTRUCTEUR_ME, getMyLots: async () => [] });
+      await screen.findByText(/aucun bien ne vous est encore associé/i);
+
+      expect(screen.getByRole('link', { name: 'BUILD' })).toHaveAttribute(
+        'href',
+        'http://localhost:5174/#access_token=my-access&refresh_token=my-refresh',
+      );
+      expect(screen.queryByText('CONTROL')).not.toBeInTheDocument();
+    });
+
+    it('un inspecteur voit CONTROL (vers apps/control-pwa) mais jamais BUILD', async () => {
+      renderApp({ getMe: async () => INSPECTEUR_ME, getMyLots: async () => [] });
+      await screen.findByText(/aucun bien ne vous est encore associé/i);
+
+      expect(screen.getByRole('link', { name: 'CONTROL' })).toHaveAttribute(
+        'href',
+        'http://localhost:5175/#access_token=my-access&refresh_token=my-refresh',
+      );
+      expect(screen.queryByText('BUILD')).not.toBeInTheDocument();
+    });
+  },
+);
 
 describe('App — sélection du bien', () => {
   it("n'affiche pas de sélecteur quand le client n'a qu'un seul bien", async () => {

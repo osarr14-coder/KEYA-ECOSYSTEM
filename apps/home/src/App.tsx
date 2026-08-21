@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
+  AlertBanner, ApiErrorBanner, AppShell, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
+  type AppModule,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -10,16 +11,40 @@ import { EvidenceFeedView } from './views/EvidenceFeedView';
 import { MyActionsView } from './views/MyActionsView';
 import { OverviewView } from './views/OverviewView';
 
-// Réutilise AppShell tel quel (ticket 007) — aucune redéfinition. Les
-// modules professionnels (BUILD/FINANCE/NOTARY) restent masqués tant que
-// `userRoles` (dérivé de `/me`, ticket 019) ne contient pas le rôle
-// correspondant — comportement générique d'AppShell, pas recodé ici.
-const MODULES: AppModule[] = [
-  { id: 'home', label: 'Accueil', href: '/' },
-  { id: 'build', label: 'BUILD', href: '/build', requiredRoles: ['constructeur', 'inspecteur'] },
-  { id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'] },
-  { id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'] },
-];
+// Réutilise AppShell tel quel (ticket 007) — aucune redéfinition. Le module
+// professionnel FINANCE reste masqué tant que `userRoles` (dérivé de `/me`,
+// ticket 019) ne contient pas 'sponsor' — comportement générique d'AppShell,
+// pas recodé ici. Aucune app FINANCE dédiée n'existe encore (limitation MVP
+// assumée, voir `redirectTarget.ts` côté apps/web) : volontairement pas
+// touché par le ticket F-040 ci-dessous.
+//
+// Ticket F-040 — deux bugs réels constatés en navigateur : (1) un seul
+// module "BUILD" (`href: '/build'`) était requis à la fois pour
+// 'constructeur' ET 'inspecteur', alors qu'un inspecteur doit atterrir sur
+// CONTROL (mapping `resolveRedirectApp`, tickets 020/021) — un inspecteur
+// cliquant "BUILD" depuis HOME se serait retrouvé sur la MAUVAISE app ; (2)
+// même en ignorant ce mauvais mapping, `href: '/build'` restait un chemin
+// relatif SUR L'ORIGINE DE HOME (aucun routeur ici) — un lien mort. Scindé
+// en deux modules distincts, chacun avec une vraie URL cross-origine (même
+// mécanisme de transfert de session qu'à la connexion), recalculée à CHAQUE
+// rendu (jamais mémoïsée) pour ne jamais embarquer un jeton périmé.
+const APP_ORIGINS = resolveAppOrigins();
+
+function buildModules(): AppModule[] {
+  const accessToken = localStorage.getItem('keya_access_token');
+  const refreshToken = localStorage.getItem('keya_refresh_token');
+  const crossAppHref = (origin: string) => (
+    accessToken && refreshToken ? buildCrossAppUrl(origin, accessToken, refreshToken) : origin
+  );
+
+  return [
+    { id: 'home', label: 'Accueil', href: '/' },
+    { id: 'build', label: 'BUILD', href: crossAppHref(APP_ORIGINS.build), requiredRoles: ['constructeur'] },
+    { id: 'control', label: 'CONTROL', href: crossAppHref(APP_ORIGINS.control), requiredRoles: ['inspecteur'] },
+    { id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'] },
+    { id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'] },
+  ];
+}
 
 type ViewId = 'overview' | 'evidence' | 'actions';
 
@@ -118,7 +143,7 @@ export function App() {
       // KEYIMMO AFRIC (navy/or) sur le chrome d'AppShell. BUILD/CONTROL/
       // apps/web n'y touchent jamais (doctrine 17.3 V3.0).
       brand
-      modules={MODULES}
+      modules={buildModules()}
       userRoles={userRoles}
       activeModuleId="home"
       breadcrumbs={[{ label: 'Accueil' }]}

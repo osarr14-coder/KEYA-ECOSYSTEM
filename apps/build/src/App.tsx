@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
+  AlertBanner, ApiErrorBanner, AppShell, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
+  type AppModule,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -12,13 +13,35 @@ import { ExceptionsView } from './views/ExceptionsView';
 // Réutilise AppShell tel quel (ticket 007), variante dense (ticket 009,
 // écran professionnel à fort volume) — aucune redéfinition. Les modules
 // professionnels (FINANCE/NOTARY) restent masqués tant que `userRoles`
-// (dérivé de `/me`, ticket 019) ne contient pas le rôle correspondant.
-const MODULES: AppModule[] = [
-  { id: 'home', label: 'Accueil', href: '/' },
-  { id: 'build', label: 'BUILD', href: '/build', requiredRoles: ['constructeur', 'inspecteur'] },
-  { id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'] },
-  { id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'] },
-];
+// (dérivé de `/me`, ticket 019) ne contient pas le rôle correspondant —
+// aucune app dédiée ne les sert encore (limitation MVP assumée, voir
+// `redirectTarget.ts` côté apps/web), volontairement pas touché ici.
+//
+// Ticket F-040 — `home.href` NE PEUT PLUS être un chemin relatif (`/`) :
+// vérifié en navigateur réel, apps/build n'a aucun routeur, donc `/` y
+// rendait la MÊME vue Control Tower que `/build` (lien mort, pas de bug
+// visible dans la barre d'URL mais un contenu strictement identique).
+// `buildModules` construit maintenant une vraie URL cross-origine vers HOME
+// avec transfert de session (même mécanisme que la connexion, tickets
+// 020/021), recalculée à CHAQUE rendu (jamais mémoïsée) pour ne jamais
+// embarquer un jeton périmé si l'utilisateur clique longtemps après le
+// montage.
+const APP_ORIGINS = resolveAppOrigins();
+
+function buildModules(): AppModule[] {
+  const accessToken = localStorage.getItem('keya_access_token');
+  const refreshToken = localStorage.getItem('keya_refresh_token');
+  const homeHref = accessToken && refreshToken
+    ? buildCrossAppUrl(APP_ORIGINS.home, accessToken, refreshToken)
+    : APP_ORIGINS.home;
+
+  return [
+    { id: 'home', label: 'Accueil', href: homeHref },
+    { id: 'build', label: 'BUILD', href: '/build', requiredRoles: ['constructeur', 'inspecteur'] },
+    { id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'] },
+    { id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'] },
+  ];
+}
 
 type ViewId = 'exceptions' | 'all_lots';
 
@@ -82,7 +105,7 @@ export function App() {
   return (
     <AppShell
       density="dense"
-      modules={MODULES}
+      modules={buildModules()}
       userRoles={userRoles}
       activeModuleId="build"
       breadcrumbs={[{ label: 'BUILD' }]}

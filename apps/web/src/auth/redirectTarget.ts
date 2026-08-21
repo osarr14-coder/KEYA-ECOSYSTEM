@@ -1,29 +1,17 @@
+import {
+  buildCrossAppUrl, resolveAppOrigins, type AppOrigins,
+} from '@keya/design-system';
+
 import type { Me } from '../api/types';
 
-export interface AppOrigins {
-  home: string;
-  build: string;
-  control: string;
-  /** Ticket 021 — apps/web devient elle-même une destination possible (le
-   * back-office), pas seulement le point d'entrée qui redirige toujours
-   * ailleurs. Voir `resolveRedirectApp` ci-dessous. */
-  web: string;
-}
-
-/**
- * Lit les origines cibles depuis l'environnement (même convention que
- * `VITE_API_BASE_URL` ailleurs dans ce monorepo) — jamais codées en dur,
- * pour rester correctes quel que soit le déploiement réel (les 4 apps
- * n'ont, à ce jour, aucune config de déploiement partagée dans ce repo).
- */
-export function resolveAppOrigins(): AppOrigins {
-  return {
-    home: import.meta.env.VITE_HOME_URL ?? 'http://localhost:5173',
-    build: import.meta.env.VITE_BUILD_URL ?? 'http://localhost:5174',
-    control: import.meta.env.VITE_CONTROL_URL ?? 'http://localhost:5175',
-    web: import.meta.env.VITE_WEB_URL ?? 'http://localhost:5176',
-  };
-}
+// Ticket F-040 — `AppOrigins`/`resolveAppOrigins` (et `buildCrossAppUrl`,
+// utilisée plus bas par `buildRedirectUrl`) ont migré vers
+// `@keya/design-system` : les liens de sidebar `AppShell` inter-apps (BUILD
+// -> HOME, HOME -> BUILD/CONTROL) en ont désormais besoin eux aussi, jamais
+// une seconde copie. Ré-exportées ici pour ne rien casser côté appelants
+// existants de ce module.
+export { resolveAppOrigins };
+export type { AppOrigins };
 
 /**
  * Résout l'app cible à partir du RÔLE de la PREMIÈRE membership renvoyée par
@@ -81,14 +69,10 @@ export function isSameOriginRedirect(targetUrl: string, currentHref: string): bo
 }
 
 /**
- * Construit l'URL de redirection avec les jetons en fragment (`#...`),
- * jamais en query string (ticket 020) : un fragment n'est JAMAIS envoyé au
- * serveur ni journalisé par un proxy/reverse-proxy — seul le navigateur y
- * accède, exactement ce qu'il faut pour un transfert de session ponctuel
- * entre deux origines qui ne partagent pas `localStorage`. Lu une seule
- * fois par l'app cible (`receiveIncomingSession`), puis retiré de l'URL.
+ * Nom conservé pour ne rien casser côté appelants existants (`App.tsx`,
+ * tests) — délègue à `buildCrossAppUrl` (ticket F-040, `@keya/design-system`),
+ * même logique exacte, jamais dupliquée.
  */
 export function buildRedirectUrl(origin: string, accessToken: string, refreshToken: string): string {
-  const params = new URLSearchParams({ access_token: accessToken, refresh_token: refreshToken });
-  return `${origin}/#${params.toString()}`;
+  return buildCrossAppUrl(origin, accessToken, refreshToken);
 }

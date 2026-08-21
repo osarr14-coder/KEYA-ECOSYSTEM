@@ -3512,6 +3512,45 @@ ne pas le perdre de vue, à creuser dans un futur ticket dédié si le
 symptôme se reproduit, jamais traité comme un bug confirmé tant que
 personne ne l'a réellement diagnostiqué.
 
+## Navigation inter-apps réelle (ticket F-040)
+
+Constaté en vérification manuelle exhaustive (visite des menus des 4
+profils, tous rôles, pas en lisant le code d'abord) : les liens de la
+sidebar `AppShell` vers d'autres apps ("Accueil" dans BUILD, "BUILD" dans
+HOME) sont des `<a href="/chemin">` relatifs — mais BUILD/HOME/CONTROL
+sont des SPA **sans routeur** (`activeModuleId` codé en dur), donc cliquer
+changeait l'URL affichée sans jamais changer le contenu rendu. Seule
+apps/web échappait au problème (modules sidebar synchronisés à un vrai
+état applicatif, ticket F-031).
+
+Deux bugs distincts corrigés : (1) "Accueil" (apps/build) pointait vers
+`/`, l'origine de BUILD elle-même, jamais un retour vers HOME ; (2)
+"BUILD" (apps/home) était requis pour `constructeur` ET `inspecteur`
+alors qu'un inspecteur doit atterrir sur CONTROL (mapping
+`resolveRedirectApp`, tickets 020/021) — scindé en deux modules
+"BUILD"/"CONTROL", un par rôle.
+
+**Mécanisme réutilisé, pas réinventé** : le transfert de session existant
+(jeton en fragment d'URL, `#access_token=...`, lu par
+`receiveIncomingSession()`) servait déjà à la connexion — les liens
+sidebar construisent maintenant la même URL. `resolveAppOrigins`/
+`buildCrossAppUrl` promus dans `@keya/design-system` (`src/navigation/`)
+pour que BUILD et HOME les consomment sans dupliquer
+`apps/web/src/auth/redirectTarget.ts`. Tokens relus en LIVE à chaque
+rendu (`localStorage.getItem`), jamais mémoïsés — un lien cliqué
+longtemps après le montage ne doit jamais embarquer un jeton périmé.
+
+**FINANCE/NOTARY (HOME) et le "BUILD" self-référençant de BUILD lui-même
+— explicitement NON touchés.** Investigation avant implémentation : 3
+tests existants (`apps/build/src/App.test.tsx`) vérifiaient déjà, de
+façon délibérée, que FINANCE apparaît/disparaît selon le rôle de
+l'organisation active (App Switcher, ticket 019) — un comportement testé
+et intentionnel ("le module existe, l'app dédiée viendra plus tard"), pas
+un oubli. Aucune app FINANCE/NOTARY dédiée n'existe : le rôle sponsor
+reste sans destination fonctionnelle réelle, limitation MVP assumée,
+hors scope de ce ticket — voir `F-040-navigation-inter-apps-reelle.md`
+pour le détail complet.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

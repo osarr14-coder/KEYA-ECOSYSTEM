@@ -110,6 +110,37 @@ describe('App — réutilise AppShell tel quel, variante dense', () => {
 });
 
 describe(
+  'App — lien "Accueil" (ticket F-040) : vraie navigation cross-origine vers HOME, '
+  + 'jamais un chemin relatif mort (apps/build n\'a aucun routeur — `/` y rendrait '
+  + 'la même vue Control Tower que `/build`)',
+  () => {
+    it(
+      'construit un lien avec transfert de session (fragment access_token/refresh_token) '
+      + 'quand une session est présente en localStorage',
+      async () => {
+        localStorage.setItem('keya_access_token', 'my-access');
+        localStorage.setItem('keya_refresh_token', 'my-refresh');
+        renderApp();
+        await screen.findByTestId('no-exceptions');
+
+        const accueilLink = screen.getByRole('link', { name: 'Accueil' });
+        expect(accueilLink).toHaveAttribute(
+          'href',
+          'http://localhost:5173/#access_token=my-access&refresh_token=my-refresh',
+        );
+      },
+    );
+
+    it('retombe sur l\'origine HOME nue si aucune session n\'est encore en localStorage', async () => {
+      renderApp();
+      await screen.findByTestId('no-exceptions');
+
+      expect(screen.getByRole('link', { name: 'Accueil' })).toHaveAttribute('href', 'http://localhost:5173');
+    });
+  },
+);
+
+describe(
   'App — App Switcher multi-rôle (ticket 019) : bascule entre organisations réelles, '
   + 'jamais un rôle codé en dur',
   () => {
