@@ -3599,6 +3599,32 @@ brute) pour y arriver : ce serait aller délibérément à l'encontre de la
 doctrine de sécurité/traçabilité de tout ce projet pour un simple
 nettoyage de confort.
 
+## Échelle typographique (ticket F-042)
+
+`h1`-`h4` posés dans `GlobalStyles` en unités `em` — relatif à la taille
+de police ambiante déjà posée par le token de densité (même mécanisme
+que le padding de tableau, F-041) — jamais une valeur `px` figée :
+`h1` 1.75em/700, `h2` 1.35em/700, `h3` 1.1em/600, `h4` 1em/600.
+`margin` volontairement absent de ces règles (la plupart des titres
+portent déjà leur propre marge inline ; la retirer risquerait une
+régression de mise en page hors du périmètre de ce ticket).
+
+**Conçu après un inventaire réel (`grep` sur les 4 apps), jamais une
+échelle inventée** : `h3`/`h4` ne sont utilisés que dans apps/web
+(densité dense, 13px) — vérifiés uniquement à cette densité, aucune
+valeur confortable/CONTROL fabriquée pour eux. `h5`/`h6` : jamais
+utilisés, aucune règle créée.
+
+**`th` (libellé de colonne) étend le MÊME bloc posé par F-041** — jamais
+un second sélecteur `th` séparé : `font-size: 0.85em`, `font-weight: 500`,
+`color: neutral.textMuted` ajoutés aux propriétés déjà en place
+(`text-align`, `padding`, `border-bottom`). Une seule règle gouverne
+chaque propriété de `th` de bout en bout. Cohérence F-041/F-042 vérifiée
+en direct sur `LotLedgerPanel` (qui avait déjà la bordure d'en-tête
+F-041) : h4 (13px/600/encre) > `td` (13px/400/encre) > `th`
+(11,05px/500/muted) — hiérarchie à trois niveaux confirmée, pas
+seulement chaque règle testée isolément.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

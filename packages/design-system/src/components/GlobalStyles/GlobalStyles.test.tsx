@@ -29,3 +29,34 @@ describe('GlobalStyles — consolidation des styles de tableau (ticket F-041)', 
     expect(css).toMatch(/tbody tr:hover td\s*\{/);
   });
 });
+
+describe('GlobalStyles — échelle typographique (ticket F-042)', () => {
+  it('pose h1 à h4 en unités em, jamais une valeur px figée', () => {
+    const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
+
+    expect(css).toMatch(/h1\s*\{[^}]*font-size:\s*1\.75em/);
+    expect(css).toMatch(/h2\s*\{[^}]*font-size:\s*1\.35em/);
+    expect(css).toMatch(/h3\s*\{[^}]*font-size:\s*1\.1em/);
+    expect(css).toMatch(/h4\s*\{[^}]*font-size:\s*1em/);
+    // Aucune règle h5/h6 : jamais utilisés dans les 4 apps (inventaire
+    // réel avant conception), pas de valeur inventée pour un niveau non
+    // testable.
+    expect(css).not.toMatch(/\bh5\s*\{/);
+    expect(css).not.toMatch(/\bh6\s*\{/);
+  });
+
+  it(
+    'étend LE MÊME bloc th posé par F-041 (une seule règle par propriété), '
+    + 'jamais un second sélecteur th séparé',
+    () => {
+      const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
+
+      const thBlocks = css.match(/(?<![-\w])th\s*\{[^}]*\}/g) ?? [];
+      expect(thBlocks).toHaveLength(1);
+      expect(thBlocks[0]).toContain('font-size: 0.85em');
+      expect(thBlocks[0]).toContain('font-weight: 500');
+      expect(thBlocks[0]).toContain('text-align: left');
+      expect(thBlocks[0]).toContain('border-bottom: 2px solid');
+    },
+  );
+});
