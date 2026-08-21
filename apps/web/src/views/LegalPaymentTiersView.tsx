@@ -39,24 +39,24 @@ function TemplateStepsTable({ steps }: { steps: LegalPaymentTierStep[] }) {
   }
 
   return (
-    <table style={{ borderCollapse: 'collapse', fontSize: '14px', marginTop: '8px' }}>
+    <table style={{ marginTop: '8px' }}>
       <thead>
-        <tr style={{ textAlign: 'left', borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
-          <th style={{ padding: '4px 8px' }}>Ordre</th>
-          <th style={{ padding: '4px 8px' }}>Code</th>
-          <th style={{ padding: '4px 8px' }}>Libellé</th>
-          <th style={{ padding: '4px 8px' }}>Plafond cumulé</th>
-          <th style={{ padding: '4px 8px' }}>Paiements progressifs</th>
+        <tr>
+          <th>Ordre</th>
+          <th>Code</th>
+          <th>Libellé</th>
+          <th>Plafond cumulé</th>
+          <th>Paiements progressifs</th>
         </tr>
       </thead>
       <tbody>
         {steps.map((step) => (
           <tr key={step.id}>
-            <td style={{ padding: '4px 8px' }}>{step.order}</td>
-            <td style={{ padding: '4px 8px' }}>{step.code}</td>
-            <td style={{ padding: '4px 8px' }}>{step.label}</td>
-            <td style={{ padding: '4px 8px' }}>{step.cumulative_cap_percent} %</td>
-            <td style={{ padding: '4px 8px' }}>{step.allows_progressive_payments ? 'Oui' : 'Non'}</td>
+            <td>{step.order}</td>
+            <td>{step.code}</td>
+            <td>{step.label}</td>
+            <td>{step.cumulative_cap_percent} %</td>
+            <td>{step.allows_progressive_payments ? 'Oui' : 'Non'}</td>
           </tr>
         ))}
       </tbody>
@@ -136,26 +136,26 @@ function HistoryPanel({
         state.data.length === 0 ? (
           <p data-testid="no-template-history">Aucun template enregistré pour l&apos;instant.</p>
         ) : (
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '14px' }}>
+          <table>
             <thead>
-              <tr style={{ borderBottom: `1px solid ${semanticColors.neutral.border}`, textAlign: 'left' }}>
-                <th style={{ padding: '10px 12px' }}>Version</th>
-                <th style={{ padding: '10px 12px' }}>Créé par</th>
-                <th style={{ padding: '10px 12px' }}>Créé le</th>
-                <th style={{ padding: '10px 12px' }}>Activé par</th>
-                <th style={{ padding: '10px 12px' }}>Activé le</th>
-                <th style={{ padding: '10px 12px' }}>Statut</th>
+              <tr>
+                <th>Version</th>
+                <th>Créé par</th>
+                <th>Créé le</th>
+                <th>Activé par</th>
+                <th>Activé le</th>
+                <th>Statut</th>
               </tr>
             </thead>
             <tbody>
               {state.data.map((template) => (
-                <tr key={template.id} style={{ borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
-                  <td style={{ padding: '10px 12px' }}>{template.version}</td>
-                  <td style={{ padding: '10px 12px', color: semanticColors.neutral.textMuted }}>{template.created_by}</td>
-                  <td style={{ padding: '10px 12px', color: semanticColors.neutral.textMuted }}>{template.created_at}</td>
-                  <td style={{ padding: '10px 12px', color: semanticColors.neutral.textMuted }}>{template.activated_by ?? '—'}</td>
-                  <td style={{ padding: '10px 12px', color: semanticColors.neutral.textMuted }}>{template.activated_at ?? '—'}</td>
-                  <td style={{ padding: '10px 12px' }}>
+                <tr key={template.id}>
+                  <td>{template.version}</td>
+                  <td style={{ color: semanticColors.neutral.textMuted }}>{template.created_by}</td>
+                  <td style={{ color: semanticColors.neutral.textMuted }}>{template.created_at}</td>
+                  <td style={{ color: semanticColors.neutral.textMuted }}>{template.activated_by ?? '—'}</td>
+                  <td style={{ color: semanticColors.neutral.textMuted }}>{template.activated_at ?? '—'}</td>
+                  <td>
                     {template.id === activeTemplateId ? (
                       <span data-testid="template-active-badge">Actif</span>
                     ) : (
@@ -250,22 +250,22 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
         />
       </label>
 
-      <table style={{ borderCollapse: 'collapse', marginTop: '12px', fontSize: '14px' }}>
+      <table style={{ marginTop: '12px' }}>
         <thead>
-          <tr style={{ textAlign: 'left' }}>
-            <th style={{ padding: '4px' }}>Ordre</th>
-            <th style={{ padding: '4px' }}>Code</th>
-            <th style={{ padding: '4px' }}>Libellé</th>
-            <th style={{ padding: '4px' }}>Plafond cumulé (%)</th>
-            <th style={{ padding: '4px' }}>Paiements progressifs</th>
-            <th style={{ padding: '4px' }} />
+          <tr>
+            <th>Ordre</th>
+            <th>Code</th>
+            <th>Libellé</th>
+            <th>Plafond cumulé (%)</th>
+            <th>Paiements progressifs</th>
+            <th />
           </tr>
         </thead>
         <tbody>
           {steps.map((row, index) => (
             // eslint-disable-next-line react/no-array-index-key -- lignes de formulaire sans id stable, l'ordre est l'identité voulue ici
             <tr key={index}>
-              <td style={{ padding: '4px' }}>
+              <td>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -275,7 +275,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                   style={{ width: '48px' }}
                 />
               </td>
-              <td style={{ padding: '4px' }}>
+              <td>
                 <input
                   type="text"
                   aria-label={`Code du palier ${index + 1}`}
@@ -284,7 +284,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                   style={{ width: '100px' }}
                 />
               </td>
-              <td style={{ padding: '4px' }}>
+              <td>
                 <input
                   type="text"
                   aria-label={`Libellé du palier ${index + 1}`}
@@ -293,7 +293,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                   style={{ width: '160px' }}
                 />
               </td>
-              <td style={{ padding: '4px' }}>
+              <td>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -303,7 +303,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                   style={{ width: '80px' }}
                 />
               </td>
-              <td style={{ padding: '4px' }}>
+              <td>
                 <input
                   type="checkbox"
                   aria-label={`Paiements progressifs du palier ${index + 1}`}
@@ -311,7 +311,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                   onChange={(event) => updateStep(index, { allows_progressive_payments: event.target.checked })}
                 />
               </td>
-              <td style={{ padding: '4px' }}>
+              <td>
                 <button type="button" onClick={() => removeStep(index)} disabled={steps.length <= 1}>
                   Retirer
                 </button>

@@ -104,13 +104,13 @@ function CanalHistoryPanel({
         state.data.length === 0 ? (
           <p data-testid={`no-history-${canal}`}>Aucun taux enregistré pour l&apos;instant.</p>
         ) : (
-          <table style={{ borderCollapse: 'collapse', fontSize: '14px' }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: 'left', borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
-                <th style={{ padding: '4px 8px' }}>Ancien taux</th>
-                <th style={{ padding: '4px 8px' }}>Nouveau taux</th>
-                <th style={{ padding: '4px 8px' }}>Saisi par</th>
-                <th style={{ padding: '4px 8px' }}>Date</th>
+              <tr>
+                <th>Ancien taux</th>
+                <th>Nouveau taux</th>
+                <th>Saisi par</th>
+                <th>Date</th>
               </tr>
             </thead>
             <tbody>
@@ -118,12 +118,12 @@ function CanalHistoryPanel({
                 const previous = index > 0 ? state.data[index - 1] : null;
                 return (
                   <tr key={entry.id}>
-                    <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>
+                    <td style={{ color: semanticColors.neutral.textMuted }}>
                       {previous ? `${previous.rate} %` : '—'}
                     </td>
-                    <td style={{ padding: '4px 8px' }}>{entry.rate} %</td>
-                    <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>{entry.created_by}</td>
-                    <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>{entry.created_at}</td>
+                    <td>{entry.rate} %</td>
+                    <td style={{ color: semanticColors.neutral.textMuted }}>{entry.created_by}</td>
+                    <td style={{ color: semanticColors.neutral.textMuted }}>{entry.created_at}</td>
                   </tr>
                 );
               })}

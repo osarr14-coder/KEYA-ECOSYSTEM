@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, densityTokens, ProgressBar, semanticColors, type Density,
+  AlertBanner, ApiErrorBanner, densityTokens, ProgressBar, type Density,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -217,16 +217,26 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
           {state.data.results.length === 0 ? (
             <p>Aucun lot ne correspond à ces critères.</p>
           ) : (
-            <table style={{ fontSize: tokens.fontSize, borderCollapse: 'collapse', width: '100%' }}>
+            // Ticket F-041 — `fontSize` PAS redondant ici, contrairement aux
+            // 4 autres vues consolidées : cette table a son PROPRE bouton de
+            // densité local (voir `density`/`setDensity` ci-dessus),
+            // indépendant du `density="dense"` figé au niveau `AppShell`
+            // (`App.tsx`). Le padding générique (`GlobalStyles`, en `em`)
+            // ne suit la bascule Dense/Confortable QUE si la table
+            // ambiante change réellement de taille de police — retiré par
+            // erreur en un premier temps, restauré après vérification
+            // concrète des deux densités en navigateur (le padding restait
+            // figé en confortable sans lui).
+            <table style={{ fontSize: tokens.fontSize }}>
               <thead>
-                <tr style={{ borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
-                  <th style={{ textAlign: 'left', padding: `${tokens.paddingBlock} ${tokens.paddingInline}` }}>Nom</th>
-                  <th style={{ textAlign: 'left' }}>Bien</th>
-                  <th style={{ textAlign: 'left' }}>Programme</th>
-                  <th style={{ textAlign: 'left' }}>Organisation constructrice</th>
-                  <th style={{ textAlign: 'left' }}>Jalons déclarés</th>
-                  <th style={{ textAlign: 'left' }}>Avancement</th>
-                  <th style={{ textAlign: 'left' }}>Réserves ouvertes</th>
+                <tr>
+                  <th>Nom</th>
+                  <th>Bien</th>
+                  <th>Programme</th>
+                  <th>Organisation constructrice</th>
+                  <th>Jalons déclarés</th>
+                  <th>Avancement</th>
+                  <th>Réserves ouvertes</th>
                 </tr>
               </thead>
               <tbody>
@@ -234,9 +244,9 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
                   <tr
                     key={row.id}
                     data-testid="lot-row"
-                    style={{ height: tokens.rowHeight, borderBottom: `1px solid ${semanticColors.neutral.border}` }}
+                    style={{ height: tokens.rowHeight }}
                   >
-                    <td style={{ padding: `${tokens.paddingBlock} ${tokens.paddingInline}` }}>{row.name}</td>
+                    <td>{row.name}</td>
                     <td>{row.asset_name}</td>
                     <td>{row.program_name}</td>
                     <td>{row.assigned_organization_name ?? '—'}</td>

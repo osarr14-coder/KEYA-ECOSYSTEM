@@ -54,6 +54,40 @@ const GLOBAL_CSS = `
     opacity: 0.4;
     cursor: not-allowed;
   }
+
+  /*
+   * Ticket F-041 — consolidation des styles de tableau : jusqu'ici, les 5
+   * vues à contenir un <table> (LotLedgerPanel/DevisView/PricingView/
+   * LegalPaymentTiersView côté apps/web, AllLotsView côté apps/build)
+   * redéfinissaient chacune, en style inline, un traitement proche mais
+   * incohérent (padding 4px 8px vs 10px 12px, bordure d'en-tête présente
+   * ou non). Unifié ici, en unités em — relatif à la taille de police
+   * AMBIANTE déjà posée par le token de densité au niveau racine de
+   * chaque app (dense 13px / confortable 15px / CONTROL PWA 16px
+   * navigateur par défaut, aucun système de densité) — un seul jeu de
+   * règles s'adapte aux 3 contextes sans coordination JS. Le
+   * text-align: left sur th n'est PAS une simple préférence : chaque vue
+   * le posait déjà en style inline (valeur par défaut du navigateur pour
+   * th : centré), donc son retrait de ces vues rendrait ce fallback
+   * nécessaire, pas optionnel.
+   */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th {
+    text-align: left;
+    padding: 0.3em 0.6em;
+    border-bottom: 2px solid ${semanticColors.neutral.border};
+  }
+  td {
+    padding: 0.3em 0.6em;
+    border-bottom: 1px solid ${semanticColors.neutral.border};
+    font-variant-numeric: tabular-nums;
+  }
+  tbody tr:hover td {
+    background: ${semanticColors.neutral.background};
+  }
 `;
 
 export function GlobalStyles() {

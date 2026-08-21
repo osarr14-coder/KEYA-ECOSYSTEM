@@ -3551,6 +3551,30 @@ reste sans destination fonctionnelle réelle, limitation MVP assumée,
 hors scope de ce ticket — voir `F-040-navigation-inter-apps-reelle.md`
 pour le détail complet.
 
+## Consolidation des styles de tableau (ticket F-041)
+
+Les 5 vues qui contiennent un `<table>` sur toute la plateforme
+(`LotLedgerPanel`/`DevisView`/`PricingView`/`LegalPaymentTiersView` côté
+apps/web, `AllLotsView` côté apps/build — HOME et CONTROL PWA n'en ont
+aucune) avaient chacune un style de cellule fait main, mais incohérent
+entre elles (padding `4px 8px` vs `10px 12px`, bordure d'en-tête présente
+ou non, `AllLotsView` n'avait de padding que sur sa 1ʳᵉ colonne).
+Consolidé dans `GlobalStyles` (`table`/`th`/`td`/`tbody tr:hover td`), en
+unités `em` — relatif à la taille de police ambiante déjà posée par le
+token de densité racine de chaque app — plutôt qu'une valeur figée par
+vue. Un style inline gagne toujours sur une règle CSS générique pour les
+propriétés qu'il définit : la consolidation a donc exigé de retirer le
+style inline redondant des 5 vues, jamais seulement d'ajouter des règles
+par-dessus (qui seraient restées silencieusement inertes).
+
+**Exception `AllLotsView`, trouvée en vérifiant les deux densités
+réelles** : contrairement aux 4 autres vues (densité figée par
+`AppShell`), `AllLotsView` a son PROPRE bouton de densité local
+(indépendant de `App.tsx`) — son `fontSize` explicite sur `<table>` N'EST
+PAS redondant et doit rester, sous peine que le padding en `em` ne suive
+plus la bascule Dense/Confortable (régression réelle trouvée puis
+corrigée pendant ce ticket, voir `F-041-consolidation-styles-tableau.md`).
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

@@ -221,24 +221,24 @@ function LotBcChargesPanel({ organizationId, lotId }: { organizationId: string; 
             Aucune charge bureau de contrôle enregistrée pour l&apos;instant.
           </p>
         ) : (
-          <table style={{ borderCollapse: 'collapse', fontSize: '13px' }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: 'left', color: semanticColors.neutral.textMuted }}>
-                <th style={{ padding: '4px 8px' }}>Jalon</th>
-                <th style={{ padding: '4px 8px' }}>Montant</th>
-                <th style={{ padding: '4px 8px' }}>Type</th>
-                <th style={{ padding: '4px 8px' }}>Date</th>
+              <tr style={{ color: semanticColors.neutral.textMuted }}>
+                <th>Jalon</th>
+                <th>Montant</th>
+                <th>Type</th>
+                <th>Date</th>
               </tr>
             </thead>
             <tbody>
               {state.data.map((charge: LotBcCharge) => (
                 <tr key={charge.id}>
-                  <td style={{ padding: '4px 8px' }}>{charge.jalon_type}</td>
-                  <td style={{ padding: '4px 8px' }}>{charge.montant}</td>
-                  <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>
+                  <td>{charge.jalon_type}</td>
+                  <td>{charge.montant}</td>
+                  <td style={{ color: semanticColors.neutral.textMuted }}>
                     {charge.is_global_reference ? 'Forfait global' : 'Tarif fixe (jalon)'}
                   </td>
-                  <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>{charge.created_at}</td>
+                  <td style={{ color: semanticColors.neutral.textMuted }}>{charge.created_at}</td>
                 </tr>
               ))}
             </tbody>

@@ -468,20 +468,20 @@ function AjustementsPanel({ devis, organizationId }: { devis: Devis; organizatio
         ajustements.length === 0 ? (
           <p style={{ margin: '4px 0', fontSize: '13px' }}>Aucun ajustement enregistré pour l&apos;instant.</p>
         ) : (
-          <table style={{ borderCollapse: 'collapse', fontSize: '13px', marginTop: '4px', marginBottom: '8px' }}>
+          <table style={{ marginTop: '4px', marginBottom: '8px' }}>
             <thead>
-              <tr style={{ textAlign: 'left', color: semanticColors.neutral.textMuted }}>
-                <th style={{ padding: '4px 8px' }}>Écart</th>
-                <th style={{ padding: '4px 8px' }}>Saisi par</th>
-                <th style={{ padding: '4px 8px' }}>Date</th>
+              <tr style={{ color: semanticColors.neutral.textMuted }}>
+                <th>Écart</th>
+                <th>Saisi par</th>
+                <th>Date</th>
               </tr>
             </thead>
             <tbody>
               {ajustements.map((ajustement) => (
                 <tr key={ajustement.id}>
-                  <td style={{ padding: '4px 8px' }}>{ajustement.ecart}</td>
-                  <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>{ajustement.created_by}</td>
-                  <td style={{ padding: '4px 8px', color: semanticColors.neutral.textMuted }}>{ajustement.created_at}</td>
+                  <td>{ajustement.ecart}</td>
+                  <td style={{ color: semanticColors.neutral.textMuted }}>{ajustement.created_by}</td>
+                  <td style={{ color: semanticColors.neutral.textMuted }}>{ajustement.created_at}</td>
                 </tr>
               ))}
             </tbody>
@@ -505,25 +505,23 @@ function DevisRow({
   devis, organizationId, lotAlreadyLocked, onChanged,
 }: { devis: Devis; organizationId: string; lotAlreadyLocked: boolean; onChanged: () => void }) {
   return (
-    <tr style={{ borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
+    <tr>
       <td
-        style={{ padding: '10px 12px' }}
         title={devis.lot}
         data-lot-id={devis.lot}
       >
         {devis.lot_detail.name} — {devis.lot_detail.program.name}
       </td>
       <td
-        style={{ padding: '10px 12px' }}
         title={devis.candidate_organization}
         data-organization-id={devis.candidate_organization}
       >
         {devis.candidate_organization_detail.name}
       </td>
-      <td style={{ padding: '10px 12px' }}>{devis.amount}</td>
-      <td style={{ padding: '10px 12px', color: semanticColors.neutral.textMuted }}>{devis.logged_by}</td>
-      <td style={{ padding: '10px 12px', color: semanticColors.neutral.textMuted }}>{devis.created_at}</td>
-      <td style={{ padding: '10px 12px' }}>
+      <td>{devis.amount}</td>
+      <td style={{ color: semanticColors.neutral.textMuted }}>{devis.logged_by}</td>
+      <td style={{ color: semanticColors.neutral.textMuted }}>{devis.created_at}</td>
+      <td>
         <LockButton devis={devis} organizationId={organizationId} lotAlreadyLocked={lotAlreadyLocked} onLocked={onChanged} />
         <AjustementsPanel devis={devis} organizationId={organizationId} />
       </td>
@@ -554,15 +552,15 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
           {state.data.length === 0 ? (
             <p data-testid="no-devis">Aucun devis enregistré pour ce lot.</p>
           ) : (
-            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '14px' }}>
+            <table>
               <thead>
-                <tr style={{ borderBottom: `1px solid ${semanticColors.neutral.border}`, textAlign: 'left' }}>
-                  <th style={{ padding: '10px 12px' }}>Lot</th>
-                  <th style={{ padding: '10px 12px' }}>Organisation candidate</th>
-                  <th style={{ padding: '10px 12px' }}>Montant</th>
-                  <th style={{ padding: '10px 12px' }}>Saisi par</th>
-                  <th style={{ padding: '10px 12px' }}>Date</th>
-                  <th style={{ padding: '10px 12px' }}>Statut</th>
+                <tr>
+                  <th>Lot</th>
+                  <th>Organisation candidate</th>
+                  <th>Montant</th>
+                  <th>Saisi par</th>
+                  <th>Date</th>
+                  <th>Statut</th>
                 </tr>
               </thead>
               <tbody>
