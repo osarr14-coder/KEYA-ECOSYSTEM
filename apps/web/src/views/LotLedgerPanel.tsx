@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from 'react';
 
-import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
+import {
+  AlertBanner, ApiErrorBanner, Button, Input, semanticColors,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
@@ -78,19 +80,19 @@ function CreateLotLedgerForm({
       </p>
       <label>
         Prix client
-        <input
+        <Input
           type="text"
           inputMode="decimal"
           aria-label="Prix client"
           value={prixClient}
           onChange={(event) => setPrixClient(event.target.value)}
           required
-          style={{ display: 'block', marginTop: '4px', width: '200px' }}
+          style={{ marginTop: '4px', width: '200px' }}
         />
       </label>
-      <button type="submit" disabled={submitting} style={{ marginTop: '8px' }}>
+      <Button type="submit" disabled={submitting} style={{ marginTop: '8px' }}>
         {submitting ? 'Création…' : 'Créer le grand-livre'}
-      </button>
+      </Button>
       {error && (
         <div style={{ marginTop: '8px' }}>
           <AlertBanner title={error} />

@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from 'react';
 
-import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
+import {
+  AlertBanner, ApiErrorBanner, Button, Input, semanticColors,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
@@ -108,9 +110,9 @@ function ActivateButton({ template, onActivated }: { template: LegalPaymentTierT
 
   return (
     <div>
-      <button type="button" onClick={() => { void handleActivate(); }} disabled={activating}>
+      <Button type="button" onClick={() => { void handleActivate(); }} disabled={activating}>
         {activating ? 'Activation…' : 'Activer'}
-      </button>
+      </Button>
       {error && <AlertBanner title={error} />}
     </div>
   );
@@ -239,14 +241,14 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
     >
       <label>
         Version
-        <input
+        <Input
           type="text"
           inputMode="numeric"
           aria-label="Version"
           value={version}
           onChange={(event) => setVersion(event.target.value)}
           required
-          style={{ display: 'block', marginTop: '4px', width: '100px' }}
+          style={{ marginTop: '4px', width: '100px' }}
         />
       </label>
 
@@ -266,7 +268,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
             // eslint-disable-next-line react/no-array-index-key -- lignes de formulaire sans id stable, l'ordre est l'identité voulue ici
             <tr key={index}>
               <td>
-                <input
+                <Input
                   type="text"
                   inputMode="numeric"
                   aria-label={`Ordre du palier ${index + 1}`}
@@ -276,7 +278,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                 />
               </td>
               <td>
-                <input
+                <Input
                   type="text"
                   aria-label={`Code du palier ${index + 1}`}
                   value={row.code}
@@ -285,7 +287,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                 />
               </td>
               <td>
-                <input
+                <Input
                   type="text"
                   aria-label={`Libellé du palier ${index + 1}`}
                   value={row.label}
@@ -294,7 +296,7 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                 />
               </td>
               <td>
-                <input
+                <Input
                   type="text"
                   inputMode="decimal"
                   aria-label={`Plafond cumulé du palier ${index + 1}`}
@@ -304,6 +306,11 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                 />
               </td>
               <td>
+                {/* Case à cocher native, volontairement PAS migrée vers `Input`
+                    (ticket F-044) : `Input` est stylé pour un champ texte
+                    (bordure, fond, min-height 40px), pas pour une case à
+                    cocher native — aucun composant Checkbox n'existe encore
+                    dans le design system. */}
                 <input
                   type="checkbox"
                   aria-label={`Paiements progressifs du palier ${index + 1}`}
@@ -312,21 +319,21 @@ function CreateTemplateForm({ countryPackId, onCreated }: { countryPackId: strin
                 />
               </td>
               <td>
-                <button type="button" onClick={() => removeStep(index)} disabled={steps.length <= 1}>
+                <Button type="button" variant="secondary" onClick={() => removeStep(index)} disabled={steps.length <= 1}>
                   Retirer
-                </button>
+                </Button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <button type="button" onClick={addStep} style={{ marginTop: '8px' }}>Ajouter un palier</button>
+      <Button type="button" variant="secondary" onClick={addStep} style={{ marginTop: '8px' }}>Ajouter un palier</Button>
 
       <div style={{ marginTop: '12px' }}>
-        <button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting}>
           {submitting ? 'Enregistrement…' : 'Créer ce template'}
-        </button>
+        </Button>
       </div>
 
       {error && (
@@ -378,7 +385,7 @@ export function LegalPaymentTiersView() {
         <div style={{ marginBottom: '16px' }}>
           <p>
             Pays sélectionné : <strong>{selectedCountryPack.label} ({selectedCountryPack.code})</strong>{' '}
-            <button type="button" onClick={() => setSelectedCountryPack(null)}>Changer de pays</button>
+            <Button type="button" variant="secondary" onClick={() => setSelectedCountryPack(null)}>Changer de pays</Button>
           </p>
         </div>
       ) : (

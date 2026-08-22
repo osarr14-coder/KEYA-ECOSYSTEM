@@ -3642,6 +3642,51 @@ dans les 4 apps jusqu'à un futur ticket de migration séquencée (même
 précédent que F-038 pour Button/Input/Select : liste suggérée, jamais
 imposée en un seul ticket — voir `F-043-grille-espacement.md`).
 
+## Migration Button/Input/Select sur toutes les vues restantes (ticket F-044)
+
+Suite directe de la roadmap F-038 (« Prochaines étapes ») — migre en une
+seule passe (demande explicite de l'utilisateur, plutôt que la séquence
+suggérée) les 11 fichiers restants des 4 apps qui utilisaient encore des
+`<button>`/`<input>`/`<select>` bruts : le reste d'`apps/web`
+(`App.tsx`/`CountryPackSelector`/`DevisView`/`LegalPaymentTiersView`/
+`LotLedgerPanel`/`PricingView`), `apps/home` (`App.tsx`/`OverviewView`),
+`apps/build` (`AllLotsView`/`ExceptionsView`), `apps/control-pwa`
+(`InspectionFormView`/`MissionsListView`). Voir
+`F-044-migration-button-input-select-toutes-vues.md` pour le détail
+fichier par fichier.
+
+**Nuance `danger` vs `primary`** — `LockButton` (`DevisView`) et
+`ActivateButton` (`LegalPaymentTiersView`) restent `primary` : ce sont
+des actions métier normales à issue positive (retenir un devis, publier
+un template), pas des actions destructrices — `danger` reste réservé à
+ce qui détruit/annule quelque chose (seul précédent avant ce ticket :
+désactivation de compte, F-038), jamais à « irréversible » au sens
+technique seul.
+
+**Cas particulier CONTROL PWA** (revalidé, pas migré mécaniquement,
+comme demandé par F-038) : le bouton « ← Missions » d'`InspectionFormView`
+reste volontairement BRUT — style « fantôme » délibéré (ticket 024,
+fond transparent sans bordure) qu'aucune des 3 variantes `Button` ne
+rend, le forcer via `style` aurait écrasé la quasi-totalité du
+composant. Le bouton « Ignorer ma saisie et recommencer » (résolution
+de conflit) devient, lui, le premier usage de `danger` hors
+`BackofficeView` : ce clic unique exécute l'abandon définitif de la
+saisie locale de l'inspecteur, déjà présenté dans le bandeau d'alerte
+de conflit. `MissionsListView` : la carte de mission cliquable
+(multi-ligne) migrée vers `Button variant="secondary"` avec `style`
+réécrivant sa disposition interne (colonne, alignée à gauche) — même
+précédent que la ligne de résultat de `BackofficeView` (F-038), étendu
+à un contenu multi-ligne.
+
+**Contrôles natifs volontairement non migrés** (aucun composant dédié
+n'existe) : cases à cocher, boutons radio, `<textarea>` — `Input` est
+stylé pour un champ texte, l'appliquer à une case à cocher casserait
+son apparence plutôt que de l'améliorer.
+
+Suite complète verte après migration : design-system 103, home 58,
+build 77, web 180, control-pwa 73 (491 tests), zéro régression ;
+`tsc --noEmit` propre sur les 4 apps touchées.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

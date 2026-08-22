@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { ApiErrorBanner } from '@keya/design-system';
+import { ApiErrorBanner, Button, Input } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { CountryPackSummary } from '../api/types';
@@ -41,12 +41,12 @@ function CountryPackList({
     <div>
       <label>
         Filtrer les pays
-        <input
+        <Input
           type="search"
           aria-label="Filtrer les pays"
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
-          style={{ display: 'block', marginTop: '4px', width: '280px' }}
+          style={{ marginTop: '4px', width: '280px' }}
         />
       </label>
       {filtered.length === 0 ? (
@@ -55,9 +55,14 @@ function CountryPackList({
         <ul style={{ listStyle: 'none', padding: 0, marginTop: '8px' }}>
           {filtered.map((pack) => (
             <li key={pack.id}>
-              <button type="button" onClick={() => onLoad(pack)} style={{ width: '100%', textAlign: 'left' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => onLoad(pack)}
+                style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left' }}
+              >
                 {pack.label} ({pack.code})
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

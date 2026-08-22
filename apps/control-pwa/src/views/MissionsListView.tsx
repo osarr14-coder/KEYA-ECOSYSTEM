@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { AlertBanner, semanticColors } from '@keya/design-system';
+import { AlertBanner, Button, semanticColors } from '@keya/design-system';
 
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { getCachedMissions, getDraftForMission } from '../db/repository';
@@ -122,20 +122,29 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {missions.map((mission) => (
             <li key={mission.id}>
-              <button
+              {/* Ticket F-044 — `variant="secondary"`, mêmes tokens de bordure/
+                  fond que le reste du projet, mais `style` réécrit la mise en
+                  page interne du bouton (colonne, contenu multi-ligne aligné
+                  à gauche) : ce n'est pas une ligne de texte simple comme les
+                  autres migrations de ce ticket, mais une carte cliquable
+                  multi-ligne — même précédent que le bouton de sélection de
+                  ligne de `BackofficeView` (F-038), étendu ici. */}
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => onSelectMission(mission.id)}
                 style={{
                   width: '100%',
                   textAlign: 'left',
                   padding: '12px',
                   minHeight: '44px',
-                  border: `1px solid ${semanticColors.neutral.border}`,
-                  borderRadius: '8px',
-                  background: 'white',
+                  background: semanticColors.neutral.surface,
                   display: 'flex',
                   flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  justifyContent: 'flex-start',
                   gap: '4px',
+                  fontWeight: 400,
                 }}
               >
                 <strong>{mission.lotName}</strong> — {mission.assetName}
@@ -144,7 +153,7 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
                 {statusByMission[mission.id] && (
                   <SyncStatusIndicator status={statusByMission[mission.id]} />
                 )}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

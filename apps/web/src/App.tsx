@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, TabBar, useOnlineStatus, type AppModule,
+  AlertBanner, ApiErrorBanner, AppShell, Button, Input, TabBar, useOnlineStatus, type AppModule,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -237,7 +237,7 @@ function LoginView({ redirect }: { redirect: (url: string) => void }) {
 
         <label>
           Email
-          <input
+          <Input
             type="email"
             autoComplete="email"
             required
@@ -248,7 +248,7 @@ function LoginView({ redirect }: { redirect: (url: string) => void }) {
 
         <label>
           Mot de passe
-          <input
+          <Input
             type="password"
             autoComplete="current-password"
             required
@@ -257,9 +257,9 @@ function LoginView({ redirect }: { redirect: (url: string) => void }) {
           />
         </label>
 
-        <button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting}>
           {submitting ? 'Connexion…' : 'Se connecter'}
-        </button>
+        </Button>
       </form>
     </main>
   );

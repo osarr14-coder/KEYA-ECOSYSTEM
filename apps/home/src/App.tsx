@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
+  AlertBanner, ApiErrorBanner, AppShell, Select, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
   type AppModule,
 } from '@keya/design-system';
 
@@ -183,17 +183,18 @@ export function App() {
           {lots.length > 1 && (
             <label>
               Bien
-              <select
+              <Select
                 aria-label="Sélection du bien"
                 value={currentLotId}
                 onChange={(event) => setSelectedLotId(event.target.value)}
+                style={{ width: 'auto' }}
               >
                 {lots.map((lot) => (
                   <option key={lot.id} value={lot.id}>
                     {lot.asset_name} — {lot.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
 

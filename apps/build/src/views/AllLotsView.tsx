@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, densityTokens, ProgressBar, type Density,
+  AlertBanner, ApiErrorBanner, Button, densityTokens, Input, ProgressBar, Select, type Density,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -132,73 +132,81 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
       >
         <label>
           Rechercher
-          <input
+          <Input
             type="search"
             aria-label="Rechercher un lot"
             value={search}
             onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+            style={{ width: 'auto' }}
           />
         </label>
 
         <label>
           Trier par
-          <select
+          <Select
             aria-label="Trier par"
             value={ordering}
             onChange={(event) => { setOrdering(event.target.value); setPage(1); }}
+            style={{ width: 'auto' }}
           >
             {ORDERING_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
-          </select>
+          </Select>
         </label>
 
         <label>
           Organisation affectée
-          <select
+          <Select
             aria-label="Filtrer par affectation"
             value={assignedFilter}
             onChange={(event) => {
               setAssignedFilter(event.target.value as '' | 'true' | 'false');
               setPage(1);
             }}
+            style={{ width: 'auto' }}
           >
             <option value="">Tous</option>
             <option value="true">Affectés</option>
             <option value="false">Non affectés</option>
-          </select>
+          </Select>
         </label>
 
-        <div role="group" aria-label="Densité du tableau">
-          <button
-            type="button" aria-pressed={density === 'dense'}
+        <div role="group" aria-label="Densité du tableau" style={{ display: 'flex', gap: '8px' }}>
+          <Button
+            type="button"
+            variant={density === 'dense' ? 'primary' : 'secondary'}
+            aria-pressed={density === 'dense'}
             onClick={() => setDensity('dense')}
           >
             Dense
-          </button>
-          <button
-            type="button" aria-pressed={density === 'confortable'}
+          </Button>
+          <Button
+            type="button"
+            variant={density === 'confortable' ? 'primary' : 'secondary'}
+            aria-pressed={density === 'confortable'}
             onClick={() => setDensity('confortable')}
           >
             Confortable
-          </button>
+          </Button>
         </div>
       </form>
 
       <div style={{ marginBottom: '12px' }}>
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={handleExportClick}
           disabled={state.status !== 'success' || exportState.status === 'exporting'}
         >
           {exportState.status === 'exporting' ? 'Export en cours…' : 'Exporter en CSV'}
-        </button>
+        </Button>
 
         {exportState.status === 'confirming' && (
           <AlertBanner title={`Export volumineux : ${exportState.totalCount} lot(s), ${exportState.requestCount} requêtes nécessaires.`}>
             <p>Cela peut prendre un moment. Continuer ?</p>
-            <button type="button" onClick={() => void runExport()}>Continuer l&apos;export</button>
-            <button type="button" onClick={() => setExportState({ status: 'idle' })}>Annuler</button>
+            <Button type="button" onClick={() => void runExport()}>Continuer l&apos;export</Button>
+            <Button type="button" variant="secondary" onClick={() => setExportState({ status: 'idle' })}>Annuler</Button>
           </AlertBanner>
         )}
 
@@ -264,20 +272,24 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
             </table>
           )}
 
-          <div aria-label="Pagination" style={{ marginTop: '8px' }}>
+          <div aria-label="Pagination" style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <span>{state.data.count} lot(s)</span>
-            <button
-              type="button" disabled={!state.data.previous}
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!state.data.previous}
               onClick={() => setPage((current) => current - 1)}
             >
               Précédent
-            </button>
-            <button
-              type="button" disabled={!state.data.next}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!state.data.next}
               onClick={() => setPage((current) => current + 1)}
             >
               Suivant
-            </button>
+            </Button>
           </div>
         </>
       )}

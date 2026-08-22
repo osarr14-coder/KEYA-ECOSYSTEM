@@ -2,7 +2,9 @@ import {
   type FormEvent, type ReactNode, useEffect, useRef, useState,
 } from 'react';
 
-import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
+import {
+  AlertBanner, ApiErrorBanner, Button, Input, semanticColors,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
@@ -139,13 +141,13 @@ function LiveSearchPicker<T>({
     <div>
       <label>
         {label}
-        <input
+        <Input
           type="search"
           aria-label={label}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={placeholder}
-          style={{ display: 'block', marginTop: '4px', width: '360px' }}
+          style={{ marginTop: '4px', width: '360px' }}
         />
       </label>
       {status === 'loading' && <p style={{ fontSize: '13px' }}>Recherche…</p>}
@@ -159,9 +161,14 @@ function LiveSearchPicker<T>({
         <ul style={{ listStyle: 'none', padding: 0, marginTop: '4px' }}>
           {results.map((item) => (
             <li key={getKey(item)}>
-              <button type="button" onClick={() => onSelect(item)} style={{ width: '100%', textAlign: 'left' }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => onSelect(item)}
+                style={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left' }}
+              >
                 {renderResult(item)}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
@@ -283,7 +290,7 @@ function CreateDevisForm({
       {candidateOrganization ? (
         <p>
           Organisation candidate : <strong>{candidateOrganization.name}</strong>{' '}
-          <button type="button" onClick={() => setCandidateOrganization(null)}>Changer</button>
+          <Button type="button" variant="secondary" onClick={() => setCandidateOrganization(null)}>Changer</Button>
         </p>
       ) : (
         <OrganizationPicker onSelect={setCandidateOrganization} />
@@ -292,19 +299,19 @@ function CreateDevisForm({
       <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '8px' }}>
         <label>
           Montant
-          <input
+          <Input
             type="text"
             inputMode="decimal"
             aria-label="Montant"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             required
-            style={{ display: 'block', marginTop: '4px', width: '160px' }}
+            style={{ marginTop: '4px', width: '160px' }}
           />
         </label>
-        <button type="submit" disabled={submitting || !candidateOrganization}>
+        <Button type="submit" disabled={submitting || !candidateOrganization}>
           {submitting ? 'Enregistrement…' : 'Enregistrer la candidature'}
-        </button>
+        </Button>
       </div>
       {error && (
         <div style={{ marginTop: '8px' }}>
@@ -342,9 +349,9 @@ function LockButton({
 
   return (
     <div>
-      <button type="button" onClick={() => { void handleLock(); }} disabled={locking || lotAlreadyLocked}>
+      <Button type="button" onClick={() => { void handleLock(); }} disabled={locking || lotAlreadyLocked}>
         {locking ? 'Verrouillage…' : lotAlreadyLocked ? 'Lot déjà verrouillé' : 'Verrouiller'}
-      </button>
+      </Button>
       {error && <AlertBanner title={error} />}
     </div>
   );
@@ -419,19 +426,19 @@ function CreateAjustementForm({
     >
       <label>
         Écart (signé — positif = défavorable, négatif = favorable)
-        <input
+        <Input
           type="text"
           inputMode="decimal"
           aria-label="Écart"
           value={ecart}
           onChange={(event) => setEcart(event.target.value)}
           required
-          style={{ display: 'block', marginTop: '4px', width: '220px' }}
+          style={{ marginTop: '4px', width: '220px' }}
         />
       </label>
-      <button type="submit" disabled={submitting}>
+      <Button type="submit" disabled={submitting}>
         {submitting ? 'Enregistrement…' : 'Enregistrer un ajustement'}
-      </button>
+      </Button>
       {error && (
         <div style={{ width: '100%' }}>
           <AlertBanner title={error} />
@@ -618,7 +625,7 @@ export function DevisView() {
         <div style={{ marginBottom: '16px' }}>
           <p>
             Lot sélectionné : <strong>{selectedLot.name}</strong> — {selectedLot.program.name} ({selectedLot.organization.name}){' '}
-            <button type="button" onClick={() => setSelectedLot(null)}>Changer de lot</button>
+            <Button type="button" variant="secondary" onClick={() => setSelectedLot(null)}>Changer de lot</Button>
           </p>
         </div>
       ) : (

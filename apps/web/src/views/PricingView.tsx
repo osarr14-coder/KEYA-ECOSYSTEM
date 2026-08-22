@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from 'react';
 
-import { AlertBanner, ApiErrorBanner, semanticColors } from '@keya/design-system';
+import {
+  AlertBanner, ApiErrorBanner, Button, Input, Select, semanticColors,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
@@ -167,32 +169,32 @@ function CreatePricingConfigForm({ countryPackId, onCreated }: { countryPackId: 
     >
       <label>
         Canal
-        <select
+        <Select
           aria-label="Canal"
           value={canal}
           onChange={(event) => setCanal(event.target.value as PricingCanal)}
-          style={{ display: 'block', marginTop: '4px' }}
+          style={{ marginTop: '4px', width: 'auto' }}
         >
           {CANALS.map(({ id, label }) => (
             <option key={id} value={id}>{label}</option>
           ))}
-        </select>
+        </Select>
       </label>
       <label>
         Taux (%)
-        <input
+        <Input
           type="text"
           inputMode="decimal"
           aria-label="Taux (%)"
           value={rate}
           onChange={(event) => setRate(event.target.value)}
           required
-          style={{ display: 'block', marginTop: '4px', width: '120px' }}
+          style={{ marginTop: '4px', width: '120px' }}
         />
       </label>
-      <button type="submit" disabled={submitting}>
+      <Button type="submit" disabled={submitting}>
         {submitting ? 'Enregistrement…' : 'Créer ce taux'}
-      </button>
+      </Button>
       {error && (
         <div style={{ width: '100%' }}>
           <AlertBanner title={error} />
@@ -214,7 +216,7 @@ export function PricingView() {
         <div style={{ marginBottom: '16px' }}>
           <p>
             Pays sélectionné : <strong>{selectedCountryPack.label} ({selectedCountryPack.code})</strong>{' '}
-            <button type="button" onClick={() => setSelectedCountryPack(null)}>Changer de pays</button>
+            <Button type="button" variant="secondary" onClick={() => setSelectedCountryPack(null)}>Changer de pays</Button>
           </p>
         </div>
       ) : (

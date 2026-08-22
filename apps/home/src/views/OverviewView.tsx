@@ -1,5 +1,5 @@
 import {
-  AlertBanner, ApiErrorBanner, ProgressBar, StatusBadge, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, ProgressBar, StatusBadge, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -63,7 +63,7 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
             écran de ce type ne sonde), et honnête : rien ne garantit qu'une
             donnée soit RÉELLEMENT périmée, seulement que l'utilisateur peut
             désormais vérifier explicitement plutôt que de ne jamais savoir. */}
-        <button type="button" onClick={state.refetch}>Actualiser</button>
+        <Button type="button" variant="secondary" onClick={state.refetch}>Actualiser</Button>
       </header>
 
       <div aria-label="Progression" data-testid="progress">

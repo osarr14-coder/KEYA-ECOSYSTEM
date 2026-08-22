@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { AlertBanner, semanticColors } from '@keya/design-system';
+import {
+  AlertBanner, Button, Input, semanticColors,
+} from '@keya/design-system';
 
 import { PhotoSyncStatusIndicator } from '../components/PhotoSyncStatusIndicator';
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
@@ -43,14 +45,15 @@ function PhotoThumbnail({ photo, onRemove }: { photo: LocalPhoto; onRemove: () =
           (WCAG 2.5.5), app CONTROL PWA explicitement tactile (360-430px,
           voir CLAUDE.md). Aucun bouton natif de ce fichier n'avait de taille
           minimale garantie avant ce ticket. */}
-      <button
+      <Button
         type="button"
+        variant="secondary"
         onClick={onRemove}
         aria-label={`Supprimer ${photo.fileName}`}
         style={{ minWidth: '44px', minHeight: '44px' }}
       >
         Supprimer
-      </button>
+      </Button>
     </li>
   );
 }
@@ -395,7 +398,14 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
             023) réduisait la cible tactile bien en dessous de 44x44 malgré
             un contenu textuel minimal ; `minHeight`/`display:inline-flex`
             restaurent une cible correcte sans ajouter de bordure/fond
-            visible (toujours un bouton "fantôme"). */}
+            visible (toujours un bouton "fantôme").
+            Ticket F-044 — volontairement PAS migré vers `Button` : aucune
+            des 3 variantes (`primary`/`secondary`/`danger`) ne rend un style
+            "fantôme" (fond transparent, sans bordure) — les forcer via
+            `style` reviendrait à écraser la quasi-totalité du composant pour
+            n'en garder que `min-height`/`border-radius`, sans bénéfice
+            réel. Un futur variant "ghost"/"tertiary" serait le bon endroit
+            pour ce pattern, pas cette migration. */}
         <button
           type="button"
           onClick={onBack}
@@ -435,14 +445,21 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
             {draft.conflict?.currentEventSource ? ` (dernier événement serveur : ${draft.conflict.currentEventSource})` : ''}.
             Votre saisie n'a PAS été envoyée pour éviter d'écraser cette modification.
             <div>
-              <button
+              {/* Ticket F-044 — `variant="danger"`, pas `secondary` : cette
+                  action EXÉCUTE (en un seul clic, aucune arme préalable)
+                  l'abandon définitif de la saisie locale de l'inspecteur —
+                  déjà présentée dans le contexte d'alerte du bandeau conflit
+                  ci-dessus, qui fait office d'avertissement. Cohérent avec
+                  la doctrine `danger` (F-038) : réservé à ce qui EXÉCUTE
+                  réellement une action irréversible. */}
+              <Button
                 type="button"
+                variant="danger"
                 onClick={() => void resolveConflictByDiscarding()}
-                style={{ minHeight: '44px' }}
                 disabled={resolvingConflict}
               >
                 {resolvingConflict ? 'Abandon en cours…' : 'Ignorer ma saisie et recommencer'}
-              </button>
+              </Button>
             </div>
           </AlertBanner>
           {resolveConflictError && (
@@ -475,7 +492,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
         <legend>Photos</legend>
         <label>
           Ajouter une photo
-          <input
+          <Input
             type="file"
             accept="image/*"
             capture="environment"

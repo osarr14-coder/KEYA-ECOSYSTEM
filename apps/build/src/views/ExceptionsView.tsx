@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
-import { AlertBanner, ApiErrorBanner, StatusBadge, semanticColors } from '@keya/design-system';
+import {
+  AlertBanner, ApiErrorBanner, Button, Input, Select, StatusBadge, semanticColors,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { EvidenceSummary, LotExceptionRow, ReserveExceptionRow } from '../api/types';
@@ -44,9 +46,9 @@ function LotRowList({
           <strong>{row.lot_name}</strong>
           <span> — {row.asset_name} ({row.program_name})</span>
           <p>{row.label}</p>
-          <button type="button" onClick={() => onViewLotInTable(row.lot_name)}>
+          <Button type="button" variant="secondary" onClick={() => onViewLotInTable(row.lot_name)}>
             Voir dans Tous les lots
-          </button>
+          </Button>
         </li>
       ))}
     </ul>
@@ -90,9 +92,9 @@ function CapaciteManquanteRow({
       <strong>{row.lot_name}</strong>
       <span> — {row.asset_name} ({row.program_name})</span>
       <p>{row.label}</p>
-      <button type="button" onClick={handleAssign} disabled={assigning}>
+      <Button type="button" onClick={handleAssign} disabled={assigning}>
         Affecter à mon organisation
-      </button>
+      </Button>
       {error && <div style={{ marginTop: '8px' }}><AlertBanner title={error} /></div>}
     </li>
   );
@@ -132,7 +134,7 @@ function ReserveCorrectionForm({
     <form onSubmit={handleSubmit}>
       <label>
         Preuve justifiant la correction
-        <select
+        <Select
           aria-label={`Preuve pour la réserve du lot ${row.lot_name}`}
           value={selectedEvidenceId}
           onChange={(event) => setSelectedEvidenceId(event.target.value)}
@@ -142,9 +144,9 @@ function ReserveCorrectionForm({
               {evidence.milestone_label} — {evidence.added_by_email} — {new Date(evidence.created_at).toLocaleString('fr-FR')}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
-      <button type="submit" disabled={submitting}>Documenter une correction</button>
+      <Button type="submit" disabled={submitting}>Documenter une correction</Button>
       {error && <div style={{ marginTop: '8px' }}><AlertBanner title={error} /></div>}
     </form>
   );
@@ -196,13 +198,13 @@ function DocumentManquantRow({ row, onAdded }: { row: LotExceptionRow; onAdded: 
       <form onSubmit={handleSubmit}>
         <label>
           Ajouter une preuve
-          <input
+          <Input
             type="file"
             aria-label={`Ajouter une preuve pour ${row.lot_name}`}
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
           />
         </label>
-        <button type="submit" disabled={submitting || !file}>Ajouter une preuve</button>
+        <Button type="submit" disabled={submitting || !file}>Ajouter une preuve</Button>
         {error && <div style={{ marginTop: '8px' }}><AlertBanner title={error} /></div>}
       </form>
     </li>
