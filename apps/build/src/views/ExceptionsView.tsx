@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Input, Select, StatusBadge, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Input, Select, StatusBadge, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -233,41 +233,29 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
     + exceptions.documents_manquants.length
   );
 
-  // Ticket 023 (polish visuel) — les 5 catégories n'avaient aucun
-  // espacement contrôlé entre elles (uniquement les marges par défaut de
-  // <h2>/<div>), contrairement à AllLotsView (même onglet BUILD, censé être
-  // "dense") : contraste de densité au sein d'un même écran.
-  const SECTION_STYLE = {
-    paddingBottom: '16px',
-    borderBottom: `1px solid ${semanticColors.neutral.border}`,
-  };
-
   return (
     <section aria-label="Exceptions" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {totalCount === 0 && (
         <p data-testid="no-exceptions">Aucune exception en ce moment — tout est à jour.</p>
       )}
 
-      <div style={SECTION_STYLE}>
-        <h2>Lots en retard</h2>
+      <Card title="Lots en retard" icon="alert-triangle">
         <LotRowList
           rows={exceptions.lots_en_retard}
           emptyMessage="Aucun lot en retard."
           onViewLotInTable={onViewLotInTable}
         />
-      </div>
+      </Card>
 
-      <div style={SECTION_STYLE}>
-        <h2>Contrôles à planifier</h2>
+      <Card title="Contrôles à planifier" icon="clipboard-check">
         <LotRowList
           rows={exceptions.controles_a_planifier}
           emptyMessage="Aucun contrôle en attente de planification."
           onViewLotInTable={onViewLotInTable}
         />
-      </div>
+      </Card>
 
-      <div style={SECTION_STYLE}>
-        <h2>Capacités manquantes</h2>
+      <Card title="Capacités manquantes" icon="users">
         {exceptions.capacites_manquantes.length === 0 ? (
           <p>Tous les lots ont une organisation constructrice affectée.</p>
         ) : (
@@ -282,10 +270,9 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
             ))}
           </ul>
         )}
-      </div>
+      </Card>
 
-      <div style={SECTION_STYLE}>
-        <h2>Réserves ouvertes</h2>
+      <Card title="Réserves ouvertes" icon="alert-triangle">
         {exceptions.reserves_ouvertes.length === 0 ? (
           <p>Aucune réserve ouverte.</p>
         ) : (
@@ -295,10 +282,9 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
             ))}
           </ul>
         )}
-      </div>
+      </Card>
 
-      <div>
-        <h2>Documents manquants</h2>
+      <Card title="Documents manquants" icon="file-text">
         {exceptions.documents_manquants.length === 0 ? (
           <p>Aucun document manquant.</p>
         ) : (
@@ -310,7 +296,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
             ))}
           </ul>
         )}
-      </div>
+      </Card>
     </section>
   );
 }

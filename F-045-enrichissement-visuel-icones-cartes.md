@@ -2,11 +2,11 @@
 
 ## Statut
 
-**Phase 1 (HOME) implémentée, testée, vérifiée en navigateur réel.**
-Phases 2-4 (BUILD, CONTROL PWA, back-office) planifiées ci-dessous,
-document validé par l'utilisateur avant implémentation — discipline
-posée par la règle CLAUDE.md « un document de ticket précède toujours
-l'implémentation » (incident F-040).
+**Phases 1 (HOME) et 2 (BUILD) implémentées, testées, vérifiées en
+navigateur réel.** Phases 3-4 (CONTROL PWA, back-office) planifiées
+ci-dessous, document validé par l'utilisateur avant implémentation —
+discipline posée par la règle CLAUDE.md « un document de ticket
+précède toujours l'implémentation » (incident F-040).
 
 ## Origine
 
@@ -88,17 +88,27 @@ nav, cloche sans emoji, chevron de repli, et les 3 sections en `Card`
 délimitées visuellement. Suite complète (design-system 112, home 58)
 verte, `tsc --noEmit` propre.
 
-## Phase 2 — BUILD (proposé, pas encore implémenté)
+## Phase 2 — BUILD (implémentée)
 
-- `apps/build/src/views/ExceptionsView.tsx` : chaque section (Lots en
+- `apps/build/src/views/ExceptionsView.tsx` : les 5 sections (Lots en
   retard, Contrôles à planifier, Capacités manquantes, Réserves
-  ouvertes, Documents manquants) migrée en `Card` avec icône dédiée
+  ouvertes, Documents manquants) migrées en `Card` avec icône dédiée
   (`alert-triangle` / `clipboard-check` / `users` / `alert-triangle` /
   `file-text`) — le contenu « Réserves ouvertes » garde son
   `AlertBanner` interne inchangé (Card encadre, ne remplace pas
-  l'alerte).
-- `apps/build/src/views/AllLotsView.tsx` : tableau encadré en `Card`
-  (icône `building`).
+  l'alerte). `SECTION_STYLE`/bordures manuelles retirées (redondantes
+  avec `Card`).
+- `apps/build/src/views/AllLotsView.tsx` : bloc résultats (tableau +
+  pagination) encadré en `Card` (icône `building`) — formulaire de
+  filtres et bouton d'export laissés hors `Card` (ce sont des
+  contrôles, pas du contenu à regrouper).
+
+**Vérifié en navigateur réel** (compte `constructeur@example.test`,
+données réelles du lot "Lot 12") : capture d'écran confirmant les 5
+cartes distinctes sur Exceptions (icônes visibles, bordures nettes) et
+le tableau "Tous les lots" encadré. Suite `apps/build` (77 tests) et
+suite complète des 5 packages (500 tests) vertes, `tsc --noEmit`
+propre.
 
 ## Phase 3 — CONTROL PWA (proposé, pas encore implémenté)
 

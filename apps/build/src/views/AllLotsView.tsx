@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, densityTokens, Input, ProgressBar, Select, type Density,
+  AlertBanner, ApiErrorBanner, Button, Card, densityTokens, Input, ProgressBar, Select, type Density,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -221,7 +221,7 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
       )}
 
       {state.status === 'success' && (
-        <>
+        <Card icon="building">
           {state.data.results.length === 0 ? (
             <p>Aucun lot ne correspond à ces critères.</p>
           ) : (
@@ -291,7 +291,7 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
               Suivant
             </Button>
           </div>
-        </>
+        </Card>
       )}
     </section>
   );
