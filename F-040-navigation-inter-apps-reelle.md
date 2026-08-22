@@ -8,6 +8,16 @@ côté design-system, 2 dans `apps/build/src/App.test.tsx`, 2 dans
 `build` (17), `home` (19), `control-pwa` (73) toutes vertes, `tsc --noEmit`
 propre sur les 4 apps + design-system.
 
+**Correctif de discipline (post-fusion)** : ce ticket n'avait été vérifié
+qu'en tests unitaires (jsdom) au moment de l'implémentation, jamais en
+navigateur réel contre un backend démarré — contrairement à F-038/F-039/
+F-041/F-042. Écart trouvé lors d'une revue de processus a posteriori (voir
+CLAUDE.md, section discipline de vérification, note sur ce ticket comme
+incident déclencheur). Vérification en navigateur réel effectuée
+après-coup, voir section dédiée ci-dessous — aucun défaut trouvé, mais
+l'absence de cette vérification au moment de l'implémentation reste un
+écart de processus, pas seulement de résultat.
+
 ## Origine
 
 Constaté en vérification manuelle exhaustive (visite des menus des 4
@@ -159,6 +169,50 @@ ce ticket (voir aussi Explicitement hors scope).
       libellés de test mis à jour pour refléter "CONTROL" (nouveau
       module) dans la liste des modules professionnels absents pour un
       client.
+
+## Vérification en navigateur réel (effectuée après-coup, post-fusion)
+
+Backend + apps/web + apps/build + apps/home + apps/control-pwa démarrés
+(données de démo réutilisées). Deux memberships temporaires ajoutées à
+`client-demo@example.com` (constructeur @ Bati Senegal SARL, inspecteur @
+Cabinet Controle Independant) pour observer réellement les liens
+"BUILD"/"CONTROL" sur HOME sans dépendre de l'ordre de tri des
+memberships au login — **supprimées après vérification** (`Membership`
+a une politique RLS `DELETE`, contrairement aux tables append-only
+rencontrées au ticket F-041).
+
+- **Accueil (apps/build) → HOME, aller** : connexion réelle
+  `constructeur-demo@example.com`, atterrissage sur BUILD. Lien
+  "Accueil" inspecté : origine `http://localhost:5173`, fragment
+  contenant bien `access_token`/`refresh_token` (valeurs non exposées,
+  bloquées par l'outil de capture — structure seule vérifiée). **Clic
+  réel** : navigation effective vers HOME, en-tête "K+ KEYIMMO AFRIC"
+  affiché, sidebar "Accueil"/"BUILD" cohérente avec le rôle constructeur
+  — session réellement transférée, pas seulement une URL qui a l'air
+  correcte.
+- **HOME → BUILD, retour** : depuis HOME (toujours connecté), clic réel
+  sur "BUILD" : navigation vers `http://localhost:5174`, Control Tower
+  chargé avec les lots réels du programme (A1/B2/Verif F-041) — aller-
+  retour complet fonctionnel dans les deux sens.
+- **HOME → CONTROL (rôle inspecteur)** : `client-demo` avec la
+  membership inspecteur ajoutée, bascule d'organisation réelle vers
+  "Cabinet Controle Independant" via le sélecteur — "CONTROL" apparaît
+  dans la sidebar, "BUILD" n'apparaît jamais (conforme à la décision C).
+  **Clic réel** : navigation vers `http://localhost:5175`, CONTROL PWA
+  charge "Mes missions" avec les missions réelles de l'organisation
+  (Lot A1/B2/Verif F-041) — session transférée, rôle correctement
+  reconnu côté CONTROL.
+- **Incident sans rapport avec le code** : première tentative vers
+  CONTROL PWA échouée (page d'erreur) — cause réelle : le serveur
+  `apps/control-pwa` (port 5175) n'avait simplement pas été démarré dans
+  le lot de serveurs lancés pour cette vérification, pas un défaut du
+  correctif. Démarré, retenté, succès immédiat.
+
+**Aucun défaut trouvé** — le comportement observé en direct correspond
+exactement à ce que les tests unitaires (jsdom) avaient déjà validé.
+Cette vérification ne change donc aucune ligne de code de ce ticket ;
+elle ferme uniquement le trou de processus identifié après coup (voir
+Statut).
 
 ## Notes d'implémentation
 

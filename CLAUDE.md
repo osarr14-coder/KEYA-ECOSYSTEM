@@ -3599,6 +3599,34 @@ brute) pour y arriver : ce serait aller délibérément à l'encontre de la
 doctrine de sécurité/traçabilité de tout ce projet pour un simple
 nettoyage de confort.
 
+## Discipline de vérification — un document de ticket précède toujours l'implémentation (incident F-040)
+
+**Un document de ticket écrit et validé explicitement précède toujours
+l'implémentation, y compris pour un changement qui semble trivial ou
+déjà validé en prose — la confirmation d'une proposition en chat ne
+remplace jamais la revue d'un document structuré (Décisions, Hors
+scope, Critères) avant que le code n'existe.**
+
+Motivé par le ticket **F-040** : une proposition de correctif présentée
+en prose dans le chat, suivie d'une confirmation courte de
+l'utilisateur (« OUI CORRIGE »), a déclenché directement l'implémentation
+— le fichier `F-040-navigation-inter-apps-reelle.md` n'a été rédigé
+qu'APRÈS coup, comme documentation rétrospective, jamais montré pour
+validation avant que le code n'existe. C'est un écart par rapport à la
+discipline déjà établie depuis le ticket F-038 (ticket écrit, montré,
+validé, PUIS implémenté) — et une contradiction directe avec l'annonce
+faite au moment de la proposition elle-même (« je rédige le ticket
+complet ensuite »), jamais tenue. Le scope livré correspondait bien à
+ce qui avait été annoncé, mais l'absence du document structuré avant le
+code a aussi fait manquer la vérification en navigateur réel
+habituelle (voir `F-040-navigation-inter-apps-reelle.md`, corrigée
+après-coup, aucun défaut trouvé mais l'écart de processus reste réel).
+
+S'applique quelle que soit la taille apparente du changement : même un
+ticket purement additif et à risque nul (voir F-043) doit passer par un
+document écrit avant le code, pas seulement une proposition en prose
+suivie d'un « oui »/« crée ».
+
 ## Échelle typographique (ticket F-042)
 
 `h1`-`h4` posés dans `GlobalStyles` en unités `em` — relatif à la taille
