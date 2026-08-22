@@ -7,19 +7,34 @@ import { describe, expect, it } from 'vitest';
 /**
  * Ticket F-039 — critère d'acceptation : « un test de garde vérifie
  * qu'aucun composant partagé (AlertBanner, StatusBadge, ProgressBar,
- * Button, Input, Select) ne référence brandColors — seule la variante
- * HOME d'AppShell (et le CTA de PriorityTaskSummary, `apps/home`) y a
- * accès. » Scanne le CODE SOURCE réel (pas une simple relecture manuelle)
- * de chaque composant partagé du design system, à la recherche de la
- * chaîne littérale "brandColors" — même famille que `governance.test.ts`
- * (ticket 007) et la garde anti-attribution KEYIMMO (CLAUDE.md, ticket
- * 006) : empêche cette classe de régression de se glisser silencieusement
- * dans un futur commit, plutôt que de compter sur une revue manuelle.
+ * Button, Input, Select) ne référence brandColors ». Scanne le CODE
+ * SOURCE réel (pas une simple relecture manuelle) de chaque composant
+ * partagé du design system, à la recherche de la chaîne littérale
+ * "brandColors" — même famille que `governance.test.ts` (ticket 007) et
+ * la garde anti-attribution KEYIMMO (CLAUDE.md, ticket 006) : empêche
+ * cette classe de régression de se glisser silencieusement dans un futur
+ * commit, plutôt que de compter sur une revue manuelle.
+ *
+ * **Mise à jour F-048** — `AppShell` reste le SEUL composant partagé
+ * exempté (contrôle positif ci-dessous), mais sa consommation de
+ * `brandColors` n'est PLUS strictement HOME-only depuis ce ticket : le
+ * bandeau `<header>` (F-039, prop `brand`) reste HOME-only, intouché ;
+ * le bloc navy de sidebar (F-048, TOUJOURS rendu) est, lui, universel
+ * sur les 4 apps — révision LIMITÉE et PRÉCISE de la doctrine 17.3,
+ * jamais un abandon (voir CLAUDE.md, section F-048, et
+ * `F-047-enrichissement-visuel-toute-plateforme.md`, rejeté, pour ce
+ * qui reste explicitement hors mandat). La liste surveillée
+ * (`FORBIDDEN_COMPONENT_DIRS`) ci-dessous n'a PAS changé par ce
+ * ticket — `AppShell.test.tsx` porte les assertions de comportement
+ * rendu qui bornent précisément cette exception (bloc sidebar/item
+ * actif autorisés, `<main>`/items inactifs jamais colorés par la
+ * marque).
  *
  * `levelMeta.ts` (TrustLevel, ticket 003/007) est INCLUS dans ce scan —
- * ce test protège aussi, comme effet de bord, l'invariant « ce ticket ne
- * doit ni modifier levelMeta.ts ni s'en inspirer pour les nouvelles
- * valeurs » posé par F-039 lui-même.
+ * ce test protège aussi, comme effet de bord, l'invariant « aucun
+ * ticket ne doit modifier levelMeta.ts ni s'en inspirer pour de
+ * nouvelles valeurs » — règle non négociable, survit à F-048 comme à
+ * toute révision future de la doctrine de marque.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

@@ -3860,6 +3860,48 @@ worker actif dans cet environnement — jugé disproportionné pour une
 seule capture). Vérifié par test unitaire à assertion de style exacte
 à la place, signalé explicitement dans le ticket.
 
+## Révision limitée de la doctrine 17.3 — bloc sidebar universel (ticket F-048)
+
+Voir `F-048-extension-mesuree-identite-marque-sidebar.md` pour le
+détail complet. **Doctrine 17.3 (« brandColors réservé à HOME »)
+révisée de façon CONSCIENTE et LIMITÉE** — motivée par un besoin réel
+de crédibilité institutionnelle pour les professionnels externes
+(constructeurs, bureaux de contrôle, banques) qui découvrent KEYIMMO
+via BUILD/CONTROL sans jamais passer par HOME. **Explicitement PAS un
+retour au ticket F-047** (rejeté, hors mandat, voir
+`F-047-enrichissement-visuel-toute-plateforme.md`) — périmètre
+strictement plus restreint, un seul point de contact précis.
+
+**`AppShell` gagne un bloc navy TOUJOURS rendu en haut de la
+sidebar** (« K+ KEYIMMO AFRIC » + nouvelle prop `appLabel` optionnelle)
+— universel sur les 4 apps, contrairement au bandeau `<header>`
+existant (F-039, prop `brand`), qui reste HOME-only et INTOUCHÉ par ce
+ticket (les deux zones navy cohabitent sur HOME). Item de navigation
+actif : seule la couleur de la bordure gauche passe à l'or
+(`brandColors.gold`) — fond et texte inchangés (décision confirmée
+explicitement). `appLabel` : « Accueil » (HOME), « BUILD » (BUILD),
+« KEYIMMO » (apps/web — pas « Back-office », pour éviter la redite
+avec le libellé d'onglet déjà présent dans la même sidebar).
+
+**`brandGovernance.test.ts` : zéro changement à
+`FORBIDDEN_COMPONENT_DIRS`** (toujours 9 entrées, `TabBar`/`Card`/
+`StatusBadge`/etc. restent protégés comme avant) — seul le
+commentaire d'en-tête est corrigé (le bloc sidebar d'`AppShell` n'est
+plus strictement HOME-only). Le véritable élargissement se fait dans
+`AppShell.test.tsx` : nouvelles assertions NÉGATIVES explicites
+(`<main>`/items de nav inactifs ne reçoivent jamais `brandColors`) —
+l'exception `AppShell` devient mieux bornée par des tests de
+comportement rendu, jamais moins surveillée. `TabBar`, `Card`
+(`tone="brand"`), fond de page, CONTROL PWA : explicitement hors
+scope de ce ticket (contrairement à F-047).
+
+**Vérifié en navigateur réel + `getComputedStyle`** sur les 3 apps
+concernées (HOME/BUILD/apps-web) : navy `#0B1D3A`/blanc/or `#C49A2C`
+exacts, fond de l'item actif confirmé INCHANGÉ (`#F9FAFB`), bandeau
+`<header>` confirmé transparent sur BUILD/apps-web (comportement
+F-039 intact). Suite complète verte (518 tests), `tsc --noEmit`
+propre, `levelMeta.ts` intouché.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

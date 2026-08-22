@@ -111,6 +111,10 @@ export function App() {
   return (
     <AppShell
       density="dense"
+      // Ticket F-048 — révision LIMITÉE de la doctrine 17.3 : le bloc navy
+      // de sidebar (AppShell, toujours rendu) est universel sur les 4
+      // apps ; `brand` (bandeau <header>) reste HOME-only, non activé ici.
+      appLabel="BUILD"
       modules={buildModules()}
       userRoles={userRoles}
       activeModuleId="build"

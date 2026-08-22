@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react';
 
 import { brandColors, semanticColors } from '../../tokens/colors';
 import { type Density, densityTokens } from '../../tokens/density';
+import { spacing } from '../../tokens/spacing';
 import { Icon, type IconName } from '../Icon/Icon';
 
 /**
@@ -55,6 +56,15 @@ export interface AppShellProps {
    * apps/web, aucune régression possible).
    */
   brand?: boolean;
+  /**
+   * Ticket F-048 — révision LIMITÉE et PRÉCISE de la doctrine 17.3
+   * (« brandColors réservé à HOME ») : nom de l'app affiché dans le
+   * nouveau bloc navy TOUJOURS visible en haut de la sidebar (jamais
+   * gated par `brand`, contrairement au bandeau `<header>` de F-039,
+   * qui reste HOME-only et intouché). Optionnel — sans valeur, seule
+   * la ligne « KEYIMMO AFRIC » s'affiche, pas de ligne vide.
+   */
+  appLabel?: string;
   modules: AppModule[];
   /** Rôles de l'utilisateur courant, utilisés pour filtrer les modules
    * professionnels — voir `AppModule.requiredRoles`. */
@@ -81,6 +91,7 @@ function isModuleVisible(module: AppModule, userRoles: string[]): boolean {
 export function AppShell({
   density,
   brand = false,
+  appLabel,
   modules,
   userRoles,
   breadcrumbs = [],
@@ -116,6 +127,38 @@ export function AppShell({
         aria-label="Navigation des modules"
         style={{ gridRow: '1 / span 2', borderRight: `1px solid ${semanticColors.neutral.border}` }}
       >
+        {/* Ticket F-048 — révision LIMITÉE et PRÉCISE de la doctrine 17.3 :
+            TOUJOURS rendu, sur les 4 apps, indépendamment de `brand`
+            (contrairement au bandeau `<header>` de F-039 ci-dessous, qui
+            reste HOME-only et intouché). `data-testid` DISTINCT de
+            `brand-mark` (bandeau) — les deux zones ne doivent jamais être
+            confondues dans les tests. */}
+        <div
+          data-testid="sidebar-brand-block"
+          style={{
+            background: brandColors.navy,
+            color: '#FFFFFF',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px',
+            padding: collapsed ? `${spacing.md} ${spacing.sm}` : `${spacing.md} ${spacing.lg}`,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              gap: spacing.sm,
+            }}
+          >
+            <span style={{ color: brandColors.gold, fontWeight: 700 }}>K+</span>
+            {!collapsed && <span style={{ fontWeight: 700 }}>KEYIMMO AFRIC</span>}
+          </div>
+          {!collapsed && appLabel && (
+            <span style={{ fontSize: '0.85em', color: 'rgba(255, 255, 255, 0.72)' }}>{appLabel}</span>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => setCollapsed((current) => !current)}
@@ -157,8 +200,13 @@ export function AppShell({
                       // seule (accessibilité — ne jamais distinguer par la
                       // seule couleur, principe déjà respecté ailleurs dans
                       // ce projet, voir CLAUDE.md ticket 014).
+                      // Ticket F-048 — SEULE la couleur de cette bordure
+                      // change (`brandColors.gold`, doctrine 17.3 révisée
+                      // de façon limitée) : fond/couleur de texte
+                      // ci-dessous restent EXACTEMENT ceux d'avant ce
+                      // ticket, décision confirmée explicitement.
                       borderLeft: isActive
-                        ? `3px solid ${semanticColors.neutral.text}`
+                        ? `3px solid ${brandColors.gold}`
                         : '3px solid transparent',
                       fontWeight: isActive ? 600 : 400,
                       background: isActive ? semanticColors.neutral.background : 'transparent',

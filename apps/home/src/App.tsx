@@ -147,10 +147,13 @@ export function App() {
   return (
     <AppShell
       density="confortable"
-      // Ticket F-039 — seule app du projet à activer l'identité de marque
-      // KEYIMMO AFRIC (navy/or) sur le chrome d'AppShell. BUILD/CONTROL/
-      // apps/web n'y touchent jamais (doctrine 17.3 V3.0).
+      // Ticket F-039 — seule app du projet à activer le bandeau <header>
+      // navy (prop `brand`), resté HOME-only, intouché par F-048.
       brand
+      // Ticket F-048 — révision LIMITÉE de la doctrine 17.3 : le bloc navy
+      // de sidebar (AppShell, toujours rendu) est désormais universel,
+      // `appLabel` fournit le nom d'app affiché dedans sur les 4 apps.
+      appLabel="Accueil"
       modules={buildModules()}
       userRoles={userRoles}
       activeModuleId="home"

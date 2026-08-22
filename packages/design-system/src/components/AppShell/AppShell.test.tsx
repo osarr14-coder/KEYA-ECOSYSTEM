@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent, render, screen, within,
+} from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { brandColors } from '../../tokens/colors';
+import { brandColors, semanticColors } from '../../tokens/colors';
 import { densityTokens } from '../../tokens/density';
 import { AppShell, type AppModule } from './AppShell';
 
@@ -136,12 +138,77 @@ describe('AppShell — identité de marque KEYIMMO AFRIC (ticket F-039, prop bra
     expect(header).toHaveStyle({ background: brandColors.navy, color: '#FFFFFF' });
     expect(header).toHaveStyle({ borderBottom: `2px solid ${brandColors.gold}` });
     expect(screen.getByTestId('brand-mark')).toBeInTheDocument();
-    expect(screen.getByText('KEYIMMO AFRIC')).toBeInTheDocument();
+    // Ticket F-048 — requête scopée au bandeau <header> : le bloc sidebar
+    // (toujours rendu, indépendamment de `brand`) affiche AUSSI ce texte
+    // désormais, `getByText` global serait ambigu (2 correspondances).
+    expect(within(header).getByText('KEYIMMO AFRIC')).toBeInTheDocument();
   });
 
   it('brand=false explicite se comporte comme l\'absence du prop', () => {
     render(<AppShell density="confortable" brand={false} modules={MODULES} userRoles={[]} />);
     expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
+  });
+});
+
+describe('AppShell — bloc navy de sidebar, révision limitée de la doctrine 17.3 (ticket F-048)', () => {
+  it('le bloc sidebar est TOUJOURS rendu, indépendamment de brand (contrairement au bandeau <header>)', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    const block = screen.getByTestId('sidebar-brand-block');
+    expect(block).toBeInTheDocument();
+    expect(block).toHaveStyle({ background: brandColors.navy, color: '#FFFFFF' });
+    expect(within(block).getByText('K+')).toBeInTheDocument();
+    expect(within(block).getByText('KEYIMMO AFRIC')).toBeInTheDocument();
+    // Le bandeau <header>, lui, reste HOME-only (F-039, intouché) : sans
+    // `brand`, aucun repère de marque n'y apparaît, même avec le bloc
+    // sidebar désormais toujours présent.
+    expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
+  });
+
+  it('appLabel absent : aucune ligne vide, seule "KEYIMMO AFRIC" s\'affiche', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    const block = screen.getByTestId('sidebar-brand-block');
+    expect(within(block).getByText('KEYIMMO AFRIC')).toBeInTheDocument();
+    expect(within(block).queryByText('BUILD Control Tower')).not.toBeInTheDocument();
+  });
+
+  it('appLabel fourni : affiché comme ligne secondaire dans le bloc sidebar', () => {
+    render(<AppShell density="dense" appLabel="BUILD" modules={MODULES} userRoles={[]} />);
+    const block = screen.getByTestId('sidebar-brand-block');
+    expect(within(block).getByText('BUILD')).toBeInTheDocument();
+  });
+
+  it('mode replié : le bloc se réduit à "K+" seul, appLabel/KEYIMMO AFRIC masqués', () => {
+    render(<AppShell density="dense" appLabel="BUILD" modules={MODULES} userRoles={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /replier la navigation/i }));
+    const block = screen.getByTestId('sidebar-brand-block');
+    expect(within(block).getByText('K+')).toBeInTheDocument();
+    expect(within(block).queryByText('KEYIMMO AFRIC')).not.toBeInTheDocument();
+    expect(within(block).queryByText('BUILD')).not.toBeInTheDocument();
+  });
+
+  it('item de navigation actif : bordure gauche or, fond/texte inchangés (décision D)', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} activeModuleId="home" />);
+    const active = screen.getByText('Accueil').closest('a');
+    expect(active).toHaveStyle({
+      borderLeft: `3px solid ${brandColors.gold}`,
+      background: semanticColors.neutral.background,
+      color: semanticColors.neutral.text,
+    });
+  });
+
+  it('item de navigation INACTIF ne reçoit jamais brandColors (garde contre la dérive de portée)', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} activeModuleId="home" />);
+    const inactive = screen.getByText('Tâches').closest('a');
+    expect(inactive).not.toHaveStyle({ borderLeft: `3px solid ${brandColors.gold}` });
+    expect(inactive).not.toHaveStyle({ background: brandColors.navy });
+    expect(inactive).not.toHaveStyle({ color: brandColors.gold });
+  });
+
+  it('la zone de contenu (<main>) ne reçoit jamais brandColors (garde contre la dérive de portée)', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]}>Contenu</AppShell>);
+    const main = screen.getByText('Contenu').closest('main');
+    expect(main).not.toHaveStyle({ background: brandColors.navy });
+    expect(main).not.toHaveStyle({ color: brandColors.gold });
   });
 });
 
