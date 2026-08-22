@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Input, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Input, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -68,8 +68,7 @@ function TemplateStepsTable({ steps }: { steps: LegalPaymentTierStep[] }) {
 
 function ActiveTemplatePanel({ state }: { state: ApiResourceState<LegalPaymentTierTemplate | null> }) {
   return (
-    <section aria-label="Template actif">
-      <h3>Template actif</h3>
+    <Card aria-label="Template actif" title="Template actif" icon="scale">
       {state.status === 'loading' && <p>Chargement du template actif…</p>}
       {state.status === 'error' && (
         <ApiErrorBanner error={state.error} title="Impossible de charger le template actif." onRetry={state.refetch} />
@@ -86,7 +85,7 @@ function ActiveTemplatePanel({ state }: { state: ApiResourceState<LegalPaymentTi
           </div>
         )
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -128,8 +127,7 @@ function HistoryPanel({
   );
 
   return (
-    <section aria-label="Historique des templates" style={{ marginTop: '16px' }}>
-      <h3>Historique</h3>
+    <Card aria-label="Historique des templates" title="Historique" icon="file-text">
       {state.status === 'loading' && <p>Chargement de l&apos;historique…</p>}
       {state.status === 'error' && (
         <ApiErrorBanner error={state.error} title="Impossible de charger l'historique." onRetry={state.refetch} />
@@ -170,7 +168,7 @@ function HistoryPanel({
           </table>
         )
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -360,7 +358,7 @@ function LegalPaymentTierWorkspace({ countryPackId }: { countryPackId: string })
   const activeTemplateId = activeState.status === 'success' && activeState.data ? activeState.data.id : null;
 
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <ActiveTemplatePanel state={activeState} />
       <HistoryPanel
         countryPackId={countryPackId}
@@ -368,9 +366,10 @@ function LegalPaymentTierWorkspace({ countryPackId }: { countryPackId: string })
         reloadKey={reloadKey}
         onChanged={handleChanged}
       />
-      <h3 style={{ marginTop: '16px' }}>Créer un nouveau template</h3>
-      <CreateTemplateForm countryPackId={countryPackId} onCreated={handleChanged} />
-    </>
+      <Card title="Créer un nouveau template" icon="file-text">
+        <CreateTemplateForm countryPackId={countryPackId} onCreated={handleChanged} />
+      </Card>
+    </div>
   );
 }
 

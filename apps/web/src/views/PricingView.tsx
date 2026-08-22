@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Input, Select, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Input, Select, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -47,8 +47,7 @@ function CurrentRatesPanel({ countryPackId, reloadKey }: { countryPackId: string
   );
 
   return (
-    <section aria-label="Taux actuels">
-      <h3>Taux actuels</h3>
+    <Card aria-label="Taux actuels" title="Taux actuels" icon="wallet">
       {state.status === 'loading' && <p>Chargement des taux actuels…</p>}
       {state.status === 'error' && (
         <ApiErrorBanner error={state.error} title="Impossible de charger les taux actuels." onRetry={state.refetch} />
@@ -72,7 +71,7 @@ function CurrentRatesPanel({ countryPackId, reloadKey }: { countryPackId: string
           })}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -224,17 +223,19 @@ export function PricingView() {
       )}
 
       {selectedCountryPack && (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <CurrentRatesPanel countryPackId={selectedCountryPack.id} reloadKey={reloadKey} />
 
-          <h3 style={{ marginTop: '16px' }}>Historique par canal</h3>
-          {CANALS.map(({ id }) => (
-            <CanalHistoryPanel key={id} countryPackId={selectedCountryPack.id} canal={id} reloadKey={reloadKey} />
-          ))}
+          <Card title="Historique par canal" icon="file-text">
+            {CANALS.map(({ id }) => (
+              <CanalHistoryPanel key={id} countryPackId={selectedCountryPack.id} canal={id} reloadKey={reloadKey} />
+            ))}
+          </Card>
 
-          <h3 style={{ marginTop: '16px' }}>Créer un nouveau taux</h3>
-          <CreatePricingConfigForm countryPackId={selectedCountryPack.id} onCreated={() => setReloadKey((key) => key + 1)} />
-        </>
+          <Card title="Créer un nouveau taux" icon="scale">
+            <CreatePricingConfigForm countryPackId={selectedCountryPack.id} onCreated={() => setReloadKey((key) => key + 1)} />
+          </Card>
+        </div>
       )}
     </section>
   );

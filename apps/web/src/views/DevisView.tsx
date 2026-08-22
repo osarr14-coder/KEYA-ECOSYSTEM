@@ -3,7 +3,7 @@ import {
 } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Input, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Input, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -555,37 +555,40 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
         <ApiErrorBanner error={state.error} title="Impossible de charger les devis de ce lot." onRetry={state.refetch} />
       )}
       {state.status === 'success' && (
-        <>
-          {state.data.length === 0 ? (
-            <p data-testid="no-devis">Aucun devis enregistré pour ce lot.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Lot</th>
-                  <th>Organisation candidate</th>
-                  <th>Montant</th>
-                  <th>Saisi par</th>
-                  <th>Date</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.data.map((devis) => (
-                  <DevisRow
-                    key={devis.id}
-                    devis={devis}
-                    organizationId={organizationId}
-                    lotAlreadyLocked={state.data.some((row) => row.status === 'devis_verrouille')}
-                    onChanged={handleChanged}
-                  />
-                ))}
-              </tbody>
-            </table>
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <Card icon="file-text">
+            {state.data.length === 0 ? (
+              <p data-testid="no-devis">Aucun devis enregistré pour ce lot.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Lot</th>
+                    <th>Organisation candidate</th>
+                    <th>Montant</th>
+                    <th>Saisi par</th>
+                    <th>Date</th>
+                    <th>Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {state.data.map((devis) => (
+                    <DevisRow
+                      key={devis.id}
+                      devis={devis}
+                      organizationId={organizationId}
+                      lotAlreadyLocked={state.data.some((row) => row.status === 'devis_verrouille')}
+                      onChanged={handleChanged}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
 
-          <h3 style={{ marginTop: '16px' }}>Enregistrer une candidature reçue hors plateforme</h3>
-          <CreateDevisForm organizationId={organizationId} lotId={lotId} onCreated={handleChanged} />
+          <Card title="Enregistrer une candidature reçue hors plateforme" icon="file-text">
+            <CreateDevisForm organizationId={organizationId} lotId={lotId} onCreated={handleChanged} />
+          </Card>
 
           {/* Ticket F-035 — grand-livre de coûts, uniquement une fois un
               devis verrouillé sur ce lot (précondition backend,
@@ -600,7 +603,7 @@ function DevisListPanel({ organizationId, lotId }: { organizationId: string; lot
           {state.data.some((devis) => devis.status === 'devis_verrouille') && (
             <LotLedgerPanel organizationId={organizationId} lotId={lotId} />
           )}
-        </>
+        </div>
       )}
     </section>
   );

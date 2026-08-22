@@ -3,7 +3,7 @@ import {
 } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Input, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Input,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -78,17 +78,9 @@ function UserDetailPanel({
   const { user, memberships } = state.data;
 
   return (
-    <section
-      aria-label={`Profil de ${user.email}`}
-      style={{
-        marginTop: '16px',
-        padding: '16px',
-        border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '8px',
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>{user.email}</h3>
-      <p>{user.full_name}</p>
+    <div style={{ marginTop: '16px' }}>
+      <Card aria-label={`Profil de ${user.email}`} title={user.email} icon="users">
+        <p>{user.full_name}</p>
       <p data-testid="account-status">{user.is_active ? 'Compte actif' : 'Compte désactivé'}</p>
 
       <h4>Organisation(s) et rôle(s)</h4>
@@ -136,7 +128,8 @@ function UserDetailPanel({
           </Button>
         )
       )}
-    </section>
+      </Card>
+    </div>
   );
 }
 
@@ -191,7 +184,7 @@ export function BackofficeView() {
 
   return (
     <section aria-label="Back-office">
-      <h2>Recherche d&apos;utilisateur</h2>
+      <Card title="Recherche d'utilisateur" icon="search">
       <form
         onSubmit={(event) => { void handleSearch(event); }}
         role="search"
@@ -239,6 +232,7 @@ export function BackofficeView() {
           </ul>
         )
       )}
+      </Card>
 
       {selectedUserId && (
         <UserDetailPanel key={selectedUserId} userId={selectedUserId} onDeactivated={refreshCurrentSearch} />

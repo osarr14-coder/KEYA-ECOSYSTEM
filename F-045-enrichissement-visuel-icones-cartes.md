@@ -2,11 +2,8 @@
 
 ## Statut
 
-**Phases 1 (HOME), 2 (BUILD) et 3 (CONTROL PWA) implémentées, testées,
-vérifiées en navigateur réel.** Phase 4 (back-office) planifiée
-ci-dessous, document validé par l'utilisateur avant implémentation —
-discipline posée par la règle CLAUDE.md « un document de ticket
-précède toujours l'implémentation » (incident F-040).
+**Terminé — les 4 phases (HOME, BUILD, CONTROL PWA, back-office)
+implémentées, testées, vérifiées en navigateur réel.**
 
 ## Origine
 
@@ -138,13 +135,37 @@ amont de ce ticket, non lié à ces changements) confirmé stable sur 3
 relances consécutives (24/24) après la modification. Suite complète
 verte (500 tests), `tsc --noEmit` propre.
 
-## Phase 4 — Back-office, apps/web (proposé, pas encore implémenté)
+## Phase 4 — Back-office, apps/web (implémentée)
 
-Sections de `BackofficeView.tsx` / `DevisView.tsx` / `PricingView.tsx` /
-`LegalPaymentTiersView.tsx` / `LotLedgerPanel.tsx` migrées en `Card`
-(icônes : `search`/`file-text`/`wallet`/`scale` selon la section,
-cohérent avec les icônes déjà posées sur les onglets `TabBar` de ces
-mêmes écrans, Phase 1).
+- `BackofficeView.tsx` : « Recherche d'utilisateur » (icône `search`)
+  et le panneau de profil utilisateur (icône `users`, ex-`<section>`
+  avec bordure manuelle) migrés en `Card`.
+- `PricingView.tsx` : « Taux actuels » (icône `wallet`), « Historique
+  par canal » (icône `file-text`) et « Créer un nouveau taux » (icône
+  `scale`) — 3 `Card` distinctes, remplaçant les `<h3>`/`<h4>` manuels.
+- `LegalPaymentTiersView.tsx` : « Template actif » (icône `scale`),
+  « Historique » (icône `file-text`) et « Créer un nouveau template »
+  (icône `file-text`) — même schéma.
+- `LotLedgerPanel.tsx` : le panneau entier (grand-livre + charges BC,
+  déjà un bloc visuellement délimité à la main — bordure/padding
+  manuels) migré en un seul `Card` (icône `wallet`), remplaçant ce
+  style ad hoc.
+- `DevisView.tsx` (`DevisListPanel`) : tableau des devis (icône
+  `file-text`) et « Enregistrer une candidature reçue hors plateforme »
+  (icône `file-text`) — 2 `Card` distinctes ; `LotLedgerPanel` reste
+  sibling, jamais imbriqué (inchangé).
+
+Icônes cohérentes avec celles déjà posées sur les onglets `TabBar` de
+ces mêmes écrans (Phase 1).
+
+**Vérifié en navigateur réel** (compte `admin.keyimmo@example.test`,
+lot verrouillé réel « Lot 12 ») : capture d'écran confirmant les
+cartes sur Back-office (recherche), Devis (tableau + candidature +
+grand-livre, 3 cartes empilées), et Tarifs (3 cartes : Taux actuels/
+Historique/Créer un taux). Suite complète verte (500 tests),
+`tsc --noEmit` propre sur `apps/web`, `brandGovernance.test.ts`
+re-confirmé vert explicitement (aucune fuite de `brandColors` hors
+HOME).
 
 ## Hors scope
 

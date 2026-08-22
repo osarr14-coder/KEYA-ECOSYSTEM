@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Input, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Input, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -262,12 +262,7 @@ export function LotLedgerPanel({
   );
 
   return (
-    <section
-      aria-label="Grand-livre du lot"
-      style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${semanticColors.neutral.border}` }}
-    >
-      <h3 style={{ margin: '0 0 4px' }}>Grand-livre de coûts</h3>
-
+    <Card aria-label="Grand-livre du lot" title="Grand-livre de coûts" icon="wallet">
       {state.status === 'loading' && <p>Chargement du grand-livre…</p>}
       {state.status === 'error' && (
         <ApiErrorBanner error={state.error} title="Impossible de charger le grand-livre." onRetry={state.refetch} />
@@ -288,6 +283,6 @@ export function LotLedgerPanel({
           charges BC s'accumulent indépendamment de l'existence du
           grand-livre (voir docstring de LotBcChargesPanel). */}
       <LotBcChargesPanel organizationId={organizationId} lotId={lotId} />
-    </section>
+    </Card>
   );
 }

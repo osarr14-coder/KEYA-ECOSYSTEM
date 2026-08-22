@@ -3718,9 +3718,11 @@ build 77, web 180, control-pwa 73 (491 tests), zéro régression ;
 ## Enrichissement visuel — icônes + cartes (ticket F-045)
 
 Voir `F-045-enrichissement-visuel-icones-cartes.md` pour le détail
-complet, y compris la phase en cours. Retour utilisateur direct pendant
-une démonstration navigateur : le design manquait de repères visuels
-sur toutes les apps (texte brut enchaîné, aucun regroupement).
+complet. Retour utilisateur direct pendant une démonstration
+navigateur : le design manquait de repères visuels sur toutes les apps
+(texte brut enchaîné, aucun regroupement). Livré en 4 phases (HOME,
+BUILD, CONTROL PWA, back-office), chacune vérifiée en navigateur réel
+et testée avant la suivante.
 
 **Deux nouveaux composants `packages/design-system`** : `Icon`
 (`components/Icon/`, tracés SVG maison en grille 24x24, `stroke`
