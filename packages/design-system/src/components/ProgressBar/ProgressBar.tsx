@@ -28,10 +28,21 @@ export interface ProgressBarProps {
   /** Largeur de la piste — `200px` en usage "hero" (HOME), plus étroite en
    * cellule de tableau dense (BUILD). */
   width?: string;
+  /**
+   * Ticket F-046 — override générique du remplissage, défaut
+   * `semanticColors.progress.fill` (vert) inchangé partout où cette prop
+   * n'est pas fournie. Composant lui-même reste neutre de marque : la
+   * couleur de marque (doctrine 17.3, réservée à HOME) est fournie par
+   * l'appelant, jamais codée en dur ici — même principe que le `style`
+   * passthrough de `Button`.
+   */
+  fillColor?: string;
   'aria-label'?: string;
 }
 
-export function ProgressBar({ percentage, width = '100%', 'aria-label': ariaLabel }: ProgressBarProps) {
+export function ProgressBar({
+  percentage, width = '100%', fillColor = semanticColors.progress.fill, 'aria-label': ariaLabel,
+}: ProgressBarProps) {
   return (
     <div
       role="progressbar"
@@ -52,7 +63,7 @@ export function ProgressBar({ percentage, width = '100%', 'aria-label': ariaLabe
     >
       <div
         data-testid="progress-bar-fill"
-        style={{ width: `${percentage}%`, background: semanticColors.progress.fill, height: '100%' }}
+        style={{ width: `${percentage}%`, background: fillColor, height: '100%' }}
       />
     </div>
   );

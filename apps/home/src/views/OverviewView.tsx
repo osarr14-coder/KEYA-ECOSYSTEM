@@ -1,10 +1,11 @@
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, ProgressBar, StatusBadge, semanticColors,
+  AlertBanner, ApiErrorBanner, Card, ProgressBar, StatusBadge, brandColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { toTrustEventData } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
+import { ProgramHeroCard } from '../components/ProgramHeroCard';
 import { PriorityTaskSummary } from './PriorityTaskSummary';
 
 // Libellés d'affichage pour `open_reserve.status` (une des sources
@@ -44,30 +45,30 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
 
   return (
     <section aria-label="Vue d'ensemble" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <header data-testid="hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-        <div>
-          <h1 style={{ marginBottom: '4px' }}>{overview.asset_name}</h1>
-          <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
-            {overview.program_name} — {overview.lot_name}
-          </p>
-          <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{overview.asset_location}</p>
-        </div>
-        {/* Ticket F-033 (vague 4) — cet écran n'avait AUCUN moyen de tirer
-            des données fraîches une fois chargées : ni sondage périodique
-            (aucun écran de ce projet n'en a), ni action visible — seule une
-            navigation hors de l'écran puis un retour déclenchait un nouveau
-            chargement (démontage/remontage). `state.refetch` (ticket F-033
-            vague 3) existait déjà mais n'était utilisé que sur l'état
-            d'erreur. Action manuelle, jamais un sondage automatique en
-            arrière-plan — cohérent avec le reste du projet (aucun autre
-            écran de ce type ne sonde), et honnête : rien ne garantit qu'une
-            donnée soit RÉELLEMENT périmée, seulement que l'utilisateur peut
-            désormais vérifier explicitement plutôt que de ne jamais savoir. */}
-        <Button type="button" variant="secondary" onClick={state.refetch}>Actualiser</Button>
-      </header>
+      {/* Ticket F-033 (vague 4) — cet écran n'avait AUCUN moyen de tirer des
+          données fraîches une fois chargées : ni sondage périodique (aucun
+          écran de ce projet n'en a), ni action visible — seule une
+          navigation hors de l'écran puis un retour déclenchait un nouveau
+          chargement (démontage/remontage). `state.refetch` (ticket F-033
+          vague 3) existait déjà mais n'était utilisé que sur l'état
+          d'erreur. Action manuelle, jamais un sondage automatique en
+          arrière-plan, et honnête : rien ne garantit qu'une donnée soit
+          RÉELLEMENT périmée, seulement que l'utilisateur peut désormais
+          vérifier explicitement plutôt que de ne jamais savoir. */}
+      <ProgramHeroCard
+        programName={overview.program_name}
+        assetName={overview.asset_name}
+        lotName={overview.lot_name}
+        assetLocation={overview.asset_location}
+        onRefresh={state.refetch}
+      />
 
-      <Card aria-label="Progression" data-testid="progress" title="Progression" icon="building" tone="accent">
-        <ProgressBar percentage={overview.progress_percentage} width="200px" />
+      {/* tone="accent" (vert) retiré : l'icône colorée en vert à côté d'une
+          barre remplie en or (ci-dessous) aurait suggéré deux accents
+          "progression" différents pour la même section — icône neutre,
+          l'accent or reste porté par la seule barre. */}
+      <Card aria-label="Progression" data-testid="progress" title="Progression" icon="building">
+        <ProgressBar percentage={overview.progress_percentage} width="200px" fillColor={brandColors.gold} />
         {/* Le pourcentage affiché est EXACTEMENT `progress_percentage` reçu
             de l'API — aucune opération arithmétique n'est faite ici. */}
         <p style={{ marginBottom: 0, marginTop: '8px' }}>{overview.progress_percentage}% d'avancement</p>

@@ -3817,6 +3817,49 @@ avant la rédaction du document de ticket — répétition de l'anti-
 pattern F-040 (voir section dédiée ci-dessus). Le document a ensuite
 été rédigé et validé explicitement avant toute phase suivante.
 
+## Raffinement de l'identité de marque HOME (ticket F-046)
+
+Voir `F-046-raffinement-identite-marque-home.md` pour le détail
+complet. Approfondissement du parti pris posé par F-039 (navy/or),
+PAS une nouvelle direction — première application de la règle
+renforcée après l'incident F-040/F-045 phase 1 : fichier de ticket
+créé AVANT même l'audit du code, complété seulement une fois l'audit
+fait, feu vert utilisateur obtenu sur le document complet avant
+implémentation.
+
+**Nouveau composant HOME-only `ProgramHeroCard`**
+(`apps/home/src/components/`, jamais `packages/design-system`) : bande
+d'en-tête navy plein (`brandColors.navy`/`#FFFFFF`) avec repère « K+ »
+or + nom du programme, corps blanc inchangé (bordure légère, ex-hero
+neutre). Délibérément PAS une extension du `Card` partagé — besoin
+propre à ce seul écran, aucun autre consommateur de `Card` (BUILD/
+CONTROL/back-office) n'en a besoin.
+
+**`ProgressBar` gagne une prop générique `fillColor`** (défaut
+`semanticColors.progress.fill` inchangé partout ailleurs, vérifié en
+navigateur réel sur BUILD après le ticket) — jamais de couleur de
+marque codée en dur dans le composant partagé, fournie par l'appelant
+HOME uniquement, même principe que le `style` passthrough de `Button`.
+
+**CTA `PriorityTaskSummary`** : accent bordure or/texte navy (F-039)
+remplacé par un remplissage navy plein/texte blanc — paire déjà en
+production sur `AppShell` (`brand`), ~16,8:1, jamais recalculée pour
+rien. Zéro changement à `Button.tsx` (passthrough `style` déjà
+existant).
+
+**`brandGovernance.test.ts` étendu** : `Card`/`Icon`/`TabBar` ajoutés
+à la liste surveillée (trou de couverture repéré à l'audit, créés
+après ce test par F-045). `ProgressBar` était déjà couvert.
+`ProgramHeroCard` reste hors du répertoire scanné, délibérément —
+c'est le composant HOME autorisé à consommer `brandColors`.
+
+**Limite reconnue** : le CTA navy n'a pas pu être capturé en écran
+réel (aucune tâche en attente dans les données de démo actuelles,
+créer un scénario réel passe par une Task Celery asynchrone, aucun
+worker actif dans cet environnement — jugé disproportionné pour une
+seule capture). Vérifié par test unitaire à assertion de style exacte
+à la place, signalé explicitement dans le ticket.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

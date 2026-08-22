@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { semanticColors } from '../../tokens/colors';
 import { ProgressBar } from './ProgressBar';
 
 describe('ProgressBar — affichage passthrough (ticket 023)', () => {
@@ -19,6 +20,19 @@ describe('ProgressBar — affichage passthrough (ticket 023)', () => {
   it('largeur par défaut à 100% (usage pleine largeur)', () => {
     render(<ProgressBar percentage={10} />);
     expect(screen.getByTestId('progress-bar')).toHaveStyle({ width: '100%' });
+  });
+});
+
+describe('ProgressBar — remplissage personnalisable (ticket F-046)', () => {
+  it('remplissage par défaut : semanticColors.progress.fill, inchangé sans la prop', () => {
+    render(<ProgressBar percentage={37} />);
+    expect(screen.getByTestId('progress-bar-fill')).toHaveStyle({ background: semanticColors.progress.fill });
+  });
+
+  it('fillColor override le remplissage, jamais la piste', () => {
+    render(<ProgressBar percentage={37} fillColor="#C49A2C" />);
+    expect(screen.getByTestId('progress-bar-fill')).toHaveStyle({ background: '#C49A2C' });
+    expect(screen.getByTestId('progress-bar')).toHaveStyle({ background: semanticColors.progress.track });
   });
 });
 

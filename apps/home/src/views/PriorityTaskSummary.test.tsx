@@ -91,7 +91,7 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
     expect(onSeeAllActions).toHaveBeenCalledOnce();
   });
 
-  it('le CTA "Voir toutes mes actions" porte l\'accent de marque brandColors.gold/navy (ticket F-039)', async () => {
+  it('le CTA "Voir toutes mes actions" est en navy plein, texte blanc (ticket F-046)', async () => {
     const api = createMockApiClient({
       getMyTasks: async () => [
         {
@@ -107,7 +107,7 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
     render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     const button = await screen.findByRole('button', { name: 'Voir toutes mes actions' });
-    expect(button).toHaveStyle({ borderColor: brandColors.gold, color: brandColors.navy });
+    expect(button).toHaveStyle({ background: brandColors.navy, color: '#FFFFFF' });
   });
 
   it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {

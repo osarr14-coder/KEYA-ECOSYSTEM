@@ -25,7 +25,15 @@ import { describe, expect, it } from 'vitest';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const componentsDir = path.join(__dirname, 'components');
 
-const FORBIDDEN_COMPONENT_DIRS = ['AlertBanner', 'StatusBadge', 'ProgressBar', 'Button', 'Input', 'Select'];
+const FORBIDDEN_COMPONENT_DIRS = [
+  'AlertBanner', 'StatusBadge', 'ProgressBar', 'Button', 'Input', 'Select',
+  // Ticket F-046 — Card/Icon/TabBar créés après ce test (F-045), jamais
+  // ajoutés à la liste surveillée : trou de couverture repéré à l'audit,
+  // fermé ici. ProgressBar reste couvert malgré sa nouvelle prop
+  // `fillColor` (F-046) — générique, aucun littéral "brandColors" dans son
+  // code source, la couleur est fournie par l'appelant (voir ProgressBar.tsx).
+  'Card', 'Icon', 'TabBar',
+];
 
 function readSourceFiles(dir: string): { file: string; content: string }[] {
   if (!existsSync(dir)) return [];

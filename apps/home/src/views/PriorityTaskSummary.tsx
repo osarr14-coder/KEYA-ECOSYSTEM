@@ -59,20 +59,20 @@ export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: P
         <div>
           <strong>{priorityTask.label}</strong>
           <p>Échéance : {formatDueDate(priorityTask.due_date)}</p>
-          {/* Ticket F-039 — CTA le plus visible de HOME (résumé de la
-              tâche prioritaire, en tête de Vue d'ensemble) : accent
-              brandColors.gold (bordure) + brandColors.navy (texte), fond
-              transparent conservé pour un contraste large (~16,8:1) — le
-              or seul en fond plein contre du blanc échoue WCAG AA
-              (~2,6:1), d'où un rôle d'ACCENT plutôt que de remplissage,
-              conforme à la formulation du ticket. Seul bouton de HOME (en
+          {/* Ticket F-046 — remplace l'accent bordure or/texte navy (F-039)
+              par un remplissage navy plein, texte blanc : `variant="primary"`
+              pose déjà `color: '#FFFFFF'`, seul `background` est réécrit.
+              PAS un remplissage OR (déjà écarté par F-039 : contraste
+              ~2,6:1, échec WCAG AA) — navy/blanc est une paire DISTINCTE,
+              déjà en production sur le bandeau `AppShell` (`brand`),
+              ~16,8:1, largement AAA. Toujours le seul bouton de HOME (en
               dehors d'AppShell) à consommer brandColors — voir le test de
               garde `brandGovernance.test.ts`. */}
           <Button
             type="button"
-            variant="secondary"
+            variant="primary"
             onClick={onSeeAllActions}
-            style={{ borderColor: brandColors.gold, borderWidth: '2px', color: brandColors.navy }}
+            style={{ background: brandColors.navy }}
           >
             Voir toutes mes actions
           </Button>
