@@ -3599,6 +3599,56 @@ brute) pour y arriver : ce serait aller délibérément à l'encontre de la
 doctrine de sécurité/traçabilité de tout ce projet pour un simple
 nettoyage de confort.
 
+## Registre des données de démonstration permanentes en base de dev
+
+**Liste centralisée, tous tickets confondus** — pour qu'un futur lecteur
+comprenne d'un coup d'œil pourquoi ces lignes existent en base de dev
+locale sans devoir recouper plusieurs fichiers de ticket. Voir la
+section précédente pour le POURQUOI structurel (tables append-only sans
+politique RLS `DELETE`) — cette section liste seulement le QUOI.
+**Aucune de ces données n'a jamais été committée ni partagée** — base de
+dev locale uniquement.
+
+**« Lot Verif F-041 »** (ticket F-041) — `Devis`/`InspectionMission`/
+`LotBcCharge` créés via les fonctions de service réelles pour obtenir
+une vraie charge BC à l'écran. Convention de nommage `Lot Verif
+<ticket>` déjà en place, voir section ci-dessus pour le détail complet.
+
+**« Résidence Baobab »** (simulation de plateforme demandée par
+l'utilisateur, session du 2026-08-22, hors ticket formel) — cycle
+métier complet créé via de vrais appels API (jamais l'ORM pour l'action
+métier elle-même), organisation `Demo Claude Preview`
+(`0e5ab86c-64c0-4ca5-b6ae-32b812824ba6`) :
+
+- `Program` « Résidence Baobab » (`ef8c7da0-…`) → `Asset` « Batiment A »
+  (`9222d1f8-…`) → `Lot` « Lot 12 » (`0c7bd749-…`), affecté à
+  l'organisation `Atlas BTP` (`a4a4e3ad-…`).
+- `Devis` verrouillé, 45 000 000 (`6f72b8ef-…`) ; `WorkDeclaration`
+  (`dda043d9-…`) ; `InspectionMission` assignée à
+  `inspecteur@example.test` (`05c21611-…`).
+- Cycle réserve complet : 2 `Inspection` (`aa74acd4-…` avec_reserve,
+  `5dc3b49b-…` conforme), `Reserve` levée (`7bd33d8d-…`),
+  `ReserveCorrection` (`af131750-…`), `Evidence`/`Document` de
+  correction (`48f01c0c-…`/`84e09eb5-…`, source `simulation_claude`).
+- `LotBcCharge` (`6b9eb861-…`, 675 000) ; `LotClient` rattachant
+  `demo.claude@example.test` au Lot 12 (`4a159a3f-…`).
+- Organisations créées pour les 3 autres rôles : `KEYIMMO AFRIC`
+  (admin_keyimmo), `Cabinet Controle Senegal` (inspecteur, organisation
+  DISTINCTE du sponsor — règle d'indépendance du contrôle, ticket 005).
+- Comptes : `admin.keyimmo@example.test`, `constructeur@example.test`,
+  `inspecteur@example.test`, `demo.claude@example.test` — tous
+  `DemoClaude2026!`.
+
+**`demo.admin@example.test`** — compte ORPHELIN, résidu d'une première
+tentative de création manuelle (avant de basculer sur le schéma
+`set_rls_context` correct, voir la simulation ci-dessus) : jamais
+rattaché à aucune organisation, jamais utilisé ensuite, jamais
+documenté avant cet audit. Laissé tel quel (suppression d'un `User`
+sans risque structurel connu, mais hors scope de nettoyer
+rétroactivement une session passée) — un futur lecteur qui le
+rencontre dans une recherche `backoffice` sait maintenant qu'il n'a
+aucune signification, juste un artefact.
+
 ## Discipline de vérification — un document de ticket précède toujours l'implémentation (incident F-040)
 
 **Un document de ticket écrit et validé explicitement précède toujours
@@ -3626,6 +3676,29 @@ S'applique quelle que soit la taille apparente du changement : même un
 ticket purement additif et à risque nul (voir F-043) doit passer par un
 document écrit avant le code, pas seulement une proposition en prose
 suivie d'un « oui »/« crée ».
+
+**Récidive constatée (F-045, phase 1, 2026-08-22)** : même écart —
+implémentation lancée directement après une confirmation en prose,
+document `F-045-enrichissement-visuel-icones-cartes.md` rédigé
+seulement une fois la phase 1 déjà commitée. Corrigé dès la phase 2 du
+même ticket (document rédigé et validé avant chaque phase suivante),
+mais confirme que l'écart peut se reproduire même en connaissant déjà
+la règle. Non réécrit rétroactivement (résultat jugé correct par
+l'utilisateur, coût de reprise jugé supérieur au bénéfice) — mais
+documenté ici comme deuxième occurrence, pas comme un cas isolé clos.
+
+**Règle renforcée suite à cette récidive — pour tout ticket dont
+l'ampleur laisse présager plusieurs phases/apps (même pressenti en
+prose, pas encore confirmé)** : la toute PREMIÈRE action, avant toute
+exploration de code (grep, lecture de fichiers pour évaluer la
+faisabilité), est de CRÉER le fichier de ticket — vide de détails
+d'implémentation, mais avec au minimum un Scope et des Critères
+d'acceptation posés. Le document se complète ensuite au fur et à
+mesure de l'investigation (Décisions, Hors scope), mais son existence
+précède la première ligne de code lue à des fins d'implémentation,
+pas seulement la première ligne écrite. Garder l'intention « je
+rédige le ticket ensuite » en tête ne suffit pas — c'est précisément
+ce qui a échoué deux fois (F-040, F-045 phase 1).
 
 ## Échelle typographique (ticket F-042)
 
