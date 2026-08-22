@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { AlertBanner, Button, semanticColors } from '@keya/design-system';
+import {
+  AlertBanner, Button, Icon, semanticColors,
+} from '@keya/design-system';
 
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { getCachedMissions, getDraftForMission } from '../db/repository';
@@ -109,7 +111,10 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
 
   return (
     <section aria-label="Mes missions">
-      <h1>Mes missions</h1>
+      <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Icon name="clipboard-check" size={22} />
+        Mes missions
+      </h1>
       {loadState === 'loading' && <p>Chargement…</p>}
       {loadState === 'error' && (
         <AlertBanner
@@ -147,7 +152,10 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
                   fontWeight: 400,
                 }}
               >
-                <strong>{mission.lotName}</strong> — {mission.assetName}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Icon name="building" size={18} color={semanticColors.neutral.textMuted} />
+                  <strong>{mission.lotName}</strong> — {mission.assetName}
+                </div>
                 <div>{mission.programName} · {mission.milestoneLabel}</div>
                 <div><MissionTypeIndicator mission={mission} /></div>
                 {statusByMission[mission.id] && (

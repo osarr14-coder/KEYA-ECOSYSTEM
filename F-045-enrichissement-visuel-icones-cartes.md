@@ -2,8 +2,8 @@
 
 ## Statut
 
-**Phases 1 (HOME) et 2 (BUILD) implémentées, testées, vérifiées en
-navigateur réel.** Phases 3-4 (CONTROL PWA, back-office) planifiées
+**Phases 1 (HOME), 2 (BUILD) et 3 (CONTROL PWA) implémentées, testées,
+vérifiées en navigateur réel.** Phase 4 (back-office) planifiée
 ci-dessous, document validé par l'utilisateur avant implémentation —
 discipline posée par la règle CLAUDE.md « un document de ticket
 précède toujours l'implémentation » (incident F-040).
@@ -110,13 +110,33 @@ le tableau "Tous les lots" encadré. Suite `apps/build` (77 tests) et
 suite complète des 5 packages (500 tests) vertes, `tsc --noEmit`
 propre.
 
-## Phase 3 — CONTROL PWA (proposé, pas encore implémenté)
+## Phase 3 — CONTROL PWA (implémentée)
 
 Cas particulier déjà signalé par F-038/F-044 : pas d'`AppShell` (layout
-tactile dédié). Icônes ciblées sur `MissionsListView.tsx` (icône
-`building` par carte de mission) et `InspectionFormView.tsx` (icônes de
-section) — tailles/`min-height` **revalidées pour l'usage tactile**,
-jamais une migration mécanique copier-coller des autres apps.
+tactile dédié) — `Card` volontairement non introduit ici (un
+`<fieldset>` porte déjà sa propre sémantique de groupe de formulaire,
+jamais dupliquée par un second conteneur).
+
+- `MissionsListView.tsx` : icône `clipboard-check` sur le titre « Mes
+  missions », icône `building` sur chaque carte de mission (à côté du
+  nom de lot) — carte déjà `Button variant="secondary"` (F-044),
+  aucune taille tactile modifiée (44px déjà en place, revérifié à
+  l'écran).
+- `InspectionFormView.tsx` : icône devant chaque `<legend>` de section
+  (`clipboard-check` Checklist, `camera` Photos, `check-circle`
+  Décision) — nouveau `LEGEND_STYLE` partagé (`display: flex`), aucune
+  taille/`min-height` existante modifiée. Le bouton fantôme
+  « ← Missions » reste volontairement intact (signalé F-044, non
+  couvert par ce ticket).
+
+**Vérifié en navigateur réel** (compte `inspecteur@example.test`,
+mission réelle « Lot 12 ») : capture d'écran confirmant les icônes sur
+« Mes missions » et les 3 sections du formulaire d'inspection, cible
+tactile visuellement inchangée. Un test préexistant connu comme flaky
+(`InspectionFormView.test.tsx`, « affiche le conflit... », signalé en
+amont de ce ticket, non lié à ces changements) confirmé stable sur 3
+relances consécutives (24/24) après la modification. Suite complète
+verte (500 tests), `tsc --noEmit` propre.
 
 ## Phase 4 — Back-office, apps/web (proposé, pas encore implémenté)
 

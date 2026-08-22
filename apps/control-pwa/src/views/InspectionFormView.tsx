@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, Button, Input, semanticColors,
+  AlertBanner, Button, Icon, Input, semanticColors,
 } from '@keya/design-system';
 
 import { PhotoSyncStatusIndicator } from '../components/PhotoSyncStatusIndicator';
@@ -22,6 +22,11 @@ export interface InspectionFormViewProps {
 // séparément à chaque fois. Ticket 024 (audit accessibilité) : reprend le
 // token partagé plutôt qu'une couleur redéfinie ici en dur.
 const FIELDSET_STYLE = { border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px' };
+// Ticket F-045 — icône de repère devant chaque légende de section, même
+// famille visuelle que `Card` (icône + titre), sans introduire `Card` ici :
+// un `<fieldset>` a déjà sa propre sémantique de groupe de formulaire,
+// jamais dupliquée par un second conteneur.
+const LEGEND_STYLE = { display: 'flex', alignItems: 'center', gap: '6px' };
 
 function PhotoThumbnail({ photo, onRemove }: { photo: LocalPhoto; onRemove: () => void }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
@@ -475,7 +480,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       )}
 
       <fieldset style={FIELDSET_STYLE}>
-        <legend>Checklist</legend>
+        <legend style={LEGEND_STYLE}><Icon name="clipboard-check" size={18} />Checklist</legend>
         {draft.checklist.map((item) => (
           <label key={item.id} style={{ display: 'block', padding: '8px 0', minHeight: '44px' }}>
             <input
@@ -489,7 +494,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       </fieldset>
 
       <fieldset style={FIELDSET_STYLE}>
-        <legend>Photos</legend>
+        <legend style={LEGEND_STYLE}><Icon name="camera" size={18} />Photos</legend>
         <label>
           Ajouter une photo
           <Input
@@ -527,7 +532,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
       </label>
 
       <fieldset style={FIELDSET_STYLE}>
-        <legend>Décision</legend>
+        <legend style={LEGEND_STYLE}><Icon name="check-circle" size={18} />Décision</legend>
         <label style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', marginRight: '16px' }}>
           <input
             type="radio" name="decision" value="conforme"
