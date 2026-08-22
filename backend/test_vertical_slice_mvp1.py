@@ -83,30 +83,50 @@ def _jpeg_file(name):
 class TestVerticalSliceMVP1:
     def test_full_chain_from_program_creation_to_client_visible_resolved_reserve(self):
         # --- 1. Programme → Bien → Lot, jalons auto-instanciés (API navigable) ---
+        # Ticket B-039 : introduction du programme réservée à admin_keyimmo
+        # (KEYIMMO gatekeeper) — l'admin est donc enregistré ici, avant même
+        # le constructeur, et crée la hiérarchie pour l'organisation du
+        # constructeur (organisation fournie explicitement, même bascule
+        # RLS que create_program_cost). Réutilisé tel quel à l'étape 4
+        # (affectation de mission), plus besoin d'un second enregistrement.
+        admin_client, admin_org, admin_user = _register(
+            'e2e2-admin@example.com', 'Org E2E2 Admin', role_code='admin_keyimmo',
+        )
         constructeur_client, organization, constructeur_user = _register(
             'e2e2-constructeur@example.com', 'Org E2E2 Constructeur', role_code='constructeur',
         )
 
-        program_response = constructeur_client.post(
-            reverse('program-list'), {'name': 'Programme Keur Massar'}, format='json',
+        program_response = admin_client.post(
+            reverse('program-list'),
+            {'organization': str(organization.id), 'name': 'Programme Keur Massar'}, format='json',
         )
         assert program_response.status_code == 201, program_response.data
         program_id = program_response.data['id']
 
-        asset_response = constructeur_client.post(
+        asset_response = admin_client.post(
             reverse('asset-list'),
-            {'program': program_id, 'name': 'Résidence Ker', 'location': 'Keur Massar'},
+            {
+                'organization': str(organization.id), 'program': program_id,
+                'name': 'Résidence Ker', 'location': 'Keur Massar',
+            },
             format='json',
         )
         assert asset_response.status_code == 201, asset_response.data
         asset_id = asset_response.data['id']
 
-        lot_response = constructeur_client.post(
-            reverse('lot-list'), {'asset': asset_id, 'name': 'Lot 12'}, format='json',
+        lot_response = admin_client.post(
+            reverse('lot-list'),
+            {'organization': str(organization.id), 'asset': asset_id, 'name': 'Lot 12'}, format='json',
         )
         assert lot_response.status_code == 201, lot_response.data
         lot_id = lot_response.data['id']
 
+        # Bascule RLS explicite vers l'organisation du constructeur : la
+        # création admin ci-dessus restaure le contexte RLS de l'admin dans
+        # son `finally` (ticket B-039) — une relecture ORM directe non
+        # basculée échouerait silencieusement (piège déjà documenté,
+        # `apps/programs/tests.py::TestProgramCostImmutability`).
+        set_rls_context(organization_id=organization.id)
         from apps.programs.models import Lot
         lot = Lot.objects.get(id=lot_id)
         milestones = list(lot.milestones.order_by('order'))
@@ -153,9 +173,8 @@ class TestVerticalSliceMVP1:
         assert evidence_response.status_code == 201, evidence_response.data
 
         # --- 4. admin_keyimmo affecte un inspecteur indépendant (ticket 012) ---
-        admin_client, admin_org, admin_user = _register(
-            'e2e2-admin@example.com', 'Org E2E2 Admin', role_code='admin_keyimmo',
-        )
+        # `admin_client`/`admin_org`/`admin_user` déjà enregistrés à l'étape 1
+        # (ticket B-039 : c'est ce même admin qui a créé le programme).
         inspecteur_client, inspecteur_organization, inspecteur_user = _register(
             'e2e2-inspecteur@example.com', 'Org E2E2 Inspecteur', role_code='inspecteur',
         )

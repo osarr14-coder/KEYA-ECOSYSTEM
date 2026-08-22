@@ -5,7 +5,7 @@ from django.db import transaction
 
 from apps.core.rls import set_rls_context
 
-from .models import Lot, Milestone, MilestoneTemplate, Program, ProgramCost, ProgramCostRepartitionMethod
+from .models import Asset, Lot, Milestone, MilestoneTemplate, Program, ProgramCost, ProgramCostRepartitionMethod
 
 # Ordre canonique "plus récent d'abord" pour ProgramCost — même tuple que
 # apps.trust.repository/apps.pricing.services (LATEST_FIRST_ORDERING,
@@ -70,6 +70,142 @@ def create_program_cost(
         finally:
             set_rls_context(organization_id=admin_organization_id)
     return program_cost
+
+
+# Ticket B-039 — introduction des programmes immobiliers verrouillée à
+# `admin_keyimmo` : mêmes bascule RLS et principe (`target_organization_id`
+# fourni EXPLICITEMENT par l'appelant, jamais dérivé après coup) que
+# `create_program_cost` ci-dessus — aucune nouvelle mécanique, seulement son
+# application à `Program`/`Asset`/`Lot`.
+
+def create_program(*, admin_organization_id, target_organization_id, name):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            program = Program.objects.create(organization_id=target_organization_id, name=name)
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return program
+
+
+def update_program(*, admin_organization_id, target_organization_id, program_id, name):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            program = Program.objects.filter(id=program_id, organization_id=target_organization_id).first()
+            if program is None:
+                raise ValidationError({'program': 'Programme introuvable.'})
+            program.name = name
+            program.save(update_fields=['name'])
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return program
+
+
+def delete_program(*, admin_organization_id, target_organization_id, program_id):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            deleted, _ = Program.objects.filter(id=program_id, organization_id=target_organization_id).delete()
+            if not deleted:
+                raise ValidationError({'program': 'Programme introuvable.'})
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+
+
+def create_asset(*, admin_organization_id, target_organization_id, program_id, name, location=''):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            program = Program.objects.filter(id=program_id, organization_id=target_organization_id).first()
+            if program is None:
+                raise ValidationError({'program': 'Programme introuvable.'})
+            asset = Asset.objects.create(
+                organization_id=target_organization_id, program=program, name=name, location=location,
+            )
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return asset
+
+
+def update_asset(*, admin_organization_id, target_organization_id, asset_id, name=None, location=None):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            asset = Asset.objects.filter(id=asset_id, organization_id=target_organization_id).first()
+            if asset is None:
+                raise ValidationError({'asset': 'Bien introuvable.'})
+            update_fields = []
+            if name is not None:
+                asset.name = name
+                update_fields.append('name')
+            if location is not None:
+                asset.location = location
+                update_fields.append('location')
+            if update_fields:
+                asset.save(update_fields=update_fields)
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return asset
+
+
+def delete_asset(*, admin_organization_id, target_organization_id, asset_id):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            deleted, _ = Asset.objects.filter(id=asset_id, organization_id=target_organization_id).delete()
+            if not deleted:
+                raise ValidationError({'asset': 'Bien introuvable.'})
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+
+
+def create_lot(*, admin_organization_id, target_organization_id, asset_id, name, surface=None):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            asset = Asset.objects.filter(id=asset_id, organization_id=target_organization_id).first()
+            if asset is None:
+                raise ValidationError({'asset': 'Bien introuvable.'})
+            lot = Lot.objects.create(
+                organization_id=target_organization_id, asset=asset, name=name, surface=surface,
+            )
+            instantiate_milestones_for_lot(lot)
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return lot
+
+
+def update_lot(*, admin_organization_id, target_organization_id, lot_id, name=None, surface=None):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            lot = Lot.objects.filter(id=lot_id, organization_id=target_organization_id).first()
+            if lot is None:
+                raise ValidationError({'lot': 'Lot introuvable.'})
+            update_fields = []
+            if name is not None:
+                lot.name = name
+                update_fields.append('name')
+            if surface is not None:
+                lot.surface = surface
+                update_fields.append('surface')
+            if update_fields:
+                lot.save(update_fields=update_fields)
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return lot
+
+
+def delete_lot(*, admin_organization_id, target_organization_id, lot_id):
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            deleted, _ = Lot.objects.filter(id=lot_id, organization_id=target_organization_id).delete()
+            if not deleted:
+                raise ValidationError({'lot': 'Lot introuvable.'})
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
 
 
 def get_current_program_cost(*, admin_organization_id, target_organization_id, program_id):

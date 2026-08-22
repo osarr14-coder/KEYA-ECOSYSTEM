@@ -13,20 +13,87 @@ from apps.organizations.models import Organization
 from . import services
 from .models import Asset, Lot, Program
 from .serializers import (
+    AssetAdminCreateSerializer,
     AssetSerializer,
+    LotAdminCreateSerializer,
     LotRepartitionSerializer,
     LotSerializer,
+    ProgramAdminCreateSerializer,
     ProgramCostCreateSerializer,
     ProgramCostSerializer,
     ProgramHierarchySerializer,
     ProgramSerializer,
 )
-from .services import instantiate_milestones_for_lot
 
 
 class ProgramViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
+    """Ticket B-039 — KEYIMMO gatekeeper : lecture (`list`/`retrieve`/
+    `hierarchy`) reste ouverte à `IsAuthenticated` + filtre par
+    organisation active (`OrganizationScopedMixin`, inchangé). Écriture
+    (`create`/`update`/`partial_update`/`destroy`) réservée à
+    `admin_keyimmo`, avec bascule RLS explicite (`organization` fourni par
+    l'appelant, jamais dérivé de `request.organization`) — même principe
+    que `ProgramCostCreateView` ci-dessous, `perform_create`/`get_object`
+    hérités du mixin ne conviennent plus pour ces quatre actions (voir
+    B-039, section « Constat d'architecture »).
+    """
+
     queryset = Program.objects.all()
     serializer_class = ProgramSerializer
+
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = ProgramAdminCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            program = services.create_program(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=data['organization'],
+                name=data['name'],
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(ProgramSerializer(program).data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        name = request.data.get('name')
+        if not name:
+            raise ValidationError({'name': 'Ce champ est requis.'})
+        try:
+            program = services.update_program(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                program_id=kwargs['pk'],
+                name=name,
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(ProgramSerializer(program).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        try:
+            services.delete_program(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                program_id=kwargs['pk'],
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(status=204)
 
     @action(detail=True, methods=['get'])
     def hierarchy(self, request, pk=None):
@@ -40,17 +107,134 @@ class ProgramViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
 
 class AssetViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
+    """Ticket B-039 — même discipline que `ProgramViewSet` ci-dessus :
+    lecture ouverte (membre de l'organisation active), écriture réservée à
+    `admin_keyimmo` avec organisation/programme parent fournis
+    explicitement.
+    """
+
     queryset = Asset.objects.all()
     serializer_class = AssetSerializer
 
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = AssetAdminCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            asset = services.create_asset(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=data['organization'],
+                program_id=data['program'],
+                name=data['name'],
+                location=data.get('location', ''),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(AssetSerializer(asset).data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        try:
+            asset = services.update_asset(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                asset_id=kwargs['pk'],
+                name=request.data.get('name'),
+                location=request.data.get('location'),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(AssetSerializer(asset).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        try:
+            services.delete_asset(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                asset_id=kwargs['pk'],
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(status=204)
+
 
 class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelViewSet):
+    """Ticket B-039 — même discipline que `ProgramViewSet`/`AssetViewSet`
+    ci-dessus. `create` appelle désormais `services.create_lot`, qui
+    instancie les jalons lui-même (`instantiate_milestones_for_lot`,
+    inchangé) — l'ancien `perform_create` (hérité du mixin) est retiré,
+    devenu inatteignable puisque `create` est entièrement réécrit.
+    """
+
     queryset = Lot.objects.all()
     serializer_class = LotSerializer
 
-    def perform_create(self, serializer):
-        super().perform_create(serializer)
-        instantiate_milestones_for_lot(serializer.instance)
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        serializer = LotAdminCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            lot = services.create_lot(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=data['organization'],
+                asset_id=data['asset'],
+                name=data['name'],
+                surface=data.get('surface'),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(LotSerializer(lot).data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        try:
+            lot = services.update_lot(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                lot_id=kwargs['pk'],
+                name=request.data.get('name'),
+                surface=request.data.get('surface'),
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(LotSerializer(lot).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        try:
+            services.delete_lot(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                lot_id=kwargs['pk'],
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(status=204)
 
     @action(detail=True, methods=['post'])
     def assign_organization(self, request, pk=None):

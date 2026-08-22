@@ -41,21 +41,6 @@ def _register_and_authenticate(email, organization_name):
     return client
 
 
-def _create_program(client, name='Programme Test'):
-    return client.post(reverse('program-list'), {'name': name}, format='json').data
-
-
-def _create_asset(client, program_id, name='Bien Test'):
-    return client.post(reverse('asset-list'), {'name': name, 'program': program_id}, format='json').data
-
-
-def _create_lot(client, asset_id, name='Lot Test', surface=None):
-    payload = {'name': name, 'asset': asset_id}
-    if surface is not None:
-        payload['surface'] = str(surface)
-    return client.post(reverse('lot-list'), payload, format='json').data
-
-
 def _register_admin(email, organization_name):
     """Même helper que les autres modules de test de ce projet — dupliqué
     volontairement (discipline déjà assumée, voir apps/pricing/tests.py).
@@ -79,19 +64,69 @@ def _register_admin(email, organization_name):
     return client, organization, user
 
 
+_admin_client_sequence = 0
+
+
+def _any_admin_client():
+    """Client `admin_keyimmo` jetable, pour les fixtures qui n'ont besoin
+    que d'un exécutant autorisé — ticket B-039, création de
+    Program/Asset/Lot réservée à `admin_keyimmo`, jamais self-service.
+    Compteur (pas `uuid`) pour un email/nom d'organisation lisible et
+    unique par appel, même discipline que les suffixes déjà utilisés
+    ailleurs dans ce fichier (`_setup_sponsor_program_with_lots`).
+    """
+    global _admin_client_sequence
+    _admin_client_sequence += 1
+    suffix = _admin_client_sequence
+    client, _organization, _user = _register_admin(
+        f'fixture-admin-{suffix}@example.com', f'Org Fixture Admin {suffix}',
+    )
+    return client
+
+
+def _create_program(admin_client, organization_id, name='Programme Test'):
+    """Ticket B-039 — création réservée à `admin_keyimmo`, `organization`
+    fourni explicitement (l'admin n'est pas forcément membre de la cible).
+    """
+    return admin_client.post(
+        reverse('program-list'), {'organization': str(organization_id), 'name': name}, format='json',
+    ).data
+
+
+def _create_asset(admin_client, organization_id, program_id, name='Bien Test'):
+    return admin_client.post(
+        reverse('asset-list'),
+        {'organization': str(organization_id), 'program': str(program_id), 'name': name},
+        format='json',
+    ).data
+
+
+def _create_lot(admin_client, organization_id, asset_id, name='Lot Test', surface=None):
+    payload = {'organization': str(organization_id), 'asset': str(asset_id), 'name': name}
+    if surface is not None:
+        payload['surface'] = str(surface)
+    return admin_client.post(reverse('lot-list'), payload, format='json').data
+
+
 def _setup_sponsor_program_with_lots(suffix, lot_surfaces=(None,)):
     """Programme réel d'une organisation SPONSOR, avec un ou plusieurs lots
     — `lot_surfaces` : un `Decimal`/`None` par lot à créer. Retourne
     `(sponsor_organization, program_dict, [lot_dict, ...])`.
+
+    `_sponsor_client` (inutilisé au-delà de la création de l'organisation
+    elle-même) reste nécessaire : c'est l'inscription qui crée
+    `Organization`, la CRÉATION du programme/bien/lots passe désormais par
+    un `admin_keyimmo` distinct (ticket B-039), jamais par ce client.
     """
-    sponsor_client = _register_and_authenticate(
+    _sponsor_client = _register_and_authenticate(
         f'sponsor-cost-{suffix}@example.com', f'Org Sponsor Cost {suffix}',
     )
     sponsor_org = Organization.objects.get(name=f'Org Sponsor Cost {suffix}')
-    program = _create_program(sponsor_client, f'Programme Cost {suffix}')
-    asset = _create_asset(sponsor_client, program['id'], f'Bien Cost {suffix}')
+    admin_client = _any_admin_client()
+    program = _create_program(admin_client, sponsor_org.id, f'Programme Cost {suffix}')
+    asset = _create_asset(admin_client, sponsor_org.id, program['id'], f'Bien Cost {suffix}')
     lots = [
-        _create_lot(sponsor_client, asset['id'], f'Lot {index} {suffix}', surface=surface)
+        _create_lot(admin_client, sponsor_org.id, asset['id'], f'Lot {index} {suffix}', surface=surface)
         for index, surface in enumerate(lot_surfaces)
     ]
     return sponsor_org, program, lots
@@ -116,9 +151,11 @@ class TestMilestoneInstantiation:
         )
 
         client = _register_and_authenticate('sponsor1@example.com', 'Org Jalons 1')
-        program = _create_program(client)
-        asset = _create_asset(client, program['id'])
-        lot = _create_lot(client, asset['id'])
+        organization = Organization.objects.get(name='Org Jalons 1')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id)
+        asset = _create_asset(admin_client, organization.id, program['id'])
+        lot = _create_lot(admin_client, organization.id, asset['id'])
 
         hierarchy = client.get(reverse('program-hierarchy', args=[program['id']])).data
         milestones = hierarchy['assets'][0]['lots'][0]['milestones']
@@ -129,11 +166,13 @@ class TestMilestoneInstantiation:
         assert actual_steps == expected_steps
 
     def test_editing_template_in_db_only_affects_lots_created_afterwards(self):
-        client = _register_and_authenticate('sponsor2@example.com', 'Org Jalons 2')
-        program = _create_program(client)
-        asset = _create_asset(client, program['id'])
+        _client = _register_and_authenticate('sponsor2@example.com', 'Org Jalons 2')
+        organization = Organization.objects.get(name='Org Jalons 2')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id)
+        asset = _create_asset(admin_client, organization.id, program['id'])
 
-        lot_before = _create_lot(client, asset['id'], name='Lot avant modification')
+        lot_before = _create_lot(admin_client, organization.id, asset['id'], name='Lot avant modification')
 
         # Modification directe en base — aucun code applicatif touché, tout
         # comme le décrit le critère d'acceptation.
@@ -143,8 +182,14 @@ class TestMilestoneInstantiation:
             template=template, order=99, code='essai_jalon_supplementaire', label='Jalon ajouté en base',
         )
 
-        lot_after = _create_lot(client, asset['id'], name='Lot après modification')
+        lot_after = _create_lot(admin_client, organization.id, asset['id'], name='Lot après modification')
 
+        # Bascule RLS explicite vers l'organisation cible : chaque appel
+        # `services.create_lot` ci-dessus restaure le contexte RLS de
+        # l'admin dans son `finally` (ticket B-039) — une relecture ORM
+        # directe non basculée échouerait silencieusement (piège déjà
+        # documenté, voir TestProgramCostImmutability plus haut).
+        set_rls_context(organization_id=organization.id)
         before_codes = [
             m.code for m in Lot.objects.get(id=lot_before['id']).milestones.all()
         ]
@@ -212,14 +257,21 @@ class TestHierarchyIntegrity:
     """
 
     def test_asset_creation_requires_a_program(self):
-        client = _register_and_authenticate('integrity1@example.com', 'Org Intégrité 1')
-        response = client.post(reverse('asset-list'), {'name': 'Bien orphelin'}, format='json')
+        # Ticket B-039 : la création est réservée à admin_keyimmo — un
+        # 403 masquerait le 400 réellement testé ici (le champ manquant),
+        # donc l'appelant doit être un admin, `organization` fourni.
+        admin_client, organization, _user = _register_admin('integrity1-admin@example.com', 'Org Intégrité 1 Admin')
+        response = admin_client.post(
+            reverse('asset-list'), {'organization': str(organization.id), 'name': 'Bien orphelin'}, format='json',
+        )
         assert response.status_code == 400
         assert 'program' in response.data
 
     def test_lot_creation_requires_an_asset(self):
-        client = _register_and_authenticate('integrity2@example.com', 'Org Intégrité 2')
-        response = client.post(reverse('lot-list'), {'name': 'Lot orphelin'}, format='json')
+        admin_client, organization, _user = _register_admin('integrity2-admin@example.com', 'Org Intégrité 2 Admin')
+        response = admin_client.post(
+            reverse('lot-list'), {'organization': str(organization.id), 'name': 'Lot orphelin'}, format='json',
+        )
         assert response.status_code == 400
         assert 'asset' in response.data
 
@@ -246,10 +298,12 @@ class TestCrudIsOrganizationScoped:
     """
 
     def _setup_org_a_hierarchy_then_switch_to_org_b(self):
-        client_a = _register_and_authenticate('crud-a@example.com', 'Org CRUD A')
-        program_a = _create_program(client_a, name='Programme A')
-        asset_a = _create_asset(client_a, program_a['id'], name='Bien A')
-        lot_a = _create_lot(client_a, asset_a['id'], name='Lot A')
+        _client_a = _register_and_authenticate('crud-a@example.com', 'Org CRUD A')
+        organization_a = Organization.objects.get(name='Org CRUD A')
+        admin_client = _any_admin_client()
+        program_a = _create_program(admin_client, organization_a.id, name='Programme A')
+        asset_a = _create_asset(admin_client, organization_a.id, program_a['id'], name='Bien A')
+        lot_a = _create_lot(admin_client, organization_a.id, asset_a['id'], name='Lot A')
 
         client_b = _register_and_authenticate('crud-b@example.com', 'Org CRUD B')
         return client_b, program_a, asset_a, lot_a
@@ -338,18 +392,22 @@ class TestLotAssignedOrganization:
     """
 
     def test_lot_has_no_assigned_organization_by_default(self):
-        client = _register_and_authenticate('assign-default@example.com', 'Org Assign Default')
-        program = _create_program(client)
-        asset = _create_asset(client, program['id'])
-        lot = _create_lot(client, asset['id'])
+        _client = _register_and_authenticate('assign-default@example.com', 'Org Assign Default')
+        organization = Organization.objects.get(name='Org Assign Default')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id)
+        asset = _create_asset(admin_client, organization.id, program['id'])
+        lot = _create_lot(admin_client, organization.id, asset['id'])
 
         assert lot['assigned_organization'] is None
 
     def test_assign_organization_sets_the_field(self):
         client = _register_and_authenticate('assign-sets@example.com', 'Org Assign Sets')
-        program = _create_program(client)
-        asset = _create_asset(client, program['id'])
-        lot = _create_lot(client, asset['id'])
+        organization = Organization.objects.get(name='Org Assign Sets')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id)
+        asset = _create_asset(admin_client, organization.id, program['id'])
+        lot = _create_lot(admin_client, organization.id, asset['id'])
 
         senegal = CountryPack.objects.get(code='SN')
         constructeur_org = Organization.objects.create(name='Org Constructeur Cible', country_pack=senegal)
@@ -368,9 +426,11 @@ class TestLotAssignedOrganization:
 
     def test_assign_organization_requires_organization_id(self):
         client = _register_and_authenticate('assign-requires@example.com', 'Org Assign Requires')
-        program = _create_program(client)
-        asset = _create_asset(client, program['id'])
-        lot = _create_lot(client, asset['id'])
+        organization = Organization.objects.get(name='Org Assign Requires')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id)
+        asset = _create_asset(admin_client, organization.id, program['id'])
+        lot = _create_lot(admin_client, organization.id, asset['id'])
 
         response = client.post(reverse('lot-assign-organization', args=[lot['id']]), {}, format='json')
 
@@ -378,9 +438,11 @@ class TestLotAssignedOrganization:
 
     def test_assign_organization_rejects_an_unknown_organization_id(self):
         client = _register_and_authenticate('assign-unknown@example.com', 'Org Assign Unknown')
-        program = _create_program(client)
-        asset = _create_asset(client, program['id'])
-        lot = _create_lot(client, asset['id'])
+        organization = Organization.objects.get(name='Org Assign Unknown')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id)
+        asset = _create_asset(admin_client, organization.id, program['id'])
+        lot = _create_lot(admin_client, organization.id, asset['id'])
 
         response = client.post(
             reverse('lot-assign-organization', args=[lot['id']]),
@@ -390,10 +452,12 @@ class TestLotAssignedOrganization:
         assert response.status_code == 400
 
     def test_assign_organization_on_a_lot_of_another_organization_returns_404(self):
-        client_a = _register_and_authenticate('assign-other-a@example.com', 'Org Assign Other A')
-        program = _create_program(client_a)
-        asset = _create_asset(client_a, program['id'])
-        lot = _create_lot(client_a, asset['id'])
+        _client_a = _register_and_authenticate('assign-other-a@example.com', 'Org Assign Other A')
+        organization_a = Organization.objects.get(name='Org Assign Other A')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization_a.id)
+        asset = _create_asset(admin_client, organization_a.id, program['id'])
+        lot = _create_lot(admin_client, organization_a.id, asset['id'])
 
         client_b = _register_and_authenticate('assign-other-b@example.com', 'Org Assign Other B')
         senegal = CountryPack.objects.get(code='SN')
@@ -414,19 +478,23 @@ class TestLotSurfaceField:
     """
 
     def test_surface_can_be_set_via_the_existing_lot_endpoint(self):
-        client = _register_and_authenticate('lot-surface-set@example.com', 'Org Lot Surface Set')
-        program = _create_program(client)
-        asset = _create_asset(client, program['id'])
+        _client = _register_and_authenticate('lot-surface-set@example.com', 'Org Lot Surface Set')
+        organization = Organization.objects.get(name='Org Lot Surface Set')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id)
+        asset = _create_asset(admin_client, organization.id, program['id'])
 
-        lot = _create_lot(client, asset['id'], surface=Decimal('120.50'))
+        lot = _create_lot(admin_client, organization.id, asset['id'], surface=Decimal('120.50'))
         assert Decimal(lot['surface']) == Decimal('120.50')
 
     def test_surface_is_null_by_default_no_guessed_value(self):
-        client = _register_and_authenticate('lot-surface-default@example.com', 'Org Lot Surface Default')
-        program = _create_program(client)
-        asset = _create_asset(client, program['id'])
+        _client = _register_and_authenticate('lot-surface-default@example.com', 'Org Lot Surface Default')
+        organization = Organization.objects.get(name='Org Lot Surface Default')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id)
+        asset = _create_asset(admin_client, organization.id, program['id'])
 
-        lot = _create_lot(client, asset['id'])
+        lot = _create_lot(admin_client, organization.id, asset['id'])
         assert lot['surface'] is None
 
 
@@ -805,3 +873,142 @@ class TestProgramCostSequenceForcedCollision:
             )
             assert current.id == second.id
             assert current.foncier_total == Decimal('200.00')
+
+
+@pytest.mark.django_db
+class TestProgramAssetLotAdminGatekeeping:
+    """Ticket B-039 — KEYIMMO est le gatekeeper de l'introduction des
+    programmes immobiliers : `admin_keyimmo` seul peut créer/modifier/
+    supprimer `Program`/`Asset`/`Lot`, sans jamais avoir besoin d'un
+    `Membership` réel dans l'organisation cible (capacité transverse, voir
+    `apps.backoffice.permissions.IsAdminKeyimmo`). Les autres organisations
+    restent en lecture seule (`list`/`retrieve`/`hierarchy`), comportement
+    strictement inchangé par ce ticket.
+    """
+
+    def test_an_ordinary_member_cannot_write_a_program_asset_or_lot_by_any_route(self):
+        member_client = _register_and_authenticate(
+            'gatekeeping-member@example.com', 'Org Gatekeeping Member',
+        )
+        organization = Organization.objects.get(name='Org Gatekeeping Member')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id, 'Programme Gatekeeping')
+        asset = _create_asset(admin_client, organization.id, program['id'], 'Bien Gatekeeping')
+        lot = _create_lot(admin_client, organization.id, asset['id'], 'Lot Gatekeeping')
+
+        # create — les trois ressources, tentées depuis l'organisation
+        # membre elle-même (celle qui possède réellement ces objets).
+        assert member_client.post(
+            reverse('program-list'), {'organization': str(organization.id), 'name': 'Intrus'}, format='json',
+        ).status_code == 403
+        assert member_client.post(
+            reverse('asset-list'),
+            {'organization': str(organization.id), 'program': program['id'], 'name': 'Intrus'}, format='json',
+        ).status_code == 403
+        assert member_client.post(
+            reverse('lot-list'),
+            {'organization': str(organization.id), 'asset': asset['id'], 'name': 'Intrus'}, format='json',
+        ).status_code == 403
+
+        # update (PATCH)
+        assert member_client.patch(
+            reverse('program-detail', args=[program['id']]), {'name': 'Renommé'}, format='json',
+        ).status_code == 403
+        assert member_client.patch(
+            reverse('asset-detail', args=[asset['id']]), {'name': 'Renommé'}, format='json',
+        ).status_code == 403
+        assert member_client.patch(
+            reverse('lot-detail', args=[lot['id']]), {'name': 'Renommé'}, format='json',
+        ).status_code == 403
+
+        # destroy
+        assert member_client.delete(reverse('program-detail', args=[program['id']])).status_code == 403
+        assert member_client.delete(reverse('asset-detail', args=[asset['id']])).status_code == 403
+        assert member_client.delete(reverse('lot-detail', args=[lot['id']])).status_code == 403
+
+        # Rien n'a été altéré malgré ces tentatives.
+        assert Program.objects.get(id=program['id']).name == 'Programme Gatekeeping'
+        assert Asset.objects.get(id=asset['id']).name == 'Bien Gatekeeping'
+        assert Lot.objects.get(id=lot['id']).name == 'Lot Gatekeeping'
+
+    def test_admin_keyimmo_can_write_for_an_organization_where_he_has_no_membership_at_all(self):
+        organization = Organization.objects.create(
+            name='Org Sans Membership Admin', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        admin_client, _admin_org, admin_user = _register_admin(
+            'gatekeeping-admin@example.com', 'Org Gatekeeping Admin',
+        )
+        assert not Membership.objects.filter(user=admin_user, organization=organization).exists()
+
+        program = _create_program(admin_client, organization.id, 'Programme Distant')
+        assert 'id' in program, program
+        asset = _create_asset(admin_client, organization.id, program['id'], 'Bien Distant')
+        lot = _create_lot(admin_client, organization.id, asset['id'], 'Lot Distant', surface=Decimal('80.00'))
+
+        # Bascule RLS explicite vers l'organisation cible : chaque appel
+        # `services.create_*` ci-dessus restaure le contexte RLS de
+        # l'admin dans son `finally` (ticket B-039) — une relecture ORM
+        # directe non basculée échouerait silencieusement (piège déjà
+        # documenté, voir TestProgramCostImmutability plus haut).
+        set_rls_context(organization_id=organization.id)
+        assert Program.objects.filter(id=program['id'], organization=organization).exists()
+        assert Asset.objects.filter(id=asset['id'], organization=organization).exists()
+        assert Lot.objects.filter(id=lot['id'], organization=organization).exists()
+        # Les jalons sont bien instanciés — `services.create_lot` appelle
+        # `instantiate_milestones_for_lot`, comme l'ancien `perform_create`.
+        assert Lot.objects.get(id=lot['id']).milestones.exists()
+
+        query = f'?organization_id={organization.id}'
+        assert admin_client.patch(
+            reverse('program-detail', args=[program['id']]) + query,
+            {'name': 'Programme Distant Renommé'}, format='json',
+        ).status_code == 200
+        assert admin_client.patch(
+            reverse('asset-detail', args=[asset['id']]) + query,
+            {'name': 'Bien Distant Renommé'}, format='json',
+        ).status_code == 200
+        assert admin_client.patch(
+            reverse('lot-detail', args=[lot['id']]) + query,
+            {'surface': '95.50'}, format='json',
+        ).status_code == 200
+
+        assert admin_client.delete(reverse('lot-detail', args=[lot['id']]) + query).status_code == 204
+        assert admin_client.delete(reverse('asset-detail', args=[asset['id']]) + query).status_code == 204
+        assert admin_client.delete(reverse('program-detail', args=[program['id']]) + query).status_code == 204
+
+        set_rls_context(organization_id=organization.id)
+        assert not Program.objects.filter(id=program['id']).exists()
+        # Aucun Membership n'a jamais été créé pour permettre tout ceci —
+        # la capacité transverse d'admin_keyimmo est la seule en jeu.
+        assert not Membership.objects.filter(user=admin_user, organization=organization).exists()
+
+    def test_write_without_organization_id_query_param_is_rejected_on_update_and_destroy(self):
+        """`organization_id` ne peut pas être dérivé après coup depuis
+        `pk` seul (même piège que `create_program_cost`, voir B-039) — un
+        appel qui l'omet doit échouer explicitement, jamais deviner.
+        """
+        organization = Organization.objects.create(
+            name='Org Query Param Requis', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'gatekeeping-queryparam-admin@example.com', 'Org Gatekeeping Query Param Admin',
+        )
+        program = _create_program(admin_client, organization.id, 'Programme Sans Query Param')
+
+        assert admin_client.patch(
+            reverse('program-detail', args=[program['id']]), {'name': 'Peu importe'}, format='json',
+        ).status_code == 400
+        assert admin_client.delete(reverse('program-detail', args=[program['id']])).status_code == 400
+
+    def test_read_access_for_ordinary_members_is_unchanged(self):
+        member_client = _register_and_authenticate(
+            'gatekeeping-read@example.com', 'Org Gatekeeping Read',
+        )
+        organization = Organization.objects.get(name='Org Gatekeeping Read')
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, organization.id, 'Programme Lecture')
+        _asset = _create_asset(admin_client, organization.id, program['id'], 'Bien Lecture')
+
+        assert member_client.get(reverse('program-list')).status_code == 200
+        assert member_client.get(reverse('program-detail', args=[program['id']])).status_code == 200
+        assert member_client.get(reverse('program-hierarchy', args=[program['id']])).status_code == 200

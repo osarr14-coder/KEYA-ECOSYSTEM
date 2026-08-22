@@ -3955,6 +3955,83 @@ exacts, fond de l'item actif confirmé INCHANGÉ (`#F9FAFB`), bandeau
 F-039 intact). Suite complète verte (518 tests), `tsc --noEmit`
 propre, `levelMeta.ts` intouché.
 
+## KEYIMMO gatekeeper de l'introduction des programmes immobiliers (ticket B-039, `apps/programs`)
+
+Voir `B-039-verrouillage-creation-programmes-admin-keyimmo.md` pour le
+détail complet. Audit (session du 2026-08-22) : `ProgramViewSet`/
+`AssetViewSet`/`LotViewSet` n'avaient aucune restriction de rôle
+(`IsAuthenticated` seul, via `OrganizationScopedMixin`) — n'importe quel
+membre d'une organisation pouvait créer/renommer/supprimer un
+`Program`/`Asset`/`Lot`. Décision explicite de l'utilisateur : **KEYIMMO
+est le gatekeeper** — `admin_keyimmo` seul crée/modifie/supprime ces
+trois objets, les autres organisations restent en lecture seule
+(`list`/`retrieve`/`hierarchy`, strictement inchangé).
+
+**Option B retenue (bascule RLS explicite), pas Option A (Membership
+forcé dans chaque organisation cible)** : même pattern que
+`create_devis`/`create_program_cost`/`create_lot_ledger` déjà en place
+dans ce projet — `organization` (et `program`/`asset` parent pour
+Asset/Lot) fournie EXPLICITEMENT par l'appelant, jamais dérivée de
+`request.organization`. C'est ce qui permet à `admin_keyimmo` d'agir sur
+une organisation où il n'a jamais eu de `Membership` réel (capacité
+transverse, voir `IsAdminKeyimmo`) — prouvé par test dédié qui vérifie
+`Membership.objects.filter(...).exists()` reste `False` du début à la
+fin du scénario.
+
+**`create`/`update`/`partial_update`/`destroy` réécrits entièrement sur
+les trois `ModelViewSet`** (`get_permissions` différencie lecture/
+écriture par action) : `perform_create`/`get_object` hérités
+d'`OrganizationScopedMixin` ne convenaient plus pour l'écriture admin —
+c'est précisément leur dépendance à `request.organization` (résolu
+depuis le `Membership` de l'APPELANT) qui aurait cassé l'Option B.
+`update`/`destroy` exigent désormais `organization_id` en query param
+(même convention que `ProgramCostCurrentView`/`HistoryView`) : sans lui,
+400 explicite — jamais une tentative de déduction depuis `pk` seul,
+qui échouerait silencieusement sous la mauvaise policy RLS.
+
+**Piège RLS rencontré à plusieurs reprises en écrivant les tests**
+(même famille que le piège déjà documenté au ticket 022/B-033,
+`TestProgramCostImmutability`) : chaque service `create_program`/
+`update_program`/etc. restaure `organization_id=admin_organization_id`
+dans son `finally` — une relecture ORM directe juste après un appel
+admin, sans re-basculer `set_rls_context(organization_id=...)`
+explicitement, échoue silencieusement (queryset vide, jamais une
+exception). Touché trois fois : deux tests `apps/programs/tests.py`,
+et surtout `test_vertical_slice_mvp1.py` (scénario bout-en-bout à la
+RACINE du repo, hors `apps/*`, non repéré par l'audit initial des
+appelants de `_create_program`/`_create_asset`/`_create_lot` — leçon
+retenue, un futur audit de blast radius doit aussi chercher les
+fichiers de test hors `apps/`).
+
+**Migration des fixtures de test** : 37 appels aux helpers
+`_create_program`/`_create_asset`/`_create_lot` (`apps/programs/tests.py`)
+adaptés à la nouvelle signature `(admin_client, organization_id, ...)`,
+aucun supprimé. `_setup_sponsor_program_with_lots` (utilisé par la
+quinzaine de tests `ProgramCost`/`LotRepartition`) corrigé une seule
+fois — bénéfice répercuté sans toucher au corps de ces tests.
+`test_vertical_slice_mvp1.py` : l'admin `admin_keyimmo`, auparavant
+enregistré à l'étape 4 (affectation d'inspecteur) seulement, l'est
+désormais dès l'étape 1 pour créer la hiérarchie Program → Asset → Lot,
+puis réutilisé tel quel à l'étape 4 — pas de second enregistrement.
+
+**3 tests dédiés nouveaux** (`TestProgramAssetLotAdminGatekeeping`) :
+un membre ordinaire ne peut créer/modifier/supprimer AUCUN
+`Program`/`Asset`/`Lot` par AUCUNE voie (9 tentatives couvertes, create
++ update + destroy × 3 objets) ; `admin_keyimmo` crée, modifie ET
+supprime les trois objets pour une organisation où il n'a jamais eu de
+`Membership` ; `organization_id` omis sur `update`/`destroy` → 400
+explicite. Un test confirme en plus que la lecture reste inchangée pour
+un membre ordinaire.
+
+**Hors scope de ce ticket** (décision 3, assumée) : aucun écran de
+création frontend — le gatekeeping reste un verrou API pur pour
+l'instant ; un écran de création admin (probablement `apps/web`) sera
+un ticket frontend séparé.
+
+Suite `apps/programs` : 39 tests (3 nouveaux), tous verts. Suite
+complète backend : 367 tests, tous verts (aucune régression, y compris
+sur `test_vertical_slice_mvp1.py` une fois corrigé).
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

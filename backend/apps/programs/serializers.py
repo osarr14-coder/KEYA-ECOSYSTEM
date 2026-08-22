@@ -10,6 +10,18 @@ class ProgramSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
+class ProgramAdminCreateSerializer(serializers.Serializer):
+    """Entrée de `POST /api/programs/` réservée à `admin_keyimmo` (ticket
+    B-039) — `organization` est l'organisation CIBLE (celle du programme),
+    même principe que `ProgramCostCreateSerializer` : ne peut pas être
+    dérivée après coup, `admin_keyimmo` n'étant pas forcément membre de
+    cette organisation.
+    """
+
+    organization = serializers.UUIDField()
+    name = serializers.CharField()
+
+
 class AssetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Asset
@@ -32,6 +44,18 @@ class AssetSerializer(serializers.ModelSerializer):
         return getattr(request, 'organization', None) if request else None
 
 
+class AssetAdminCreateSerializer(serializers.Serializer):
+    """Ticket B-039 — même principe que `ProgramAdminCreateSerializer`,
+    `program` est l'id du `Program` parent (vérifié appartenir à
+    `organization` par `services.create_asset`, pas ici).
+    """
+
+    organization = serializers.UUIDField()
+    program = serializers.UUIDField()
+    name = serializers.CharField()
+    location = serializers.CharField(required=False, allow_blank=True, default='')
+
+
 class LotSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lot
@@ -39,10 +63,10 @@ class LotSerializer(serializers.ModelSerializer):
         # `assigned_organization` (ticket 009, point d'ancrage PRO minimal)
         # se pose exclusivement via `LotViewSet.assign_organization`, jamais
         # par un PATCH générique ici — un seul chemin de mutation, documenté.
-        # `surface` (ticket B-033, prérequis de `ProgramCost.
-        # prorata_surface`) est, lui, écrit via ce PATCH générique existant
-        # — pas de nouvel endpoint dédié, `LotViewSet` (ModelViewSet complet,
-        # scopé organisation) suffit déjà, même discipline que `name`.
+        # Sert désormais UNIQUEMENT à la lecture (ticket B-039 : `name`/
+        # `surface` en écriture passent par `LotAdminCreateSerializer` et
+        # `LotViewSet.update`, réservés à `admin_keyimmo` — ce serializer-ci
+        # n'est plus utilisé en écriture générique).
         read_only_fields = ['id', 'assigned_organization', 'created_at']
 
     def __init__(self, *args, **kwargs):
@@ -54,6 +78,18 @@ class LotSerializer(serializers.ModelSerializer):
     def _active_organization(self):
         request = self.context.get('request')
         return getattr(request, 'organization', None) if request else None
+
+
+class LotAdminCreateSerializer(serializers.Serializer):
+    """Ticket B-039 — même principe que `AssetAdminCreateSerializer`,
+    `asset` est l'id de l'`Asset` parent (vérifié appartenir à
+    `organization` par `services.create_lot`, pas ici).
+    """
+
+    organization = serializers.UUIDField()
+    asset = serializers.UUIDField()
+    name = serializers.CharField()
+    surface = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True, default=None)
 
 
 class MilestoneSerializer(serializers.ModelSerializer):
