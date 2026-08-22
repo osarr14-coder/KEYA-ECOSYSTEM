@@ -3638,6 +3638,17 @@ métier elle-même), organisation `Demo Claude Preview`
 - Comptes : `admin.keyimmo@example.test`, `constructeur@example.test`,
   `inspecteur@example.test`, `demo.claude@example.test` — tous
   `DemoClaude2026!`.
+- **Extension du 2026-08-22 (session suivante, tests des processus
+  économiques — programme/jalons/prix de vente/appels de fonds/
+  commission)** : `PricingConfig canal_2_commission` 5,00 % pour le
+  Sénégal (`e94623f5-…`, manquant jusqu'ici — seul `canal_1_marge`
+  10,00 % existait). `ProgramCost` de « Résidence Baobab »
+  (`ca16b729-…`, foncier 15 000 000 / BE 3 000 000, méthode
+  `prorata_surface`). `LotLedger` du Lot 12 (`174fc7d8-…`), `prix_client`
+  (prix de vente) 65 000 000 — décomposition de marge vérifiée exacte
+  via `GET .../margin/` : 65M − 15M (foncier) − 3M (BE) − 45M
+  (construction, montant du `Devis` verrouillé) − 675K (charges BC) =
+  **1 325 000** de marge disponible.
 
 **`demo.admin@example.test`** — compte ORPHELIN, résidu d'une première
 tentative de création manuelle (avant de basculer sur le schéma
@@ -3648,6 +3659,48 @@ sans risque structurel connu, mais hors scope de nettoyer
 rétroactivement une session passée) — un futur lecteur qui le
 rencontre dans une recherche `backoffice` sait maintenant qu'il n'a
 aucune signification, juste un artefact.
+
+## Constat d'audit — « appels de fonds » et « commission KEYIMMO » : configuration seule, aucun processus déclenché (2026-08-22)
+
+**Vérifié par `grep` exhaustif du code source réel, pas par supposition**
+— avant de fabriquer des données de test pour ces deux processus, à la
+demande explicite de l'utilisateur (« tester… les appels de fonds, le
+règlement de la commission de KEYIMMO »), constat que ni l'un ni
+l'autre n'existe comme processus métier RÉELLEMENT déclenché à ce jour :
+
+- **`canal_2_commission`** (`apps.pricing.models.PricingCanal`) n'est
+  référencé NULLE PART ailleurs que dans `apps/pricing/models.py`
+  (choix d'énumération + docstrings) — aucun service, aucune vue,
+  aucun calcul n'applique ce taux à quoi que ce soit. C'est une valeur
+  de configuration PURE (consultable/créable via `PricingView`,
+  `apps/web`), jamais consommée. Aucun objet métier « règlement de
+  commission » (montant réellement dû/versé à une date donnée)
+  n'existe dans le schéma.
+- **`LegalPaymentTierTemplate`/`LegalPaymentTierStep`** (paliers légaux
+  de paiement, ce qu'on appelle usuellement « appels de fonds ») EST
+  un vrai template versionné, activable, avec ses paliers cumulés
+  (Sénégal v1, actif : réservation 35 % / fondations 70 % / hors eau
+  95 % / livraison 100 %, voir `LegalPaymentTiersView`). Mais c'est
+  une structure de RÉFÉRENCE par pays, jamais liée par FK à un `Lot`,
+  un client, ou un montant réellement appelé — aucun endpoint ne crée
+  un « appel de fonds » concret (palier X déclenché sur le lot Y, tel
+  montant, telle date). `apps/programs/models.py`/
+  `apps/procurement/models.py` ne font que le CITER en docstring
+  (« structures indépendantes »), aucun lien de code réel.
+
+**Ce qui EST réellement testable et vérifié** (voir extension du
+2026-08-22 ci-dessus) : jalons paramétrés et instanciés automatiquement
+par lot (`MilestoneTemplate`, 8 jalons sur Lot 12, confirmé via l'API
+BUILD), prix de vente via `LotLedger.prix_client`, taux de marge ET de
+commission KEYIMMO configurables et lisibles (`PricingConfig`, les deux
+canaux), décomposition complète de la marge d'un lot
+(`GET .../margin/`).
+
+**Comment appliquer** : si un futur ticket demande de tester ou
+d'implémenter un « appel de fonds réel » ou un « règlement de
+commission », il s'agit d'une FONCTIONNALITÉ NOUVELLE (modèle de
+données + service + endpoint), pas d'un scénario de test sur
+l'existant — à cadrer comme tel (ticket dédié, jamais improvisé).
 
 ## Discipline de vérification — un document de ticket précède toujours l'implémentation (incident F-040)
 
