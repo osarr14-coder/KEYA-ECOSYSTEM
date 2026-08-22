@@ -1,5 +1,5 @@
 import {
-  AlertBanner, ApiErrorBanner, Button, ProgressBar, StatusBadge, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, ProgressBar, StatusBadge, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -66,15 +66,14 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
         <Button type="button" variant="secondary" onClick={state.refetch}>Actualiser</Button>
       </header>
 
-      <div aria-label="Progression" data-testid="progress">
+      <Card aria-label="Progression" data-testid="progress" title="Progression" icon="building" tone="accent">
         <ProgressBar percentage={overview.progress_percentage} width="200px" />
         {/* Le pourcentage affiché est EXACTEMENT `progress_percentage` reçu
             de l'API — aucune opération arithmétique n'est faite ici. */}
-        <p style={{ marginBottom: 0 }}>{overview.progress_percentage}% d'avancement</p>
-      </div>
+        <p style={{ marginBottom: 0, marginTop: '8px' }}>{overview.progress_percentage}% d'avancement</p>
+      </Card>
 
-      <div aria-label="Dernier événement notable">
-        <h2 style={{ marginBottom: '8px' }}>Dernier événement</h2>
+      <Card aria-label="Dernier événement notable" title="Dernier événement" icon="check-circle">
         {overview.latest_notable_event ? (
           <StatusBadge
             level={overview.latest_notable_event.level}
@@ -83,7 +82,7 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
         ) : (
           <p>Aucun événement pour le moment.</p>
         )}
-      </div>
+      </Card>
 
       {overview.open_reserve && (
         <div data-testid="open-reserve">

@@ -1,0 +1,138 @@
+# Ticket F-045 — Enrichissement visuel (icônes + regroupement en cartes)
+
+## Statut
+
+**Phase 1 (HOME) implémentée, testée, vérifiée en navigateur réel.**
+Phases 2-4 (BUILD, CONTROL PWA, back-office) planifiées ci-dessous,
+document validé par l'utilisateur avant implémentation — discipline
+posée par la règle CLAUDE.md « un document de ticket précède toujours
+l'implémentation » (incident F-040).
+
+## Origine
+
+Retour utilisateur direct pendant une démonstration navigateur en
+direct (comptes de démo, données réelles créées via l'API, voir
+mémoire de session) : le design, bien qu'accessible et cohérent
+(tickets 023/024/F-038…), manque de repères visuels sur toutes les
+apps, y compris les écrans « denses » pro — chaque section s'enchaînait
+en texte brut (`<h2>` + contenu) sur fond blanc, sans regroupement ni
+icône. Portée demandée explicitement : **toute la plateforme** (HOME +
+BUILD + CONTROL PWA + back-office), pas seulement HOME.
+
+**Écart de processus reconnu** : la phase 1 (HOME) a été implémentée
+directement après une confirmation en prose, avant la rédaction de ce
+document — répétition de l'anti-pattern F-040. Corrigé pour les phases
+suivantes : ce document est rédigé et validé AVANT tout nouveau
+fichier touché.
+
+## Décisions de conception
+
+**A. Nouveau composant `Icon`** (`packages/design-system/src/components/Icon/`)
+— tracés SVG dessinés à la main (`paths.ts`), jamais une dépendance npm
+(`@phosphor-icons/react` envisagée puis écartée : casserait la
+discipline « 100% inline React » du projet, disproportionné pour ~15
+tracés). Grille 24x24, trait seul (`stroke="currentColor"`,
+`strokeWidth={1.75}`, `fill="none"`), décoratif par défaut
+(`aria-hidden`) sauf `title` fourni (`role="img"` + `<title>`). 15
+icônes : `home`, `building`, `clipboard-check`, `file-text`, `wallet`,
+`shield-check`, `bell`, `search`, `chevron-left`, `chevron-right`,
+`alert-triangle`, `check-circle`, `users`, `camera`, `scale`.
+
+**B. Nouveau composant `Card`** (`packages/design-system/src/components/Card/`)
+— conteneur de section (bordure `semanticColors.neutral.border`, fond
+`semanticColors.neutral.surface`, `border-radius: 10px`, icône + `<h2>`
+optionnels). **Distinct d'`AlertBanner`** : `AlertBanner` signale un
+problème à traiter (`role="alert"`, fond ambre/rouge) ; `Card` regroupe
+une section de contenu neutre — jamais utilisé pour une alerte, jamais
+l'inverse. `tone="accent"` colore uniquement l'icône (jamais le fond
+entier, pour ne jamais se confondre avec `AlertBanner`).
+
+**C. `AppShell`/`TabBar` gagnent un prop `icon` optionnel**
+(`AppModule.icon` / `TabBarTab.icon`) — rétrocompatible : un module/onglet
+sans `icon` retombe sur le comportement existant (initiale du libellé en
+mode replié pour `AppShell`, aucune icône pour `TabBar`). Remplace aussi
+l'emoji 🔔 (Task Inbox) par `Icon name="bell"` — seul emoji du projet,
+violait la règle « jamais un emoji comme icône » déjà appliquée
+partout ailleurs.
+
+**D. Respect strict de la doctrine 17.3 (densité/vitesse de scan pour
+BUILD/CONTROL/back-office, identité de marque réservée à HOME)** —
+`Card` (`tone="accent"`) ne réutilise que `semanticColors.progress.fill`
+(token neutre déjà existant, ticket 023), **jamais `brandColors`**, qui
+reste consommé UNIQUEMENT par `apps/home` (gardé par
+`brandGovernance.test.ts`, non modifié par ce ticket — aucune nouvelle
+consommation de `brandColors` hors HOME n'est introduite). `Icon`/`Card`
+eux-mêmes sont neutres de marque : leur usage sur BUILD/CONTROL/back-office
+enrichit la structure (regroupement, repères visuels), jamais la
+palette. `levelMeta.ts`/`TrustLevel` intouchés.
+
+## Phase 1 — HOME (implémentée)
+
+- `apps/home/src/App.tsx` : icône par module (`home`/`building`/
+  `clipboard-check`/`wallet`/`shield-check`) et par onglet (`home`/
+  `file-text`/`clipboard-check`).
+- `apps/home/src/views/OverviewView.tsx` : sections « Progression »
+  (icône `building`, `tone="accent"`) et « Dernier événement » (icône
+  `check-circle`) migrées en `Card`, remplaçant leur `<h2>` manuel.
+- `apps/home/src/views/PriorityTaskSummary.tsx` : section « Prochaine
+  action » migrée en `Card` (icône `clipboard-check`), `aria-label`
+  préservé via le passthrough `Card`.
+- `apps/build/src/App.tsx`, `apps/web/src/App.tsx` : icônes de modules/
+  onglets ajoutées en même temps que HOME (composants partagés
+  `AppShell`/`TabBar`) — **portée limitée à la navigation partagée**,
+  le contenu de ces deux apps (Phases 2/4) reste à faire.
+
+**Vérifié en navigateur réel** (backend + 4 apps démarrés, compte
+`demo.claude@example.test`) : capture d'écran HOME confirmant icônes de
+nav, cloche sans emoji, chevron de repli, et les 3 sections en `Card`
+délimitées visuellement. Suite complète (design-system 112, home 58)
+verte, `tsc --noEmit` propre.
+
+## Phase 2 — BUILD (proposé, pas encore implémenté)
+
+- `apps/build/src/views/ExceptionsView.tsx` : chaque section (Lots en
+  retard, Contrôles à planifier, Capacités manquantes, Réserves
+  ouvertes, Documents manquants) migrée en `Card` avec icône dédiée
+  (`alert-triangle` / `clipboard-check` / `users` / `alert-triangle` /
+  `file-text`) — le contenu « Réserves ouvertes » garde son
+  `AlertBanner` interne inchangé (Card encadre, ne remplace pas
+  l'alerte).
+- `apps/build/src/views/AllLotsView.tsx` : tableau encadré en `Card`
+  (icône `building`).
+
+## Phase 3 — CONTROL PWA (proposé, pas encore implémenté)
+
+Cas particulier déjà signalé par F-038/F-044 : pas d'`AppShell` (layout
+tactile dédié). Icônes ciblées sur `MissionsListView.tsx` (icône
+`building` par carte de mission) et `InspectionFormView.tsx` (icônes de
+section) — tailles/`min-height` **revalidées pour l'usage tactile**,
+jamais une migration mécanique copier-coller des autres apps.
+
+## Phase 4 — Back-office, apps/web (proposé, pas encore implémenté)
+
+Sections de `BackofficeView.tsx` / `DevisView.tsx` / `PricingView.tsx` /
+`LegalPaymentTiersView.tsx` / `LotLedgerPanel.tsx` migrées en `Card`
+(icônes : `search`/`file-text`/`wallet`/`scale` selon la section,
+cohérent avec les icônes déjà posées sur les onglets `TabBar` de ces
+mêmes écrans, Phase 1).
+
+## Hors scope
+
+- Aucune couleur de marque (`brandColors`) hors HOME.
+- Aucune dépendance npm d'icônes.
+- Aucun changement de comportement métier — présentation uniquement,
+  mêmes `data-testid`/`aria-label`/logique partout.
+- Aucune modification de `levelMeta.ts`/`TrustLevel`.
+
+## Critères d'acceptation (chaque phase)
+
+- Zéro régression : suite de tests du/des workspace(s) touché(s)
+  verte avant/après, comportement observable inchangé.
+- `tsc --noEmit` propre sur chaque app touchée.
+- Vérification visuelle réelle (capture d'écran contre le backend/les
+  4 apps démarrés) par écran modifié, pas seulement `get_page_text`/
+  `read_page`.
+- `brandGovernance.test.ts` (design-system) toujours vert — aucune
+  nouvelle fuite de `brandColors` hors HOME.
+- Fichiers séquencés un par un avec vérification à chaque étape,
+  jamais un commit massif sans point de contrôle intermédiaire.

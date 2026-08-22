@@ -4,6 +4,9 @@ export type { AlertBannerProps } from './components/AlertBanner/AlertBanner';
 export { ApiErrorBanner } from './components/ApiErrorBanner/ApiErrorBanner';
 export type { ApiErrorBannerProps } from './components/ApiErrorBanner/ApiErrorBanner';
 
+export { Card } from './components/Card/Card';
+export type { CardProps } from './components/Card/Card';
+
 export { AppShell } from './components/AppShell/AppShell';
 export type {
   AppModule,
@@ -17,6 +20,10 @@ export { Button } from './components/Button/Button';
 export type { ButtonProps } from './components/Button/Button';
 
 export { GlobalStyles } from './components/GlobalStyles/GlobalStyles';
+
+export { Icon } from './components/Icon/Icon';
+export type { IconProps } from './components/Icon/Icon';
+export type { IconName } from './components/Icon/paths';
 
 export { Input } from './components/Input/Input';
 export type { InputProps } from './components/Input/Input';

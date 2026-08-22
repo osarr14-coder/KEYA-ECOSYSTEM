@@ -1,4 +1,6 @@
-import { ApiErrorBanner, Button, brandColors } from '@keya/design-system';
+import {
+  ApiErrorBanner, Button, Card, brandColors,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { useApiResource } from '../api/useApiResource';
@@ -47,8 +49,12 @@ export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: P
   const priorityTask = state.data[0] ?? null;
 
   return (
-    <section aria-label="Prochaine action" data-testid="priority-task-summary">
-      <h2 style={{ marginBottom: '8px' }}>Prochaine action</h2>
+    <Card
+      aria-label="Prochaine action"
+      data-testid="priority-task-summary"
+      title="Prochaine action"
+      icon="clipboard-check"
+    >
       {priorityTask ? (
         <div>
           <strong>{priorityTask.label}</strong>
@@ -74,6 +80,6 @@ export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: P
       ) : (
         <p>Rien à faire pour l'instant.</p>
       )}
-    </section>
+    </Card>
   );
 }

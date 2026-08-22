@@ -3715,6 +3715,33 @@ Suite complète verte après migration : design-system 103, home 58,
 build 77, web 180, control-pwa 73 (491 tests), zéro régression ;
 `tsc --noEmit` propre sur les 4 apps touchées.
 
+## Enrichissement visuel — icônes + cartes (ticket F-045)
+
+Voir `F-045-enrichissement-visuel-icones-cartes.md` pour le détail
+complet, y compris la phase en cours. Retour utilisateur direct pendant
+une démonstration navigateur : le design manquait de repères visuels
+sur toutes les apps (texte brut enchaîné, aucun regroupement).
+
+**Deux nouveaux composants `packages/design-system`** : `Icon`
+(`components/Icon/`, tracés SVG maison en grille 24x24, `stroke`
+seul — jamais une dépendance npm, ni un remplissage) et `Card`
+(`components/Card/`, conteneur de section bordure+fond+icône+titre,
+**distinct d'`AlertBanner`** — jamais pour une alerte). `AppShell`/
+`TabBar` gagnent un prop `icon` optionnel, rétrocompatible ; l'emoji
+🔔 (seul du projet) remplacé par `Icon name="bell"`.
+
+**Doctrine 17.3 respectée explicitement** : `Card` (`tone="accent"`)
+ne réutilise que `semanticColors.progress.fill` (déjà existant),
+jamais `brandColors` — qui reste réservé à `apps/home` seul, gardé par
+`brandGovernance.test.ts`, non modifié par ce ticket. `levelMeta.ts`/
+`TrustLevel` intouchés.
+
+**Écart de processus reconnu et corrigé en cours de route** : la
+phase 1 (HOME) a été implémentée après une confirmation en prose,
+avant la rédaction du document de ticket — répétition de l'anti-
+pattern F-040 (voir section dédiée ci-dessus). Le document a ensuite
+été rédigé et validé explicitement avant toute phase suivante.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

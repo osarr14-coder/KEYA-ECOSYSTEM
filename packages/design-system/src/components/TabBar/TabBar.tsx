@@ -1,4 +1,5 @@
 import { semanticColors } from '../../tokens/colors';
+import { Icon, type IconName } from '../Icon/Icon';
 
 /**
  * Ticket 023 (polish visuel) — extrait des barres d'onglets dupliquées et
@@ -13,6 +14,8 @@ import { semanticColors } from '../../tokens/colors';
 export interface TabBarTab {
   id: string;
   label: string;
+  /** Ticket F-045 — optionnel, jamais à la place du libellé (voir AppShell). */
+  icon?: IconName;
 }
 
 export interface TabBarProps {
@@ -42,6 +45,9 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
             aria-current={isActive ? 'page' : undefined}
             onClick={() => onChange(tab.id)}
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
               padding: '8px 16px',
               border: 'none',
               borderBottom: isActive ? `2px solid ${semanticColors.neutral.text}` : '2px solid transparent',
@@ -51,6 +57,7 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
               color: isActive ? semanticColors.neutral.text : semanticColors.neutral.textMuted,
             }}
           >
+            {tab.icon && <Icon name={tab.icon} size={16} />}
             {tab.label}
           </button>
         );

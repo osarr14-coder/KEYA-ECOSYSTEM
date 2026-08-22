@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, Button, Input, TabBar, useOnlineStatus, type AppModule,
+  AlertBanner, ApiErrorBanner, AppShell, Button, Input, TabBar, useOnlineStatus, type AppModule, type IconName,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -31,19 +31,21 @@ type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers';
  * de la garde déjà faite dans `AuthenticatedApp`, même discipline que RLS +
  * filtre applicatif ailleurs dans ce projet (CLAUDE.md).
  */
-const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string }[] = [
-  { id: 'backoffice', label: 'Back-office', path: '/' },
-  { id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis' },
-  { id: 'pricing', label: 'Tarifs', path: '/tarifs' },
-  { id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux' },
+const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string; icon: IconName }[] = [
+  { id: 'backoffice', label: 'Back-office', path: '/', icon: 'shield-check' },
+  { id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text' },
+  { id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet' },
+  { id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale' },
 ];
 
-const MODULES: AppModule[] = TAB_DEFINITIONS.map(({ id, label, path }) => ({
-  id, label, href: path, requiredRoles: ['admin_keyimmo'],
+const MODULES: AppModule[] = TAB_DEFINITIONS.map(({
+  id, label, path, icon,
+}) => ({
+  id, label, href: path, requiredRoles: ['admin_keyimmo'], icon,
 }));
 
-const TABS: { id: AuthenticatedTabId; label: string }[] = TAB_DEFINITIONS.map(
-  ({ id, label }) => ({ id, label }),
+const TABS: { id: AuthenticatedTabId; label: string; icon: IconName }[] = TAB_DEFINITIONS.map(
+  ({ id, label, icon }) => ({ id, label, icon }),
 );
 
 const TAB_ROUTES: TabRoute<AuthenticatedTabId>[] = TAB_DEFINITIONS.map(

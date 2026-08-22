@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react';
 
 import { brandColors, semanticColors } from '../../tokens/colors';
 import { type Density, densityTokens } from '../../tokens/density';
+import { Icon, type IconName } from '../Icon/Icon';
 
 /**
  * Un module de la sidebar. `requiredRoles` est le mécanisme générique de
@@ -16,6 +17,12 @@ export interface AppModule {
   label: string;
   href: string;
   requiredRoles?: string[];
+  /** Ticket F-045 — repère visuel en plus du libellé (jamais à sa place :
+   * un module sans `icon` retombe sur l'initiale du libellé, comportement
+   * strictement inchangé). En mode replié, l'icône REMPLACE l'initiale
+   * quand elle est fournie — plus lisible qu'une lettre seule à cette
+   * densité. */
+  icon?: IconName;
 }
 
 export interface Breadcrumb {
@@ -115,10 +122,16 @@ export function AppShell({
           aria-expanded={!collapsed}
           aria-label={collapsed ? 'Déplier la navigation' : 'Replier la navigation'}
           style={{
-            width: '100%', padding: tokens.paddingBlock, border: 'none', background: 'transparent',
+            width: '100%',
+            padding: tokens.paddingBlock,
+            border: 'none',
+            background: 'transparent',
+            display: 'flex',
+            justifyContent: 'center',
+            color: semanticColors.neutral.textMuted,
           }}
         >
-          {collapsed ? '»' : '«'}
+          <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
         </button>
         <nav>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -130,7 +143,10 @@ export function AppShell({
                     href={module.href}
                     aria-current={isActive ? 'page' : undefined}
                     style={{
-                      display: 'block',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: collapsed ? 'center' : 'flex-start',
+                      gap: tokens.gap,
                       padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
                       fontSize: tokens.fontSize,
                       // Ticket 023 (polish visuel) — `aria-current` était déjà
@@ -146,9 +162,12 @@ export function AppShell({
                         : '3px solid transparent',
                       fontWeight: isActive ? 600 : 400,
                       background: isActive ? semanticColors.neutral.background : 'transparent',
+                      color: isActive ? semanticColors.neutral.text : semanticColors.neutral.textMuted,
                     }}
                   >
-                    {collapsed ? module.label.slice(0, 1) : module.label}
+                    {module.icon && <Icon name={module.icon} size={18} />}
+                    {!collapsed && module.label}
+                    {collapsed && !module.icon && module.label.slice(0, 1)}
                   </a>
                 </li>
               );
@@ -220,8 +239,17 @@ export function AppShell({
           </select>
         )}
 
-        <a href="/tasks" aria-label={`Task Inbox — ${taskInboxCount} en attente`} style={{ marginLeft: 'auto' }}>
-          🔔 <span data-testid="task-inbox-count">{taskInboxCount}</span>
+        <a
+          href="/tasks"
+          aria-label={`Task Inbox — ${taskInboxCount} en attente`}
+          style={{
+            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px',
+          }}
+        >
+          {/* Ticket F-045 — remplace l'emoji 🔔 (seul emoji du projet, jamais
+              une icône) par l'icône trait maison, même famille que le reste. */}
+          <Icon name="bell" size={18} />
+          <span data-testid="task-inbox-count">{taskInboxCount}</span>
         </a>
 
         {user && (

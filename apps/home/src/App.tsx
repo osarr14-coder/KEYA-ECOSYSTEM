@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, AppShell, Select, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
-  type AppModule,
+  type AppModule, type IconName,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -38,20 +38,28 @@ function buildModules(): AppModule[] {
   );
 
   return [
-    { id: 'home', label: 'Accueil', href: '/' },
-    { id: 'build', label: 'BUILD', href: crossAppHref(APP_ORIGINS.build), requiredRoles: ['constructeur'] },
-    { id: 'control', label: 'CONTROL', href: crossAppHref(APP_ORIGINS.control), requiredRoles: ['inspecteur'] },
-    { id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'] },
-    { id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'] },
+    { id: 'home', label: 'Accueil', href: '/', icon: 'home' },
+    {
+      id: 'build', label: 'BUILD', href: crossAppHref(APP_ORIGINS.build), requiredRoles: ['constructeur'], icon: 'building',
+    },
+    {
+      id: 'control', label: 'CONTROL', href: crossAppHref(APP_ORIGINS.control), requiredRoles: ['inspecteur'], icon: 'clipboard-check',
+    },
+    {
+      id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'], icon: 'wallet',
+    },
+    {
+      id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'], icon: 'shield-check',
+    },
   ];
 }
 
 type ViewId = 'overview' | 'evidence' | 'actions';
 
-const TABS: { id: ViewId; label: string }[] = [
-  { id: 'overview', label: "Vue d'ensemble" },
-  { id: 'evidence', label: 'Avancement & preuves' },
-  { id: 'actions', label: 'Mes actions' },
+const TABS: { id: ViewId; label: string; icon: IconName }[] = [
+  { id: 'overview', label: "Vue d'ensemble", icon: 'home' },
+  { id: 'evidence', label: 'Avancement & preuves', icon: 'file-text' },
+  { id: 'actions', label: 'Mes actions', icon: 'clipboard-check' },
 ];
 
 const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';

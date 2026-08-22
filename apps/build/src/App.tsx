@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, AppShell, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
-  type AppModule,
+  type AppModule, type IconName,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -36,18 +36,24 @@ function buildModules(): AppModule[] {
     : APP_ORIGINS.home;
 
   return [
-    { id: 'home', label: 'Accueil', href: homeHref },
-    { id: 'build', label: 'BUILD', href: '/build', requiredRoles: ['constructeur', 'inspecteur'] },
-    { id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'] },
-    { id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'] },
+    { id: 'home', label: 'Accueil', href: homeHref, icon: 'home' },
+    {
+      id: 'build', label: 'BUILD', href: '/build', requiredRoles: ['constructeur', 'inspecteur'], icon: 'building',
+    },
+    {
+      id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'], icon: 'wallet',
+    },
+    {
+      id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'], icon: 'shield-check',
+    },
   ];
 }
 
 type ViewId = 'exceptions' | 'all_lots';
 
-const TABS: { id: ViewId; label: string }[] = [
-  { id: 'exceptions', label: 'Exceptions' },
-  { id: 'all_lots', label: 'Tous les lots' },
+const TABS: { id: ViewId; label: string; icon: IconName }[] = [
+  { id: 'exceptions', label: 'Exceptions', icon: 'alert-triangle' },
+  { id: 'all_lots', label: 'Tous les lots', icon: 'building' },
 ];
 
 const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';
