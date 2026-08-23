@@ -6,6 +6,9 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import User
 from apps.inspections import services as inspections_services
+from apps.support import services as support_services
+from apps.support.models import Litige
+from apps.support.serializers import LitigeResolveSerializer, LitigeSerializer
 
 from . import services
 from .permissions import IsAdminKeyimmo
@@ -104,3 +107,52 @@ class CreateMissionView(APIView):
             raise ValidationError(getattr(exc, 'messages', [str(exc)]))
 
         return Response(MissionAdminSerializer(mission).data, status=201)
+
+
+class LitigeListView(APIView):
+    """`GET /api/backoffice/litiges/?status=ouvert` — ticket B-041 :
+    transverse à TOUTES les organisations, y compris celles dont
+    `admin_keyimmo` n'est membre d'aucune ligne `Membership` — c'est la
+    policy RLS `support_litige_select` (apps/support/migrations/0002_rls.py)
+    qui accorde cette visibilité, pas un filtre applicatif ici. `status`
+    absent : tous les litiges (pas seulement ouverts), pour permettre de
+    retrouver un litige déjà clôturé.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        status_filter = request.query_params.get('status')
+        litiges = Litige.objects.select_related('lot', 'opened_by', 'resolved_by')
+        if status_filter:
+            litiges = litiges.filter(status=status_filter)
+        return Response(LitigeSerializer(litiges, many=True).data)
+
+
+class LitigeResolveView(APIView):
+    """`POST /api/backoffice/litiges/{id}/resolve/` — ticket B-041.
+    `{status: 'resolu'|'rejete', resolution_note}`. N'écrit jamais de
+    `TrustEvent` — voir `apps.support.services.resolve_litige` et le test de
+    garde `test_backoffice_module_never_imports_or_references_the_trust_module`.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def post(self, request, litige_id):
+        litige = Litige.objects.filter(id=litige_id).first()
+        if litige is None:
+            raise NotFound('Litige introuvable.')
+
+        serializer = LitigeResolveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            litige = support_services.resolve_litige(
+                litige=litige, resolved_by=request.user,
+                status=data['status'], resolution_note=data['resolution_note'],
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'messages', [str(exc)]))
+
+        return Response(LitigeSerializer(litige).data)

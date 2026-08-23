@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'apps.control',
     'apps.messaging',
     'apps.backoffice',
+    'apps.support',
     'apps.procurement',
     'apps.pricing',
     'apps.core',

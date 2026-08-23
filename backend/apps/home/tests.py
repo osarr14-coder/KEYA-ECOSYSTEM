@@ -450,3 +450,73 @@ class TestEvidenceFeed:
 
         assert response.status_code == 200
         assert response.data == []
+
+
+@pytest.mark.django_db
+class TestClientCanOpenALitige:
+    """Ticket B-041 — première action d'écriture jamais exposée depuis HOME
+    (jusqu'ici strictement lecture seule, ticket 008), brèche délibérée et
+    étroite : seulement « ouvrir un litige sur MON lot ».
+    """
+
+    def test_client_opens_a_litige_on_their_own_lot(self):
+        _constructeur_client, organization, _constructeur, _asset, lot = _setup_constructeur_lot(
+            'litige-open-constructeur@example.com', 'Org Litige Open',
+        )
+        client, client_user = _assign_client_to_lot('litige-open-client@example.com', organization, lot)
+
+        response = client.post(
+            reverse('my-lot-litiges', args=[lot.id]),
+            {'description': "Le chantier n'avance plus depuis 3 semaines, aucune nouvelle du constructeur."},
+            format='json',
+        )
+
+        assert response.status_code == 201
+        assert response.data['status'] == 'ouvert'
+        assert str(response.data['lot']) == str(lot.id)
+        assert response.data['opened_by_email'] == client_user.email
+        assert response.data['resolved_at'] is None
+
+    def test_client_cannot_open_a_litige_on_a_lot_not_assigned_to_them(self):
+        _constructeur_client, organization, _constructeur, _asset, lot = _setup_constructeur_lot(
+            'litige-forbidden-constructeur@example.com', 'Org Litige Forbidden',
+        )
+        # Un second client de la MÊME organisation, mais SANS LotClient sur ce lot.
+        other_client_user = User.objects.create_user(email='litige-other-client@example.com', password=PASSWORD)
+        role, _ = Role.objects.get_or_create(code='client', defaults={'label': 'Client'})
+        set_rls_context(user_id=other_client_user.id, organization_id=organization.id)
+        Membership.objects.create(user=other_client_user, organization=organization, role=role)
+        other_client = APIClient()
+        token = other_client.post(
+            reverse('login'), {'email': 'litige-other-client@example.com', 'password': PASSWORD}, format='json',
+        ).data['access']
+        other_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        response = other_client.post(
+            reverse('my-lot-litiges', args=[lot.id]), {'description': 'Tentative illégitime.'}, format='json',
+        )
+
+        assert response.status_code == 404
+
+    def test_empty_description_is_rejected(self):
+        _constructeur_client, organization, _constructeur, _asset, lot = _setup_constructeur_lot(
+            'litige-empty-constructeur@example.com', 'Org Litige Empty',
+        )
+        client, _client_user = _assign_client_to_lot('litige-empty-client@example.com', organization, lot)
+
+        response = client.post(reverse('my-lot-litiges', args=[lot.id]), {'description': '   '}, format='json')
+
+        assert response.status_code == 400
+
+    def test_client_lists_litiges_they_opened_on_their_lot(self):
+        _constructeur_client, organization, _constructeur, _asset, lot = _setup_constructeur_lot(
+            'litige-list-constructeur@example.com', 'Org Litige List',
+        )
+        client, _client_user = _assign_client_to_lot('litige-list-client@example.com', organization, lot)
+        client.post(reverse('my-lot-litiges', args=[lot.id]), {'description': 'Premier litige.'}, format='json')
+
+        response = client.get(reverse('my-lot-litiges', args=[lot.id]))
+
+        assert response.status_code == 200
+        assert len(response.data) == 1
+        assert response.data[0]['description'] == 'Premier litige.'

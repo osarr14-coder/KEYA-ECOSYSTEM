@@ -316,19 +316,20 @@ class TestBackofficeNeverExposesATrustEventShortcut:
     """
 
     def test_backoffice_urls_expose_exactly_the_documented_actions(self):
-        """4 routes désormais (ticket 012 a ajouté `backoffice-mission-create`,
-        consciemment — voir apps/backoffice/urls.py) : ce test a fait
-        exactement son travail en forçant cette mise à jour explicite plutôt
-        que de laisser une route de plus se glisser sans qu'on la remarque.
-        `CreateMissionView` délègue toute la validation métier (règle
-        d'indépendance, rôle inspecteur) à `apps.inspections.services.
-        create_mission` — aucun raccourci TrustEvent n'y est ajouté non plus.
+        """6 routes désormais (ticket B-041 a ajouté `backoffice-litige-list`
+        et `backoffice-litige-resolve`, consciemment — voir
+        apps/backoffice/urls.py) : ce test a fait exactement son travail en
+        forçant cette mise à jour explicite plutôt que de laisser une route
+        de plus se glisser sans qu'on la remarque. `LitigeResolveView`
+        délègue toute la logique de résolution à
+        `apps.support.services.resolve_litige`, qui n'écrit jamais de
+        `TrustEvent` (voir Litige, docstring, et le test suivant).
         """
         from apps.backoffice.urls import urlpatterns
         names = {pattern.name for pattern in urlpatterns}
         assert names == {
             'backoffice-user-search', 'backoffice-user-detail', 'backoffice-user-deactivate',
-            'backoffice-mission-create',
+            'backoffice-mission-create', 'backoffice-litige-list', 'backoffice-litige-resolve',
         }
 
     def test_backoffice_module_never_imports_or_references_the_trust_module(self):
@@ -354,3 +355,169 @@ class TestBackofficeNeverExposesATrustEventShortcut:
 
         source = inspect.getsource(views_module.DeactivateUserView)
         assert 'request.data' not in source
+
+
+def _open_litige_for_org(organization, lot, client_email):
+    """Ouvre un litige directement via le service (pas l'endpoint HOME,
+    déjà couvert par apps/home/tests.py) — le point testé ici est la
+    visibilité/résolution ADMIN, pas l'ouverture elle-même.
+    """
+    from apps.support import services as support_services
+
+    client_user = User.objects.create_user(email=client_email, password=PASSWORD)
+    role, _ = Role.objects.get_or_create(code='client', defaults={'label': 'Client'})
+    set_rls_context(user_id=client_user.id, organization_id=organization.id)
+    Membership.objects.create(user=client_user, organization=organization, role=role)
+    return support_services.open_litige(
+        organization=organization, lot=lot, opened_by=client_user, description='Problème signalé par le client.',
+    )
+
+
+@pytest.mark.django_db
+class TestLitigeAdminTransverseVisibility:
+    """Ticket B-041 — critère central : `admin_keyimmo` voit et résout des
+    litiges dans une organisation dont il n'est membre d'AUCUNE ligne
+    `Membership` (nouvelle branche RLS transverse, voir
+    apps/support/migrations/0002_rls.py).
+    """
+
+    def test_admin_sees_a_litige_in_an_organization_it_is_not_a_member_of(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'litige-visibility-admin@example.com', 'Org Litige Visibility Admin',
+        )
+        _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
+            'litige-visibility-constructeur@example.com', 'Org Litige Visibility Constructeur',
+        )
+        litige = _open_litige_for_org(organization, lot, 'litige-visibility-client@example.com')
+
+        response = admin_client.get(reverse('backoffice-litige-list') + '?status=ouvert')
+
+        assert response.status_code == 200
+        litige_ids = {row['id'] for row in response.data}
+        assert str(litige.id) in litige_ids
+
+    def test_non_admin_cannot_list_litiges(self):
+        constructeur_client, _organization, _c_user, _lot, _declaration = _setup_constructeur_org(
+            'litige-perm-constructeur@example.com', 'Org Litige Perm Constructeur',
+        )
+
+        response = constructeur_client.get(reverse('backoffice-litige-list'))
+        assert response.status_code == 403
+
+    def test_admin_does_not_gain_blanket_visibility_of_a_lot_without_any_litige(self):
+        """Régression réelle rencontrée en écrivant ce ticket : une première
+        version de `apps/programs/migrations/0009_lot_admin_keyimmo_select.py`
+        accordait à tort une visibilité GLOBALE de tout `Lot` à
+        `admin_keyimmo`, cassant `apps.procurement.tests.TestAdminLotSearch::
+        test_rls_context_is_restored_even_when_an_exception_interrupts_the_loop`
+        (qui suppose, conformément à B-039, qu'un admin sans bascule RLS
+        explicite ne voit pas les lots d'une autre organisation). La policy
+        corrigée ne s'applique qu'aux lots ayant AU MOINS un `Litige` — un
+        lot sans litige doit rester invisible, exactement comme avant ce
+        ticket.
+        """
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'litige-no-blanket-admin@example.com', 'Org Litige No Blanket Admin',
+        )
+        _constructeur_client, _organization, _c_user, lot, _declaration = _setup_constructeur_org(
+            'litige-no-blanket-constructeur@example.com', 'Org Litige No Blanket Constructeur',
+        )
+        # Aucun litige ouvert sur ce lot.
+
+        from apps.core.rls import set_rls_context
+        set_rls_context(user_id=_admin_user.id, organization_id=_admin_org.id)
+        assert not Lot.objects.filter(id=lot.id).exists()
+
+    def test_admin_resolves_a_litige_in_an_organization_it_is_not_a_member_of(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'litige-resolve-admin@example.com', 'Org Litige Resolve Admin',
+        )
+        _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
+            'litige-resolve-constructeur@example.com', 'Org Litige Resolve Constructeur',
+        )
+        litige = _open_litige_for_org(organization, lot, 'litige-resolve-client@example.com')
+
+        response = admin_client.post(
+            reverse('backoffice-litige-resolve', args=[litige.id]),
+            {'status': 'resolu', 'resolution_note': 'Appelé le client, malentendu clarifié.'},
+            format='json',
+        )
+
+        assert response.status_code == 200, response.data
+        assert response.data['status'] == 'resolu'
+        assert response.data['resolution_note'] == 'Appelé le client, malentendu clarifié.'
+        assert response.data['resolved_by_email'] == 'litige-resolve-admin@example.com'
+
+    def test_non_admin_cannot_resolve_a_litige(self):
+        constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
+            'litige-resolve-perm-constructeur@example.com', 'Org Litige Resolve Perm Constructeur',
+        )
+        litige = _open_litige_for_org(organization, lot, 'litige-resolve-perm-client@example.com')
+
+        response = constructeur_client.post(
+            reverse('backoffice-litige-resolve', args=[litige.id]),
+            {'status': 'resolu', 'resolution_note': 'Tentative illégitime.'},
+            format='json',
+        )
+        assert response.status_code == 403
+
+    def test_resolving_without_a_note_is_rejected(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'litige-note-admin@example.com', 'Org Litige Note Admin',
+        )
+        _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
+            'litige-note-constructeur@example.com', 'Org Litige Note Constructeur',
+        )
+        litige = _open_litige_for_org(organization, lot, 'litige-note-client@example.com')
+
+        response = admin_client.post(
+            reverse('backoffice-litige-resolve', args=[litige.id]),
+            {'status': 'resolu', 'resolution_note': '   '},
+            format='json',
+        )
+        assert response.status_code == 400
+
+    def test_resolving_an_already_closed_litige_is_rejected(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'litige-twice-admin@example.com', 'Org Litige Twice Admin',
+        )
+        _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
+            'litige-twice-constructeur@example.com', 'Org Litige Twice Constructeur',
+        )
+        litige = _open_litige_for_org(organization, lot, 'litige-twice-client@example.com')
+        admin_client.post(
+            reverse('backoffice-litige-resolve', args=[litige.id]),
+            {'status': 'resolu', 'resolution_note': 'Première résolution.'},
+            format='json',
+        )
+
+        response = admin_client.post(
+            reverse('backoffice-litige-resolve', args=[litige.id]),
+            {'status': 'rejete', 'resolution_note': 'Deuxième tentative.'},
+            format='json',
+        )
+        assert response.status_code == 400
+
+    def test_resolving_a_litige_never_writes_a_trust_event(self):
+        """Critère d'acceptation explicite (B-041) : un litige n'est pas un
+        objet Visible Trust — le résoudre ne doit produire AUCUN
+        `TrustEvent`, contrairement à une réserve (ticket 005).
+        """
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'litige-no-trust-admin@example.com', 'Org Litige No Trust Admin',
+        )
+        _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
+            'litige-no-trust-constructeur@example.com', 'Org Litige No Trust Constructeur',
+        )
+        litige = _open_litige_for_org(organization, lot, 'litige-no-trust-client@example.com')
+        set_rls_context(organization_id=organization.id)
+        count_before = TrustEvent.objects.filter(organization=organization).count()
+
+        admin_client.post(
+            reverse('backoffice-litige-resolve', args=[litige.id]),
+            {'status': 'resolu', 'resolution_note': 'Résolu, aucun impact Visible Trust.'},
+            format='json',
+        )
+
+        set_rls_context(organization_id=organization.id)
+        assert TrustEvent.objects.filter(organization=organization).count() == count_before

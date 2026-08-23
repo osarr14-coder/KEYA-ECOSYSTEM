@@ -1,8 +1,12 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import permissions
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.support import services as support_services
+from apps.support.serializers import LitigeCreateSerializer, LitigeSerializer
 
 from . import services
 from .serializers import MyLotSerializer
@@ -59,3 +63,32 @@ class LotEvidenceFeedView(_ClientLotScopedView):
     def get(self, request, lot_id):
         lot = self.get_lot_or_404(lot_id)
         return Response(services.build_lot_evidence_feed(lot))
+
+
+class LotLitigesView(_ClientLotScopedView):
+    """`GET/POST /api/me/lots/{lot_id}/litiges/` — ticket B-041 : première
+    action d'écriture jamais exposée depuis HOME (jusqu'ici strictement
+    lecture seule, ticket 008), brèche délibérée et étroite — voir
+    `B-041-litiges-support-client.md`, Décision 1. `get_lot_or_404` (même
+    garde que `LotOverviewView`/`LotEvidenceFeedView`) prouve déjà que ce
+    lot est assigné à ce client avant toute lecture ou écriture ; `Litige`
+    lui-même vit dans `apps.support`, pas un modèle propre à cette app.
+    """
+
+    def get(self, request, lot_id):
+        lot = self.get_lot_or_404(lot_id)
+        litiges = support_services.get_litiges_for_lot(lot)
+        return Response(LitigeSerializer(litiges, many=True).data)
+
+    def post(self, request, lot_id):
+        lot = self.get_lot_or_404(lot_id)
+        serializer = LitigeCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            litige = support_services.open_litige(
+                organization=lot.organization, lot=lot, opened_by=request.user,
+                description=serializer.validated_data['description'],
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'messages', [str(exc)]))
+        return Response(LitigeSerializer(litige).data, status=201)

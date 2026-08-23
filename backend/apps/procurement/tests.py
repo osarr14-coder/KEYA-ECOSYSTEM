@@ -849,10 +849,20 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             'reservecorrection-list', 'reservecorrection-detail',
             'task-list', 'task-detail', 'task-complete', 'my-tasks',
             'my-lots', 'my-lot-overview', 'my-lot-evidence',
+            # Ticket B-041 — ajout conscient : première route d'écriture
+            # jamais exposée depuis `apps/home` (jusqu'ici strictement
+            # lecture seule, ticket 008), scopée à « ouvrir/lister un
+            # litige sur MON lot » (LotClient), jamais accessible pour un
+            # lot qui n'est pas assigné au client courant.
+            'my-lot-litiges',
             'build-lots', 'build-exceptions',
             'control-mission-list', 'control-sync-document', 'control-sync-evidence', 'control-sync-inspection',
             'backoffice-user-search', 'backoffice-user-detail', 'backoffice-user-deactivate',
             'backoffice-mission-create',
+            # Ticket B-041 — ajout conscient : liste transverse (toutes
+            # organisations) et résolution des litiges, réservées à
+            # `admin_keyimmo`, jamais accessibles au rôle constructeur.
+            'backoffice-litige-list', 'backoffice-litige-resolve',
             'procurement-devis-create', 'procurement-devis-lock',
             'procurement-admin-devis-list',
             'procurement-my-candidatures', 'procurement-my-candidature-detail',

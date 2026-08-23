@@ -4244,6 +4244,69 @@ pour ce premier déploiement (Celery en mode eager, pas de stockage média
 persistant, pas de HSTS) : voir `DEPLOY_RENDER.md`, section « Limites
 connues ».
 
+## Détection de documents dupliqués (ticket B-040, `apps/evidence`)
+
+`Document.duplicate_of` (FK vers `self`, nullable) — exploite le champ
+`hash` (sha256, ticket 004) resté inutilisé jusqu'ici. Calculé une seule
+fois à la création dans `apps.evidence.services.create_document` :
+toujours le plus ancien `Document` de la même organisation portant ce
+hash, jamais un doublon intermédiaire (une chaîne de 3 uploads identiques
+pointe les 2e et 3e vers le 1er). Jamais bloquant — doctrine Visible Trust
+(ne jamais rien cacher) : le doublon est signalé, pas refusé. Comparaison
+strictement intra-organisation (deux organisations différentes peuvent
+légitimement partager un même fichier). Frontend : `apps/build`
+`ExceptionsView` (Control Tower, section « Documents manquants »,
+ticket F-052) affiche un bandeau + bouton « Continuer » quand détecté —
+`onAdded()` (rechargement de la liste d'exceptions) volontairement différé
+jusqu'au clic, sinon la ligne disparaîtrait avant que l'avertissement soit
+vu.
+
+## Circuit de résolution de litiges (ticket B-041, nouvelle app `apps/support`)
+
+Voir `B-041-litiges-support-client.md`. Première écriture jamais exposée
+depuis `apps/home` (jusqu'ici strictement lecture seule, ticket 008) —
+brèche délibérée et étroite : le client ouvre un litige sur un `Lot` qui
+lui est assigné (`LotClient`, même garde que `_ClientLotScopedView`),
+`admin_keyimmo` le résout. `Litige.status` est un champ réellement STOCKÉ
+(comme `Task`, ticket 006) — un litige n'affirme aucune confiance sur le
+lot référencé, jamais de `TrustEvent` écrit à sa résolution.
+
+**Nouveau précédent RLS : policy transverse `admin_keyimmo`.** Jusqu'ici
+toute lecture restait scopée à l'organisation active (même B-039, qui n'a
+élargi que l'ÉCRITURE via un champ organisation explicite en payload).
+`support_litige_select`/`update` ajoutent une branche
+`OR EXISTS (... organizations_membership JOIN organizations_role ...
+role.code = 'admin_keyimmo')` — sûr car cette sous-requête ne cible PAS la
+table protégée par SA PROPRE policy (pas la récursion abandonnée au
+ticket 011 pour `organizations_membership`, voir
+`apps/backoffice/services.py::get_user_memberships`).
+
+**Piège RLS réel rencontré (double)** : `Litige.objects.select_related(
+'lot', ...)` revenait vide pour un litige pourtant visible sous cette
+nouvelle policy — la jointure vers `programs_lot` était silencieusement
+éliminée par SA PROPRE policy (`programs_lot_scope`, ticket 002, aucune
+branche `admin_keyimmo`). INNER JOIN vers une table dont la policy exclut
+la ligne = ligne éliminée du résultat, sans erreur. Un premier correctif
+(policy `admin_keyimmo` transverse SANS condition) a semblé résoudre ça
+mais accordait à tort une visibilité GLOBALE de tout `Lot` — cassait
+`apps.procurement.tests.TestAdminLotSearch::
+test_rls_context_is_restored_even_when_an_exception_interrupts_the_loop`,
+qui suppose (B-037/B-039) qu'un admin sans bascule RLS explicite ne voit
+pas le lot d'une autre organisation. Détecté par la suite complète
+existante, pas anticipé. Corrigé en scopant la policy à « ce Lot a au
+moins un `Litige` » (`EXISTS (SELECT 1 FROM support_litige WHERE
+support_litige.lot_id = programs_lot.id)`)
+(`apps/programs/migrations/0009_lot_admin_keyimmo_select.py`) — exactement
+le besoin réel, rien de plus large. SECONDE policy PERMISSIVE, SELECT
+uniquement (Postgres combine plusieurs policies PERMISSIVE par OR), donc
+strictement additif : aucun risque sur les policies INSERT/UPDATE/DELETE
+existantes (gatekeeper B-039 intact) ni sur une recherche de lot admin
+ordinaire. Tout futur tableau de bord `admin_keyimmo` transverse joignant
+une autre table scopée par organisation devra vérifier le même piège ET
+scoper sa branche aussi étroitement que possible, jamais une visibilité
+globale par simple commodité — relancer la suite complète avant de
+conclure qu'une policy RLS élargie est sans effet de bord.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
