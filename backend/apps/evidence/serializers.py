@@ -11,7 +11,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         model = Document
         fields = [
             'id', 'category', 'visibility', 'sensitivity_level', 'hash', 'version',
-            'source', 'captured_at', 'created_at',
+            'source', 'captured_at', 'created_at', 'duplicate_of',
         ]
         read_only_fields = fields
 

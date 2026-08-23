@@ -398,3 +398,61 @@ class TestEvidenceAppIsOrganizationScoped:
         client_b, _document_a, _declaration_a, evidence_a = self._setup_two_orgs_with_full_chain()
         response = client_b.get(reverse('evidence-detail', args=[evidence_a]))
         assert response.status_code == 404
+
+
+def _identical_files(count, name='photo.jpg'):
+    """`count` fichiers distincts (objets `SimpleUploadedFile` séparés,
+    consommables chacun une seule fois par un upload) mais au même contenu
+    binaire — pour tester la détection de doublon (ticket B-040), qui
+    compare `Document.hash`, jamais l'identité d'objet Python.
+    """
+    buffer = io.BytesIO()
+    Image.new('RGB', (20, 20), (10, 20, 30)).save(buffer, format='JPEG')
+    raw_bytes = buffer.getvalue()
+    return [SimpleUploadedFile(name, raw_bytes, content_type='image/jpeg') for _ in range(count)]
+
+
+@pytest.mark.django_db
+class TestDuplicateDocumentDetection:
+    """Ticket B-040 — un doublon exact (même hash) n'est jamais bloqué à
+    l'upload (doctrine Visible Trust : ne jamais rien cacher), seulement
+    signalé via `Document.duplicate_of`.
+    """
+
+    def test_first_upload_of_unique_content_has_no_duplicate_of(self):
+        client, _organization, _user, _milestone = _setup_org('dup-a@example.com', 'Org Dup A')
+        response = _upload_document(client)
+        assert response.status_code == 201
+        assert response.data['duplicate_of'] is None
+
+    def test_second_upload_of_identical_content_points_to_the_first(self):
+        client, _organization, _user, _milestone = _setup_org('dup-b@example.com', 'Org Dup B')
+        first_file, second_file = _identical_files(2)
+
+        first_response = _upload_document(client, upload_file=first_file)
+        second_response = _upload_document(client, upload_file=second_file)
+
+        assert second_response.status_code == 201
+        assert str(second_response.data['duplicate_of']) == first_response.data['id']
+
+    def test_third_upload_of_identical_content_points_to_the_first_not_the_second(self):
+        client, _organization, _user, _milestone = _setup_org('dup-c@example.com', 'Org Dup C')
+        first_file, second_file, third_file = _identical_files(3)
+
+        first_response = _upload_document(client, upload_file=first_file)
+        _upload_document(client, upload_file=second_file)
+        third_response = _upload_document(client, upload_file=third_file)
+
+        assert third_response.status_code == 201
+        assert str(third_response.data['duplicate_of']) == first_response.data['id']
+
+    def test_identical_content_in_a_different_organization_is_not_flagged_as_duplicate(self):
+        client_a, _organization_a, _user_a, _milestone_a = _setup_org('dup-d-a@example.com', 'Org Dup D A')
+        client_b, _organization_b, _user_b, _milestone_b = _setup_org('dup-d-b@example.com', 'Org Dup D B')
+        file_a, file_b = _identical_files(2)
+
+        _upload_document(client_a, upload_file=file_a)
+        response_b = _upload_document(client_b, upload_file=file_b)
+
+        assert response_b.status_code == 201
+        assert response_b.data['duplicate_of'] is None

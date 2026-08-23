@@ -71,6 +71,16 @@ class Document(models.Model):
     hash = models.CharField(max_length=64, editable=False)  # sha256 hex du fichier tel qu'uploadé
     version = models.PositiveIntegerField(default=1)
 
+    # Doublon exact (même hash) détecté dans l'organisation à la création
+    # (ticket B-040) — pointe toujours vers le plus ancien Document portant
+    # ce hash, jamais vers un doublon intermédiaire. Champ de provenance au
+    # même titre que `hash`/`source`/`captured_at` : calculé une seule fois
+    # à la création, jamais recalculé ensuite.
+    duplicate_of = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        editable=False, related_name='duplicates',
+    )
+
     file = models.FileField(upload_to=_document_upload_path)
     thumbnail = models.FileField(upload_to=_thumbnail_upload_path, null=True, blank=True)
 

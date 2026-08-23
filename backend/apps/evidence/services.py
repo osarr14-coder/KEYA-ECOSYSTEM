@@ -18,6 +18,17 @@ def create_document(
     for chunk in uploaded_file.chunks():
         digest.update(chunk)
     uploaded_file.seek(0)
+    file_hash = digest.hexdigest()
+
+    # Doublon exact (ticket B-040) — toujours le plus ancien Document de
+    # l'organisation portant ce hash, pas le doublon le plus récent : une
+    # chaîne de 3 uploads identiques pointe les 2e et 3e vers le 1er,
+    # jamais le 3e vers le 2e. Comparaison strictement intra-organisation
+    # (deux organisations différentes peuvent légitimement partager un même
+    # fichier, ex. un formulaire officiel — pas un signal de fraude en soi).
+    duplicate_of = Document.objects.filter(
+        organization=organization, hash=file_hash,
+    ).order_by('created_at').first()
 
     document = Document.objects.create(
         organization=organization,
@@ -27,7 +38,8 @@ def create_document(
         captured_at=captured_at,
         visibility=visibility,
         sensitivity_level=sensitivity_level,
-        hash=digest.hexdigest(),
+        hash=file_hash,
+        duplicate_of=duplicate_of,
         file=uploaded_file,
     )
 
