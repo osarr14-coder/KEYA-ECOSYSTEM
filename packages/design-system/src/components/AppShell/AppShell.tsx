@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { brandColors, semanticColors } from '../../tokens/colors';
 import { type Density, densityTokens } from '../../tokens/density';
 import { spacing } from '../../tokens/spacing';
@@ -108,6 +109,17 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
+  // Ticket F-050 — dette responsive de F-039 (recherche/CTA coupés à
+  // 375px) : en dessous du seuil mobile, la sidebar reste TOUJOURS le
+  // rail compact existant (56px, icônes seules — déjà implémenté, testé,
+  // accessible), quel que soit l'état interne `collapsed`. `collapsed`
+  // continue de piloter le rendu desktop normalement (le bouton
+  // replier/déplier, lui, est masqué en mobile — rien à basculer, voir
+  // plus bas). `gridTemplateColumns` ci-dessous reste un style INLINE,
+  // comme avant ce ticket — jamais un `!important` CSS pour contourner un
+  // style inline existant.
+  const isMobile = useIsMobile();
+  const effectiveCollapsed = collapsed || isMobile;
   const tokens = densityTokens[density];
   const visibleModules = modules.filter((module) => isModuleVisible(module, userRoles));
 
@@ -117,7 +129,7 @@ export function AppShell({
       data-density={density}
       style={{
         display: 'grid',
-        gridTemplateColumns: collapsed ? '56px 1fr' : '220px 1fr',
+        gridTemplateColumns: effectiveCollapsed ? '56px 1fr' : '220px 1fr',
         gridTemplateRows: 'auto 1fr',
         minHeight: '100vh',
         fontSize: tokens.fontSize,
@@ -141,41 +153,46 @@ export function AppShell({
             display: 'flex',
             flexDirection: 'column',
             gap: '2px',
-            padding: collapsed ? `${spacing.md} ${spacing.sm}` : `${spacing.md} ${spacing.lg}`,
+            padding: effectiveCollapsed ? `${spacing.md} ${spacing.sm}` : `${spacing.md} ${spacing.lg}`,
           }}
         >
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: collapsed ? 'center' : 'flex-start',
+              justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
               gap: spacing.sm,
             }}
           >
             <span style={{ color: brandColors.gold, fontWeight: 700 }}>K+</span>
-            {!collapsed && <span style={{ fontWeight: 700 }}>KEYIMMO AFRIC</span>}
+            {!effectiveCollapsed && <span style={{ fontWeight: 700 }}>KEYIMMO AFRIC</span>}
           </div>
-          {!collapsed && appLabel && (
+          {!effectiveCollapsed && appLabel && (
             <span style={{ fontSize: '0.85em', color: 'rgba(255, 255, 255, 0.72)' }}>{appLabel}</span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setCollapsed((current) => !current)}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? 'Déplier la navigation' : 'Replier la navigation'}
-          style={{
-            width: '100%',
-            padding: tokens.paddingBlock,
-            border: 'none',
-            background: 'transparent',
-            display: 'flex',
-            justifyContent: 'center',
-            color: semanticColors.neutral.textMuted,
-          }}
-        >
-          <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
-        </button>
+        {/* Ticket F-050 — rien à basculer en dessous du seuil mobile (le
+            rail y est permanent, voir `effectiveCollapsed` ci-dessus) :
+            jamais un contrôle visible sans effet. */}
+        {!isMobile && (
+          <button
+            type="button"
+            onClick={() => setCollapsed((current) => !current)}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? 'Déplier la navigation' : 'Replier la navigation'}
+            style={{
+              width: '100%',
+              padding: tokens.paddingBlock,
+              border: 'none',
+              background: 'transparent',
+              display: 'flex',
+              justifyContent: 'center',
+              color: semanticColors.neutral.textMuted,
+            }}
+          >
+            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
+          </button>
+        )}
         <nav>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {visibleModules.map((module) => {
@@ -188,7 +205,7 @@ export function AppShell({
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: collapsed ? 'center' : 'flex-start',
+                      justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
                       gap: tokens.gap,
                       padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
                       fontSize: tokens.fontSize,
@@ -214,8 +231,8 @@ export function AppShell({
                     }}
                   >
                     {module.icon && <Icon name={module.icon} size={18} />}
-                    {!collapsed && module.label}
-                    {collapsed && !module.icon && module.label.slice(0, 1)}
+                    {!effectiveCollapsed && module.label}
+                    {effectiveCollapsed && !module.icon && module.label.slice(0, 1)}
                   </a>
                 </li>
               );

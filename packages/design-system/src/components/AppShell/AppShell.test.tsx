@@ -1,11 +1,29 @@
 import {
   fireEvent, render, screen, within,
 } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import {
+  afterEach, describe, expect, it, vi,
+} from 'vitest';
 
 import { brandColors, semanticColors } from '../../tokens/colors';
 import { densityTokens } from '../../tokens/density';
 import { AppShell, type AppModule } from './AppShell';
+
+/**
+ * Ticket F-050 — `jsdom` n'implémente pas `window.matchMedia` (voir
+ * `useIsMobile.ts`) : mock minimal pour simuler un viewport déjà mobile au
+ * montage, même esprit que `useIsMobile.test.ts`. Les tests EXISTANTS de ce
+ * fichier (ci-dessus/ci-dessous, hors ce describe) ne mockent rien —
+ * `useIsMobile` y retourne `false` par défaut, comportement desktop
+ * strictement inchangé, aucune modification nécessaire de leur côté.
+ */
+function mockMatchMediaMobile() {
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
+}
 
 const MODULES: AppModule[] = [
   { id: 'home', label: 'Accueil', href: '/' },
@@ -225,5 +243,42 @@ describe('AppShell — fil d\'Ariane', () => {
     expect(screen.getByRole('link', { name: 'Programmes' })).toBeInTheDocument();
     const current = screen.getByText('Programme A');
     expect(current).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+describe('AppShell — responsive mobile, dette de F-039 (ticket F-050)', () => {
+  afterEach(() => {
+    // @ts-expect-error — retire le mock, jsdom n'a pas matchMedia nativement.
+    delete window.matchMedia;
+  });
+
+  it('en dessous du seuil mobile, la grille reste le rail compact même sans avoir cliqué "Replier"', () => {
+    mockMatchMediaMobile();
+    render(<AppShell density="confortable" modules={MODULES} userRoles={[]} />);
+
+    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '56px 1fr' });
+  });
+
+  it('en dessous du seuil mobile, les libellés de module sont masqués (rail icônes seules)', () => {
+    mockMatchMediaMobile();
+    render(<AppShell density="confortable" modules={MODULES} userRoles={[]} />);
+
+    expect(screen.queryByText('Accueil')).not.toBeInTheDocument();
+  });
+
+  it('en dessous du seuil mobile, le bouton replier/déplier n\'est pas rendu (rien à basculer)', () => {
+    mockMatchMediaMobile();
+    render(<AppShell density="confortable" modules={MODULES} userRoles={[]} />);
+
+    expect(screen.queryByRole('button', { name: /replier la navigation/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /déplier la navigation/i })).not.toBeInTheDocument();
+  });
+
+  it('au-dessus du seuil (comportement par défaut de ce projet de test, matchMedia absent), rien ne change', () => {
+    render(<AppShell density="confortable" modules={MODULES} userRoles={[]} />);
+
+    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '220px 1fr' });
+    expect(screen.getByText('Accueil')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /replier la navigation/i })).toBeInTheDocument();
   });
 });

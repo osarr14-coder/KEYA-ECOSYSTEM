@@ -3499,6 +3499,9 @@ responsive d'`AppShell`) — mais jamais corrigé avant non plus. Priorité
 à évaluer selon l'usage réel attendu de HOME (mobile vs desktop) avant
 qu'un futur ticket (F-040 ou suivant) ne s'y attaque.
 
+**Corrigé au ticket F-050** — voir la section dédiée plus bas dans ce
+fichier pour le détail complet.
+
 **Second point à investiguer séparément, PAS diagnostiqué, PAS lié à
 F-039** : pendant la même revue critique, une tentative de connexion à
 BUILD (`apps/build`, utilisateur `constructeur` réel, JWT injecté) a
@@ -4101,6 +4104,53 @@ signalé ici pour un futur correctif si `location` doit redevenir visible.
 Suite `apps/web` : 188 tests (7 nouveaux pour `ProgramsView`, 1 nouveau
 sur `App.test.tsx` pour la navigation vers l'onglet), tous verts. `tsc
 --noEmit` propre, `vite build` propre.
+
+## AppShell responsive mobile (ticket F-050)
+
+Voir `F-050-responsive-mobile-appshell.md` pour le détail complet. Ferme
+la dette documentée au ticket F-039 (« recherche et CTA principal coupés
+au bord droit de l'écran » à 375px, jamais corrigée depuis).
+
+**Deux causes distinctes, deux mécanismes distincts** :
+1. `gridTemplateColumns` (racine `AppShell`) — résolu en JS, comme avant
+   ce ticket. Nouveau hook `useIsMobile` (`packages/design-system/src/
+   hooks/`, même famille que `useOnlineStatus`, `window.matchMedia`) pilote
+   `effectiveCollapsed = collapsed || isMobile` : en dessous du seuil
+   mobile (`MOBILE_BREAKPOINT_PX`, nouveau token `tokens/breakpoints.ts`,
+   640px), la sidebar reste TOUJOURS le rail compact existant (56px,
+   icônes seules — déjà implémenté/testé/accessible depuis le ticket 007,
+   raffiné F-045/F-048), quel que soit l'état interne `collapsed`. Le
+   bouton replier/déplier est masqué en mobile (rien à basculer). Jamais un
+   `!important` CSS pour contourner un style inline existant.
+2. Débordement du `<header>` (recherche + sélecteurs optionnels + Task
+   Inbox + avatar, alignés sur une seule ligne, aucun ne pouvant rétrécir
+   ni passer à la ligne) — dépend de dimensions intrinsèques du navigateur,
+   inexprimable en JS conditionnel. Media query ajoutée à `GlobalStyles`
+   (même précédent que les pseudo-classes `:hover`/`:focus-visible`, ticket
+   F-038 : premier écart du projet vis-à-vis du "100% inline") :
+   `flex-wrap: wrap` sur le header + le champ de recherche passe à
+   `width: 100%` sous le seuil. `MOBILE_BREAKPOINT_PX` : SEUIL UNIQUE,
+   partagé entre le hook (JS) et cette media query (CSS) — jamais deux
+   constantes à resynchroniser manuellement.
+
+**Décision de conception assumée** : réutilise le rail replié EXISTANT
+comme layout mobile forcé, plutôt qu'un nouveau pattern (tiroir hors-écran/
+hamburger) — minimise le risque, aucune nouvelle interaction à concevoir/
+tester. CONTROL PWA non concerné (n'utilise pas `AppShell`, voir plus
+haut dans ce fichier).
+
+**Tous les tests `AppShell.test.tsx` PRÉ-EXISTANTS restent verts SANS
+modification** : `jsdom` (environnement de test de ce projet) n'implémente
+pas `window.matchMedia` — `useIsMobile` y retourne `false` par défaut,
+comportement desktop strictement inchangé. Les nouveaux tests mobiles
+mockent explicitement `window.matchMedia` (même esprit que
+`useOnlineStatus.test.ts`/`navigator.onLine`).
+
+Suite `packages/design-system` : 136 tests (10 nouveaux : `useIsMobile`,
+`breakpoints`, 4 sur `AppShell` mobile, 2 sur la media query
+`GlobalStyles`), tous verts. Suites `apps/home` (64), `apps/build` (77),
+`apps/web` (188) : aucune régression, `tsc --noEmit` et `vite build`
+propres sur les 3.
 
 ## Conventions de code
 

@@ -1,3 +1,4 @@
+import { MOBILE_BREAKPOINT_PX } from '../../tokens/breakpoints';
 import { semanticColors } from '../../tokens/colors';
 import { typography } from '../../tokens/typography';
 
@@ -124,6 +125,28 @@ const GLOBAL_CSS = `
   h2 { font-size: 1.35em; font-weight: 700; line-height: 1.3; text-wrap: balance; }
   h3 { font-size: 1.1em; font-weight: 600; line-height: 1.35; text-wrap: balance; }
   h4 { font-size: 1em; font-weight: 600; line-height: 1.4; text-wrap: balance; }
+
+  /*
+   * Ticket F-050 — dette responsive de F-039 (recherche/CTA coupés à
+   * 375px) : la LARGEUR de la sidebar se résout en JS, comme avant ce
+   * ticket (AppShell.tsx, effectiveCollapsed, style inline, jamais un
+   * !important ici pour contourner un style inline existant). Le
+   * débordement du header (recherche + sélecteurs optionnels + Task
+   * Inbox + avatar, tous alignés sur une seule ligne), lui, dépend de
+   * dimensions intrinsèques du navigateur qu'aucun style inline ne peut
+   * exprimer conditionnellement — media query, même précédent que les
+   * pseudo-classes ci-dessus (ticket F-038). MOBILE_BREAKPOINT_PX :
+   * SEUIL UNIQUE partagé avec useIsMobile (hooks/useIsMobile.ts),
+   * jamais une seconde valeur à resynchroniser manuellement.
+   */
+  @media (max-width: ${MOBILE_BREAKPOINT_PX}px) {
+    [data-testid="app-shell-header"] {
+      flex-wrap: wrap;
+    }
+    [data-testid="app-shell-header"] input[type="search"] {
+      width: 100%;
+    }
+  }
 `;
 
 export function GlobalStyles() {

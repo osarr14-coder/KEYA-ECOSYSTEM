@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { MOBILE_BREAKPOINT_PX } from '../../tokens/breakpoints';
 import { typography } from '../../tokens/typography';
 import { GlobalStyles } from './GlobalStyles';
 
@@ -59,4 +60,19 @@ describe('GlobalStyles — échelle typographique (ticket F-042)', () => {
       expect(thBlocks[0]).toContain('border-bottom: 2px solid');
     },
   );
+});
+
+describe('GlobalStyles — responsive header AppShell (ticket F-050)', () => {
+  it('pose une media query au seuil mobile partagé, faisant passer le header à la ligne', () => {
+    const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
+
+    expect(css).toContain(`@media (max-width: ${MOBILE_BREAKPOINT_PX}px)`);
+    expect(css).toMatch(/\[data-testid="app-shell-header"\]\s*\{[^}]*flex-wrap:\s*wrap/);
+  });
+
+  it('le champ de recherche du header prend toute la largeur sous le seuil', () => {
+    const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
+
+    expect(css).toMatch(/\[data-testid="app-shell-header"\] input\[type="search"\]\s*\{[^}]*width:\s*100%/);
+  });
 });
