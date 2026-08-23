@@ -18,6 +18,7 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     getMyTasks: vi.fn(notMocked),
     getMyProgramRequests: vi.fn(notMocked),
     createProgramRequest: vi.fn(notMocked),
+    completeTask: vi.fn(notMocked),
     ...overrides,
   };
 }

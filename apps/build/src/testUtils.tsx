@@ -18,6 +18,8 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     addEvidenceDocument: vi.fn(notMocked),
     // Ticket F-060 (compteur cloche AppShell) :
     getMyTasks: vi.fn(notMocked),
+    // Ticket F-062 (marquer une tâche traitée) :
+    completeTask: vi.fn(notMocked),
     ...overrides,
   };
 }

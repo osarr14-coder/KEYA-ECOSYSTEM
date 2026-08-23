@@ -49,4 +49,28 @@ describe('TasksView', () => {
 
     await waitFor(() => expect(getMyTasks).toHaveBeenCalledTimes(2));
   });
+
+  it('marquer une tâche comme traitée appelle completeTask puis recharge la liste', async () => {
+    const completeTask = vi.fn().mockResolvedValue({ ...TASK, status: 'done' });
+    const getMyTasks = vi.fn()
+      .mockResolvedValueOnce([TASK])
+      .mockResolvedValueOnce([]);
+    renderView({ completeTask, getMyTasks });
+
+    await screen.findByText(TASK.label);
+    fireEvent.click(screen.getByRole('button', { name: 'Marquer comme traité' }));
+
+    await waitFor(() => expect(completeTask).toHaveBeenCalledWith(TASK.id));
+    await waitFor(() => expect(getMyTasks).toHaveBeenCalledTimes(2));
+  });
+
+  it('un échec de marquage affiche une erreur locale', async () => {
+    const completeTask = vi.fn().mockRejectedValue(new Error('boom'));
+    renderView({ completeTask, getMyTasks: async () => [TASK] });
+
+    await screen.findByText(TASK.label);
+    fireEvent.click(screen.getByRole('button', { name: 'Marquer comme traité' }));
+
+    expect(await screen.findByText('Échec du marquage comme traité.')).toBeInTheDocument();
+  });
 });

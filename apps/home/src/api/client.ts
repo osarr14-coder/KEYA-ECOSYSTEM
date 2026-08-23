@@ -118,6 +118,12 @@ export function createApiClient({
     createProgramRequest: (description: string) => (
       request<ProgramRequest>('/api/programs/requests/', { method: 'POST', json: { description } })
     ),
+    /**
+     * `POST /api/tasks/{id}/complete/` (ticket 006/F-062) — marque une
+     * tâche traitée, jamais son sujet (`apps.tasks.services.
+     * complete_task` ne touche que la `Task` elle-même).
+     */
+    completeTask: (taskId: string) => request<Task>(`/api/tasks/${taskId}/complete/`, { method: 'POST' }),
   };
 }
 

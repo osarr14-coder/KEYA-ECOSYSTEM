@@ -464,6 +464,17 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     getMyTasks: (filters: { status?: string } = {}) => (
       request<Task[]>(`/api/me/tasks/${toQueryString({ status: filters.status })}`)
     ),
+
+    /**
+     * `POST /api/tasks/{id}/complete/` (ticket 006/F-062) — marque une
+     * tâche traitée, jamais son sujet (`apps.tasks.services.
+     * complete_task` ne touche que la `Task` elle-même). Scopée par
+     * `TaskViewSet` à l'organisation ACTIVE de l'appelant : fonctionne
+     * pour une tâche dont l'organisation correspond à l'organisation
+     * active courante — voir `TasksView.tsx` pour la limite connue sur
+     * les tâches assignées à `admin_keyimmo` d'une AUTRE organisation.
+     */
+    completeTask: (taskId: string) => request<Task>(`/api/tasks/${taskId}/complete/`, { method: 'POST' }),
   };
 }
 
