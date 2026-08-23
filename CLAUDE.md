@@ -3512,6 +3512,34 @@ ne pas le perdre de vue, à creuser dans un futur ticket dédié si le
 symptôme se reproduit, jamais traité comme un bug confirmé tant que
 personne ne l'a réellement diagnostiqué.
 
+**Investigation (session du 2026-08-23)** : `receiveIncomingSession.ts`
+et `forceLogout.ts` sur `apps/build` sont **strictement identiques
+(diff vide)** à leurs équivalents `apps/home` — aucune app n'a de
+comportement particulier, donc pas de bug spécifique à BUILD dans ce
+mécanisme. `App.tsx` (BUILD) ne redirige jamais vers l'écran de
+connexion par lui-même : seul `onUnauthorized` (`api/client.ts`,
+déclenché uniquement sur un vrai `response.status === 401`) le fait, via
+`forceLogout`. `ACCESS_TOKEN_LIFETIME` = 1h (`backend/config/
+settings.py`), largement suffisant pour un test manuel. `CORS_ALLOW_
+HEADERS` inclut déjà `x-organization-id` en dur (piège déjà corrigé, cf.
+commentaire au-dessus) et `backend/.env.example` liste bien les 4
+origines dev (5173–5176) dans `CORS_ALLOWED_ORIGINS`. Suites `apps/
+build` (77 tests) et `apps/home` (64 tests) vertes, `receiveIncoming
+Session.test.ts` déjà exhaustif côté fragment/localStorage.
+
+**Conclusion : aucun bug de code identifié.** L'hypothèse la plus
+probable reste l'artefact de test déjà évoqué — un JWT injecté
+manuellement (plutôt qu'obtenu via le vrai flux `apps/web` →
+`buildCrossAppUrl`) était probablement invalide/expiré, ou l'environnement
+local de cette session avait un `.env` non aligné sur `.env.example` au
+moment du test. **Pas de reproduction en navigateur réel effectuée ici**
+(hors périmètre de cette investigation : nécessite backend + 4 apps
+lancés) — si le symptôme se reproduit via le VRAI flux de connexion
+(formulaire `apps/web`, jamais une injection manuelle de JWT), capturer
+le code HTTP et le corps de la réponse `/api/me/` en échec avant
+d'ouvrir un ticket, pour distinguer un vrai bug d'un nouvel artefact de
+test.
+
 ## Navigation inter-apps réelle (ticket F-040)
 
 Constaté en vérification manuelle exhaustive (visite des menus des 4
