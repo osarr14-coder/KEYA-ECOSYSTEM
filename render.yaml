@@ -67,7 +67,12 @@ services:
   - type: web
     name: keya-home
     runtime: static
-    plan: free
+    # Pas de `plan:` ici : contrairement à un service `runtime: python`, un
+    # site statique Render n'a pas de notion de plan payant/gratuit — il est
+    # gratuit par nature. Poser `plan: free` explicitement fait échouer
+    # l'import du Blueprint ("no such plan free for service type web") —
+    # erreur réelle rencontrée en déployant, pas anticipée à l'écriture de
+    # ce fichier.
     buildCommand: "npm ci && npm run build --workspace=apps/home"
     staticPublishPath: apps/home/dist
     envVars: &frontend-env-vars
@@ -90,7 +95,6 @@ services:
   - type: web
     name: keya-build
     runtime: static
-    plan: free
     buildCommand: "npm ci && npm run build --workspace=apps/build"
     staticPublishPath: apps/build/dist
     envVars: *frontend-env-vars
@@ -103,7 +107,6 @@ services:
   - type: web
     name: keya-control
     runtime: static
-    plan: free
     buildCommand: "npm ci && npm run build --workspace=apps/control-pwa"
     staticPublishPath: apps/control-pwa/dist
     envVars: *frontend-env-vars
@@ -116,7 +119,6 @@ services:
   - type: web
     name: keya-web
     runtime: static
-    plan: free
     buildCommand: "npm ci && npm run build --workspace=apps/web"
     staticPublishPath: apps/web/dist
     envVars: *frontend-env-vars
