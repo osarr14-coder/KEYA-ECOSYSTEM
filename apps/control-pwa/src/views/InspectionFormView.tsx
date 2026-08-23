@@ -21,7 +21,17 @@ export interface InspectionFormViewProps {
 // sections du formulaire (checklist/photos/décision), jamais redéfini
 // séparément à chaque fois. Ticket 024 (audit accessibilité) : reprend le
 // token partagé plutôt qu'une couleur redéfinie ici en dur.
-const FIELDSET_STYLE = { border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px' };
+// Ticket F-054 (refonte visuelle, suite de F-053) — rayon 8px→14px + ombre
+// `--keya-shadow-sm` (même traitement que `Card`, packages/design-system) :
+// CONTROL PWA n'utilise pas `AppShell` (layout tactile dédié, voir App.tsx)
+// donc n'hérite d'aucun des changements F-053, direction appliquée ici
+// directement.
+const FIELDSET_STYLE = {
+  border: `1px solid ${semanticColors.neutral.border}`,
+  borderRadius: '14px',
+  padding: '12px',
+  boxShadow: 'var(--keya-shadow-sm)',
+};
 // Ticket F-045 — icône de repère devant chaque légende de section, même
 // famille visuelle que `Card` (icône + titre), sans introduire `Card` ici :
 // un `<fieldset>` a déjà sa propre sémantique de groupe de formulaire,

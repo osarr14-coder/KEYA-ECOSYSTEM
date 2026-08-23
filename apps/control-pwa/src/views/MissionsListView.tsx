@@ -150,6 +150,13 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
                   justifyContent: 'flex-start',
                   gap: '4px',
                   fontWeight: 400,
+                  // Ticket F-054 (refonte visuelle, suite de F-053) — même
+                  // traitement que `Card` : ombre + rayon plus prononcé,
+                  // cette carte cliquable en a plus besoin qu'un bouton
+                  // secondaire ordinaire (aucun autre repère visuel de
+                  // "carte" ici, contrairement à Card qui a déjà sa bordure).
+                  borderRadius: '14px',
+                  boxShadow: 'var(--keya-shadow-sm)',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

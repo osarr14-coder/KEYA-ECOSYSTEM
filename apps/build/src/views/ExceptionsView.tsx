@@ -23,10 +23,13 @@ export interface ExceptionsViewProps {
 // Ticket 023 (polish visuel) — une seule carte de ligne partagée par les 4
 // types de ligne d'exception (lot en retard, capacité manquante, réserve
 // ouverte, document manquant), jamais redéfinie séparément à chaque fois.
+// Ticket F-054 (refonte visuelle, suite de F-053) — ombre + rayon 8px→14px,
+// même traitement que `Card` (packages/design-system).
 const ROW_STYLE = {
   padding: '12px',
   border: `1px solid ${semanticColors.neutral.border}`,
-  borderRadius: '8px',
+  borderRadius: '14px',
+  boxShadow: 'var(--keya-shadow-sm)',
 };
 
 function LotRowList({
