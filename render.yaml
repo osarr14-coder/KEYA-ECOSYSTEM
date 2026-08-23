@@ -14,8 +14,14 @@
 ## référencent plus bas (elles ne se déduisent pas automatiquement).
 
 databases:
+  # Plan payant (pas free) : le compte Render utilisé a déjà une base
+  # gratuite active pour un AUTRE projet en production (KEYA/keyimmoafric.com,
+  # modèle économique distinct de KEYA ECOSYSTEM) — "cannot have more than
+  # one active free tier database" rencontré en déployant. `basic-256mb` est
+  # le plan payant le moins cher chez Render à la rédaction de ce fichier,
+  # largement suffisant pour un usage de test/pilote.
   - name: keya-ecosystem-db
-    plan: free
+    plan: basic-256mb
     databaseName: keya_ecosystem
     user: keya_ecosystem_app
 

@@ -6,10 +6,15 @@ configuration de déploiement partagée dans ce repo"*, vrai jusqu'ici).
 
 ## Ce que ça déploie
 
-- **1 base Postgres** (`keya-ecosystem-db`) — RLS multi-tenant intact : le rôle fourni
-  par Render n'est pas superuser (vérifié en reproduisant ce scénario en
-  local), donc `FORCE ROW LEVEL SECURITY` s'applique réellement, aucun
-  bricolage de rôle nécessaire contrairement au `docker-compose.yml` local.
+- **1 base Postgres** (`keya-ecosystem-db`, plan payant `basic-256mb`) — RLS
+  multi-tenant intact : le rôle fourni par Render n'est pas superuser
+  (vérifié en reproduisant ce scénario en local), donc `FORCE ROW LEVEL
+  SECURITY` s'applique réellement, aucun bricolage de rôle nécessaire
+  contrairement au `docker-compose.yml` local. Plan payant (pas gratuit) :
+  le compte Render utilisé a déjà une base gratuite active pour un AUTRE
+  projet en production (KEYA/keyimmoafric.com, modèle économique distinct
+  de KEYA ECOSYSTEM — à ne surtout pas toucher), et Render limite à une
+  seule base gratuite par compte.
 - **1 service web Python** (`keya-ecosystem-backend`) — API Django + admin.
 - **4 sites statiques** (`keya-ecosystem-home`, `keya-ecosystem-build`, `keya-ecosystem-control`,
   `keya-ecosystem-web`) — les 4 apps frontend, chacune buildée depuis ce même repo.
@@ -25,8 +30,11 @@ d'associer et d'écraser la configuration de ce service existant.
 
 ## Étapes
 
-1. **Compte Render** — créez-en un sur https://render.com si besoin (aucun
-   engagement de paiement requis pour le plan gratuit utilisé ici).
+1. **Compte Render** — créez-en un sur https://render.com si besoin. La
+   base Postgres (`keya-ecosystem-db`) est en plan payant `basic-256mb`
+   (quelques dollars/mois, carte bancaire requise sur le compte) — voir
+   ci-dessus pourquoi. Le reste (backend + 4 sites statiques) reste
+   gratuit.
 2. **New → Blueprint** dans le dashboard Render.
 3. Connectez le dépôt GitHub `osarr14-coder/keya-ecosystem` (branche
    `master`).
@@ -81,15 +89,10 @@ d'associer et d'écraser la configuration de ce service existant.
   s'endorment après 15 minutes d'inactivité ; la première requête après
   une veille prend ~30-60s pendant que `keya-ecosystem-backend` redémarre. Passer à
   un plan payant supprime cette latence.
-- **Base Postgres gratuite limitée dans le temps** — Render supprime une
-  base gratuite **30 jours** après sa création (14 jours de grâce pour la
-  passer en payant avant suppression définitive des données). Pour un
-  usage au-delà d'un mois, passer `keya-ecosystem-db` en plan payant AVANT
-  l'échéance (dashboard Render → base → Upgrade) — vérifié à la rédaction
-  de ce document, sujet à changer côté Render. **Une seule base gratuite
-  active par compte Render** — si vous en avez déjà une ailleurs sur ce
-  compte, l'import du blueprint vous proposera de passer `keya-ecosystem-db`
-  directement en payant.
+- **Base Postgres payante dès le départ** (plus haut) — évite à la fois la
+  limite « une seule base gratuite par compte Render » (déjà prise par
+  l'autre projet) et l'expiration à 30 jours d'une base gratuite. Rien à
+  surveiller côté échéance contrairement à une base restée gratuite.
 - **Migrations dans `buildCommand`, pas `preDeployCommand`** —
   `preDeployCommand` (l'endroit normalement recommandé par Render pour les
   migrations, après le build, avant bascule du trafic) n'existe que sur
