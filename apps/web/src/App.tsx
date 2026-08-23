@@ -18,9 +18,10 @@ import { BackofficeView } from './views/BackofficeView';
 import { DevisView } from './views/DevisView';
 import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
 import { PricingView } from './views/PricingView';
+import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
 
-type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'programs';
+type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'programs' | 'program-requests';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -56,6 +57,13 @@ const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string; ic
     id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale', group: 'Ventes & tarification',
   },
   { id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building' },
+  // Ticket F-058 — pendant admin de ProgramRequestView.tsx (apps/home,
+  // ticket F-057). Entrée de premier niveau, comme "Programmes" (pas
+  // dans le groupe "Ventes & tarification" : une demande sur mesure
+  // n'est ni un devis, ni un tarif, ni un palier légal).
+  {
+    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check',
+  },
 ];
 
 const MODULES: AppModule[] = TAB_DEFINITIONS.map(({
@@ -208,6 +216,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'pricing' && <PricingView />}
       {activeTab === 'legal-tiers' && <LegalPaymentTiersView />}
       {activeTab === 'programs' && <ProgramsView />}
+      {activeTab === 'program-requests' && <ProgramRequestsView />}
     </AppShell>
   );
 }

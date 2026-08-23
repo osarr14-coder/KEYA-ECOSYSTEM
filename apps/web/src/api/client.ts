@@ -3,7 +3,7 @@ import type {
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
-  OrganizationSearchResult, PricingCanal, PricingConfig, Program,
+  OrganizationSearchResult, PricingCanal, PricingConfig, Program, ProgramRequest,
 } from './types';
 
 export class ApiError extends Error {
@@ -427,6 +427,32 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
      */
     createLot: (payload: { organization: string; asset: string; name: string; surface?: string }) =>
       request<Lot>('/api/lots/', { method: 'POST', json: payload }),
+
+    /**
+     * `GET /api/programs/requests/` (ticket B-042/F-058) — TOUTES les
+     * demandes, toutes organisations confondues, réservé à
+     * `admin_keyimmo`. `status` optionnel filtre côté backend
+     * (`en_attente`/`acceptee`/`refusee`), jamais reconstruit ici.
+     */
+    listProgramRequests: (status?: string) => (
+      request<ProgramRequest[]>(`/api/programs/requests/${toQueryString({ status })}`)
+    ),
+
+    /**
+     * `POST /api/programs/requests/{id}/decide/?organization_id=<id>`
+     * (ticket B-042/F-058) — `organization` est l'organisation du
+     * DEMANDEUR (`ProgramRequest.organization`, jamais celle de
+     * l'appelant), même principe que `createProgram`/`createAsset`
+     * ci-dessus : `admin_keyimmo` agit sur une organisation dont il n'est
+     * pas membre. Ne crée JAMAIS de `Program` — voir docstring de
+     * `ProgramRequest` (`api/types.ts`).
+     */
+    decideProgramRequest: (requestId: string, organization: string, status: 'acceptee' | 'refusee') => (
+      request<ProgramRequest>(
+        `/api/programs/requests/${requestId}/decide/${toQueryString({ organization_id: organization })}`,
+        { method: 'POST', json: { status } },
+      )
+    ),
   };
 }
 

@@ -365,6 +365,17 @@ describe(
       expect(window.location.pathname).toBe('/programmes');
     });
 
+    // Ticket F-058 — pendant admin de ProgramRequestView.tsx (apps/home).
+    it('changer d\'onglet vers Demandes de programme affiche ProgramRequestsView et met à jour l\'URL', async () => {
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      fireEvent.click(screen.getByRole('button', { name: 'Demandes de programme' }));
+
+      await screen.findByRole('heading', { name: 'Demandes de programme' });
+      expect(window.location.pathname).toBe('/demandes-programme');
+    });
+
     // Ticket F-051 — regroupement de sidebar (AppShell), premier usage réel.
     it('la sidebar affiche "Ventes & tarification" au-dessus de Devis/Tarifs/Paliers légaux', async () => {
       renderAuthenticated({ getMe: getMeAdmin() });

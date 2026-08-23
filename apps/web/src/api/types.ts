@@ -153,6 +153,25 @@ export interface Lot {
   created_at: string;
 }
 
+/** Miroir de `apps.programs.serializers.ProgramRequestSerializer`
+ * (`GET/POST /api/programs/requests/`, ticket B-042/F-058). `status`
+ * n'est PAS un `TrustLevel` — même distinction que `Devis.status`
+ * (ticket 022), jamais `StatusBadge`. `program` reste `null` tant
+ * qu'`admin_keyimmo` n'a pas créé le `Program` séparément via le wizard
+ * existant (`ProgramsView.tsx`) — cet écran ne le crée jamais lui-même
+ * (verrou B-039 intact). */
+export interface ProgramRequest {
+  id: string;
+  organization: string;
+  organization_name: string;
+  requested_by: string;
+  requested_by_email: string;
+  description: string;
+  status: 'en_attente' | 'acceptee' | 'refusee';
+  program: string | null;
+  created_at: string;
+}
+
 /** Miroir de `apps.procurement.serializers.LotSearchResultSerializer`
  * (`GET /api/procurement/admin/lots/?q=`, ticket B-028) — `organization`/
  * `program` imbriqués en id+name uniquement (jamais `asset`, pas nécessaire
