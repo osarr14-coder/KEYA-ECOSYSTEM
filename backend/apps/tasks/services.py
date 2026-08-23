@@ -2,6 +2,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.programs.models import ProgramRequestStatus
+
 from .models import Task, TaskPriority, TaskStatus, TaskType
 
 RESERVE_OPENED_SOURCE = 'reserve_opened'
@@ -113,11 +115,30 @@ def _lot_ledger_margin_negative_label(ledger):
     return f'Marge du grand-livre du lot « {ledger.lot.name} » passée sous zéro — vérification requise'
 
 
+def _program_request_decided_label(program_request):
+    """Ticket B-043 — notifie le PROSPECT (jamais un tiers) de la décision
+    prise par `admin_keyimmo` sur sa propre demande. Contrairement aux
+    générateurs précédents, KEYIMMO est ici réellement l'auteur de la
+    décision (`decide_program_request`, ticket B-042) : l'énoncer au passé
+    composé ("a été acceptée/refusée") est un FAIT sur la demande, jamais
+    une formulation couverte par les phrases interdites du test de garde
+    (« keyimmo décide/valide/approuve/tranche ») — vérifié explicitement à
+    l'écriture de ce générateur, pas seulement par convention.
+    """
+    if program_request.status == ProgramRequestStatus.ACCEPTEE:
+        return (
+            'Votre demande de programme sur mesure a été acceptée — '
+            'KEYIMMO prépare la création de votre programme.'
+        )
+    return 'Votre demande de programme sur mesure a été refusée.'
+
+
 LABEL_GENERATORS = [
     _reserve_opened_label,
     _mission_assigned_label,
     _devis_ajustement_refuse_label,
     _lot_ledger_margin_negative_label,
+    _program_request_decided_label,
 ]
 
 
@@ -269,6 +290,53 @@ def create_task_for_lot_ledger_margin_negative(ledger, actor):
         'assignee': actor,
         'label': _lot_ledger_margin_negative_label(ledger),
         'priority': TaskPriority.HIGH,
+    }
+    task, _created = _get_or_create_task(lookup, defaults)
+    return task
+
+
+PROGRAM_REQUEST_DECIDED_SOURCE = 'program_request_decided'
+
+
+def create_task_for_program_request_decided(program_request):
+    """Ticket B-043 : notifie le PROSPECT (`program_request.requested_by`)
+    dès que `admin_keyimmo` accepte ou refuse sa demande de programme sur
+    mesure (`apps.programs.services.decide_program_request`, ticket B-042).
+    `type=TaskType.NOTIFICATION` — premier générateur à utiliser ce type
+    des 4 prévus par la doctrine (ticket 006, `TaskType`) : les trois
+    précédents sont tous des `TASK`/`ALERT` (une action attendue), celui-ci
+    n'annonce qu'un FAIT déjà acté, rien à traiter côté prospect.
+
+    Appelée SYNCHRONEMENT depuis `decide_program_request`, DANS le même
+    bloc `transaction.atomic()`, APRÈS la bascule RLS vers l'organisation
+    CIBLE (celle du prospect) et AVANT sa restauration vers celle de
+    l'admin — indispensable : `tasks_task` n'a qu'une policy RLS mono-
+    organisation (`organization_id = current_org`, aucune branche
+    cross-org comme `Litige`, ticket B-041), donc créer cette Task sous le
+    contexte RLS de l'ADMIN échouerait sa `WITH CHECK`. Même raisonnement
+    que `create_task_for_devis_ajustement_refuse`/
+    `create_task_for_lot_ledger_margin_negative` : trace synchrone d'un
+    événement qui vient de survenir DANS la requête courante, pas un
+    traitement à découpler par Celery.
+
+    `_get_or_create_task` (dédup par `(subject_type, subject_id, source)`,
+    ticket 017) : une demande ne peut être décidée qu'une fois dans le
+    parcours normal (les boutons Accepter/Refuser disparaissent après la
+    première décision côté écran, ticket F-058) — cette Task n'est donc
+    créée qu'une seule fois par demande.
+    """
+    lookup = {
+        'subject_type': ContentType.objects.get_for_model(program_request),
+        'subject_id': program_request.id,
+        'source': PROGRAM_REQUEST_DECIDED_SOURCE,
+    }
+    defaults = {
+        'organization': program_request.organization,
+        'type': TaskType.NOTIFICATION,
+        'program': program_request.program,
+        'assignee': program_request.requested_by,
+        'label': _program_request_decided_label(program_request),
+        'priority': TaskPriority.NORMAL,
     }
     task, _created = _get_or_create_task(lookup, defaults)
     return task

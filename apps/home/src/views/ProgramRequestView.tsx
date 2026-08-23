@@ -22,6 +22,20 @@ import { useApiResource } from '../api/useApiResource';
  * `SyncStatusIndicator`/`MissionTypeIndicator` (CONTROL PWA) : un texte
  * simple suffit, aucun second consommateur ne réclame un badge partagé
  * pour ce vocabulaire précis.
+ *
+ * Ticket F-059 — bandeau de notification : `admin_keyimmo` accepte/refuse
+ * une demande via `apps/web` (ticket F-058), qui crée une `Task`
+ * `type=notification` assignée au prospect (`apps.tasks.services.
+ * create_task_for_program_request_decided`, ticket B-043). Réutilise
+ * `getMyTasks` (déjà consommé par `MyActionsView`/`PriorityTaskSummary`,
+ * ticket 008) — AUCUN nouvel endpoint. Affiché ICI en plus de l'onglet
+ * « Mes actions » (accessible seulement une fois qu'un bien existe,
+ * `App.tsx`) : cet écran est le seul point d'atterrissage GARANTI d'un
+ * prospect sans bien (son état normal juste après la décision — refusée
+ * pour toujours, ou acceptée mais en attente que `admin_keyimmo` crée
+ * effectivement son programme). Purement informatif, jamais de bouton
+ * « marquer comme lu » — `MyActionsView` (HOME) n'en a jamais eu non plus,
+ * aucune régression introduite ici.
  */
 const STATUS_LABELS: Record<ProgramRequest['status'], string> = {
   en_attente: 'En attente',
@@ -100,12 +114,42 @@ function CreateProgramRequestForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+function ProgramRequestNotifications() {
+  const api = useApiClient();
+  const state = useApiResource(
+    () => api.getMyTasks({ type: 'notification', status: 'pending' }), [],
+  );
+
+  if (state.status !== 'success' || state.data.length === 0) return null;
+
+  return (
+    <Card title="Notifications" icon="bell">
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {state.data.map((task) => (
+          <li
+            key={task.id}
+            style={{
+              padding: '12px',
+              border: `1px solid ${semanticColors.neutral.border}`,
+              borderRadius: '14px',
+              boxShadow: 'var(--keya-shadow-sm)',
+            }}
+          >
+            {task.label}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 export function ProgramRequestView() {
   const api = useApiClient();
   const state = useApiResource(() => api.getMyProgramRequests(), []);
 
   return (
     <section aria-label="Programme sur mesure" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <ProgramRequestNotifications />
       <CreateProgramRequestForm onCreated={() => state.refetch()} />
 
       {state.status === 'loading' && <p>Chargement…</p>}

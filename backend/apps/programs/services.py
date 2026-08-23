@@ -405,9 +405,21 @@ def decide_program_request(*, admin_organization_id, target_organization_id, req
     l'appelant). Ne crée JAMAIS de `Program` — voir docstring de
     `ProgramRequest` : `admin_keyimmo` le crée séparément via le wizard
     existant (ticket F-049) une fois la demande acceptée.
+
+    Ticket B-043 — notifie le prospect de la décision (`Task`,
+    `type=notification`) : import local (même convention que
+    `apps.procurement.services`, ex. `create_task_for_devis_ajustement_
+    refuse`) pour éviter tout import circulaire au chargement du module.
+    Appelé APRÈS l'écriture du statut mais AVANT la restauration du
+    contexte RLS vers l'organisation de l'admin — la Task appartient à
+    l'organisation CIBLE (celle du prospect), `tasks_task` n'a qu'une
+    policy RLS mono-organisation (voir docstring de
+    `create_task_for_program_request_decided`).
     """
     if status not in (ProgramRequestStatus.ACCEPTEE, ProgramRequestStatus.REFUSEE):
         raise ValidationError({'status': 'Statut invalide.'})
+
+    from apps.tasks.services import create_task_for_program_request_decided
 
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)
@@ -419,6 +431,7 @@ def decide_program_request(*, admin_organization_id, target_organization_id, req
                 raise ValidationError({'request': 'Demande introuvable.'})
             program_request.status = status
             program_request.save(update_fields=['status'])
+            create_task_for_program_request_decided(program_request)
         finally:
             set_rls_context(organization_id=admin_organization_id)
     return program_request

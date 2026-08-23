@@ -16,6 +16,7 @@ const REQUEST = {
 function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
     getMyProgramRequests: async () => [],
+    getMyTasks: async () => [],
     ...overrides,
   });
   return { api, ...render(withApiClient(api, <ProgramRequestView />)) };
@@ -100,5 +101,27 @@ describe('ProgramRequestView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
 
     await waitFor(() => expect(getMyProgramRequests).toHaveBeenCalledTimes(2));
+  });
+
+  it('affiche une notification de décision en attente (ticket F-059)', async () => {
+    const getMyTasks = vi.fn().mockResolvedValue([{
+      id: 'task-1', type: 'notification' as const, subject_type: 'programrequest', subject_id: 'req-1',
+      program: null, assignee: 'user-1', source: 'program_request_decided',
+      label: 'Votre demande de programme sur mesure a été acceptée — KEYIMMO prépare la création de votre programme.',
+      due_date: null, priority: 'normal' as const, status: 'pending' as const,
+      created_at: '2026-03-10T09:00:00Z', completed_at: null,
+    }]);
+    renderView({ getMyTasks });
+
+    expect(await screen.findByText('Notifications')).toBeInTheDocument();
+    expect(screen.getByText(/a été acceptée/)).toBeInTheDocument();
+    expect(getMyTasks).toHaveBeenCalledWith({ type: 'notification', status: 'pending' });
+  });
+
+  it("n'affiche pas de carte Notifications sans notification en attente", async () => {
+    renderView();
+
+    await screen.findByRole('form', { name: 'Soumettre une demande de programme' });
+    expect(screen.queryByText('Notifications')).not.toBeInTheDocument();
   });
 });

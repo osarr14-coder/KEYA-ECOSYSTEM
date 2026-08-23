@@ -12,6 +12,9 @@ from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 
+from apps.tasks.models import Task, TaskType
+from apps.tasks.services import PROGRAM_REQUEST_DECIDED_SOURCE
+
 from . import services
 from .models import (
     Asset,
@@ -1249,3 +1252,51 @@ class TestProgramRequest:
         )
 
         assert response.status_code == 400
+
+    def test_accepting_a_request_notifies_the_prospect_with_a_task(self):
+        """Ticket B-043 — le prospect (`requested_by`) reçoit une `Task`
+        `type=notification` dès que sa demande est acceptée. Lue sous le
+        contexte RLS de SA propre organisation (piège RLS déjà rencontré
+        au ticket B-042 : le `finally` de `decide_program_request` restaure
+        le contexte de l'admin AVANT que ce test ne relise quoi que ce
+        soit en ORM brut).
+        """
+        client = _register_and_authenticate('request-notif-accept@example.com', 'Org Request Notif Accept')
+        organization = Organization.objects.get(name='Org Request Notif Accept')
+        requester = User.objects.get(email='request-notif-accept@example.com')
+        created = client.post(
+            reverse('program-request-list-create'), {'description': 'À notifier — acceptée'}, format='json',
+        ).data
+        admin_client = _any_admin_client()
+
+        admin_client.post(
+            reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
+            {'status': 'acceptee'}, format='json',
+        )
+
+        set_rls_context(organization_id=organization.id)
+        task = Task.objects.get(subject_id=created['id'], source=PROGRAM_REQUEST_DECIDED_SOURCE)
+        assert task.type == TaskType.NOTIFICATION
+        assert task.assignee_id == requester.id
+        assert task.organization_id == organization.id
+        assert 'acceptée' in task.label
+
+    def test_refusing_a_request_notifies_the_prospect_with_a_task(self):
+        client = _register_and_authenticate('request-notif-refuse@example.com', 'Org Request Notif Refuse')
+        organization = Organization.objects.get(name='Org Request Notif Refuse')
+        requester = User.objects.get(email='request-notif-refuse@example.com')
+        created = client.post(
+            reverse('program-request-list-create'), {'description': 'À notifier — refusée'}, format='json',
+        ).data
+        admin_client = _any_admin_client()
+
+        admin_client.post(
+            reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
+            {'status': 'refusee'}, format='json',
+        )
+
+        set_rls_context(organization_id=organization.id)
+        task = Task.objects.get(subject_id=created['id'], source=PROGRAM_REQUEST_DECIDED_SOURCE)
+        assert task.type == TaskType.NOTIFICATION
+        assert task.assignee_id == requester.id
+        assert 'refusée' in task.label
