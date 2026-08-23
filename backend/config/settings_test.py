@@ -5,6 +5,21 @@ import tempfile
 
 from .settings import *  # noqa: F401,F403
 
+# Déploiement (Render, voir DEPLOY_RENDER.md) — `SECURE_SSL_REDIRECT` vaut
+# `not DEBUG` dans settings.py ; `DEBUG` vaut False par défaut
+# (config(..., default=False)) si la variable d'environnement n'est pas
+# posée, ce qui est le cas de tout run pytest qui ne la définit pas
+# explicitement. Bug RÉEL rencontré en lançant la suite complète dans un
+# environnement propre pour valider ce ticket : chaque requête du client de
+# test (APIClient) recevait une redirection 301 au lieu d'une vraie réponse
+# (HttpResponsePermanentRedirect, sans `.data`) — la notion même de
+# "HTTP vs HTTPS" n'a aucun sens pour ce client, qui simule des appels en
+# process, jamais une vraie connexion réseau. Forcé à False ici,
+# explicitement, jamais dépendant de la variable DEBUG ambiante — même
+# discipline que CELERY_TASK_ALWAYS_EAGER plus bas (override qui n'a de
+# sens qu'au niveau de CE module, pas de .env).
+SECURE_SSL_REDIRECT = False
+
 # Fichiers uploadés en test écrits dans un dossier temporaire système, hors
 # du repo — jamais dans MEDIA_ROOT réel (ticket 004).
 #

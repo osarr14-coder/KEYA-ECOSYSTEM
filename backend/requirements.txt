@@ -3,6 +3,15 @@ Django==4.2.11
 djangorestframework==3.15.1
 djangorestframework-simplejwt==5.3.1
 django-cors-headers==4.3.1
+# `cryptography` — dépendance RÉELLE de djangorestframework-simplejwt (via
+# PyJWT), jamais installée automatiquement par pip à partir de ce fichier
+# (absente jusqu'ici). Fonctionnait par accident en dev sur les postes qui
+# avaient un paquet système `cryptography` déjà présent — trouvé en testant
+# un vrai POST /api/auth/login/ dans un environnement Python isolé (venv),
+# sans rien du système : `ModuleNotFoundError` à l'émission du premier JWT,
+# jamais un problème de code applicatif. Corrigé ici, pas seulement pour
+# Render — ce fichier était déjà incomplet pour toute install pip propre.
+cryptography==43.0.0
 
 # ── Base de données
 psycopg2-binary==2.9.9
@@ -16,6 +25,14 @@ Pillow==10.2.0
 
 # ── Sécurité & utilitaires
 python-decouple==3.8
+
+# ── Déploiement (Render — voir DEPLOY_RENDER.md à la racine du repo).
+# gunicorn : serveur WSGI de production, `manage.py runserver` n'est
+# jamais destiné à servir du trafic réel. whitenoise : sert les fichiers
+# statiques Django (admin, DRF browsable API) directement depuis le
+# process web, sans service/CDN séparé — suffisant pour ce volume.
+gunicorn==22.0.0
+whitenoise==6.6.0
 
 # ── Dev & tests
 pytest==8.1.1

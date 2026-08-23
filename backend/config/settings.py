@@ -10,6 +10,22 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-only-change-me')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
+# Déploiement (Render, servi exclusivement en HTTPS) : rattaché à DEBUG,
+# jamais un second interrupteur — le dev local (.env.example, DEBUG=True)
+# reste en HTTP simple, inchangé. HSTS volontairement PAS activé ici
+# (SECURE_HSTS_SECONDS) : irréversible côté navigateur une fois servi,
+# risque jugé disproportionné pour un premier déploiement — à activer
+# consciemment plus tard si besoin, jamais par défaut.
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+# Requis dès que SECURE_SSL_REDIRECT est actif derrière un proxy qui
+# termine le TLS lui-même (Render : la connexion interne app<-proxy est en
+# clair) — sans ça, Django ne voit jamais une requête comme "déjà HTTPS"
+# et boucle indéfiniment sur sa propre redirection. `X-Forwarded-Proto` est
+# l'en-tête standard posé par Render (et la plupart des proxys/CDN).
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -38,6 +54,11 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Déploiement (Render, voir DEPLOY_RENDER.md) : sert STATIC_ROOT
+    # directement depuis le process gunicorn, aucun service statique/CDN
+    # séparé. Sans effet en dev (runserver sert déjà les statiques lui-même,
+    # cette middleware ne fait qu'ajouter un fallback jamais atteint).
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -97,6 +118,11 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+# Déploiement (Render) : cible de `collectstatic` (lancé au build), servie
+# par WhiteNoise en production. Absent avant ce point — aucune config de
+# déploiement n'existait dans ce repo, voir DEPLOY_RENDER.md.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # MEDIA_URL n'est délibérément jamais monté dans config/urls.py (pas de
 # `static(MEDIA_URL, document_root=MEDIA_ROOT)`) : aucune route ne doit

@@ -4200,6 +4200,50 @@ Suite `packages/design-system` : 165 tests, tous verts. Suites
 (73) : aucune régression, `tsc --noEmit` et `vite build` propres sur les
 5 packages/apps.
 
+## Premier déploiement (Render)
+
+Voir `DEPLOY_RENDER.md` (racine du repo) pour le mode d'emploi complet, et
+`render.yaml` pour le Blueprint. Aucune configuration de déploiement
+n'existait avant ce point (vrai jusqu'ici, voir `appOrigins.ts`) — trois
+correctifs backend RÉELS trouvés en testant la chaîne complète (migrations
+→ amorçage → login HTTP réel) contre une vraie base Postgres avec un rôle
+NON-superuser (reproduit localement pour valider le comportement RLS
+attendu sur le Postgres managé de Render, jamais supposé) :
+
+1. **`cryptography` manquant de `requirements.txt`** — dépendance réelle
+   de `djangorestframework-simplejwt` (via PyJWT), jamais listée. Marchait
+   par accident en dev sur les postes ayant un paquet système
+   `cryptography` déjà présent ; `ModuleNotFoundError` à l'émission du
+   premier JWT dans un environnement Python isolé (venv, sans rien du
+   système). Corrigé — ce fichier était déjà incomplet pour toute install
+   pip propre, pas seulement pour Render.
+2. **`SECURE_SSL_REDIRECT` cassait toute la suite de tests** — ajouté pour
+   la production (Render sert exclusivement en HTTPS ; `SECURE_PROXY_SSL_HEADER`
+   posé en même temps, sinon boucle de redirection infinie derrière un
+   proxy qui termine le TLS lui-même). `DEBUG` vaut `False` par défaut
+   sans variable d'environnement posée — chaque requête du client de test
+   recevait donc une redirection 301 au lieu d'une vraie réponse. Corrigé
+   dans `settings_test.py` (`SECURE_SSL_REDIRECT = False`, explicite,
+   jamais dépendant de `DEBUG` ambiant — même discipline que
+   `CELERY_TASK_ALWAYS_EAGER` dans ce même fichier).
+3. **`apps/organizations/management/commands/seed_admin.py`** (nouveau) —
+   aucune fixture/seed n'existait pour amorcer un environnement vierge
+   (aucun `Role` créé par migration, seul `CountryPack` Sénégal l'est).
+   RLS sur `organizations_membership` (`FORCE`, ticket 001) exige
+   `app.current_user_id` ET `app.current_organization_id` posés
+   explicitement (`set_rls_context`) hors de tout contexte HTTP — trouvé
+   en testant l'IDEMPOTENCE réelle de cette commande (deux exécutions de
+   suite), pas supposé : sans `user_id`, la policy SELECT ne voit jamais
+   la ligne déjà créée, un second INSERT est tenté, l'UNIQUE constraint
+   échoue.
+
+Chaîne bout-en-bout vérifiée réellement (Postgres local avec un rôle non-
+superuser, migrations, `seed_admin`, `POST /api/auth/login/`, `GET
+/api/me/`) — pas seulement `manage.py check`. Simplifications assumées
+pour ce premier déploiement (Celery en mode eager, pas de stockage média
+persistant, pas de HSTS) : voir `DEPLOY_RENDER.md`, section « Limites
+connues ».
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)
