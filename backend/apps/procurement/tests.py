@@ -918,6 +918,20 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # à la création d'un LotLedger, réservé à `admin_keyimmo`,
             # jamais accessible au rôle constructeur/sponsor.
             'procurement-admin-lot-eligible-for-ledger-search',
+            # Ticket B-042 — ajout conscient : demandes de programme sur
+            # mesure. `program-request-list-create` (POST) et
+            # `program-request-mine` (GET) sont accessibles à N'IMPORTE QUEL
+            # utilisateur authentifié, mais chacun n'y voit/n'y écrit QUE
+            # pour SA PROPRE organisation active (`request.organization`,
+            # jamais fournie par l'appelant) — même garde qu'un sponsor sur
+            # `my-lots`/`my-tasks` ci-dessus, jamais une fuite vers une
+            # autre organisation. `program-request-list-create` (GET,
+            # listing TOUTES organisations) et `program-request-decide`
+            # sont, eux, réservés à `admin_keyimmo` (`IsAdminKeyimmo`,
+            # conditionné à la méthode HTTP) — aucune amount/marge exposée
+            # ici (`description` est un texte libre du demandeur lui-même,
+            # jamais une donnée KEYIMMO sensible comme `Devis.amount`).
+            'program-request-list-create', 'program-request-mine', 'program-request-decide',
         }
         assert actual == expected
 

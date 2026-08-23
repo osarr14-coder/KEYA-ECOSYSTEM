@@ -4,6 +4,8 @@ from rest_framework.test import APIClient
 
 from apps.organizations.models import Membership, Organization
 
+from .models import User
+
 PASSWORD = 'strongpass123'
 
 
@@ -49,6 +51,58 @@ class TestRegistration:
 
         assert response.status_code == 400
         assert Organization.objects.filter(name='Org 2').exists() is False
+
+    def test_role_defaults_to_sponsor_when_omitted(self):
+        """Ticket B-042 — comportement historique inchangé pour tout
+        appelant qui n'envoie pas `role` (seul rôle possible avant ce
+        ticket)."""
+        client = APIClient()
+        response = _register(client, 'no-role@example.com', 'Org No Role')
+
+        assert response.status_code == 201
+        assert Membership.objects.filter(
+            user__email='no-role@example.com', role__code='sponsor',
+        ).exists()
+
+    def test_client_role_can_be_chosen_explicitly(self):
+        client = APIClient()
+        response = client.post(
+            reverse('register'),
+            {'email': 'buyer@example.com', 'password': PASSWORD, 'role': 'client'},
+            format='json',
+        )
+
+        assert response.status_code == 201
+        assert Membership.objects.filter(
+            user__email='buyer@example.com', role__code='client',
+        ).exists()
+
+    def test_organization_name_is_derived_automatically_when_blank(self):
+        """Ticket B-042 — un client (prospect acheteur) n'a pas
+        d'organisation à nommer, contrairement au sponsor."""
+        client = APIClient()
+        response = client.post(
+            reverse('register'),
+            {'email': 'no-org-name@example.com', 'password': PASSWORD, 'role': 'client'},
+            format='json',
+        )
+
+        assert response.status_code == 201
+        membership = Membership.objects.get(user__email='no-org-name@example.com')
+        assert membership.organization.name == 'Compte personnel — no-org-name@example.com'
+
+    def test_a_disallowed_role_is_rejected(self):
+        """Ticket B-042 — liste blanche stricte : une inscription publique
+        ne doit jamais pouvoir accorder un rôle opérationnel interne."""
+        client = APIClient()
+        response = client.post(
+            reverse('register'),
+            {'email': 'escalate@example.com', 'password': PASSWORD, 'role': 'admin_keyimmo'},
+            format='json',
+        )
+
+        assert response.status_code == 400
+        assert not User.objects.filter(email='escalate@example.com').exists()
 
 
 @pytest.mark.django_db

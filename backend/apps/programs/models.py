@@ -48,6 +48,18 @@ class Asset(models.Model):
         return self.name
 
 
+class LotCommercialStatus(models.TextChoices):
+    """Vocabulaire fixe (comme `ProgramCostRepartitionMethod` plus bas) —
+    disponibilité commerciale d'un lot, ticket B-042. Distinct du statut de
+    construction (`TrustLevel`) et du statut du devis
+    (`Lot.assigned_organization`) : voir la docstring du champ sur `Lot`
+    ci-dessous."""
+
+    DISPONIBLE = 'disponible', 'Disponible'
+    RESERVE = 'reserve', 'Réservé'
+    VENDU = 'vendu', 'Vendu'
+
+
 class Lot(models.Model):
     """Appartient toujours à un seul `Asset` (et donc, transitivement, à un
     seul `Program`) — critère d'acceptation du ticket 002.
@@ -86,6 +98,23 @@ class Lot(models.Model):
     # cette valeur — jamais un partage silencieux à zéro. Unité m² implicite,
     # comme le reste du projet n'a jamais eu besoin d'unité explicite.
     surface = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Ticket B-042 — disponibilité et prix COMMERCIAUX, distincts du statut
+    # de construction (`TrustLevel`, doctrine Visible Trust) ET du statut
+    # du devis (`assigned_organization` ci-dessus, qui répond à « qui
+    # construit », pas « qui achète ») : un lot peut être en plein chantier
+    # tout en restant commercialement disponible, ou l'inverse. Champ
+    # stocké classique (comme `ProgramCostRepartitionMethod` ci-dessous),
+    # jamais dérivé d'un `TrustEvent` — un lot n'affirme aucune confiance
+    # chantier sur sa disponibilité à la vente.
+    commercial_status = models.CharField(
+        max_length=20, choices=LotCommercialStatus.choices, default=LotCommercialStatus.DISPONIBLE,
+    )
+    # Prix affiché au CLIENT acheteur — jamais à confondre avec
+    # `Devis.amount` (ce que KEYIMMO paie à l'organisation constructrice,
+    # un tout autre acteur du modèle économique). `null=True` : aucune
+    # valeur inventée pour un lot pas encore commercialisé, même
+    # discipline que `surface` ci-dessus (ticket B-033).
+    sale_price = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -303,3 +332,62 @@ class ProgramCost(models.Model):
 
     def __str__(self):
         return f'{self.program} — foncier {self.foncier_total} / BE {self.be_total}'
+
+
+class ProgramRequestStatus(models.TextChoices):
+    """Vocabulaire fixe — statut d'une demande de programme sur mesure
+    (ticket B-042), simple champ stocké, PAS un `TrustEvent` : une demande
+    commerciale n'est pas un objet de la chaîne de confiance chantier,
+    même distinction que `Devis.status` (ticket 022)."""
+
+    EN_ATTENTE = 'en_attente', 'En attente'
+    ACCEPTEE = 'acceptee', 'Acceptée'
+    REFUSEE = 'refusee', 'Refusée'
+
+
+class ProgramRequest(models.Model):
+    """Demande d'un prospect (rôle `sponsor`, voir `apps.accounts.
+    serializers.SELF_SERVICE_ROLES`) pour un programme immobilier sur
+    mesure — ticket B-042.
+
+    Ne crée JAMAIS de `Program` directement : le verrou KEYIMMO gatekeeper
+    (ticket B-039, `admin_keyimmo` seul créateur) reste intact et non
+    négociable. `admin_keyimmo` instruit cette demande (accepte/refuse),
+    puis crée le `Program` séparément via le wizard EXISTANT (ticket
+    F-049), en désignant `organization` (l'organisation individuelle du
+    demandeur, créée à l'inscription — voir `apps.accounts.serializers.
+    RegisterSerializer`) comme organisation cible. `program` ci-dessous
+    n'est qu'une traçabilité a posteriori, jamais posé automatiquement.
+
+    `organization` est l'organisation du DEMANDEUR — ne peut PAS être
+    dénormalisée depuis un `Program` comme le reste de cette app
+    (`Asset.organization`, etc.) : au moment de la demande, aucun
+    `Program` n'existe encore.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name='program_requests',
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='program_requests',
+    )
+    # Texte libre pour ce MVP (budget/localisation/type de bien souhaité)
+    # — aucun champ structuré de matching, hors scope de ce ticket (voir
+    # B-042-prospect-programme-sur-mesure.md, section « Hors scope »).
+    description = models.TextField()
+    status = models.CharField(
+        max_length=20, choices=ProgramRequestStatus.choices, default=ProgramRequestStatus.EN_ATTENTE,
+    )
+    # Traçabilité pure du `Program` éventuellement créé à partir de cette
+    # demande — jamais posé automatiquement, voir docstring ci-dessus.
+    program = models.ForeignKey(
+        Program, on_delete=models.SET_NULL, null=True, blank=True, related_name='source_requests',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'programs_program_request'
+
+    def __str__(self):
+        return f'{self.organization} — {self.get_status_display()}'

@@ -1,5 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import permissions, viewsets
+from rest_framework import generics, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -11,7 +11,7 @@ from apps.messaging.mixins import MessageThreadMixin
 from apps.organizations.models import Organization
 
 from . import services
-from .models import Asset, Lot, Program
+from .models import Asset, Lot, Program, ProgramRequest
 from .serializers import (
     AssetAdminCreateSerializer,
     AssetSerializer,
@@ -22,6 +22,9 @@ from .serializers import (
     ProgramCostCreateSerializer,
     ProgramCostSerializer,
     ProgramHierarchySerializer,
+    ProgramRequestCreateSerializer,
+    ProgramRequestDecisionSerializer,
+    ProgramRequestSerializer,
     ProgramSerializer,
 )
 
@@ -214,6 +217,10 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
                 lot_id=kwargs['pk'],
                 name=request.data.get('name'),
                 surface=request.data.get('surface'),
+                # Ticket B-042 — disponibilité/prix commerciaux, même
+                # chemin de mutation que name/surface ci-dessus.
+                commercial_status=request.data.get('commercial_status'),
+                sale_price=request.data.get('sale_price'),
             )
         except DjangoValidationError as exc:
             raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
@@ -373,3 +380,89 @@ class ProgramCostRepartitionView(APIView):
             return Response({'detail': str(exc)}, status=409)
 
         return Response(LotRepartitionSerializer(repartition, many=True).data)
+
+
+class ProgramRequestListCreateView(APIView):
+    """`POST /api/programs/requests/` — n'importe quel utilisateur
+    authentifié soumet une demande de programme sur mesure pour SA PROPRE
+    organisation active — jamais une organisation fournie en payload,
+    contrairement aux endpoints `admin_keyimmo` du reste de ce fichier
+    (voir `services.create_program_request`).
+
+    `GET /api/programs/requests/` — TOUTES les demandes, toutes
+    organisations confondues, réservé à `admin_keyimmo` (permission
+    conditionnée à la méthode, même principe que `get_permissions` par
+    action des `ViewSet` ci-dessus, appliqué ici à un `APIView`).
+    """
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+        return [permissions.IsAuthenticated()]
+
+    def post(self, request):
+        if request.organization is None:
+            raise ValidationError({'organization': 'Aucune organisation active.'})
+        serializer = ProgramRequestCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            program_request = services.create_program_request(
+                organization_id=request.organization.id,
+                requested_by=request.user,
+                description=serializer.validated_data['description'],
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(ProgramRequestSerializer(program_request).data, status=201)
+
+    def get(self, request):
+        status_filter = request.query_params.get('status')
+        requests = services.list_program_requests_as_admin(
+            admin_organization_id=request.organization.id if request.organization else None,
+            status=status_filter,
+        )
+        return Response(ProgramRequestSerializer(requests, many=True).data)
+
+
+class MyProgramRequestsView(generics.ListAPIView):
+    """`GET /api/programs/requests/mine/` — les demandes de MA propre
+    organisation active, jamais celles d'une autre. Filtre simple, pas
+    besoin d'`OrganizationScopedMixin` (pensé pour un `ModelViewSet`
+    complet, pas nécessaire ici)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ProgramRequestSerializer
+
+    def get_queryset(self):
+        if self.request.organization is None:
+            return ProgramRequest.objects.none()
+        return ProgramRequest.objects.filter(
+            organization=self.request.organization,
+        ).order_by('-created_at')
+
+
+class ProgramRequestDecisionView(APIView):
+    """`POST /api/programs/requests/{id}/decide/?organization_id=<id>` —
+    accepte/refuse une demande, réservé à `admin_keyimmo`. Ne crée JAMAIS
+    de `Program` (verrou B-039 intact) — voir `services.
+    decide_program_request`.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def post(self, request, request_id):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        serializer = ProgramRequestDecisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            program_request = services.decide_program_request(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                request_id=request_id,
+                status=serializer.validated_data['status'],
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(ProgramRequestSerializer(program_request).data)

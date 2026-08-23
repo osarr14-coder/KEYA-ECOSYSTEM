@@ -4,8 +4,20 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from apps.core.rls import set_rls_context
+from apps.organizations.models import Organization
 
-from .models import Asset, Lot, Milestone, MilestoneTemplate, Program, ProgramCost, ProgramCostRepartitionMethod
+from .models import (
+    Asset,
+    Lot,
+    LotCommercialStatus,
+    Milestone,
+    MilestoneTemplate,
+    Program,
+    ProgramCost,
+    ProgramCostRepartitionMethod,
+    ProgramRequest,
+    ProgramRequestStatus,
+)
 
 # Ordre canonique "plus récent d'abord" pour ProgramCost — même tuple que
 # apps.trust.repository/apps.pricing.services (LATEST_FIRST_ORDERING,
@@ -176,7 +188,12 @@ def create_lot(*, admin_organization_id, target_organization_id, asset_id, name,
     return lot
 
 
-def update_lot(*, admin_organization_id, target_organization_id, lot_id, name=None, surface=None):
+def update_lot(
+    *, admin_organization_id, target_organization_id, lot_id, name=None, surface=None,
+    commercial_status=None, sale_price=None,
+):
+    if commercial_status is not None and commercial_status not in LotCommercialStatus.values:
+        raise ValidationError({'commercial_status': 'Statut commercial invalide.'})
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)
         try:
@@ -190,6 +207,15 @@ def update_lot(*, admin_organization_id, target_organization_id, lot_id, name=No
             if surface is not None:
                 lot.surface = surface
                 update_fields.append('surface')
+            # Ticket B-042 — disponibilité/prix commerciaux, même chemin de
+            # mutation que name/surface ci-dessus (réservé à admin_keyimmo,
+            # LotViewSet.update).
+            if commercial_status is not None:
+                lot.commercial_status = commercial_status
+                update_fields.append('commercial_status')
+            if sale_price is not None:
+                lot.sale_price = sale_price
+                update_fields.append('sale_price')
             if update_fields:
                 lot.save(update_fields=update_fields)
         finally:
@@ -323,3 +349,76 @@ def instantiate_milestones_for_lot(lot):
         for step in template.steps.all()
     ]
     return Milestone.objects.bulk_create(milestones)
+
+
+# Ticket B-042 — demandes de programme sur mesure (« client sponsor »).
+# Ne crée JAMAIS de Program directement : le verrou KEYIMMO gatekeeper
+# (ticket B-039) reste intact, voir la docstring de `ProgramRequest`.
+
+def create_program_request(*, organization_id, requested_by, description):
+    """Le contexte RLS de la requête est DÉJÀ celui de l'organisation
+    active de l'appelant (posé par `OrganizationScopeMiddleware` avant
+    d'atteindre la vue) — contrairement à `create_program`/`update_lot`
+    ci-dessus (organisation CIBLE différente de celle de l'appelant,
+    `admin_keyimmo` agissant sur une organisation où il n'est pas membre),
+    aucune bascule RLS explicite n'est nécessaire ici : un utilisateur ne
+    soumet jamais de demande que pour SA PROPRE organisation active.
+    """
+    if not description or not description.strip():
+        raise ValidationError({'description': 'Une description du besoin est requise.'})
+    return ProgramRequest.objects.create(
+        organization_id=organization_id, requested_by=requested_by, description=description.strip(),
+    )
+
+
+def list_program_requests_as_admin(*, admin_organization_id, status=None):
+    """`GET /api/programs/requests/` — TOUTES les demandes, toutes
+    organisations confondues, réservé à `admin_keyimmo`. Boucle de
+    bascule RLS organisation par organisation — EXACTEMENT le même
+    mécanisme déjà établi par
+    `apps.procurement.services._search_lots_by_name_as_admin` (ticket
+    B-028/B-037) — jamais une policy RLS large (piège déjà rencontré et
+    corrigé au ticket B-041, voir migration
+    `0009_lot_admin_keyimmo_select.py`). Volume attendu faible (une
+    demande par prospect, pas une recherche déclenchée à chaque frappe
+    clavier) : aucun plafond `MAX_SEARCH_RESULTS` ici, contrairement à
+    `_search_lots_by_name_as_admin`.
+    """
+    results = []
+    organization_ids = list(Organization.objects.values_list('id', flat=True))
+    try:
+        for organization_id in organization_ids:
+            set_rls_context(organization_id=organization_id)
+            queryset = ProgramRequest.objects.select_related('organization', 'requested_by')
+            if status:
+                queryset = queryset.filter(status=status)
+            results.extend(queryset)
+    finally:
+        set_rls_context(organization_id=admin_organization_id)
+    return results
+
+
+def decide_program_request(*, admin_organization_id, target_organization_id, request_id, status):
+    """`POST /api/programs/requests/{id}/decide/` — accepte/refuse une
+    demande, réservé à `admin_keyimmo`. Même bascule RLS explicite que
+    `update_program`/`update_lot` (organisation CIBLE fournie par
+    l'appelant). Ne crée JAMAIS de `Program` — voir docstring de
+    `ProgramRequest` : `admin_keyimmo` le crée séparément via le wizard
+    existant (ticket F-049) une fois la demande acceptée.
+    """
+    if status not in (ProgramRequestStatus.ACCEPTEE, ProgramRequestStatus.REFUSEE):
+        raise ValidationError({'status': 'Statut invalide.'})
+
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            program_request = ProgramRequest.objects.filter(
+                id=request_id, organization_id=target_organization_id,
+            ).first()
+            if program_request is None:
+                raise ValidationError({'request': 'Demande introuvable.'})
+            program_request.status = status
+            program_request.save(update_fields=['status'])
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return program_request

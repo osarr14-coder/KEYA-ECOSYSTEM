@@ -22,6 +22,7 @@ from .models import (
     Program,
     ProgramCost,
     ProgramCostRepartitionMethod,
+    ProgramRequest,
 )
 
 PASSWORD = 'strongpass123'
@@ -1012,3 +1013,239 @@ class TestProgramAssetLotAdminGatekeeping:
         assert member_client.get(reverse('program-list')).status_code == 200
         assert member_client.get(reverse('program-detail', args=[program['id']])).status_code == 200
         assert member_client.get(reverse('program-hierarchy', args=[program['id']])).status_code == 200
+
+
+@pytest.mark.django_db
+class TestLotCommercialFieldsGatekeeping:
+    """Ticket B-042 — `commercial_status`/`sale_price` suivent le même
+    verrou que `name`/`surface` (ticket B-039) : écriture réservée à
+    `admin_keyimmo`, même chemin de mutation (`LotViewSet.update`)."""
+
+    def test_admin_keyimmo_can_set_commercial_status_and_sale_price(self):
+        sponsor_org, _program, lots = _setup_sponsor_program_with_lots('commercial-admin')
+        lot = lots[0]
+        admin_client = _any_admin_client()
+
+        response = admin_client.patch(
+            reverse('lot-detail', args=[lot['id']]) + f'?organization_id={sponsor_org.id}',
+            {'commercial_status': 'reserve', 'sale_price': '25000000.00'}, format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['commercial_status'] == 'reserve'
+        assert response.data['sale_price'] == '25000000.00'
+
+    def test_an_ordinary_member_cannot_set_commercial_status_or_sale_price(self):
+        sponsor_org, _program, lots = _setup_sponsor_program_with_lots('commercial-member')
+        lot = lots[0]
+        member_client = _register_and_authenticate(
+            'commercial-member-user@example.com', 'Org Commercial Member User',
+        )
+
+        response = member_client.patch(
+            reverse('lot-detail', args=[lot['id']]) + f'?organization_id={sponsor_org.id}',
+            {'commercial_status': 'vendu'}, format='json',
+        )
+
+        assert response.status_code == 403
+        # Piège RLS déjà documenté (CLAUDE.md, ticket B-039) : une lecture
+        # ORM directe après un appel admin doit re-basculer explicitement
+        # le contexte RLS, sinon échec silencieux (queryset vide).
+        set_rls_context(organization_id=sponsor_org.id)
+        assert Lot.objects.get(id=lot['id']).commercial_status == 'disponible'
+
+    def test_an_invalid_commercial_status_is_rejected(self):
+        sponsor_org, _program, lots = _setup_sponsor_program_with_lots('commercial-invalid')
+        lot = lots[0]
+        admin_client = _any_admin_client()
+
+        response = admin_client.patch(
+            reverse('lot-detail', args=[lot['id']]) + f'?organization_id={sponsor_org.id}',
+            {'commercial_status': 'pas-un-statut-valide'}, format='json',
+        )
+
+        assert response.status_code == 400
+        set_rls_context(organization_id=sponsor_org.id)
+        assert Lot.objects.get(id=lot['id']).commercial_status == 'disponible'
+
+    def test_a_new_lot_defaults_to_disponible(self):
+        sponsor_org, _program, lots = _setup_sponsor_program_with_lots('commercial-default')
+        set_rls_context(organization_id=sponsor_org.id)
+        assert Lot.objects.get(id=lots[0]['id']).commercial_status == 'disponible'
+        assert Lot.objects.get(id=lots[0]['id']).sale_price is None
+
+
+@pytest.mark.django_db
+class TestProgramRequest:
+    """Ticket B-042 — demande de programme sur mesure : n'importe quel
+    utilisateur authentifié soumet une demande pour SA PROPRE organisation
+    active, `admin_keyimmo` seul peut lister toutes les demandes (toutes
+    organisations confondues) et les accepter/refuser. Ne crée JAMAIS de
+    `Program` — le verrou KEYIMMO gatekeeper (ticket B-039) reste intact.
+    """
+
+    def test_a_user_can_create_a_request_for_their_own_active_organization(self):
+        client = _register_and_authenticate('request-owner@example.com', 'Org Request Owner')
+        organization = Organization.objects.get(name='Org Request Owner')
+
+        response = client.post(
+            reverse('program-request-list-create'),
+            {'description': 'Villa 4 pièces à Dakar, budget indicatif 60M FCFA.'}, format='json',
+        )
+
+        assert response.status_code == 201
+        assert response.data['organization'] == organization.id
+        assert response.data['status'] == 'en_attente'
+        assert response.data['program'] is None
+
+    def test_an_empty_description_is_rejected(self):
+        client = _register_and_authenticate('request-empty@example.com', 'Org Request Empty')
+
+        response = client.post(reverse('program-request-list-create'), {'description': '   '}, format='json')
+
+        assert response.status_code == 400
+        assert not ProgramRequest.objects.exists()
+
+    def test_a_user_only_sees_their_own_organizations_requests(self):
+        client_a = _register_and_authenticate('request-a@example.com', 'Org Request A')
+        client_a.post(
+            reverse('program-request-list-create'), {'description': 'Demande A'}, format='json',
+        )
+        client_b = _register_and_authenticate('request-b@example.com', 'Org Request B')
+        client_b.post(
+            reverse('program-request-list-create'), {'description': 'Demande B'}, format='json',
+        )
+
+        response = client_a.get(reverse('program-request-mine'))
+
+        assert response.status_code == 200
+        descriptions = [row['description'] for row in response.data]
+        assert descriptions == ['Demande A']
+
+    def test_an_ordinary_member_cannot_list_all_requests_across_organizations(self):
+        member_client = _register_and_authenticate(
+            'request-noadmin@example.com', 'Org Request No Admin',
+        )
+        response = member_client.get(reverse('program-request-list-create'))
+        assert response.status_code == 403
+
+    def test_admin_keyimmo_lists_requests_across_organizations_without_membership(self):
+        client_a = _register_and_authenticate('request-cross-a@example.com', 'Org Request Cross A')
+        client_a.post(
+            reverse('program-request-list-create'), {'description': 'Demande cross A'}, format='json',
+        )
+        client_b = _register_and_authenticate('request-cross-b@example.com', 'Org Request Cross B')
+        client_b.post(
+            reverse('program-request-list-create'), {'description': 'Demande cross B'}, format='json',
+        )
+        admin_client, _admin_org, admin_user = _register_admin(
+            'request-cross-admin@example.com', 'Org Request Cross Admin',
+        )
+        org_a = Organization.objects.get(name='Org Request Cross A')
+        org_b = Organization.objects.get(name='Org Request Cross B')
+        assert not Membership.objects.filter(user=admin_user, organization__in=[org_a, org_b]).exists()
+
+        response = admin_client.get(reverse('program-request-list-create'))
+
+        assert response.status_code == 200
+        organization_names = {row['organization_name'] for row in response.data}
+        assert {'Org Request Cross A', 'Org Request Cross B'}.issubset(organization_names)
+
+    def test_admin_keyimmo_can_filter_requests_by_status(self):
+        client = _register_and_authenticate('request-filter@example.com', 'Org Request Filter')
+        created = client.post(
+            reverse('program-request-list-create'), {'description': 'À filtrer'}, format='json',
+        ).data
+        admin_client = _any_admin_client()
+        organization = Organization.objects.get(name='Org Request Filter')
+        admin_client.post(
+            reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
+            {'status': 'acceptee'}, format='json',
+        )
+
+        pending = admin_client.get(reverse('program-request-list-create') + '?status=en_attente')
+        accepted = admin_client.get(reverse('program-request-list-create') + '?status=acceptee')
+
+        assert all(row['id'] != created['id'] for row in pending.data)
+        assert any(row['id'] == created['id'] for row in accepted.data)
+
+    def test_admin_keyimmo_can_accept_a_request_without_creating_a_program(self):
+        client = _register_and_authenticate('request-accept@example.com', 'Org Request Accept')
+        organization = Organization.objects.get(name='Org Request Accept')
+        created = client.post(
+            reverse('program-request-list-create'), {'description': 'À accepter'}, format='json',
+        ).data
+        admin_client = _any_admin_client()
+
+        response = admin_client.post(
+            reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
+            {'status': 'acceptee'}, format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['status'] == 'acceptee'
+        assert response.data['program'] is None
+        # Verrou B-039 intact : accepter une demande ne crée jamais de
+        # Program automatiquement, admin_keyimmo le fait séparément via
+        # le wizard existant (ticket F-049).
+        set_rls_context(organization_id=organization.id)
+        assert not Program.objects.filter(organization=organization).exists()
+
+    def test_admin_keyimmo_can_refuse_a_request(self):
+        client = _register_and_authenticate('request-refuse@example.com', 'Org Request Refuse')
+        organization = Organization.objects.get(name='Org Request Refuse')
+        created = client.post(
+            reverse('program-request-list-create'), {'description': 'À refuser'}, format='json',
+        ).data
+        admin_client = _any_admin_client()
+
+        response = admin_client.post(
+            reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
+            {'status': 'refusee'}, format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['status'] == 'refusee'
+
+    def test_an_ordinary_member_cannot_decide_on_a_request(self):
+        client = _register_and_authenticate('request-nodecide@example.com', 'Org Request No Decide')
+        organization = Organization.objects.get(name='Org Request No Decide')
+        created = client.post(
+            reverse('program-request-list-create'), {'description': 'Pas décidable'}, format='json',
+        ).data
+
+        response = client.post(
+            reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
+            {'status': 'acceptee'}, format='json',
+        )
+
+        assert response.status_code == 403
+        assert ProgramRequest.objects.get(id=created['id']).status == 'en_attente'
+
+    def test_decide_without_organization_id_query_param_is_rejected(self):
+        client = _register_and_authenticate('request-noqp@example.com', 'Org Request No QP')
+        created = client.post(
+            reverse('program-request-list-create'), {'description': 'Sans query param'}, format='json',
+        ).data
+        admin_client = _any_admin_client()
+
+        response = admin_client.post(
+            reverse('program-request-decide', args=[created['id']]), {'status': 'acceptee'}, format='json',
+        )
+
+        assert response.status_code == 400
+
+    def test_an_invalid_decision_status_is_rejected(self):
+        client = _register_and_authenticate('request-badstatus@example.com', 'Org Request Bad Status')
+        organization = Organization.objects.get(name='Org Request Bad Status')
+        created = client.post(
+            reverse('program-request-list-create'), {'description': 'Statut invalide'}, format='json',
+        ).data
+        admin_client = _any_admin_client()
+
+        response = admin_client.post(
+            reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
+            {'status': 'en_attente'}, format='json',
+        )
+
+        assert response.status_code == 400

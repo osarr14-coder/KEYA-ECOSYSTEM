@@ -1,6 +1,15 @@
 from rest_framework import serializers
 
-from .models import Asset, Lot, Milestone, Program, ProgramCost, ProgramCostRepartitionMethod
+from .models import (
+    Asset,
+    Lot,
+    Milestone,
+    Program,
+    ProgramCost,
+    ProgramCostRepartitionMethod,
+    ProgramRequest,
+    ProgramRequestStatus,
+)
 
 
 class ProgramSerializer(serializers.ModelSerializer):
@@ -59,14 +68,19 @@ class AssetAdminCreateSerializer(serializers.Serializer):
 class LotSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lot
-        fields = ['id', 'name', 'asset', 'assigned_organization', 'surface', 'created_at']
+        fields = [
+            'id', 'name', 'asset', 'assigned_organization', 'surface',
+            'commercial_status', 'sale_price', 'created_at',
+        ]
         # `assigned_organization` (ticket 009, point d'ancrage PRO minimal)
         # se pose exclusivement via `LotViewSet.assign_organization`, jamais
         # par un PATCH générique ici — un seul chemin de mutation, documenté.
         # Sert désormais UNIQUEMENT à la lecture (ticket B-039 : `name`/
         # `surface` en écriture passent par `LotAdminCreateSerializer` et
         # `LotViewSet.update`, réservés à `admin_keyimmo` — ce serializer-ci
-        # n'est plus utilisé en écriture générique).
+        # n'est plus utilisé en écriture générique). `commercial_status`/
+        # `sale_price` (ticket B-042) suivent le même chemin — écriture
+        # exclusivement via `LotViewSet.update`.
         read_only_fields = ['id', 'assigned_organization', 'created_at']
 
     def __init__(self, *args, **kwargs):
@@ -160,3 +174,36 @@ class LotRepartitionSerializer(serializers.Serializer):
     lot_id = serializers.UUIDField(source='lot.id')
     foncier_lot = serializers.DecimalField(max_digits=16, decimal_places=2)
     be_lot = serializers.DecimalField(max_digits=16, decimal_places=2)
+
+
+class ProgramRequestCreateSerializer(serializers.Serializer):
+    """Entrée de `POST /api/programs/requests/` — `organization` n'est
+    JAMAIS fournie ici, contrairement à `ProgramAdminCreateSerializer` :
+    l'organisation cible est TOUJOURS celle de l'appelant
+    (`request.organization`), pas un paramètre libre (voir
+    `apps.programs.views.ProgramRequestListCreateView.post`)."""
+
+    description = serializers.CharField()
+
+
+class ProgramRequestDecisionSerializer(serializers.Serializer):
+    """Entrée de `POST /api/programs/requests/{id}/decide/` — liste
+    blanche stricte (jamais `en_attente`, qui n'est qu'un état initial,
+    jamais une décision)."""
+
+    status = serializers.ChoiceField(
+        choices=[ProgramRequestStatus.ACCEPTEE, ProgramRequestStatus.REFUSEE],
+    )
+
+
+class ProgramRequestSerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    requested_by_email = serializers.CharField(source='requested_by.email', read_only=True)
+
+    class Meta:
+        model = ProgramRequest
+        fields = [
+            'id', 'organization', 'organization_name', 'requested_by', 'requested_by_email',
+            'description', 'status', 'program', 'created_at',
+        ]
+        read_only_fields = fields
