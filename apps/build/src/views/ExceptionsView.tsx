@@ -171,6 +171,7 @@ function DocumentManquantRow({ row, onAdded }: { row: LotExceptionRow; onAdded: 
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -178,16 +179,41 @@ function DocumentManquantRow({ row, onAdded }: { row: LotExceptionRow; onAdded: 
     setSubmitting(true);
     setError(null);
     try {
-      await api.addEvidenceDocument({
+      const result = await api.addEvidenceDocument({
         workDeclarationId: row.work_declaration_id, file,
         category: 'preuve_chantier', source: 'control_tower_upload',
       });
-      onAdded();
+      if (result.duplicateOf) {
+        // Ticket F-052 — jamais bloquant (B-040), mais `onAdded()`
+        // déclenche le rechargement de la liste d'exceptions, qui ferait
+        // disparaître cette ligne avant que l'avertissement soit vu. On
+        // laisse la ligne visible avec le bandeau, `onAdded()` n'est
+        // appelé qu'au clic explicite sur « Continuer ».
+        setDuplicateOf(result.duplicateOf);
+      } else {
+        onAdded();
+      }
     } catch {
       setError("Échec de l'ajout de la preuve.");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (duplicateOf) {
+    return (
+      <li style={ROW_STYLE}>
+        <strong>{row.lot_name}</strong>
+        <span> — {row.asset_name} ({row.program_name})</span>
+        <AlertBanner title="Preuve ajoutée, mais identique à un document déjà existant">
+          Ce fichier semble être un doublon exact d&apos;un document déjà présent dans cette
+          organisation — vérifiez qu&apos;il ne s&apos;agit pas d&apos;une réutilisation par erreur.
+        </AlertBanner>
+        <div style={{ marginTop: '8px' }}>
+          <Button type="button" onClick={onAdded}>Continuer</Button>
+        </div>
+      </li>
+    );
   }
 
   return (

@@ -113,7 +113,11 @@ export function createApiClient({
     /** Action réelle sur « documents manquants » : upload d'un Document
      * (endpoint existant, multipart) PUIS création de l'Evidence qui le
      * rattache à la déclaration de travaux — deux endpoints réels
-     * enchaînés, aucun nouveau endpoint créé pour ce ticket. */
+     * enchaînés, aucun nouveau endpoint créé pour ce ticket.
+     *
+     * `duplicateOf` (ticket F-052) reprend `Document.duplicate_of` (ticket
+     * B-040, backend) : jamais bloquant, l'Evidence est créée dans tous les
+     * cas — seulement remonté à l'appelant pour affichage éventuel. */
     addEvidenceDocument: async (params: {
       workDeclarationId: string; file: File; category: string; source: string;
     }) => {
@@ -121,11 +125,14 @@ export function createApiClient({
       formData.append('file', params.file);
       formData.append('category', params.category);
       formData.append('source', params.source);
-      const document = await request<{ id: string }>('/api/documents/', { method: 'POST', formData });
-      return request('/api/evidences/', {
+      const document = await request<{ id: string; duplicate_of: string | null }>(
+        '/api/documents/', { method: 'POST', formData },
+      );
+      await request('/api/evidences/', {
         method: 'POST',
         json: { work_declaration: params.workDeclarationId, documents: [document.id] },
       });
+      return { duplicateOf: document.duplicate_of };
     },
   };
 }

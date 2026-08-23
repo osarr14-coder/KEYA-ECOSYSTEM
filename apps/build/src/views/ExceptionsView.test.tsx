@@ -224,6 +224,63 @@ describe('ExceptionsView — documents manquants : action réelle d\'upload', ()
   });
 });
 
+describe('ExceptionsView — doublon signalé à l\'upload (ticket F-052)', () => {
+  const MISSING_DOCUMENT_EXCEPTIONS: ExceptionsPayload = {
+    ...EMPTY_EXCEPTIONS,
+    documents_manquants: [{
+      lot_id: 'lot-1', lot_name: 'Lot Sans Preuve', asset_name: 'Résidence', program_name: 'Programme',
+      label: 'Aucune preuve pour « Fondations »', work_declaration_id: 'declaration-1',
+    }],
+  };
+
+  it('affiche un avertissement et ne recharge pas la liste tant que non confirmé', async () => {
+    const getExceptions = vi.fn().mockResolvedValue(MISSING_DOCUMENT_EXCEPTIONS);
+    const addEvidenceDocument = vi.fn().mockResolvedValue({ duplicateOf: 'document-original' });
+    renderView({ getExceptions, addEvidenceDocument });
+
+    const file = new File(['contenu'], 'preuve.jpg', { type: 'image/jpeg' });
+    const input = await screen.findByLabelText('Ajouter une preuve pour Lot Sans Preuve');
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter une preuve' }));
+
+    expect(await screen.findByText(/identique à un document déjà existant/i)).toBeInTheDocument();
+    // La ligne reste affichée — pas de rechargement automatique de la liste.
+    expect(getExceptions).toHaveBeenCalledTimes(1);
+  });
+
+  it('recharge la liste seulement au clic sur "Continuer"', async () => {
+    const getExceptions = vi.fn().mockResolvedValue(MISSING_DOCUMENT_EXCEPTIONS);
+    const addEvidenceDocument = vi.fn().mockResolvedValue({ duplicateOf: 'document-original' });
+    renderView({ getExceptions, addEvidenceDocument });
+
+    const file = new File(['contenu'], 'preuve.jpg', { type: 'image/jpeg' });
+    const input = await screen.findByLabelText('Ajouter une preuve pour Lot Sans Preuve');
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter une preuve' }));
+    await screen.findByText(/identique à un document déjà existant/i);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continuer' }));
+
+    await waitFor(() => expect(getExceptions).toHaveBeenCalledTimes(2));
+  });
+
+  it('sans doublon, aucun bandeau n\'apparaît (comportement inchangé)', async () => {
+    const addEvidenceDocument = vi.fn().mockResolvedValue({ duplicateOf: null });
+    renderView({
+      getExceptions: async () => MISSING_DOCUMENT_EXCEPTIONS,
+      addEvidenceDocument,
+    });
+
+    const file = new File(['contenu'], 'preuve.jpg', { type: 'image/jpeg' });
+    const input = await screen.findByLabelText('Ajouter une preuve pour Lot Sans Preuve');
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter une preuve' }));
+
+    await waitFor(() => expect(addEvidenceDocument).toHaveBeenCalled());
+    expect(screen.queryByText(/identique à un document déjà existant/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('ExceptionsView — erreur de chargement générique (ticket F-033, vague 3)', () => {
   it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement', async () => {
     const getExceptions = vi.fn()
