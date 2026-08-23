@@ -129,7 +129,12 @@ const GLOBAL_CSS = `
   body {
     font-family: ${typography.fontFamily};
     color: ${semanticColors.neutral.text};
-    background: ${semanticColors.neutral.surface};
+    /* Ticket F-055 (suite F-053/F-054) — "neutral.background" (teinté),
+       PAS "neutral.surface" (blanc pur) : sans ce contraste, le canevas de
+       page et les cartes/le bandeau (tous deux "surface") sont
+       rigoureusement identiques, rien ne "flotte" visuellement — retour
+       utilisateur explicite sur le back-office. */
+    background: ${semanticColors.neutral.background};
     -webkit-font-smoothing: antialiased;
   }
   button, input, select, textarea {

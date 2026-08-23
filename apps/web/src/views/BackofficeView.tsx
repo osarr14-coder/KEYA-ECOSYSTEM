@@ -3,7 +3,7 @@ import {
 } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, Input,
+  AlertBanner, ApiErrorBanner, Button, Card, Input, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -203,6 +203,16 @@ export function BackofficeView() {
         <Button type="submit">Rechercher</Button>
       </form>
 
+      {/* Ticket F-055 — retour utilisateur explicite : sans indication avant
+          la première recherche, l'espace sous la carte restait un vide
+          blanc sans aucun repère. Même ton que les états vides existants
+          de cette vue (« Aucun utilisateur trouvé. »), jamais un ajout
+          fonctionnel — uniquement un texte d'aide. */}
+      {searchState.status === 'idle' && (
+        <p style={{ color: semanticColors.neutral.textMuted, marginTop: '16px' }}>
+          Saisissez une adresse email et lancez la recherche pour afficher le profil d&apos;un utilisateur.
+        </p>
+      )}
       {searchState.status === 'loading' && <p>Recherche…</p>}
       {searchState.status === 'error' && (
         <ApiErrorBanner

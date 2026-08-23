@@ -24,6 +24,12 @@ import { Icon, type IconName } from '../Icon/Icon';
  * critère d'acceptation déjà testé du ticket F-045 — « bordure ET fond
  * distincts du texte brut »). L'ombre ajoute la profondeur demandée sans
  * toucher ce contrat existant.
+ *
+ * Ticket F-055 (suite) — `--keya-shadow-sm` → `-md` : retour utilisateur
+ * explicite (« la carte manque de présence »), après que le canevas de
+ * page (`body`, `GlobalStyles.tsx`) soit passé de `neutral.surface` à
+ * `neutral.background` (teinté) — `Card` doit se détacher plus nettement
+ * de ce nouveau fond, `-sm` ne suffisait plus.
  */
 export interface CardProps {
   icon?: IconName;
@@ -58,7 +64,7 @@ export function Card({
         borderRadius: '16px',
         background: semanticColors.neutral.surface,
         padding: '16px',
-        boxShadow: 'var(--keya-shadow-sm)',
+        boxShadow: 'var(--keya-shadow-md)',
       }}
     >
       {title && (

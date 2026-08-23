@@ -328,8 +328,14 @@ export function AppShell({
           gap: tokens.gap,
           padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
           borderBottom: brand ? `2px solid ${brandColors.gold}` : `1px solid ${semanticColors.neutral.border}`,
-          background: brand ? BRAND_GRADIENT : undefined,
+          // Ticket F-055 — "neutral.surface" explicite (au lieu de
+          // `undefined`, transparent) + ombre : depuis que le canevas de
+          // page ("body") porte "neutral.background" (teinté, voir
+          // GlobalStyles.tsx), un topbar transparent laissait voir cette
+          // teinte au lieu de se détacher — sans présence, à plat.
+          background: brand ? BRAND_GRADIENT : semanticColors.neutral.surface,
           color: brand ? '#FFFFFF' : undefined,
+          boxShadow: 'var(--keya-shadow-sm)',
         }}
       >
         {brand && (
@@ -415,7 +421,21 @@ export function AppShell({
           href="/tasks"
           aria-label={`Task Inbox — ${taskInboxCount} en attente`}
           style={{
-            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px',
+            marginLeft: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            // Ticket F-055 — chip discret (fond + rayon), jamais posé
+            // directement sur le fond de topbar déjà uni (`neutral.surface`)
+            // : seul repère de clic sur ce bouton avant ce ticket, en plus
+            // de l'icône elle-même. Fond/couleur SEULEMENT hors `brand`
+            // (topbar HOME dégradé navy) : sur fond navy, un chip clair et
+            // du texte gris `textMuted` deviendraient illisibles — l'en-tête
+            // `brand` garde son héritage `color: '#FFFFFF'` existant.
+            padding: '6px 8px',
+            borderRadius: '8px',
+            background: brand ? 'transparent' : semanticColors.neutral.background,
+            color: brand ? undefined : semanticColors.neutral.textMuted,
           }}
         >
           {/* Ticket F-045 — remplace l'emoji 🔔 (seul emoji du projet, jamais
@@ -449,9 +469,13 @@ export function AppShell({
           aria-label={theme === 'dark' ? 'Désactiver le mode sombre' : 'Activer le mode sombre'}
           style={{
             border: 'none',
-            background: 'transparent',
+            // Ticket F-055 — même chip discret que le lien Task Inbox
+            // ci-dessus, pour une paire d'actions cohérente dans le topbar.
+            background: brand ? 'transparent' : semanticColors.neutral.background,
             display: 'inline-flex',
             alignItems: 'center',
+            padding: '6px',
+            borderRadius: '8px',
             color: semanticColors.neutral.textMuted,
           }}
         >
