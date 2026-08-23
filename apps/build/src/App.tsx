@@ -83,6 +83,16 @@ export function App() {
     ? (persistedIsValidMembership ? persistedOrganizationIdRef.current : memberships[0]?.organization_id ?? null)
     : persistedOrganizationIdRef.current;
   const activeOrganizationId = manualOrganizationId ?? resolvedOrganizationId;
+  // Ticket F-060 — câble le compteur de la cloche AppShell
+  // (`taskInboxCount`, jamais renseigné jusqu'ici, toujours 0 par défaut) :
+  // même endpoint `/api/me/tasks/` déjà consommé par apps/home (ticket 008),
+  // aucun nouveau endpoint créé côté backend. `activeOrganizationId` dans
+  // les deps déclenche un refetch RÉEL, pas seulement un rafraîchissement
+  // de confort — `tasks_task` a une policy RLS mono-organisation.
+  const taskInboxState = useApiResource(
+    () => (meState.status === 'success' ? api.getMyTasks({ status: 'pending' }) : Promise.resolve([])),
+    [meState.status, activeOrganizationId],
+  );
 
   useEffect(() => {
     if (activeOrganizationId) localStorage.setItem(ACTIVE_ORGANIZATION_STORAGE_KEY, activeOrganizationId);
@@ -123,6 +133,7 @@ export function App() {
       userRoles={userRoles}
       activeModuleId="build"
       breadcrumbs={[{ label: 'BUILD' }]}
+      taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
       organizationOptions={organizationOptions}
       activeOrganizationId={activeOrganizationId ?? undefined}
       onOrganizationChange={handleOrganizationChange}

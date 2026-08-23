@@ -4,6 +4,7 @@ import type {
   LotRow,
   Me,
   PaginatedResponse,
+  Task,
 } from './types';
 
 export class ApiError extends Error {
@@ -134,6 +135,16 @@ export function createApiClient({
       });
       return { duplicateOf: document.duplicate_of };
     },
+
+    /**
+     * `GET /api/me/tasks/` (ticket 006/F-060) — inbox de l'utilisateur
+     * COURANT (`assignee=request.user`) : source du compteur
+     * `taskInboxCount` d'`AppShell`, resté à 0 par défaut jusqu'ici faute
+     * de tout consommateur ici (même endpoint déjà utilisé par apps/home,
+     * ticket 008 — aucun nouveau endpoint créé).
+     */
+    getMyTasks: (filters: { status?: string } = {}) =>
+      request<Task[]>(`/api/me/tasks/${toQueryString({ status: filters.status })}`),
   };
 }
 

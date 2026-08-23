@@ -43,6 +43,7 @@ function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
     getMe: async () => SINGLE_MEMBERSHIP_ME,
     getExceptions: async () => EMPTY_EXCEPTIONS,
     getAllLots: async () => makePage([]),
+    getMyTasks: async () => [],
     ...overrides,
   });
   return render(withApiClient(api, <App />));
@@ -288,4 +289,27 @@ describe('App — erreur de chargement du profil (ticket F-033, vague 3)', () =>
       expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument();
     },
   );
+});
+
+describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
+  it('affiche le nombre de tâches en attente, jamais 0 par défaut', async () => {
+    renderApp({
+      getMyTasks: async () => [
+        {
+          id: 'task-1', type: 'task' as const, subject_type: 'inspections.reserve', subject_id: 'res-1',
+          program: null, assignee: 'constructeur-1', source: 'reserve_opened', label: 'Réserve ouverte',
+          due_date: null, priority: 'normal' as const, status: 'pending' as const,
+          created_at: '2026-03-01T00:00:00Z', completed_at: null,
+        },
+      ],
+    });
+
+    expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('1');
+  });
+
+  it('affiche 0 en l\'absence de tâche en attente', async () => {
+    renderApp({ getMyTasks: async () => [] });
+
+    expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
+  });
 });

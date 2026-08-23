@@ -141,6 +141,17 @@ export function App() {
     () => (meState.status === 'success' ? api.getMyLots() : Promise.resolve([])),
     [meState.status, activeOrganizationId],
   );
+  // Ticket F-060 — câble le compteur de la cloche AppShell
+  // (`taskInboxCount`, jamais renseigné jusqu'ici, toujours 0 par défaut) :
+  // même garde de fetch et mêmes deps que `lotsState` ci-dessus
+  // (`activeOrganizationId` déclenche un refetch réel, pas seulement un
+  // rafraîchissement de confort — `tasks_task` a une policy RLS mono-
+  // organisation, la visibilité d'une Task change RÉELLEMENT en changeant
+  // d'organisation active).
+  const taskInboxState = useApiResource(
+    () => (meState.status === 'success' ? api.getMyTasks({ status: 'pending' }) : Promise.resolve([])),
+    [meState.status, activeOrganizationId],
+  );
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ViewId>('overview');
 
@@ -174,6 +185,7 @@ export function App() {
       userRoles={userRoles}
       activeModuleId="home"
       breadcrumbs={[{ label: 'Accueil' }]}
+      taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
       organizationOptions={organizationOptions}
       activeOrganizationId={activeOrganizationId ?? undefined}
       onOrganizationChange={handleOrganizationChange}

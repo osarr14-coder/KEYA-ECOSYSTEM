@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}, redirect = vi.fn()) {
-  const api = createMockApiClient(overrides);
+  const api = createMockApiClient({ getMyTasks: async () => [], ...overrides });
   render(withApiClient(api, <App redirect={redirect} />));
   return { api, redirect };
 }
@@ -165,7 +165,7 @@ describe(
 
     function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
       localStorage.setItem('keya_access_token', 'stored-admin-token');
-      const api = createMockApiClient(overrides);
+      const api = createMockApiClient({ getMyTasks: async () => [], ...overrides });
       render(withApiClient(api, <App />));
       return { api };
     }
@@ -301,7 +301,7 @@ describe(
   () => {
     function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
       localStorage.setItem('keya_access_token', 'stored-admin-token');
-      const api = createMockApiClient(overrides);
+      const api = createMockApiClient({ getMyTasks: async () => [], ...overrides });
       render(withApiClient(api, <App />));
       return { api };
     }
@@ -430,6 +430,7 @@ describe('App — détection hors ligne (ticket F-033, vague 2)', () => {
         id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
         memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
       }),
+      getMyTasks: async () => [],
     });
     render(withApiClient(api, <App />));
 
@@ -454,5 +455,41 @@ describe('App — détection hors ligne (ticket F-033, vague 2)', () => {
     renderApp();
 
     expect(screen.queryByText('Hors ligne')).not.toBeInTheDocument();
+  });
+});
+
+describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
+  function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
+    localStorage.setItem('keya_access_token', 'stored-admin-token');
+    const api = createMockApiClient({
+      getMe: vi.fn().mockResolvedValue({
+        id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
+        memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+      }),
+      ...overrides,
+    });
+    render(withApiClient(api, <App />));
+    return { api };
+  }
+
+  it('affiche le nombre de tâches en attente, jamais 0 par défaut', async () => {
+    renderAuthenticated({
+      getMyTasks: async () => [
+        {
+          id: 'task-1', type: 'alert' as const, subject_type: 'procurement.devis', subject_id: 'devis-1',
+          program: null, assignee: 'admin-1', source: 'devis_ajustement_refuse', label: 'Ajustement refusé',
+          due_date: null, priority: 'high' as const, status: 'pending' as const,
+          created_at: '2026-03-01T00:00:00Z', completed_at: null,
+        },
+      ],
+    });
+
+    expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('1');
+  });
+
+  it('affiche 0 en l\'absence de tâche en attente', async () => {
+    renderAuthenticated({ getMyTasks: async () => [] });
+
+    expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
   });
 });

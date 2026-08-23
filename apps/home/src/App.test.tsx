@@ -414,3 +414,32 @@ describe('App — sponsor sans bien (ticket F-057, programme sur mesure)', () =>
     expect(screen.queryByRole('button', { name: 'Programme sur mesure' })).not.toBeInTheDocument();
   });
 });
+
+describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
+  it('affiche le nombre de tâches en attente, jamais 0 par défaut', async () => {
+    renderApp({
+      getMyTasks: async () => [
+        {
+          id: 'task-1', type: 'notification' as const, subject_type: 'programs.programrequest', subject_id: 'req-1',
+          program: null, assignee: 'user-1', source: 'program_request_decided', label: 'Notif 1',
+          due_date: null, priority: 'normal' as const, status: 'pending' as const,
+          created_at: '2026-03-01T00:00:00Z', completed_at: null,
+        },
+        {
+          id: 'task-2', type: 'task' as const, subject_type: 'inspections.reserve', subject_id: 'res-1',
+          program: null, assignee: 'user-1', source: 'reserve_opened', label: 'Notif 2',
+          due_date: null, priority: 'normal' as const, status: 'pending' as const,
+          created_at: '2026-03-01T00:00:00Z', completed_at: null,
+        },
+      ],
+    });
+
+    expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('2');
+  });
+
+  it('affiche 0 en l\'absence de tâche en attente', async () => {
+    renderApp({ getMyTasks: async () => [] });
+
+    expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
+  });
+});

@@ -3,7 +3,7 @@ import type {
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
-  OrganizationSearchResult, PricingCanal, PricingConfig, Program, ProgramRequest,
+  OrganizationSearchResult, PricingCanal, PricingConfig, Program, ProgramRequest, Task,
 } from './types';
 
 export class ApiError extends Error {
@@ -452,6 +452,17 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
         `/api/programs/requests/${requestId}/decide/${toQueryString({ organization_id: organization })}`,
         { method: 'POST', json: { status } },
       )
+    ),
+
+    /**
+     * `GET /api/me/tasks/` (ticket 006/F-060) — inbox de l'utilisateur
+     * COURANT (`assignee=request.user`), jamais toutes les organisations :
+     * source du compteur `taskInboxCount` d'`AppShell`, resté à 0 par
+     * défaut jusqu'ici faute de tout consommateur ici (même endpoint déjà
+     * utilisé par `apps/home`, ticket 008 — aucun nouveau endpoint créé).
+     */
+    getMyTasks: (filters: { status?: string } = {}) => (
+      request<Task[]>(`/api/me/tasks/${toQueryString({ status: filters.status })}`)
     ),
   };
 }

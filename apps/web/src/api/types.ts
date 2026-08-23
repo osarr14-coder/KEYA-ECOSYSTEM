@@ -172,6 +172,26 @@ export interface ProgramRequest {
   created_at: string;
 }
 
+/** Miroir de `apps.tasks.serializers` (`GET /api/me/tasks/`, ticket 006) —
+ * même forme que `apps/home/src/api/types.ts::Task` (F-060 : câblage du
+ * compteur `taskInboxCount` d'`AppShell`, resté à 0 par défaut jusqu'ici
+ * dans cette app faute de tout consommateur de `/api/me/tasks/`). */
+export interface Task {
+  id: string;
+  type: 'task' | 'notification' | 'alert' | 'exception';
+  subject_type: string;
+  subject_id: string;
+  program: string | null;
+  assignee: string;
+  source: string;
+  label: string;
+  due_date: string | null;
+  priority: 'low' | 'normal' | 'high';
+  status: 'pending' | 'done';
+  created_at: string;
+  completed_at: string | null;
+}
+
 /** Miroir de `apps.procurement.serializers.LotSearchResultSerializer`
  * (`GET /api/procurement/admin/lots/?q=`, ticket B-028) — `organization`/
  * `program` imbriqués en id+name uniquement (jamais `asset`, pas nécessaire

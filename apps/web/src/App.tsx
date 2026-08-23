@@ -189,7 +189,13 @@ function AuthenticatedApp() {
  * survit à un rechargement de page.
  */
 function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
+  const api = useApiClient();
   const [activeTab, setActiveTab] = useUrlSyncedTab(TAB_ROUTES, 'backoffice');
+  // Ticket F-060 — câble le compteur de la cloche AppShell
+  // (`taskInboxCount`, jamais renseigné jusqu'ici, toujours 0 par défaut) :
+  // même endpoint `/api/me/tasks/` déjà consommé par apps/home (ticket 008),
+  // aucun nouveau endpoint créé côté backend.
+  const taskInboxState = useApiResource(() => api.getMyTasks({ status: 'pending' }), []);
 
   return (
     <AppShell
@@ -208,6 +214,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       userRoles={userRoles}
       activeModuleId={activeTab}
       breadcrumbs={[{ label: TABS.find((tab) => tab.id === activeTab)!.label }]}
+      taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
     >
       <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as AuthenticatedTabId)} aria-label="Sections back-office" />
 
