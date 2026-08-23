@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  AlertBanner, brandColors, typography, useOnlineStatus,
+  AlertBanner, BRAND_GRADIENT, brandColors, typography, useOnlineStatus,
 } from '@keya/design-system';
 
 import { createDefaultApiClient, startSyncEngine } from './sync/syncEngine';
@@ -26,6 +26,15 @@ import { MissionsListView } from './views/MissionsListView';
  * `App.test.tsx` (« interface tactile 360-430px ») cherche le plus proche
  * ancêtre <div> du texte "Mes missions" et vérifie CES styles précis,
  * casserait si un div intermédiaire s'intercalait.
+ *
+ * Ticket F-056 (suite F-053/054/055) — révision de la doctrine 17.3 :
+ * fond en dégradé navy/or (`BRAND_GRADIENT`, même traitement que le
+ * bandeau `<header>` `brand` d'AppShell sur les 3 autres apps), pas
+ * seulement une bordure en bas comme avant ce ticket. PAS un bandeau
+ * plein bord comme AppShell (padding `12px` de la div racine ci-dessous
+ * verrouillé par le même test « interface tactile » cité plus haut,
+ * jamais retiré pour ce ticket) : encart arrondi à la place, même esprit
+ * appliqué à la contrainte structurelle existante.
  */
 function BrandBar() {
   return (
@@ -35,8 +44,11 @@ function BrandBar() {
         alignItems: 'center',
         gap: '8px',
         marginBottom: '12px',
-        paddingBottom: '10px',
+        padding: '10px 12px',
+        borderRadius: '12px',
+        background: BRAND_GRADIENT,
         borderBottom: `2px solid ${brandColors.gold}`,
+        boxShadow: 'var(--keya-shadow-sm)',
       }}
     >
       <span
@@ -52,16 +64,15 @@ function BrandBar() {
           fontWeight: 700,
           fontFamily: typography.headingFontFamily,
           fontSize: '13px',
-          // Ticket F-055 (suite F-053/F-054) — même ombre que les autres
-          // badges K+ (AppShell, ProgramHeroCard, Login) : oubliée à
-          // l'introduction de ce bandeau (F-054), seul badge sans elle.
           boxShadow: 'var(--keya-shadow-sm)',
           flexShrink: 0,
         }}
       >
         K+
       </span>
-      <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '15px' }}>KEYA</span>
+      <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '15px', color: '#FFFFFF' }}>
+        KEYA
+      </span>
       <span style={{ fontSize: '11px', color: brandColors.gold, fontWeight: 600, letterSpacing: '0.05em' }}>
         CONTROL
       </span>
