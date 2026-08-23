@@ -51,6 +51,18 @@ l'ombre déjà posée sur `Card` (F-053).
   (nom produit, écran de connexion uniquement). Pas d'incohérence à
   corriger de ce côté.
 
+- **Audit HOME/BUILD** (même demande utilisateur, étendue à ces deux
+  apps) :
+  - `apps/home/src/views/MyActionsView.tsx` et `EvidenceFeedView.tsx` —
+    éléments de liste (tâche / preuve) au rayon 8px SANS ombre, seul
+    endroit de HOME resté au traitement pré-F-053. Même correction que
+    `ROW_STYLE`/`FIELDSET_STYLE` (F-054) : rayon 14px + `--keya-shadow-sm`.
+  - `apps/build/src/views/AllLotsView.tsx` — bloc filtres/export (recherche,
+    tri, densité, export CSV) posé à même le canevas de page, juste
+    au-dessus du tableau de résultats déjà dans un `Card` — même
+    incohérence que `CountryPackSelector`/`DevisView` côté apps/web,
+    corrigée à l'identique (le bloc rejoint un `Card`).
+
 ## Critères d'acceptation
 
 - Le canevas de page (fond derrière les cartes) est visuellement

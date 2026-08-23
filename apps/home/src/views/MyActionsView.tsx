@@ -32,7 +32,16 @@ export function MyActionsView({ activeOrganizationId }: MyActionsViewProps) {
             key={task.id}
             data-type={task.type}
             data-status={task.status}
-            style={{ padding: '12px', border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px' }}
+            // Ticket F-055 (suite F-053/F-054) — même traitement que `Card` :
+            // ombre + rayon plus prononcé, aucun autre repère visuel de
+            // "carte" ici (même raisonnement que MissionsListView, CONTROL
+            // PWA, ticket F-054).
+            style={{
+              padding: '12px',
+              border: `1px solid ${semanticColors.neutral.border}`,
+              borderRadius: '14px',
+              boxShadow: 'var(--keya-shadow-sm)',
+            }}
           >
             <strong>{task.label}</strong>
           </li>

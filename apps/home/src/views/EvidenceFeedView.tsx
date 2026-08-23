@@ -30,7 +30,15 @@ export function EvidenceFeedView({ lotId }: EvidenceFeedViewProps) {
         {state.data.map((item) => (
           <li
             key={item.id}
-            style={{ padding: '12px', border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px' }}
+            // Ticket F-055 (suite F-053/F-054) — même traitement que `Card` :
+            // ombre + rayon plus prononcé, même raisonnement que
+            // `MyActionsView` (ce fichier, même ticket).
+            style={{
+              padding: '12px',
+              border: `1px solid ${semanticColors.neutral.border}`,
+              borderRadius: '14px',
+              boxShadow: 'var(--keya-shadow-sm)',
+            }}
           >
             <div>
               <strong>{item.milestone_label}</strong>

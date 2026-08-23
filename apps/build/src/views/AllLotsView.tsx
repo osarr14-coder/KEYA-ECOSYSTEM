@@ -124,96 +124,103 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
   }
 
   return (
-    <section aria-label="Tous les lots">
-      <form
-        role="search"
-        onSubmit={(event) => event.preventDefault()}
-        style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}
-      >
-        <label>
-          Rechercher
-          <Input
-            type="search"
-            aria-label="Rechercher un lot"
-            value={search}
-            onChange={(event) => { setSearch(event.target.value); setPage(1); }}
-            style={{ width: 'auto' }}
-          />
-        </label>
-
-        <label>
-          Trier par
-          <Select
-            aria-label="Trier par"
-            value={ordering}
-            onChange={(event) => { setOrdering(event.target.value); setPage(1); }}
-            style={{ width: 'auto' }}
-          >
-            {ORDERING_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </Select>
-        </label>
-
-        <label>
-          Organisation affectée
-          <Select
-            aria-label="Filtrer par affectation"
-            value={assignedFilter}
-            onChange={(event) => {
-              setAssignedFilter(event.target.value as '' | 'true' | 'false');
-              setPage(1);
-            }}
-            style={{ width: 'auto' }}
-          >
-            <option value="">Tous</option>
-            <option value="true">Affectés</option>
-            <option value="false">Non affectés</option>
-          </Select>
-        </label>
-
-        <div role="group" aria-label="Densité du tableau" style={{ display: 'flex', gap: '8px' }}>
-          <Button
-            type="button"
-            variant={density === 'dense' ? 'primary' : 'secondary'}
-            aria-pressed={density === 'dense'}
-            onClick={() => setDensity('dense')}
-          >
-            Dense
-          </Button>
-          <Button
-            type="button"
-            variant={density === 'confortable' ? 'primary' : 'secondary'}
-            aria-pressed={density === 'confortable'}
-            onClick={() => setDensity('confortable')}
-          >
-            Confortable
-          </Button>
-        </div>
-      </form>
-
-      <div style={{ marginBottom: '12px' }}>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={handleExportClick}
-          disabled={state.status !== 'success' || exportState.status === 'exporting'}
+    <section aria-label="Tous les lots" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Ticket F-055 (suite F-053/F-054) — filtres + export posés dans un
+          `Card` : avant ce ticket, seul ce bloc flottait à même le canevas
+          de page, contrairement au tableau de résultats juste en dessous
+          (déjà dans un `Card`), même incohérence déjà corrigée côté
+          apps/web (DevisView/CountryPackSelector). */}
+      <Card icon="building">
+        <form
+          role="search"
+          onSubmit={(event) => event.preventDefault()}
+          style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}
         >
-          {exportState.status === 'exporting' ? 'Export en cours…' : 'Exporter en CSV'}
-        </Button>
+          <label>
+            Rechercher
+            <Input
+              type="search"
+              aria-label="Rechercher un lot"
+              value={search}
+              onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+              style={{ width: 'auto' }}
+            />
+          </label>
 
-        {exportState.status === 'confirming' && (
-          <AlertBanner title={`Export volumineux : ${exportState.totalCount} lot(s), ${exportState.requestCount} requêtes nécessaires.`}>
-            <p>Cela peut prendre un moment. Continuer ?</p>
-            <Button type="button" onClick={() => void runExport()}>Continuer l&apos;export</Button>
-            <Button type="button" variant="secondary" onClick={() => setExportState({ status: 'idle' })}>Annuler</Button>
-          </AlertBanner>
-        )}
+          <label>
+            Trier par
+            <Select
+              aria-label="Trier par"
+              value={ordering}
+              onChange={(event) => { setOrdering(event.target.value); setPage(1); }}
+              style={{ width: 'auto' }}
+            >
+              {ORDERING_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
+          </label>
 
-        {exportState.status === 'error' && (
-          <ApiErrorBanner error={exportState.error} title="Échec de l'export CSV. Réessayez." />
-        )}
-      </div>
+          <label>
+            Organisation affectée
+            <Select
+              aria-label="Filtrer par affectation"
+              value={assignedFilter}
+              onChange={(event) => {
+                setAssignedFilter(event.target.value as '' | 'true' | 'false');
+                setPage(1);
+              }}
+              style={{ width: 'auto' }}
+            >
+              <option value="">Tous</option>
+              <option value="true">Affectés</option>
+              <option value="false">Non affectés</option>
+            </Select>
+          </label>
+
+          <div role="group" aria-label="Densité du tableau" style={{ display: 'flex', gap: '8px' }}>
+            <Button
+              type="button"
+              variant={density === 'dense' ? 'primary' : 'secondary'}
+              aria-pressed={density === 'dense'}
+              onClick={() => setDensity('dense')}
+            >
+              Dense
+            </Button>
+            <Button
+              type="button"
+              variant={density === 'confortable' ? 'primary' : 'secondary'}
+              aria-pressed={density === 'confortable'}
+              onClick={() => setDensity('confortable')}
+            >
+              Confortable
+            </Button>
+          </div>
+        </form>
+
+        <div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleExportClick}
+            disabled={state.status !== 'success' || exportState.status === 'exporting'}
+          >
+            {exportState.status === 'exporting' ? 'Export en cours…' : 'Exporter en CSV'}
+          </Button>
+
+          {exportState.status === 'confirming' && (
+            <AlertBanner title={`Export volumineux : ${exportState.totalCount} lot(s), ${exportState.requestCount} requêtes nécessaires.`}>
+              <p>Cela peut prendre un moment. Continuer ?</p>
+              <Button type="button" onClick={() => void runExport()}>Continuer l&apos;export</Button>
+              <Button type="button" variant="secondary" onClick={() => setExportState({ status: 'idle' })}>Annuler</Button>
+            </AlertBanner>
+          )}
+
+          {exportState.status === 'error' && (
+            <ApiErrorBanner error={exportState.error} title="Échec de l'export CSV. Réessayez." />
+          )}
+        </div>
+      </Card>
 
       {state.status === 'loading' && <p>Chargement…</p>}
       {state.status === 'error' && (
