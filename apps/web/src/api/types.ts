@@ -118,6 +118,41 @@ export interface OrganizationSearchResult {
   name: string;
 }
 
+/** Miroir de `apps.programs.serializers.ProgramSerializer` (`POST
+ * /api/programs/`, ticket B-039/F-049). Réservé en écriture à
+ * `admin_keyimmo` — voir `createProgram` (`api/client.ts`), organisation
+ * cible fournie explicitement, jamais dérivée de l'organisation active de
+ * l'appelant. */
+export interface Program {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
+/** Miroir de `apps.programs.serializers.AssetSerializer` (`POST
+ * /api/assets/`, ticket B-039/F-049) — `program` est l'id du `Program`
+ * parent, vérifié appartenir à la même organisation cible côté backend
+ * (`services.create_asset`), jamais ici. */
+export interface Asset {
+  id: string;
+  name: string;
+  program: string;
+  created_at: string;
+}
+
+/** Miroir de `apps.programs.serializers.LotSerializer` en lecture (`POST
+ * /api/lots/`, ticket B-039/F-049) — `asset` est l'id de l'`Asset` parent,
+ * même principe que `Asset.program` ci-dessus. `surface` reste une chaîne
+ * (format `DecimalField` DRF), jamais convertie en nombre côté frontend. */
+export interface Lot {
+  id: string;
+  name: string;
+  asset: string;
+  assigned_organization: string | null;
+  surface: string | null;
+  created_at: string;
+}
+
 /** Miroir de `apps.procurement.serializers.LotSearchResultSerializer`
  * (`GET /api/procurement/admin/lots/?q=`, ticket B-028) — `organization`/
  * `program` imbriqués en id+name uniquement (jamais `asset`, pas nécessaire

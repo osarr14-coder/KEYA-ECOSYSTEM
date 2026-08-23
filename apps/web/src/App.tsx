@@ -17,11 +17,12 @@ import { BackofficeView } from './views/BackofficeView';
 import { DevisView } from './views/DevisView';
 import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
 import { PricingView } from './views/PricingView';
+import { ProgramsView } from './views/ProgramsView';
 
-type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers';
+type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'programs';
 
 /**
- * Source UNIQUE id/label/chemin des 4 onglets admin — ticket F-031 :
+ * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
  * `MODULES` (sidebar `AppShell`) et `TABS` (`TabBar`) en étaient deux copies
  * manuellement synchronisées depuis le ticket F-030 (id/label dupliqués,
  * jamais le chemin pour `TabBar`, qui ne connaissait pas encore l'URL avant
@@ -30,12 +31,16 @@ type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers';
  * réservé à admin_keyimmo (`requiredRoles`), défense en profondeur en plus
  * de la garde déjà faite dans `AuthenticatedApp`, même discipline que RLS +
  * filtre applicatif ailleurs dans ce projet (CLAUDE.md).
+ *
+ * Ticket F-049 — `programs` ajouté (création Program/Asset/Lot, voir
+ * `ProgramsView.tsx`), suite du gatekeeping API posé par B-039.
  */
 const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string; icon: IconName }[] = [
   { id: 'backoffice', label: 'Back-office', path: '/', icon: 'shield-check' },
   { id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text' },
   { id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet' },
   { id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale' },
+  { id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building' },
 ];
 
 const MODULES: AppModule[] = TAB_DEFINITIONS.map(({
@@ -183,6 +188,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'devis' && <DevisView />}
       {activeTab === 'pricing' && <PricingView />}
       {activeTab === 'legal-tiers' && <LegalPaymentTiersView />}
+      {activeTab === 'programs' && <ProgramsView />}
     </AppShell>
   );
 }

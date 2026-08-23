@@ -1,9 +1,9 @@
 import type {
-  BackofficeUserDetail, BackofficeUserSummary, CountryPackSummary,
+  Asset, BackofficeUserDetail, BackofficeUserSummary, CountryPackSummary,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
-  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult,
+  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
-  OrganizationSearchResult, PricingCanal, PricingConfig,
+  OrganizationSearchResult, PricingCanal, PricingConfig, Program,
 } from './types';
 
 export class ApiError extends Error {
@@ -399,6 +399,34 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
      */
     getLotBcCharges: (lotId: string, organizationId: string) =>
       request<LotBcCharge[]>(`/api/procurement/lot-ledgers/${lotId}/bc-charges/${toQueryString({ organization_id: organizationId })}`),
+
+    /**
+     * `POST /api/programs/` (ticket B-039/F-049) — réservé à
+     * `admin_keyimmo`. `organization` est l'organisation CIBLE du
+     * programme, jamais dérivée de l'organisation active de l'appelant
+     * (voir `ProgramAdminCreateSerializer`, backend) — `admin_keyimmo` agit
+     * couramment sur une organisation dont il n'est pas membre.
+     */
+    createProgram: (payload: { organization: string; name: string }) =>
+      request<Program>('/api/programs/', { method: 'POST', json: payload }),
+
+    /**
+     * `POST /api/assets/` (ticket B-039/F-049) — même principe que
+     * `createProgram` : `organization` explicite, `program` est l'id du
+     * `Program` parent, vérifié appartenir à cette organisation côté
+     * backend (`services.create_asset`), jamais ici.
+     */
+    createAsset: (payload: { organization: string; program: string; name: string; location?: string }) =>
+      request<Asset>('/api/assets/', { method: 'POST', json: payload }),
+
+    /**
+     * `POST /api/lots/` (ticket B-039/F-049) — même principe, `asset` est
+     * l'id de l'`Asset` parent. Instancie automatiquement les `Milestone`
+     * du lot côté backend (`instantiate_milestones_for_lot`), rien à
+     * envoyer ici pour ça.
+     */
+    createLot: (payload: { organization: string; asset: string; name: string; surface?: string }) =>
+      request<Lot>('/api/lots/', { method: 'POST', json: payload }),
   };
 }
 

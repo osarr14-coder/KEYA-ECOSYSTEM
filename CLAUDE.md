@@ -4060,6 +4060,48 @@ Suite `apps/programs` : 39 tests (3 nouveaux), tous verts. Suite
 complète backend : 367 tests, tous verts (aucune régression, y compris
 sur `test_vertical_slice_mvp1.py` une fois corrigé).
 
+## Écran de création Program/Asset/Lot (ticket F-049, `apps/web`)
+
+Voir `F-049-creation-programme-hierarchie-admin.md` pour le détail complet.
+Ferme le point explicitement laissé ouvert par B-039 (Décision 3, « aucun
+écran frontend ») : nouvel onglet **« Programmes »** (5ᵉ onglet admin,
+réservé `admin_keyimmo`, `ProgramsView.tsx`).
+
+**Flux « wizard » en une seule session, PAS un CRUD complet** — décision
+de périmètre assumée : aucun endpoint ne permet aujourd'hui à
+`admin_keyimmo` de lister les `Program`/`Asset` d'une organisation dont il
+n'est pas membre (`ProgramViewSet.list`/`AssetViewSet.list` sont restés
+sur `OrganizationScopedMixin`, non touchés par B-039 qui n'a verrouillé
+que l'écriture). L'écran enchaîne donc : recherche d'organisation cible
+(`searchOrganizations`, réutilisé tel quel depuis le ticket B-028/027) →
+création d'un `Program` → ajout d'un ou plusieurs `Asset` → ajout d'un ou
+plusieurs `Lot` par `Asset` — chaque étape utilise l'id retourné par
+l'étape précédente dans l'état React local, JAMAIS une recherche. **Limite
+assumée, documentée, pas corrigée ici** : étendre un `Program`/`Asset`
+créé lors d'une session précédente (état perdu) nécessiterait un nouvel
+endpoint de recherche (même famille que `search_lots_as_admin`) — candidat
+pour un futur ticket si le besoin se confirme.
+
+**`LiveSearchPicker`/`useDebouncedSearch` extraits de `DevisView.tsx` vers
+`apps/web/src/components/LiveSearchPicker.tsx`** — `ProgramsView.tsx`
+devient un troisième consommateur (après `LotPicker`/`OrganizationPicker`,
+tous deux restés dans `DevisView.tsx`), extrait plutôt que dupliqué, même
+discipline anti-duplication que le reste du projet (voir `buildCrossAppUrl`,
+F-040). Comportement strictement inchangé — `DevisView.test.tsx` reste
+vert sans aucune modification après l'extraction (34 tests).
+
+**Limitation backend non corrigée, notée en passant** : `AssetSerializer`
+(lecture) n'expose pas `location`, alors que `AssetAdminCreateSerializer`
+(écriture, B-039) l'accepte — la réponse `POST /api/assets/` ne renvoie
+donc jamais la valeur saisie. `ProgramsView.tsx` n'affiche donc pas
+`location` après création (aucun champ inventé côté frontend) — hors
+scope de F-049 (touche `apps/programs/serializers.py`, pas ce ticket),
+signalé ici pour un futur correctif si `location` doit redevenir visible.
+
+Suite `apps/web` : 188 tests (7 nouveaux pour `ProgramsView`, 1 nouveau
+sur `App.test.tsx` pour la navigation vers l'onglet), tous verts. `tsc
+--noEmit` propre, `vite build` propre.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

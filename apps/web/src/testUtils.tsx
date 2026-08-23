@@ -43,6 +43,10 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     createLotLedger: vi.fn(notMocked),
     // Ticket F-035 bis (apps/procurement, LotBcCharge — B-036) :
     getLotBcCharges: vi.fn(notMocked),
+    // Ticket F-049 (apps/programs, B-039) :
+    createProgram: vi.fn(notMocked),
+    createAsset: vi.fn(notMocked),
+    createLot: vi.fn(notMocked),
     ...overrides,
   };
 }

@@ -353,6 +353,17 @@ describe(
       expect(screen.getByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
       expect(window.location.pathname).toBe('/');
     });
+
+    // Ticket F-049 — nouvel onglet "Programmes" (création Program/Asset/Lot).
+    it('changer d\'onglet vers Programmes affiche ProgramsView et met à jour l\'URL', async () => {
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      fireEvent.click(screen.getByRole('button', { name: 'Programmes' }));
+
+      await screen.findByRole('heading', { name: 'Programmes' });
+      expect(window.location.pathname).toBe('/programmes');
+    });
   },
 );
 
