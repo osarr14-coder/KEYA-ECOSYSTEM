@@ -2,15 +2,19 @@
 ## le mode d'emploi complet (import du blueprint, récupération du mot de
 ## passe admin généré, limites connues).
 ##
-## Noms de service FIXES et PRÉDICTIBLES (https://<name>.onrender.com) :
-## permet de câbler CORS_ALLOWED_ORIGINS et les 4 VITE_*_URL directement
-## dans ce fichier, sans étape de "premier déploiement pour découvrir les
-## URLs" — si ces noms sont déjà pris sur votre compte Render, renommez-les
-## de façon cohérente ET mettez à jour les env vars qui les référencent
-## plus bas (elles ne se déduisent pas automatiquement).
+## Noms de service préfixés `keya-ecosystem-` (pas juste `keya-`) : le
+## compte Render utilisé a déjà un AUTRE projet actif nommé `keya-backend`
+## (dépôt `osarr14-coder/KEYA`, domaine keyimmoafric.com, plan payant) —
+## collision réelle rencontrée en déployant, qui aurait fait écraser sa
+## configuration par celle-ci si on avait laissé les noms courts. Noms
+## FIXES et PRÉDICTIBLES (https://<name>.onrender.com) : permet de câbler
+## CORS_ALLOWED_ORIGINS et les 4 VITE_*_URL directement dans ce fichier —
+## si ces noms sont malgré tout déjà pris sur votre compte Render,
+## renommez-les de façon cohérente ET mettez à jour les env vars qui les
+## référencent plus bas (elles ne se déduisent pas automatiquement).
 
 databases:
-  - name: keya-db
+  - name: keya-ecosystem-db
     plan: free
     databaseName: keya_ecosystem
     user: keya_ecosystem_app
@@ -18,7 +22,7 @@ databases:
 services:
   # ── Backend Django (API + admin) ──────────────────────────────────────
   - type: web
-    name: keya-backend
+    name: keya-ecosystem-backend
     runtime: python
     plan: free
     rootDir: backend
@@ -38,19 +42,19 @@ services:
       - key: DEBUG
         value: "False"
       - key: ALLOWED_HOSTS
-        value: keya-backend.onrender.com
+        value: keya-ecosystem-backend.onrender.com
       - key: DB_NAME
-        fromDatabase: { name: keya-db, property: database }
+        fromDatabase: { name: keya-ecosystem-db, property: database }
       - key: DB_USER
-        fromDatabase: { name: keya-db, property: user }
+        fromDatabase: { name: keya-ecosystem-db, property: user }
       - key: DB_PASSWORD
-        fromDatabase: { name: keya-db, property: password }
+        fromDatabase: { name: keya-ecosystem-db, property: password }
       - key: DB_HOST
-        fromDatabase: { name: keya-db, property: host }
+        fromDatabase: { name: keya-ecosystem-db, property: host }
       - key: DB_PORT
-        fromDatabase: { name: keya-db, property: port }
+        fromDatabase: { name: keya-ecosystem-db, property: port }
       - key: CORS_ALLOWED_ORIGINS
-        value: https://keya-home.onrender.com,https://keya-build.onrender.com,https://keya-control.onrender.com,https://keya-web.onrender.com
+        value: https://keya-ecosystem-home.onrender.com,https://keya-ecosystem-build.onrender.com,https://keya-ecosystem-control.onrender.com,https://keya-ecosystem-web.onrender.com
       # Simplification assumée pour ce premier déploiement (voir
       # DEPLOY_RENDER.md, section "Limites connues") : évite un service
       # Redis + worker Celery séparés (coût, complexité) pour un besoin
@@ -65,7 +69,7 @@ services:
 
   # ── HOME (client) ──────────────────────────────────────────────────────
   - type: web
-    name: keya-home
+    name: keya-ecosystem-home
     runtime: static
     # Pas de `plan:` ici : contrairement à un service `runtime: python`, un
     # site statique Render n'a pas de notion de plan payant/gratuit — il est
@@ -77,15 +81,15 @@ services:
     staticPublishPath: apps/home/dist
     envVars: &frontend-env-vars
       - key: VITE_API_BASE_URL
-        value: https://keya-backend.onrender.com
+        value: https://keya-ecosystem-backend.onrender.com
       - key: VITE_HOME_URL
-        value: https://keya-home.onrender.com
+        value: https://keya-ecosystem-home.onrender.com
       - key: VITE_BUILD_URL
-        value: https://keya-build.onrender.com
+        value: https://keya-ecosystem-build.onrender.com
       - key: VITE_CONTROL_URL
-        value: https://keya-control.onrender.com
+        value: https://keya-ecosystem-control.onrender.com
       - key: VITE_WEB_URL
-        value: https://keya-web.onrender.com
+        value: https://keya-ecosystem-web.onrender.com
     routes:
       - type: rewrite
         source: /*
@@ -93,7 +97,7 @@ services:
 
   # ── BUILD (constructeur) ────────────────────────────────────────────────
   - type: web
-    name: keya-build
+    name: keya-ecosystem-build
     runtime: static
     buildCommand: "npm ci && npm run build --workspace=apps/build"
     staticPublishPath: apps/build/dist
@@ -105,7 +109,7 @@ services:
 
   # ── CONTROL PWA (inspecteur) ────────────────────────────────────────────
   - type: web
-    name: keya-control
+    name: keya-ecosystem-control
     runtime: static
     buildCommand: "npm ci && npm run build --workspace=apps/control-pwa"
     staticPublishPath: apps/control-pwa/dist
@@ -117,7 +121,7 @@ services:
 
   # ── apps/web (back-office + devis/tarifs/paliers) ───────────────────────
   - type: web
-    name: keya-web
+    name: keya-ecosystem-web
     runtime: static
     buildCommand: "npm ci && npm run build --workspace=apps/web"
     staticPublishPath: apps/web/dist

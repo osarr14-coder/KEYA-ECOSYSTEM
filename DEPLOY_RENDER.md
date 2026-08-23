@@ -6,16 +6,22 @@ configuration de déploiement partagée dans ce repo"*, vrai jusqu'ici).
 
 ## Ce que ça déploie
 
-- **1 base Postgres** (`keya-db`) — RLS multi-tenant intact : le rôle fourni
+- **1 base Postgres** (`keya-ecosystem-db`) — RLS multi-tenant intact : le rôle fourni
   par Render n'est pas superuser (vérifié en reproduisant ce scénario en
   local), donc `FORCE ROW LEVEL SECURITY` s'applique réellement, aucun
   bricolage de rôle nécessaire contrairement au `docker-compose.yml` local.
-- **1 service web Python** (`keya-backend`) — API Django + admin.
-- **4 sites statiques** (`keya-home`, `keya-build`, `keya-control`,
-  `keya-web`) — les 4 apps frontend, chacune buildée depuis ce même repo.
+- **1 service web Python** (`keya-ecosystem-backend`) — API Django + admin.
+- **4 sites statiques** (`keya-ecosystem-home`, `keya-ecosystem-build`, `keya-ecosystem-control`,
+  `keya-ecosystem-web`) — les 4 apps frontend, chacune buildée depuis ce même repo.
 
 Tout est décrit dans `render.yaml` à la racine — un "Blueprint" Render lit
 ce fichier et crée les 6 services en un clic.
+
+Noms préfixés `keya-ecosystem-` (pas juste `keya-`) : un déploiement réel a
+révélé qu'un AUTRE projet actif existe déjà sur le même compte Render sous
+le nom `keya-backend` (dépôt séparé, domaine personnalisé keyimmoafric.com,
+plan payant) — sans ce préfixe, importer ce Blueprint aurait proposé
+d'associer et d'écraser la configuration de ce service existant.
 
 ## Étapes
 
@@ -25,8 +31,8 @@ ce fichier et crée les 6 services en un clic.
 3. Connectez le dépôt GitHub `osarr14-coder/keya-ecosystem` (branche
    `master`).
 4. Render détecte `render.yaml` et propose les 6 services décrits
-   ci-dessus. Vérifiez les noms proposés (`keya-backend`, `keya-home`,
-   `keya-build`, `keya-control`, `keya-web`, `keya-db`) — **s'ils sont déjà
+   ci-dessus. Vérifiez les noms proposés (`keya-ecosystem-backend`, `keya-ecosystem-home`,
+   `keya-ecosystem-build`, `keya-ecosystem-control`, `keya-ecosystem-web`, `keya-ecosystem-db`) — **s'ils sont déjà
    pris sur votre compte**, Render vous demandera de les renommer ; dans ce
    cas, éditez aussi les URLs qui les référencent dans `render.yaml`
    (`CORS_ALLOWED_ORIGINS`, les 4 `VITE_*_URL`, `ALLOWED_HOSTS`) avant de
@@ -41,12 +47,12 @@ ce fichier et crée les 6 services en un clic.
 
 ## Se connecter une fois déployé
 
-1. Ouvrez `https://keya-web.onrender.com` (ou le nom réel choisi à
+1. Ouvrez `https://keya-ecosystem-web.onrender.com` (ou le nom réel choisi à
    l'étape 4) — écran de connexion.
 2. Email : celui saisi à l'étape 5.
 3. Mot de passe : généré automatiquement par Render (`ADMIN_PASSWORD`,
    `generateValue: true`, jamais choisi ni vu par personne d'autre que
-   vous) — récupérable dans le dashboard Render, service `keya-backend` →
+   vous) — récupérable dans le dashboard Render, service `keya-ecosystem-backend` →
    onglet **Environment** → valeur de `ADMIN_PASSWORD`.
 4. Vous arrivez sur le back-office (rôle `admin_keyimmo`, seul rôle amorcé
    — voir `apps/organizations/management/commands/seed_admin.py`) : une
@@ -73,16 +79,16 @@ ce fichier et crée les 6 services en un clic.
   servi, risque jugé disproportionné pour un premier déploiement).
 - **Plan gratuit Render** — les services web (backend + 4 statiques)
   s'endorment après 15 minutes d'inactivité ; la première requête après
-  une veille prend ~30-60s pendant que `keya-backend` redémarre. Passer à
+  une veille prend ~30-60s pendant que `keya-ecosystem-backend` redémarre. Passer à
   un plan payant supprime cette latence.
 - **Base Postgres gratuite limitée dans le temps** — Render supprime une
   base gratuite **30 jours** après sa création (14 jours de grâce pour la
   passer en payant avant suppression définitive des données). Pour un
-  usage au-delà d'un mois, passer `keya-db` en plan payant AVANT
+  usage au-delà d'un mois, passer `keya-ecosystem-db` en plan payant AVANT
   l'échéance (dashboard Render → base → Upgrade) — vérifié à la rédaction
   de ce document, sujet à changer côté Render. **Une seule base gratuite
   active par compte Render** — si vous en avez déjà une ailleurs sur ce
-  compte, l'import du blueprint vous proposera de passer `keya-db`
+  compte, l'import du blueprint vous proposera de passer `keya-ecosystem-db`
   directement en payant.
 - **Migrations dans `buildCommand`, pas `preDeployCommand`** —
   `preDeployCommand` (l'endroit normalement recommandé par Render pour les
