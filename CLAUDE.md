@@ -4152,6 +4152,54 @@ Suite `packages/design-system` : 136 tests (10 nouveaux : `useIsMobile`,
 `apps/web` (188) : aucune régression, `tsc --noEmit` et `vite build`
 propres sur les 3.
 
+## Audit UX/UI et modernisation ciblée (ticket F-051)
+
+Voir `F-051-audit-ux-modernisation.md` pour le détail complet. Cinq
+correctifs, dans l'ordre de priorité choisi (risque croissant) :
+
+1. **Recherche décorative retirée** — le champ de recherche du header
+   `AppShell` était rendu inconditionnellement alors qu'aucune app ne
+   fournit jamais `onSearch` en production (vérifié par grep) ; conditionné
+   à sa présence.
+2. **Overflow horizontal des tableaux (mobile)** — `table { display:
+   block; overflow-x: auto; }` dans `GlobalStyles`. **Vérifié en
+   navigateur réel AVANT d'écrire la règle** : `overflow-x: auto` seul ne
+   fait RIEN (mesuré), `display: block` est nécessaire ; alignement th/td
+   préservé (boîte de tableau anonyme, CSS2.1 §17.2).
+3. **Composant `Field` partagé** (`packages/design-system/src/components/
+   Field/`) — dérive `aria-label` du même texte que le libellé visible
+   (`cloneElement`), élimine la duplication label/aria-label des
+   formulaires. Migration séquencée (même précédent que F-038) :
+   `PricingView.tsx` migré en preuve.
+4. **Regroupement de navigation** — `AppModule.group` (optionnel,
+   purement additif). En-tête de section JAMAIS `aria-hidden` (première
+   version le faisait, corrigé en écrivant les tests — un en-tête masqué
+   à l'arbre d'accessibilité priverait spécifiquement les lecteurs
+   d'écran du regroupement). `apps/web` (5 onglets) : « Ventes &
+   tarification » regroupe Devis/Tarifs/Paliers légaux.
+5. **Mode sombre** — fork architectural tranché explicitement avec
+   l'utilisateur (chantier complet plutôt que partiel) : `semanticColors`
+   référence désormais `var(--keya-*)` au lieu de hex littéraux (test de
+   gouvernance `colors.test.ts` adapté au nouveau contrat), `brandColors`
+   intouché (identité fixe). Palette sombre vérifiée par calcul de
+   contraste WCAG (bordure sombre PLUS contrastée que la bordure claire
+   déjà en place — aucune régression). Trois états (`system`/`dark`/
+   `light`, `useTheme.ts`, bascule dans le header `AppShell`).
+   **Régression trouvée et corrigée AVANT ce commit** via capture d'écran
+   réelle (Chromium) : le bouton `primary` devenait illisible en sombre
+   (texte blanc figé sur un fond qui s'inverse de teinte) — corrigé
+   (`color: semanticColors.neutral.surface`, s'inverse avec le fond) ;
+   nouveau token `danger.solid`, volontairement figé entre thèmes, pour
+   le bouton danger (`danger.border` est calibré pour du texte sur fond
+   sombre, pas pour un remplissage solide). Quatre scénarios revérifiés
+   en navigateur réel après correctif (clair, sombre système, sombre
+   manuel, override clair explicite sur OS sombre).
+
+Suite `packages/design-system` : 165 tests, tous verts. Suites
+`apps/home` (64), `apps/build` (77), `apps/web` (189), `apps/control-pwa`
+(73) : aucune régression, `tsc --noEmit` et `vite build` propres sur les
+5 packages/apps.
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

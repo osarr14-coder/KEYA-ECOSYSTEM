@@ -1,4 +1,4 @@
-import { brandColors } from '@keya/design-system';
+import { brandColors, semanticColors } from '@keya/design-system';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -107,7 +107,12 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
     render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     const button = await screen.findByRole('button', { name: 'Voir toutes mes actions' });
-    expect(button).toHaveStyle({ background: brandColors.navy, color: '#FFFFFF' });
+    // Ticket F-051 — `color: semanticColors.neutral.surface` (PAS un
+    // `#FFFFFF` figé) : `Button` (variante primary, design-system) fournit
+    // ce texte, déjà corrigé pour le mode sombre — voir Button.tsx. En
+    // clair, `neutral.surface` VAUT `#FFFFFF` (comportement inchangé),
+    // mais ce n'est plus la même VALEUR DE TOKEN qu'avant ce ticket.
+    expect(button).toHaveStyle({ background: brandColors.navy, color: semanticColors.neutral.surface });
   });
 
   it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {

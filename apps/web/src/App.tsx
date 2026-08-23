@@ -34,19 +34,33 @@ type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | '
  *
  * Ticket F-049 — `programs` ajouté (création Program/Asset/Lot, voir
  * `ProgramsView.tsx`), suite du gatekeeping API posé par B-039.
+ *
+ * Ticket F-051 — `group` (optionnel, `AppShell`) regroupe Devis/Tarifs/
+ * Paliers légaux sous « Ventes & tarification » dans la sidebar : premier
+ * usage réel du regroupement introduit par ce ticket, apps/web étant la
+ * seule app à avoir assez d'onglets pour en justifier un (5, contre 1 à 4
+ * ailleurs) — Back-office et Programmes restent des entrées de premier
+ * niveau, chacune un domaine distinct. `TABS`/`TAB_ROUTES` ci-dessous
+ * n'en ont pas besoin (TabBar reste plate, jamais concernée par ce champ).
  */
-const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string; icon: IconName }[] = [
+const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string; icon: IconName; group?: string }[] = [
   { id: 'backoffice', label: 'Back-office', path: '/', icon: 'shield-check' },
-  { id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text' },
-  { id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet' },
-  { id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale' },
+  {
+    id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Ventes & tarification',
+  },
+  {
+    id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet', group: 'Ventes & tarification',
+  },
+  {
+    id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale', group: 'Ventes & tarification',
+  },
   { id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building' },
 ];
 
 const MODULES: AppModule[] = TAB_DEFINITIONS.map(({
-  id, label, path, icon,
+  id, label, path, icon, group,
 }) => ({
-  id, label, href: path, requiredRoles: ['admin_keyimmo'], icon,
+  id, label, href: path, requiredRoles: ['admin_keyimmo'], icon, group,
 }));
 
 const TABS: { id: AuthenticatedTabId; label: string; icon: IconName }[] = TAB_DEFINITIONS.map(

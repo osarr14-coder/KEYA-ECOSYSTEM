@@ -1,6 +1,7 @@
-import { type ReactNode, useState } from 'react';
+import { Fragment, type ReactNode, useState } from 'react';
 
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useTheme } from '../../hooks/useTheme';
 import { brandColors, semanticColors } from '../../tokens/colors';
 import { type Density, densityTokens } from '../../tokens/density';
 import { spacing } from '../../tokens/spacing';
@@ -25,6 +26,19 @@ export interface AppModule {
    * quand elle est fournie — plus lisible qu'une lettre seule à cette
    * densité. */
   icon?: IconName;
+  /**
+   * Ticket F-051 — audit UX : la sidebar n'avait qu'un seul niveau, aucun
+   * regroupement possible, quel que soit le nombre de modules. `group`
+   * reste OPTIONNEL et purement additif : sans lui (comportement de TOUTES
+   * les apps avant ce ticket), rien ne change — liste plate, aucun
+   * en-tête. Deux modules CONSÉCUTIFS du même `group` sont rendus sous un
+   * en-tête commun (le texte du groupe) ; l'ordre du tableau `modules`
+   * reste la seule source d'ordre — `AppShell` ne trie/regroupe JAMAIS par
+   * lui-même, l'app consommatrice doit déjà lister les modules d'un même
+   * groupe de façon contiguë. Masqué en mode replié (rail mobile/desktop) —
+   * même discipline que les libellés de module eux-mêmes.
+   */
+  group?: string;
 }
 
 export interface Breadcrumb {
@@ -120,6 +134,7 @@ export function AppShell({
   // style inline existant.
   const isMobile = useIsMobile();
   const effectiveCollapsed = collapsed || isMobile;
+  const { theme, setTheme } = useTheme();
   const tokens = densityTokens[density];
   const visibleModules = modules.filter((module) => isModuleVisible(module, userRoles));
 
@@ -195,46 +210,74 @@ export function AppShell({
         )}
         <nav>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {visibleModules.map((module) => {
+            {visibleModules.map((module, index) => {
               const isActive = module.id === activeModuleId;
+              // Ticket F-051 — en-tête de groupe rendu UNE FOIS, seulement à
+              // la transition vers un `group` différent du module précédent
+              // (jamais pour un groupe qui se poursuit) ; jamais en mode
+              // replié (rail trop étroit pour un texte de section).
+              const previousGroup = index > 0 ? visibleModules[index - 1].group : undefined;
+              const showGroupHeader = Boolean(module.group) && module.group !== previousGroup && !effectiveCollapsed;
               return (
-                <li key={module.id}>
-                  <a
-                    href={module.href}
-                    aria-current={isActive ? 'page' : undefined}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
-                      gap: tokens.gap,
-                      padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
-                      fontSize: tokens.fontSize,
-                      // Ticket 023 (polish visuel) — `aria-current` était déjà
-                      // posé correctement (accessibilité), mais rien ne
-                      // distinguait visuellement le module actif des autres :
-                      // seul un lecteur d'écran pouvait "voir" la page
-                      // courante. Bordure + poids de police, pas la couleur
-                      // seule (accessibilité — ne jamais distinguer par la
-                      // seule couleur, principe déjà respecté ailleurs dans
-                      // ce projet, voir CLAUDE.md ticket 014).
-                      // Ticket F-048 — SEULE la couleur de cette bordure
-                      // change (`brandColors.gold`, doctrine 17.3 révisée
-                      // de façon limitée) : fond/couleur de texte
-                      // ci-dessous restent EXACTEMENT ceux d'avant ce
-                      // ticket, décision confirmée explicitement.
-                      borderLeft: isActive
-                        ? `3px solid ${brandColors.gold}`
-                        : '3px solid transparent',
-                      fontWeight: isActive ? 600 : 400,
-                      background: isActive ? semanticColors.neutral.background : 'transparent',
-                      color: isActive ? semanticColors.neutral.text : semanticColors.neutral.textMuted,
-                    }}
-                  >
-                    {module.icon && <Icon name={module.icon} size={18} />}
-                    {!effectiveCollapsed && module.label}
-                    {effectiveCollapsed && !module.icon && module.label.slice(0, 1)}
-                  </a>
-                </li>
+                <Fragment key={module.id}>
+                  {/* Ticket F-051 — PAS aria-hidden : ce texte sert de
+                      repère de section à TOUS les utilisateurs, retirer un
+                      groupe de l'arbre d'accessibilité priverait
+                      spécifiquement les lecteurs d'écran du regroupement
+                      que ce ticket introduit pour tout le monde. */}
+                  {showGroupHeader && (
+                    <li
+                      style={{
+                        padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
+                        paddingBottom: '4px',
+                        fontSize: '0.75em',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                        color: semanticColors.neutral.textMuted,
+                      }}
+                    >
+                      {module.group}
+                    </li>
+                  )}
+                  <li>
+                    <a
+                      href={module.href}
+                      aria-current={isActive ? 'page' : undefined}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
+                        gap: tokens.gap,
+                        padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
+                        fontSize: tokens.fontSize,
+                        // Ticket 023 (polish visuel) — `aria-current` était déjà
+                        // posé correctement (accessibilité), mais rien ne
+                        // distinguait visuellement le module actif des autres :
+                        // seul un lecteur d'écran pouvait "voir" la page
+                        // courante. Bordure + poids de police, pas la couleur
+                        // seule (accessibilité — ne jamais distinguer par la
+                        // seule couleur, principe déjà respecté ailleurs dans
+                        // ce projet, voir CLAUDE.md ticket 014).
+                        // Ticket F-048 — SEULE la couleur de cette bordure
+                        // change (`brandColors.gold`, doctrine 17.3 révisée
+                        // de façon limitée) : fond/couleur de texte
+                        // ci-dessous restent EXACTEMENT ceux d'avant ce
+                        // ticket, décision confirmée explicitement.
+                        borderLeft: isActive
+                          ? `3px solid ${brandColors.gold}`
+                          : '3px solid transparent',
+                        fontWeight: isActive ? 600 : 400,
+                        background: isActive ? semanticColors.neutral.background : 'transparent',
+                        color: isActive ? semanticColors.neutral.text : semanticColors.neutral.textMuted,
+                      }}
+                    >
+                      {module.icon && <Icon name={module.icon} size={18} />}
+                      {!effectiveCollapsed && module.label}
+                      {effectiveCollapsed && !module.icon && module.label.slice(0, 1)}
+                    </a>
+                  </li>
+                </Fragment>
               );
             })}
           </ul>
@@ -269,16 +312,28 @@ export function AppShell({
             <span>KEYIMMO AFRIC</span>
           </span>
         )}
-        <form
-          role="search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const formData = new FormData(event.currentTarget);
-            onSearch?.(String(formData.get('query') ?? ''));
-          }}
-        >
-          <input type="search" name="query" aria-label="Rechercher" placeholder="Rechercher…" />
-        </form>
+        {/* Ticket F-051 — audit UX : ce champ était rendu INCONDITIONNELLEMENT
+            sur les 4 apps alors qu'aucune (HOME/BUILD/apps-web) ne fournit
+            jamais `onSearch` (vérifié par grep sur tout le monorepo) —
+            affordance de recherche 100% décorative, jamais fonctionnelle,
+            chaque écran ayant sa PROPRE recherche dans le corps de page
+            (Devis/Programmes/Back-office/Tous les lots). Conditionné à la
+            présence de `onSearch`, même convention que
+            `organizationOptions.length > 0` ci-dessous — reste disponible
+            pour une future app qui aurait un VRAI besoin de recherche
+            globale dans le chrome. */}
+        {onSearch && (
+          <form
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const formData = new FormData(event.currentTarget);
+              onSearch(String(formData.get('query') ?? ''));
+            }}
+          >
+            <input type="search" name="query" aria-label="Rechercher" placeholder="Rechercher…" />
+          </form>
+        )}
 
         {organizationOptions.length > 0 && (
           <select
@@ -326,6 +381,30 @@ export function AppShell({
             )}
           </span>
         )}
+
+        {/* Ticket F-051 — mode sombre : bascule binaire simple (clair/sombre
+            explicite), pas un menu tri-état — un clic depuis "system"
+            passe TOUJOURS en sombre explicite, indépendamment de la
+            préférence OS réelle (simplification assumée, voir useTheme.ts
+            pour le contrat complet). `aria-pressed` reflète l'état
+            RÉSOLU actuel (sombre = pressé), jamais "system" comme un
+            troisième état visuel — un bouton à bascule n'a que deux
+            états perceptibles. */}
+        <button
+          type="button"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          aria-pressed={theme === 'dark'}
+          aria-label={theme === 'dark' ? 'Désactiver le mode sombre' : 'Activer le mode sombre'}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            display: 'inline-flex',
+            alignItems: 'center',
+            color: semanticColors.neutral.textMuted,
+          }}
+        >
+          <Icon name="moon" size={18} />
+        </button>
       </header>
 
       <main style={{ padding: tokens.paddingInline }}>

@@ -14,7 +14,10 @@ describe('Select', () => {
     );
     const select = screen.getByLabelText('Pays');
     expect(select.tagName).toBe('SELECT');
-    expect(select).toHaveStyle({ borderColor: semanticColors.neutral.border });
+    // Ticket F-051 — voir Input.test.tsx pour la raison (style inline
+    // direct, pas toHaveStyle/getComputedStyle, limite de jsdom face à
+    // var() en shorthand).
+    expect(select.style.border).toBe(`1px solid ${semanticColors.neutral.border}`);
     expect(screen.getByRole('option', { name: 'Sénégal' })).toBeInTheDocument();
   });
 

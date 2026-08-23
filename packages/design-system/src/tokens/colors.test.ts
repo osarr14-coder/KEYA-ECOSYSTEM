@@ -16,15 +16,36 @@ describe('brandColors — identité de marque KEYIMMO AFRIC (ticket F-039)', () 
   });
 });
 
+/**
+ * Ticket F-051 — mode sombre : `semanticColors` référence désormais des
+ * variables CSS (`var(--keya-*)`), plus des hex littéraux (voir la
+ * docstring de `colors.ts`). Les valeurs RÉELLES (claires ET sombres) sont
+ * vérifiées à la source dans `GlobalStyles.test.tsx` (où `:root`/
+ * `[data-theme]` sont réellement définis), pas ici — ce fichier vérifie
+ * uniquement que chaque token référence bien UNE variable CSS namespacée
+ * `--keya-`, jamais une valeur hex recopiée ou oubliée en clair.
+ */
 describe('semanticColors', () => {
-  it('expose une palette "alerte" complète (background/border/icon/text)', () => {
-    expect(semanticColors.alert.background).toMatch(/^#[0-9A-Fa-f]{6}$/);
-    expect(semanticColors.alert.border).toMatch(/^#[0-9A-Fa-f]{6}$/);
-    expect(semanticColors.alert.icon).toMatch(/^#[0-9A-Fa-f]{6}$/);
-    expect(semanticColors.alert.text).toMatch(/^#[0-9A-Fa-f]{6}$/);
+  it('expose une palette "alerte" complète, chaque champ référence une variable CSS --keya-*', () => {
+    expect(semanticColors.alert.background).toBe('var(--keya-alert-background)');
+    expect(semanticColors.alert.border).toBe('var(--keya-alert-border)');
+    expect(semanticColors.alert.icon).toBe('var(--keya-alert-icon)');
+    expect(semanticColors.alert.text).toBe('var(--keya-alert-text)');
   });
 
-  it('background et texte restent distincts pour rester lisibles', () => {
+  it('background et texte restent des variables DISTINCTES (jamais la même couleur)', () => {
     expect(semanticColors.alert.background).not.toBe(semanticColors.alert.text);
+  });
+
+  it('aucun champ semanticColors ne recopie plus une valeur hex littérale', () => {
+    const flat = [
+      ...Object.values(semanticColors.alert),
+      ...Object.values(semanticColors.danger),
+      ...Object.values(semanticColors.neutral),
+      ...Object.values(semanticColors.progress),
+    ];
+    flat.forEach((value) => {
+      expect(value).toMatch(/^var\(--keya-[\w-]+\)$/);
+    });
   });
 });

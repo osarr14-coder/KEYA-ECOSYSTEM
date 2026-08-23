@@ -19,7 +19,10 @@ describe('AlertBanner — ressort clairement sans lecture attentive du texte', (
     render(<AlertBanner title="Réserve ouverte" />);
     const banner = screen.getByRole('alert');
     expect(banner).toHaveStyle({ background: semanticColors.alert.background });
-    expect(banner).toHaveStyle({ borderColor: semanticColors.alert.border });
+    // Ticket F-051 — voir Input.test.tsx pour la raison (style inline
+    // direct, pas toHaveStyle/getComputedStyle, limite de jsdom face à
+    // var() en shorthand).
+    expect(banner.style.border).toBe(`1px solid ${semanticColors.alert.border}`);
   });
 
   it('affiche le titre et, si fourni, le contenu additionnel', () => {

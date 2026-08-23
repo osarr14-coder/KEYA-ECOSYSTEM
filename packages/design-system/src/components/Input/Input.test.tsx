@@ -9,7 +9,16 @@ describe('Input', () => {
     render(<Input aria-label="Rechercher" />);
     const input = screen.getByLabelText('Rechercher');
     expect(input.tagName).toBe('INPUT');
-    expect(input).toHaveStyle({ borderColor: semanticColors.neutral.border });
+    // Ticket F-051 — `element.style.border` (pas `toHaveStyle`/
+    // `getComputedStyle`) : `semanticColors.neutral.border` référence
+    // désormais var(--keya-*) (mode sombre), et `getComputedStyle` de
+    // jsdom (environnement de test) ne resérialise pas fiablement un
+    // shorthand `border` contenant un var() non résolu selon l'ordre des
+    // AUTRES propriétés du même style inline (constat empirique — sans
+    // lien avec le rendu réel du navigateur, où `var()` se résout
+    // normalement en shorthand, vérifié séparément). Lire le style
+    // INLINE directement contourne cette limite de jsdom.
+    expect(input.style.border).toBe(`1px solid ${semanticColors.neutral.border}`);
   });
 
   it('porte la classe partagée qui pilote le focus visible (GlobalStyles)', () => {

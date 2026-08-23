@@ -30,7 +30,8 @@ export type IconName =
   | 'check-circle'
   | 'users'
   | 'camera'
-  | 'scale';
+  | 'scale'
+  | 'moon';
 
 /** Un `<path>` (ou plusieurs) par icône, déjà dans le repère 24x24 — le
  * composant `Icon` ne fait qu'entourer ces tracés d'un `<svg>` commun.
@@ -84,4 +85,10 @@ export const ICON_PATHS: Record<IconName, string[]> = {
     'M12 6 5 8l3.4 6.8a3.2 3.2 0 0 0 5.2 0L17 8l-7-2Z',
     'M4 20.5h16',
   ],
+  // Ticket F-051 — bascule de thème (voir AppShell.tsx, useTheme). Croissant
+  // formé par un seul tracé (différence de deux arcs), vérifié rendu en
+  // navigateur réel (Chromium, script jetable) avant intégration — même
+  // discipline que le reste de ce fichier (grille 24x24, trait seul,
+  // extrémités arrondies).
+  moon: ['M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5 7 7 0 0 0 20.5 14.5Z'],
 };

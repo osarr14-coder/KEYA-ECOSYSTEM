@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, Input, Select, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Field, Input, Select, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -166,31 +166,30 @@ function CreatePricingConfigForm({ countryPackId, onCreated }: { countryPackId: 
         marginTop: '16px', display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap',
       }}
     >
-      <label>
-        Canal
+      {/* Ticket F-051 — Field dérive aria-label du libellé visible (une
+          seule source, voir packages/design-system/src/components/Field) ;
+          migration séquencée, ce formulaire sert de preuve, les autres
+          restent inchangés pour l'instant. */}
+      <Field label="Canal">
         <Select
-          aria-label="Canal"
           value={canal}
           onChange={(event) => setCanal(event.target.value as PricingCanal)}
-          style={{ marginTop: '4px', width: 'auto' }}
+          style={{ width: 'auto' }}
         >
           {CANALS.map(({ id, label }) => (
             <option key={id} value={id}>{label}</option>
           ))}
         </Select>
-      </label>
-      <label>
-        Taux (%)
+      </Field>
+      <Field label="Taux (%)" width="120px">
         <Input
           type="text"
           inputMode="decimal"
-          aria-label="Taux (%)"
           value={rate}
           onChange={(event) => setRate(event.target.value)}
           required
-          style={{ marginTop: '4px', width: '120px' }}
         />
-      </label>
+      </Field>
       <Button type="submit" disabled={submitting}>
         {submitting ? 'Enregistrement…' : 'Créer ce taux'}
       </Button>

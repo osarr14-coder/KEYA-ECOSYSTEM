@@ -7,6 +7,9 @@ export type { ApiErrorBannerProps } from './components/ApiErrorBanner/ApiErrorBa
 export { Card } from './components/Card/Card';
 export type { CardProps } from './components/Card/Card';
 
+export { Field } from './components/Field/Field';
+export type { FieldProps } from './components/Field/Field';
+
 export { AppShell } from './components/AppShell/AppShell';
 export type {
   AppModule,
@@ -36,6 +39,9 @@ export type { AppOrigins } from './navigation/appOrigins';
 export { useIsMobile } from './hooks/useIsMobile';
 
 export { useOnlineStatus } from './hooks/useOnlineStatus';
+
+export { useTheme } from './hooks/useTheme';
+export type { ThemePreference } from './hooks/useTheme';
 
 export { ProgressBar } from './components/ProgressBar/ProgressBar';
 export type { ProgressBarProps } from './components/ProgressBar/ProgressBar';

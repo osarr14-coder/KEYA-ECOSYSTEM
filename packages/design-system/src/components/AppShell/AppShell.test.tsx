@@ -1,5 +1,5 @@
 import {
-  fireEvent, render, screen, within,
+  cleanup, fireEvent, render, screen, within,
 } from '@testing-library/react';
 import {
   afterEach, describe, expect, it, vi,
@@ -100,6 +100,16 @@ describe('AppShell — sidebar repliable', () => {
 });
 
 describe('AppShell — topbar (recherche, sélecteurs, Task Inbox, avatar)', () => {
+  // Ticket F-051 — audit UX : ce champ était rendu inconditionnellement
+  // alors qu'aucune app ne fournissait jamais `onSearch` en production
+  // (vérifié par grep sur tout le monorepo) — affordance décorative,
+  // jamais fonctionnelle. Conditionné à la présence de `onSearch`.
+  it('sans onSearch (comportement réel de HOME/BUILD/apps-web aujourd\'hui), aucun champ de recherche décoratif', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('search')).not.toBeInTheDocument();
+  });
+
   it('affiche le compteur Task Inbox', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} taskInboxCount={7} />);
     expect(screen.getByTestId('task-inbox-count')).toHaveTextContent('7');
@@ -280,5 +290,115 @@ describe('AppShell — responsive mobile, dette de F-039 (ticket F-050)', () => 
     expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '220px 1fr' });
     expect(screen.getByText('Accueil')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /replier la navigation/i })).toBeInTheDocument();
+  });
+});
+
+describe('AppShell — regroupement optionnel de modules dans la sidebar (ticket F-051)', () => {
+  it('sans group sur aucun module (comportement de toutes les apps avant ce ticket), aucun en-tête rendu', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    // userRoles=[] : seuls Accueil/Tâches sont visibles (les modules
+    // professionnels sont filtrés, voir describe dédié plus haut) —
+    // exactement un <li> par module visible, aucun <li> d'en-tête ajouté.
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('affiche un en-tête de groupe une seule fois, avant le premier module de ce groupe', () => {
+    const grouped: AppModule[] = [
+      { id: 'home', label: 'Accueil', href: '/' },
+      { id: 'devis', label: 'Devis', href: '/devis', group: 'Ventes' },
+      { id: 'tarifs', label: 'Tarifs', href: '/tarifs', group: 'Ventes' },
+    ];
+    render(<AppShell density="dense" modules={grouped} userRoles={[]} />);
+
+    const headers = screen.getAllByText('Ventes');
+    expect(headers).toHaveLength(1);
+  });
+
+  it('deux groupes distincts affichent chacun leur propre en-tête', () => {
+    const grouped: AppModule[] = [
+      { id: 'devis', label: 'Devis', href: '/devis', group: 'Ventes' },
+      { id: 'programmes', label: 'Programmes', href: '/programmes', group: 'Patrimoine' },
+    ];
+    render(<AppShell density="dense" modules={grouped} userRoles={[]} />);
+
+    expect(screen.getByText('Ventes')).toBeInTheDocument();
+    expect(screen.getByText('Patrimoine')).toBeInTheDocument();
+  });
+
+  it('un module sans group, mêlé à des modules groupés, ne reçoit aucun en-tête', () => {
+    const grouped: AppModule[] = [
+      { id: 'home', label: 'Accueil', href: '/' },
+      { id: 'devis', label: 'Devis', href: '/devis', group: 'Ventes' },
+    ];
+    render(<AppShell density="dense" modules={grouped} userRoles={[]} />);
+
+    // 1 en-tête "Ventes" + 2 modules = 3 <li>, jamais un en-tête pour
+    // "Accueil" (pas de `group`).
+    expect(screen.getAllByText('Ventes')).toHaveLength(1);
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('en mode replié (desktop), aucun en-tête de groupe n\'est rendu (rail trop étroit pour du texte)', () => {
+    const grouped: AppModule[] = [
+      { id: 'devis', label: 'Devis', href: '/devis', group: 'Ventes' },
+      { id: 'tarifs', label: 'Tarifs', href: '/tarifs', group: 'Ventes' },
+    ];
+    render(<AppShell density="dense" modules={grouped} userRoles={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /replier la navigation/i }));
+
+    expect(screen.queryByText('Ventes')).not.toBeInTheDocument();
+  });
+
+  it('l\'ordre du tableau modules reste la seule source d\'ordre — AppShell ne trie ni ne regroupe lui-même', () => {
+    const grouped: AppModule[] = [
+      { id: 'a', label: 'Alpha', href: '/a', group: 'Groupe 2' },
+      { id: 'b', label: 'Bravo', href: '/b', group: 'Groupe 1' },
+    ];
+    render(<AppShell density="dense" modules={grouped} userRoles={[]} />);
+
+    const items = screen.getAllByRole('listitem').map((item) => item.textContent);
+    expect(items).toEqual(['Groupe 2', 'Alpha', 'Groupe 1', 'Bravo']);
+  });
+});
+
+describe('AppShell — bascule de mode sombre (ticket F-051)', () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    document.documentElement.removeAttribute('data-theme');
+  });
+
+  it('par défaut ("system", aucune préférence persistée) : bouton non enfoncé, aucun data-theme posé', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    const toggle = screen.getByRole('button', { name: /activer le mode sombre/i });
+
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(document.documentElement).not.toHaveAttribute('data-theme');
+  });
+
+  it('un clic active le mode sombre — data-theme="dark" posé sur <html>, bouton enfoncé', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /activer le mode sombre/i }));
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    expect(screen.getByRole('button', { name: /désactiver le mode sombre/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('un second clic repasse en mode clair explicite', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /activer le mode sombre/i }));
+    fireEvent.click(screen.getByRole('button', { name: /désactiver le mode sombre/i }));
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+    expect(screen.getByRole('button', { name: /activer le mode sombre/i })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('la préférence persiste (localStorage) et s\'applique dès le premier rendu d\'un nouveau montage', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: /activer le mode sombre/i }));
+
+    cleanup();
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+
+    expect(screen.getByRole('button', { name: /désactiver le mode sombre/i })).toHaveAttribute('aria-pressed', 'true');
   });
 });

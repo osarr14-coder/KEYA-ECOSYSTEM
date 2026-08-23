@@ -14,6 +14,21 @@ export interface SemanticColorTokens {
   border: string;
   icon: string;
   text: string;
+  /**
+   * Ticket F-051 — mode sombre, `danger` UNIQUEMENT (jamais `alert`, aucun
+   * bouton "alert" solide n'existe dans ce projet). `border`/`icon`
+   * inversent volontairement de teinte entre thèmes (un rouge SOMBRE en
+   * clair devient un rouge CLAIR en sombre, pour rester lisible en tant que
+   * texte/icône SUR le fond `background` déjà sombre du bandeau d'alerte
+   * lui-même) — ce même rouge clair, réutilisé comme REMPLISSAGE SOLIDE
+   * d'un bouton (`Button` variante danger, texte blanc fixe), perdrait tout
+   * contraste. `solid` reste donc DÉLIBÉRÉMENT figé, IDENTIQUE dans les
+   * deux thèmes (voir `GlobalStyles.tsx`) — même principe que `brandColors`
+   * (couleur d'accent fixe, jamais une surface qui s'inverse). Optionnel :
+   * `alert` ne le définit pas, aucun composant n'en a besoin pour cette
+   * palette.
+   */
+  solid?: string;
 }
 
 /**
@@ -67,6 +82,24 @@ export const brandColors: BrandColorTokens = {
   gold: '#C49A2C',
 };
 
+/**
+ * Ticket F-051 — mode sombre. `semanticColors` référence désormais des
+ * VARIABLES CSS (`var(--keya-*)`), jamais des hex littéraux directement :
+ * les valeurs réelles (claires ET sombres) vivent dans `:root`/
+ * `@media (prefers-color-scheme: dark)`/`[data-theme]` (voir
+ * `GlobalStyles.tsx`, source UNIQUE des deux palettes). Chaque composant
+ * qui consomme `semanticColors.X.Y` (dans un `style={{}}`, un template de
+ * chaîne CSS, OU un attribut SVG `fill`/`stroke` — vérifié en navigateur
+ * réel, Chromium, AVANT ce changement : `var()` s'y résout aussi bien
+ * qu'en `style`) continue de fonctionner SANS AUCUNE modification, seule
+ * la valeur RÉSOLUE change désormais selon le thème actif — zéro
+ * changement requis dans Button/Input/Select/Card/AppShell/StatusBadge/
+ * ProgressBar/AlertBanner/TabBar.
+ *
+ * `brandColors` (ci-dessus) reste des hex littéraux, INTOUCHÉ par ce
+ * ticket — identité de marque FIXE par doctrine (voir sa propre
+ * docstring), jamais dérivée du thème actif.
+ */
 export const semanticColors: {
   alert: SemanticColorTokens;
   danger: SemanticColorTokens;
@@ -74,41 +107,37 @@ export const semanticColors: {
   progress: ProgressColorTokens;
 } = {
   alert: {
-    background: '#FFFBEB',
-    border: '#D97706',
-    icon: '#D97706',
-    text: '#92400E',
+    background: 'var(--keya-alert-background)',
+    border: 'var(--keya-alert-border)',
+    icon: 'var(--keya-alert-icon)',
+    text: 'var(--keya-alert-text)',
   },
   // Ticket F-038 — dédié EXCLUSIVEMENT à la confirmation d'une action
   // irréversible (ex : `Button` variante `danger`, désactivation de compte).
   // Jamais réutilisé pour une alerte non-bloquante (qui reste `alert`,
   // ambre) — catégorie sémantique différente, décision explicite de
-  // l'utilisateur pour éviter toute confusion entre les deux. `#B91C1C`
-  // choisi plutôt que `#DC2626` : la même leçon de contraste que
-  // `neutral.textMuted` (ticket 024) appliquée par anticipation — `#DC2626`
-  // sur blanc mesure ~4,83:1 (marge jugée trop faible pour un ton
-  // volontairement destiné à être vu et compris rapidement), `#B91C1C`
-  // porte ce ratio à ~6,47:1.
+  // l'utilisateur pour éviter toute confusion entre les deux. Valeurs
+  // réelles (claire/sombre) et leur justification de contraste : voir
+  // `GlobalStyles.tsx`, section `--keya-danger-*`.
   danger: {
-    background: '#FEF2F2',
-    border: '#B91C1C',
-    icon: '#B91C1C',
-    text: '#7F1D1D',
+    background: 'var(--keya-danger-background)',
+    border: 'var(--keya-danger-border)',
+    icon: 'var(--keya-danger-icon)',
+    text: 'var(--keya-danger-text)',
+    solid: 'var(--keya-danger-solid)',
   },
   neutral: {
-    border: '#E5E7EB',
-    background: '#F9FAFB',
-    surface: '#FFFFFF',
-    text: '#111827',
-    // Ticket 024 (audit accessibilité) — `#6B7280` sur fond blanc mesurait
-    // 4,83:1, au-dessus du minimum WCAG AA texte normal (4,5:1) mais avec
-    // une marge trop faible (~7 %) pour un ton utilisé partout comme texte
-    // secondaire (dates, sous-titres, libellés muets). `#4B5563` porte ce
-    // ratio à ~7,5:1 (niveau AAA), sans changement de teinte perceptible.
-    textMuted: '#4B5563',
+    border: 'var(--keya-neutral-border)',
+    background: 'var(--keya-neutral-background)',
+    surface: 'var(--keya-neutral-surface)',
+    text: 'var(--keya-neutral-text)',
+    // Ticket 024 (audit accessibilité, valeur claire) — voir
+    // `GlobalStyles.tsx` pour les deux valeurs réelles et leurs ratios de
+    // contraste vérifiés (clair ET sombre).
+    textMuted: 'var(--keya-neutral-text-muted)',
   },
   progress: {
-    track: '#E5E7EB',
-    fill: '#34D399',
+    track: 'var(--keya-progress-track)',
+    fill: 'var(--keya-progress-fill)',
   },
 };

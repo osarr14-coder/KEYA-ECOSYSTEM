@@ -364,6 +364,16 @@ describe(
       await screen.findByRole('heading', { name: 'Programmes' });
       expect(window.location.pathname).toBe('/programmes');
     });
+
+    // Ticket F-051 — regroupement de sidebar (AppShell), premier usage réel.
+    it('la sidebar affiche "Ventes & tarification" au-dessus de Devis/Tarifs/Paliers légaux', async () => {
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      expect(screen.getByText('Ventes & tarification')).toBeInTheDocument();
+      // Back-office et Programmes restent de premier niveau, aucun en-tête.
+      expect(screen.getAllByText('Ventes & tarification')).toHaveLength(1);
+    });
   },
 );
 

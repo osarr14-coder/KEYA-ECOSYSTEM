@@ -12,7 +12,101 @@ import { typography } from '../../tokens/typography';
  * de `<body>`, boîte de dimensionnement). Tout style inline explicite d'un
  * composant continue de prévaloir (spécificité CSS de l'attribut `style`).
  */
+/**
+ * Ticket F-051 — mode sombre. SOURCE UNIQUE des deux palettes (claire ET
+ * sombre) : \`semanticColors\` (tokens/colors.ts) ne référence QUE des
+ * \`var(--keya-*)\`, jamais une valeur en dur — ces valeurs vivent ici.
+ * Valeurs claires IDENTIQUES aux hex retirés de colors.ts par ce même
+ * ticket (aucun changement visuel en clair, comportement par défaut
+ * strictement inchangé). Valeurs sombres choisies et VÉRIFIÉES (script
+ * jetable, formule de luminance relative WCAG) avant intégration : texte
+ * 16,3:1 (fond)/13,35:1 (surface), texte atténué 8,29:1/6,79:1, bordure
+ * 2,92:1/2,39:1 — bordure sombre PLUS contrastée que la bordure claire
+ * existante (1,18:1/1,24:1, jamais visée à 3:1 à l'origine) : ce ticket
+ * n'introduit donc AUCUNE régression d'accessibilité par rapport au
+ * comportement déjà en place.
+ *
+ * Trois états, jamais deux (comportement standard, même contrat que les
+ * artefacts Claude) : \`system\` (défaut, aucun \`data-theme\` posé — suit
+ * \`prefers-color-scheme\`) ; \`[data-theme="dark"]\`/\`[data-theme="light"]\`
+ * (override explicite, \`useTheme.ts\`, hooks/) gagne TOUJOURS sur
+ * \`prefers-color-scheme\` (\`:root:not([data-theme="light"])\` dans le bloc
+ * media ci-dessous exclut le cas où l'utilisateur a explicitement choisi
+ * clair alors que son OS est en sombre).
+ */
+const ROOT_COLOR_VARIABLES = `
+  :root {
+    --keya-neutral-border: #E5E7EB;
+    --keya-neutral-background: #F9FAFB;
+    --keya-neutral-surface: #FFFFFF;
+    --keya-neutral-text: #111827;
+    --keya-neutral-text-muted: #4B5563;
+    --keya-alert-background: #FFFBEB;
+    --keya-alert-border: #D97706;
+    --keya-alert-icon: #D97706;
+    --keya-alert-text: #92400E;
+    --keya-danger-background: #FEF2F2;
+    --keya-danger-border: #B91C1C;
+    --keya-danger-icon: #B91C1C;
+    --keya-danger-text: #7F1D1D;
+    /* Volontairement IDENTIQUE dans les 3 blocs de ce fichier (clair,
+       media dark, [data-theme="dark"]) — voir SemanticColorTokens.solid
+       (tokens/colors.ts) pour la justification complète : remplissage
+       solide de bouton, texte blanc fixe, jamais réinversé par thème. */
+    --keya-danger-solid: #B91C1C;
+    --keya-progress-track: #E5E7EB;
+    --keya-progress-fill: #34D399;
+    /* Triplet R, G, B (pas un hex) — consommé par rgba(var(--keya-focus-ring-rgb), alpha)
+       ci-dessous, technique vérifiée en navigateur réel avant intégration. */
+    --keya-focus-ring-rgb: 17, 24, 39;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --keya-neutral-border: #51637D;
+      --keya-neutral-background: #0F172A;
+      --keya-neutral-surface: #1E293B;
+      --keya-neutral-text: #F1F5F9;
+      --keya-neutral-text-muted: #A3B2C7;
+      --keya-alert-background: #451A03;
+      --keya-alert-border: #F59E0B;
+      --keya-alert-icon: #F59E0B;
+      --keya-alert-text: #FCD34D;
+      --keya-danger-background: #450A0A;
+      --keya-danger-border: #F87171;
+      --keya-danger-icon: #F87171;
+      --keya-danger-text: #FCA5A5;
+      --keya-danger-solid: #B91C1C;
+      --keya-progress-track: #334155;
+      --keya-progress-fill: #34D399;
+      --keya-focus-ring-rgb: 241, 245, 249;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --keya-neutral-border: #51637D;
+    --keya-neutral-background: #0F172A;
+    --keya-neutral-surface: #1E293B;
+    --keya-neutral-text: #F1F5F9;
+    --keya-neutral-text-muted: #A3B2C7;
+    --keya-alert-background: #451A03;
+    --keya-alert-border: #F59E0B;
+    --keya-alert-icon: #F59E0B;
+    --keya-alert-text: #FCD34D;
+    --keya-danger-background: #450A0A;
+    --keya-danger-border: #F87171;
+    --keya-danger-icon: #F87171;
+    --keya-danger-text: #FCA5A5;
+    --keya-danger-solid: #B91C1C;
+    --keya-progress-track: #334155;
+    --keya-progress-fill: #34D399;
+    --keya-focus-ring-rgb: 241, 245, 249;
+  }
+`;
+
 const GLOBAL_CSS = `
+  ${ROOT_COLOR_VARIABLES}
+
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
@@ -49,7 +143,11 @@ const GLOBAL_CSS = `
   .keya-select:focus-visible {
     outline: none;
     border-color: ${semanticColors.neutral.text};
-    box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.12);
+    /* Ticket F-051 — triplet R,G,B en variable CSS (--keya-focus-ring-rgb,
+       défini dans ROOT_COLOR_VARIABLES ci-dessus), jamais un hex figé :
+       l'anneau de focus doit rester lisible en mode sombre aussi, vérifié
+       en navigateur réel (technique rgba(var(--x), alpha) confirmée). */
+    box-shadow: 0 0 0 3px rgba(var(--keya-focus-ring-rgb), 0.12);
   }
   .keya-btn:disabled {
     opacity: 0.4;
@@ -80,9 +178,28 @@ const GLOBAL_CSS = `
    * étant des multiples de la même taille ambiante, leur ratio (85 %) ne
    * varie jamais.
    */
+  /*
+   * Ticket F-051 — audit UX : les 5 vues à contenir un <table> (voir F-041)
+   * n'avaient aucune gestion de débordement horizontal sur petit viewport
+   * — un tableau large forçait un scroll de LA PAGE ENTIÈRE plutôt que du
+   * tableau lui-même (gap déjà noté hors scope au ticket F-050, jamais
+   * traité depuis). Vérifié en navigateur réel (Chromium, 375px, script
+   * jetable) AVANT d'écrire cette règle, pas seulement raisonné en CSS :
+   * "overflow-x: auto" SEUL sur "table" ne fait RIEN (le tableau garde sa
+   * largeur intrinsèque, le débordement de page reste identique) —
+   * "display: block" est nécessaire pour que le tableau devienne une
+   * boîte de défilement à lui seul. Alignement th/td PRÉSERVÉ malgré
+   * "display: block" (vérifié aussi) : le navigateur génère une boîte de
+   * tableau anonyme autour de <thead>/<tbody>/<tr>/<th>/<td> (qui gardent
+   * leur display table-* par défaut, CSS2.1 §17.2), donc l'algorithme de
+   * mise en page tableau tourne normalement à l'intérieur — seule la
+   * boîte EXTÉRIEURE devient un bloc défilant.
+   */
   table {
     border-collapse: collapse;
     width: 100%;
+    display: block;
+    overflow-x: auto;
   }
   th {
     text-align: left;
