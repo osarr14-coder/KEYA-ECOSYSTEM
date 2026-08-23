@@ -29,6 +29,18 @@ l'ombre déjà posée sur `Card` (F-053).
   avant la première recherche (état `idle`), même ton que les états vides
   déjà existants de cette vue (« Aucun utilisateur trouvé. ») — comble le
   vide visuel sous la carte de recherche, aucun ajout fonctionnel.
+- **Les 4 autres écrans du back-office** — audit demandé explicitement par
+  l'utilisateur après la première correction : 3 des 5 écrans (Devis /
+  Appels d'offres, Tarifs, Paliers légaux — pas Programmes, déjà dans un
+  `Card`) avaient leur bloc initial (sélecteur de lot/pays) posé À MÊME le
+  canevas de page, jamais dans un `Card`, contrairement au reste de
+  chacun de ces écrans (`DevisListPanel`/`CurrentRatesPanel`/etc.,
+  déjà en `Card`). Corrigé à la source, un seul endroit pour 2 des 3
+  écrans : `CountryPackSelector.tsx` (composant partagé par
+  `PricingView`/`LegalPaymentTiersView`) pose maintenant son contenu dans
+  un `Card` ; `DevisView.tsx` (pas de composant partagé ici) reçoit le
+  même traitement directement, son `<h2>Devis par lot</h2>` devenant le
+  titre du `Card`.
 
 ## Hors scope
 

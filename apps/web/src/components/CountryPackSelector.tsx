@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
-import { ApiErrorBanner, Button, Input } from '@keya/design-system';
+import {
+  ApiErrorBanner, Button, Card, Input,
+} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { CountryPackSummary } from '../api/types';
@@ -24,6 +26,14 @@ import { useApiResource } from '../api/useApiResource';
  * Extrait de `PricingView.tsx` (ticket F-028) au ticket F-030, réutilisé
  * par `LegalPaymentTiersView.tsx` — un seul composant partagé, jamais deux
  * copies.
+ *
+ * Ticket F-055 (suite F-053/F-054) — contenu posé dans un `Card` : avant
+ * ce ticket, ce sélecteur (première étape de PricingView/
+ * LegalPaymentTiersView/DevisView) flottait à même le canevas de page,
+ * seul endroit des 5 écrans du back-office sans conteneur élevé, retour
+ * utilisateur explicite. `aria-label` déplacé du `<section>` (retiré,
+ * `Card` ne prend pas de rôle `section` distinct nécessaire ici) vers
+ * `Card` lui-même.
  */
 
 function CountryPackList({
@@ -76,7 +86,7 @@ export function CountryPackSelector({ onLoad }: { onLoad: (pack: CountryPackSumm
   const state = useApiResource(() => api.listCountryPacks(), []);
 
   return (
-    <section aria-label="Sélectionner un pays" style={{ marginBottom: '16px' }}>
+    <Card aria-label="Sélectionner un pays">
       {state.status === 'loading' && <p>Chargement des pays…</p>}
       {state.status === 'error' && (
         <ApiErrorBanner error={state.error} title="Impossible de charger la liste des pays." onRetry={state.refetch} />
@@ -88,6 +98,6 @@ export function CountryPackSelector({ onLoad }: { onLoad: (pack: CountryPackSumm
           <CountryPackList packs={state.data} onLoad={onLoad} />
         )
       )}
-    </section>
+    </Card>
   );
 }

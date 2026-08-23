@@ -498,51 +498,56 @@ export function DevisView() {
 
   return (
     <section aria-label="Devis / Appels d'offres">
-      <h2>Devis par lot</h2>
-
-      {selectedLot ? (
-        <div style={{ marginBottom: '16px' }}>
-          <p>
+      {/* Ticket F-055 (suite F-053/F-054) — bloc initial (radio + lot picker)
+          posé dans un `Card`, comme le reste des 5 écrans du back-office :
+          avant ce ticket, seul CE bloc flottait à même le canevas de page
+          (le reste de cet écran, `DevisListPanel`, utilise déjà `Card`),
+          retour utilisateur explicite. */}
+      <Card title="Devis par lot" icon="file-text">
+        {selectedLot ? (
+          <p style={{ margin: 0 }}>
             Lot sélectionné : <strong>{selectedLot.name}</strong> — {selectedLot.program.name} ({selectedLot.organization.name}){' '}
             <Button type="button" variant="secondary" onClick={() => setSelectedLot(null)}>Changer de lot</Button>
           </p>
-        </div>
-      ) : (
-        <div style={{ marginBottom: '16px' }}>
-          <div role="radiogroup" aria-label="Type de recherche de lot" style={{ marginBottom: '8px' }}>
-            <label>
-              <input
-                type="radio"
-                name="lot-search-mode"
-                checked={searchMode === 'open'}
-                onChange={() => setSearchMode('open')}
-              />
-              {' '}Lot ouvert (nouvelle candidature)
-            </label>
-            <label style={{ marginLeft: '20px' }}>
-              <input
-                type="radio"
-                name="lot-search-mode"
-                checked={searchMode === 'eligible-for-ledger'}
-                onChange={() => setSearchMode('eligible-for-ledger')}
-              />
-              {' '}Lot déjà verrouillé (grand-livre)
-            </label>
+        ) : (
+          <div>
+            <div role="radiogroup" aria-label="Type de recherche de lot" style={{ marginBottom: '8px' }}>
+              <label>
+                <input
+                  type="radio"
+                  name="lot-search-mode"
+                  checked={searchMode === 'open'}
+                  onChange={() => setSearchMode('open')}
+                />
+                {' '}Lot ouvert (nouvelle candidature)
+              </label>
+              <label style={{ marginLeft: '20px' }}>
+                <input
+                  type="radio"
+                  name="lot-search-mode"
+                  checked={searchMode === 'eligible-for-ledger'}
+                  onChange={() => setSearchMode('eligible-for-ledger')}
+                />
+                {' '}Lot déjà verrouillé (grand-livre)
+              </label>
+            </div>
+            {searchMode === 'open' ? (
+              <LotPicker onSelect={setSelectedLot} />
+            ) : (
+              <LotEligibleForLedgerPicker onSelect={setSelectedLot} />
+            )}
           </div>
-          {searchMode === 'open' ? (
-            <LotPicker onSelect={setSelectedLot} />
-          ) : (
-            <LotEligibleForLedgerPicker onSelect={setSelectedLot} />
-          )}
-        </div>
-      )}
+        )}
+      </Card>
 
       {selectedLot && (
-        <DevisListPanel
-          key={`${selectedLot.organization.id}-${selectedLot.id}`}
-          organizationId={selectedLot.organization.id}
-          lotId={selectedLot.id}
-        />
+        <div style={{ marginTop: '16px' }}>
+          <DevisListPanel
+            key={`${selectedLot.organization.id}-${selectedLot.id}`}
+            organizationId={selectedLot.organization.id}
+            lotId={selectedLot.id}
+          />
+        </div>
       )}
     </section>
   );
