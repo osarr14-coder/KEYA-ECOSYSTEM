@@ -52,6 +52,10 @@ function BrandBar() {
           fontWeight: 700,
           fontFamily: typography.headingFontFamily,
           fontSize: '13px',
+          // Ticket F-055 (suite F-053/F-054) — même ombre que les autres
+          // badges K+ (AppShell, ProgramHeroCard, Login) : oubliée à
+          // l'introduction de ce bandeau (F-054), seul badge sans elle.
+          boxShadow: 'var(--keya-shadow-sm)',
           flexShrink: 0,
         }}
       >
