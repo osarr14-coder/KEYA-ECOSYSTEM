@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { BRAND_GRADIENT, brandColors } from '@keya/design-system';
+
 import { ProgramHeroCard } from './ProgramHeroCard';
 
 const PROPS = {
@@ -26,15 +28,17 @@ describe('ProgramHeroCard — carte hero navy/or (ticket F-046)', () => {
     expect(screen.getAllByText('Residence Baobab')).toHaveLength(1);
   });
 
-  it('la bande d\'en-tête est en navy plein, texte blanc', () => {
+  it('la bande d\'en-tête est en navy (dégradé, ticket F-053), texte blanc', () => {
     const { container } = render(<ProgramHeroCard {...PROPS} />);
     const band = container.querySelector('[data-testid="hero"] > div:first-child');
-    expect(band).toHaveStyle({ background: '#0B1D3A', color: '#FFFFFF' });
+    expect(band).toHaveStyle({ background: BRAND_GRADIENT, color: '#FFFFFF' });
   });
 
-  it('le repère "K+" est en or', () => {
+  it('le repère "K+" est un badge en dégradé or, texte navy', () => {
     render(<ProgramHeroCard {...PROPS} />);
-    expect(screen.getByText('K+')).toHaveStyle({ color: '#C49A2C' });
+    const mark = screen.getByTestId('hero-mark');
+    expect(mark).toHaveTextContent('K+');
+    expect(mark).toHaveStyle({ color: brandColors.navy });
   });
 
   it('asset_name reste le seul <h1> de la carte', () => {

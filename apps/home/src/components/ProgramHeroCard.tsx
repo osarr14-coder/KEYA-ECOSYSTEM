@@ -1,5 +1,5 @@
 import {
-  Button, brandColors, semanticColors, spacing,
+  BRAND_GRADIENT, Button, brandColors, semanticColors, spacing, typography,
 } from '@keya/design-system';
 
 /**
@@ -13,9 +13,16 @@ import {
  * 17.3 (identité de marque strictement réservée à HOME).
  *
  * Repère « K+ » or : MÊME traitement que le repère de `AppShell` (ticket
- * F-039), jamais un nouveau style inventé — fait office de « badge or
- * discret » (décision D, F-046), pas de widget supplémentaire déconnecté
- * d'une donnée réelle.
+ * F-039, badge dégradé depuis F-053), jamais un nouveau style inventé —
+ * fait office de « badge or discret » (décision D, F-046), pas de widget
+ * supplémentaire déconnecté d'une donnée réelle.
+ *
+ * Ticket F-053 (refonte visuelle) — bande d'en-tête en dégradé
+ * (`BRAND_GRADIENT`, exporté par `AppShell.tsx`, MÊME valeur que la
+ * sidebar/le bandeau HOME — jamais une seconde définition qui pourrait
+ * diverger), `borderRadius` 10px→18px, ombre `--keya-shadow-md` (plus
+ * prononcée que `Card` : cette carte est le point d'entrée visuel de
+ * l'écran, doit se détacher davantage).
  *
  * `programName` n'apparaît QUE dans la bande navy — retiré du corps
  * blanc (décision confirmée, F-046) pour éviter la redite ; le corps
@@ -37,14 +44,15 @@ export function ProgramHeroCard({
       data-testid="hero"
       style={{
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '10px',
+        borderRadius: '18px',
         overflow: 'hidden',
         background: semanticColors.neutral.surface,
+        boxShadow: 'var(--keya-shadow-md)',
       }}
     >
       <div
         style={{
-          background: brandColors.navy,
+          background: BRAND_GRADIENT,
           color: '#FFFFFF',
           display: 'flex',
           alignItems: 'center',
@@ -52,7 +60,25 @@ export function ProgramHeroCard({
           padding: `${spacing.md} ${spacing.lg}`,
         }}
       >
-        <span style={{ color: brandColors.gold, fontWeight: 700 }}>K+</span>
+        <span
+          data-testid="hero-mark"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '30px',
+            height: '30px',
+            borderRadius: '9px',
+            background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
+            color: brandColors.navy,
+            fontWeight: 700,
+            fontFamily: typography.headingFontFamily,
+            fontSize: '0.9em',
+            flexShrink: 0,
+          }}
+        >
+          K+
+        </span>
         <p style={{ margin: 0, fontSize: '1.1em', fontWeight: 600 }}>{programName}</p>
       </div>
 

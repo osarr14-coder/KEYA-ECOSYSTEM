@@ -10,7 +10,7 @@ export type { CardProps } from './components/Card/Card';
 export { Field } from './components/Field/Field';
 export type { FieldProps } from './components/Field/Field';
 
-export { AppShell } from './components/AppShell/AppShell';
+export { AppShell, BRAND_GRADIENT } from './components/AppShell/AppShell';
 export type {
   AppModule,
   AppShellOrganizationOption,

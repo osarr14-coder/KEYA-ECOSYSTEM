@@ -1,7 +1,8 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, Button, Input, TabBar, useOnlineStatus, type AppModule, type IconName,
+  AlertBanner, ApiErrorBanner, AppShell, BRAND_GRADIENT, Button, Field, Input, TabBar, brandColors, typography,
+  useIsMobile, useOnlineStatus, type AppModule, type IconName,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -220,6 +221,10 @@ function LoginView({ redirect }: { redirect: (url: string) => void }) {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Ticket F-053 — même seuil/hook que le reste du projet (MOBILE_BREAKPOINT_PX
+  // via useIsMobile, AppShell.tsx), jamais une valeur ad hoc : le panneau
+  // navy narratif serait trop à l'étroit à côté du formulaire sous ce seuil.
+  const isMobile = useIsMobile();
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -248,47 +253,120 @@ function LoginView({ redirect }: { redirect: (url: string) => void }) {
     }
   }
 
+  // Ticket F-053 (refonte visuelle) — panneau narratif navy à gauche
+  // (identité + doctrine Visible Trust, jamais affiché ailleurs qu'ici :
+  // ce n'est pas un composant partagé, uniquement le point d'entrée de la
+  // plateforme) / formulaire à droite, remplace le <form> nu centré.
+  // Structure d'accessibilité INCHANGÉE : aria-label="Connexion" sur le
+  // <form>, Field dérive aria-label="Email"/"Mot de passe" du libellé
+  // visible (voir Field.tsx) — mêmes requêtes getByLabelText qu'avant ce
+  // ticket, aucune régression de test attendue.
   return (
-    <main
-      style={{
-        display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center',
-      }}
-    >
-      <form
-        onSubmit={(event) => { void handleSubmit(event); }}
-        aria-label="Connexion"
-        style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '320px' }}
+    <main style={{ display: 'flex', minHeight: '100vh' }}>
+      <div
+        style={{
+          width: '440px',
+          minWidth: '440px',
+          display: isMobile ? 'none' : 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: '48px',
+          background: BRAND_GRADIENT,
+          color: '#FFFFFF',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
       >
-        <h1>KEYA — Connexion</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '40px',
+              height: '40px',
+              borderRadius: '11px',
+              background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
+              color: brandColors.navy,
+              fontWeight: 700,
+              fontFamily: typography.headingFontFamily,
+              fontSize: '17px',
+              boxShadow: 'var(--keya-shadow-sm)',
+            }}
+          >
+            K+
+          </span>
+          <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '18px' }}>KEYA</span>
+        </div>
 
-        {error && <AlertBanner title={error} />}
+        <div style={{ position: 'relative' }}>
+          <div style={{
+            fontSize: '12px', letterSpacing: '0.12em', color: '#E4C878', textTransform: 'uppercase',
+            fontWeight: 600, marginBottom: '16px',
+          }}
+          >
+            Visible Trust
+          </div>
+          {/* Ticket F-053 — <p>, pas <h1> : un seul vrai titre de page
+              (« Connexion à KEYA », dans le formulaire ci-dessous) reste
+              nécessaire pour une structure de landmarks correcte, un
+              second <h1> décoratif induirait les lecteurs d'écran en
+              erreur sur la hiérarchie réelle de la page. */}
+          <p style={{
+            color: '#FFFFFF', maxWidth: '340px', fontFamily: typography.headingFontFamily,
+            fontSize: '1.75em', fontWeight: 600, lineHeight: 1.25, margin: 0, textWrap: 'balance',
+          }}
+          >
+            La confiance visible, à chaque étape du chantier.
+          </p>
+          <p style={{ marginTop: '16px', color: 'rgba(255,255,255,0.65)', maxWidth: '340px', lineHeight: 1.6 }}>
+            Chaque preuve, chaque validation — tracées et vérifiables, du premier coup de pelle à la remise des clés.
+          </p>
+        </div>
 
-        <label>
-          Email
-          <Input
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </label>
+        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', position: 'relative' }}>
+          Plateforme réservée aux organisations partenaires KEYA.
+        </div>
+      </div>
 
-        <label>
-          Mot de passe
-          <Input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </label>
+      <div style={{
+        flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
+      }}
+      >
+        <form
+          onSubmit={(event) => { void handleSubmit(event); }}
+          aria-label="Connexion"
+          style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '340px' }}
+        >
+          <h1 style={{ marginBottom: '4px' }}>Connexion à KEYA</h1>
 
-        <Button type="submit" disabled={submitting}>
-          {submitting ? 'Connexion…' : 'Se connecter'}
-        </Button>
-      </form>
+          {error && <AlertBanner title={error} />}
+
+          <Field label="Email">
+            <Input
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </Field>
+
+          <Field label="Mot de passe">
+            <Input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </Field>
+
+          <Button type="submit" disabled={submitting}>
+            {submitting ? 'Connexion…' : 'Se connecter'}
+          </Button>
+        </form>
+      </div>
     </main>
   );
 }

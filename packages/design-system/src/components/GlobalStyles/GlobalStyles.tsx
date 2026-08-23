@@ -59,6 +59,23 @@ const ROOT_COLOR_VARIABLES = `
     /* Triplet R, G, B (pas un hex) — consommé par rgba(var(--keya-focus-ring-rgb), alpha)
        ci-dessous, technique vérifiée en navigateur réel avant intégration. */
     --keya-focus-ring-rgb: 17, 24, 39;
+
+    /* Ticket F-053 — ombres portées, remplacent la bordure plate de "Card"
+       (packages/design-system/src/components/Card) et l'aplat de "Button"
+       (variantes primary/danger). Valeur UNIQUE, non redéfinie dans les
+       blocs sombres ci-dessous : une ombre représente un éclairage
+       ambiant, quasi toujours sombre même sur une surface sombre — même
+       raisonnement que "danger.solid" (tokens/colors.ts), une valeur
+       délibérément FIGÉE plutôt qu'inversée par thème. Rgba neutre
+       (15,23,42 — décomposition RGB de "--keya-neutral-background" sombre,
+       #0F172A), jamais une teinte de marque ("brandColors", hors périmètre
+       de ce fichier par doctrine, voir le test de garde de ce fichier).
+       Effet plus discret qu'attendu en mode sombre sur une surface déjà
+       sombre — limite connue, acceptée pour cette première passe (voir
+       F-053-refonte-visuelle-professionnelle.md). */
+    --keya-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+    --keya-shadow-md: 0 6px 16px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+    --keya-shadow-lg: 0 20px 44px rgba(15, 23, 42, 0.16), 0 4px 10px rgba(15, 23, 42, 0.06);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -238,9 +255,18 @@ const GLOBAL_CSS = `
    * 1em depuis F-041) lirait à l'envers — distingué par le poids (600) et
    * text-wrap: balance, jamais par une taille réduite.
    */
-  h1 { font-size: 1.75em; font-weight: 700; line-height: 1.2; text-wrap: balance; }
-  h2 { font-size: 1.35em; font-weight: 700; line-height: 1.3; text-wrap: balance; }
-  h3 { font-size: 1.1em; font-weight: 600; line-height: 1.35; text-wrap: balance; }
+  /*
+   * Ticket F-053 — h1-h3 gagnent la police à empattement ("headingFontFamily",
+   * tokens/typography.ts) : hiérarchie visuelle plus marquée entre titres et
+   * interface, direction validée sur maquette (voir
+   * F-053-refonte-visuelle-professionnelle.md). h4 exclu volontairement :
+   * toujours utilisé comme libellé de section dense (jamais un vrai titre
+   * éditorial dans les 4 apps, inventaire F-042 réutilisé tel quel), une
+   * serif y détonnerait.
+   */
+  h1 { font-size: 1.75em; font-weight: 700; line-height: 1.2; text-wrap: balance; font-family: ${typography.headingFontFamily}; }
+  h2 { font-size: 1.35em; font-weight: 700; line-height: 1.3; text-wrap: balance; font-family: ${typography.headingFontFamily}; }
+  h3 { font-size: 1.1em; font-weight: 600; line-height: 1.35; text-wrap: balance; font-family: ${typography.headingFontFamily}; }
   h4 { font-size: 1em; font-weight: 600; line-height: 1.4; text-wrap: balance; }
 
   /*
@@ -266,6 +292,19 @@ const GLOBAL_CSS = `
   }
 `;
 
+// Ticket F-053 — Source Serif 4 (titres) + Public Sans (interface, voir
+// tokens/typography.ts), chargées une seule fois ici, jamais dupliquées
+// par app. `data-testid` volontairement ABSENT de ce <link> : le test
+// « rend une balise <style> unique » (GlobalStyles.test.tsx) cible
+// `getByTestId('global-styles')`, qui doit continuer à résoudre le
+// <style> lui-même sans ambiguïté.
+const GOOGLE_FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Public+Sans:wght@400;500;600;700&display=swap';
+
 export function GlobalStyles() {
-  return <style data-testid="global-styles">{GLOBAL_CSS}</style>;
+  return (
+    <>
+      <link rel="stylesheet" href={GOOGLE_FONTS_HREF} />
+      <style data-testid="global-styles">{GLOBAL_CSS}</style>
+    </>
+  );
 }

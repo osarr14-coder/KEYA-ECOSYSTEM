@@ -7,7 +7,7 @@ import {
 
 import { brandColors, semanticColors } from '../../tokens/colors';
 import { densityTokens } from '../../tokens/density';
-import { AppShell, type AppModule } from './AppShell';
+import { AppShell, type AppModule, BRAND_GRADIENT } from './AppShell';
 
 /**
  * Ticket F-050 — `jsdom` n'implémente pas `window.matchMedia` (voir
@@ -157,13 +157,13 @@ describe('AppShell — identité de marque KEYIMMO AFRIC (ticket F-039, prop bra
   it('sans brand (défaut) : en-tête neutre, aucun repère de marque — comportement BUILD/CONTROL/apps/web inchangé', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
     expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
-    expect(screen.getByTestId('app-shell-header')).not.toHaveStyle({ background: brandColors.navy });
+    expect(screen.getByTestId('app-shell-header')).not.toHaveStyle({ background: BRAND_GRADIENT });
   });
 
-  it('avec brand : en-tête en navy, bordure or, repère de marque affiché', () => {
+  it('avec brand : en-tête en navy (dégradé, ticket F-053), bordure or, repère de marque affiché', () => {
     render(<AppShell density="confortable" brand modules={MODULES} userRoles={[]} />);
     const header = screen.getByTestId('app-shell-header');
-    expect(header).toHaveStyle({ background: brandColors.navy, color: '#FFFFFF' });
+    expect(header).toHaveStyle({ background: BRAND_GRADIENT, color: '#FFFFFF' });
     expect(header).toHaveStyle({ borderBottom: `2px solid ${brandColors.gold}` });
     expect(screen.getByTestId('brand-mark')).toBeInTheDocument();
     // Ticket F-048 — requête scopée au bandeau <header> : le bloc sidebar
@@ -183,7 +183,7 @@ describe('AppShell — bloc navy de sidebar, révision limitée de la doctrine 1
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
     const block = screen.getByTestId('sidebar-brand-block');
     expect(block).toBeInTheDocument();
-    expect(block).toHaveStyle({ background: brandColors.navy, color: '#FFFFFF' });
+    expect(block).toHaveStyle({ background: BRAND_GRADIENT, color: '#FFFFFF' });
     expect(within(block).getByText('K+')).toBeInTheDocument();
     expect(within(block).getByText('KEYIMMO AFRIC')).toBeInTheDocument();
     // Le bandeau <header>, lui, reste HOME-only (F-039, intouché) : sans

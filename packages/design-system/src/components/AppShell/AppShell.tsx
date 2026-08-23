@@ -5,6 +5,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { brandColors, semanticColors } from '../../tokens/colors';
 import { type Density, densityTokens } from '../../tokens/density';
 import { spacing } from '../../tokens/spacing';
+import { typography } from '../../tokens/typography';
 import { Icon, type IconName } from '../Icon/Icon';
 
 /**
@@ -103,6 +104,18 @@ function isModuleVisible(module: AppModule, userRoles: string[]): boolean {
   return module.requiredRoles.some((role) => userRoles.includes(role));
 }
 
+/**
+ * Ticket F-053 (refonte visuelle) — dégradé de la bande de marque
+ * (sidebar toujours, header HOME-only), remplace l'aplat `brandColors.navy`
+ * seul. `#071527` : nuance plus profonde, choisie sur la maquette validée
+ * — inline ici plutôt qu'ajoutée à `brandColors` (tokens/colors.ts, qui
+ * documente explicitement « aucune nuance dérivée inventée sans besoin
+ * démontré ») : implémentation propre à CE composant, pas une nouvelle
+ * couleur de marque partagée. Exporté pour que `AppShell.test.tsx` compare
+ * la MÊME valeur, jamais une chaîne dupliquée qui pourrait diverger.
+ */
+export const BRAND_GRADIENT = `linear-gradient(155deg, ${brandColors.navy} 0%, #071527 100%)`;
+
 export function AppShell({
   density,
   brand = false,
@@ -163,7 +176,7 @@ export function AppShell({
         <div
           data-testid="sidebar-brand-block"
           style={{
-            background: brandColors.navy,
+            background: BRAND_GRADIENT,
             color: '#FFFFFF',
             display: 'flex',
             flexDirection: 'column',
@@ -179,7 +192,30 @@ export function AppShell({
               gap: spacing.sm,
             }}
           >
-            <span style={{ color: brandColors.gold, fontWeight: 700 }}>K+</span>
+            {/* Ticket F-053 — badge dégradé (au lieu du texte "K+" brut) :
+                repère de marque avec un peu de relief, même esprit que la
+                maquette validée. `boxShadow` volontairement `--keya-shadow-sm`
+                (pas `-md`/`-lg`) : un petit badge de 28px n'a pas besoin
+                d'une ombre portée large, qui paraîtrait disproportionnée. */}
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px',
+                borderRadius: '8px',
+                background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
+                color: brandColors.navy,
+                fontWeight: 700,
+                fontSize: '0.85em',
+                fontFamily: typography.headingFontFamily,
+                boxShadow: 'var(--keya-shadow-sm)',
+                flexShrink: 0,
+              }}
+            >
+              K+
+            </span>
             {!effectiveCollapsed && <span style={{ fontWeight: 700 }}>KEYIMMO AFRIC</span>}
           </div>
           {!effectiveCollapsed && appLabel && (
@@ -292,7 +328,7 @@ export function AppShell({
           gap: tokens.gap,
           padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
           borderBottom: brand ? `2px solid ${brandColors.gold}` : `1px solid ${semanticColors.neutral.border}`,
-          background: brand ? brandColors.navy : undefined,
+          background: brand ? BRAND_GRADIENT : undefined,
           color: brand ? '#FFFFFF' : undefined,
         }}
       >
@@ -305,10 +341,26 @@ export function AppShell({
           <span
             data-testid="brand-mark"
             style={{
-              display: 'inline-flex', alignItems: 'baseline', gap: '4px', fontWeight: 700, whiteSpace: 'nowrap',
+              display: 'inline-flex', alignItems: 'center', gap: spacing.sm, fontWeight: 700, whiteSpace: 'nowrap',
             }}
           >
-            <span style={{ color: brandColors.gold }}>K+</span>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '26px',
+                height: '26px',
+                borderRadius: '7px',
+                background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
+                color: brandColors.navy,
+                fontFamily: typography.headingFontFamily,
+                fontSize: '0.8em',
+                flexShrink: 0,
+              }}
+            >
+              K+
+            </span>
             <span>KEYIMMO AFRIC</span>
           </span>
         )}

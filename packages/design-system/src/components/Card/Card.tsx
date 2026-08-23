@@ -16,6 +16,14 @@ import { Icon, type IconName } from '../Icon/Icon';
  * problème/état à traiter (fond ambre/rouge, `role="alert"`) ; `Card`
  * regroupe une section de contenu neutre — jamais utilisé pour une alerte
  * (qui reste `AlertBanner`), jamais l'inverse.
+ *
+ * Ticket F-053 (refonte visuelle) — `borderRadius` 10px→16px et
+ * `boxShadow` (`--keya-shadow-sm`, `GlobalStyles.tsx`) ajoutés : la
+ * bordure `semanticColors.neutral.border` reste INCHANGÉE (retour
+ * utilisateur explicite : trop plat, mais retirer la bordure casserait le
+ * critère d'acceptation déjà testé du ticket F-045 — « bordure ET fond
+ * distincts du texte brut »). L'ombre ajoute la profondeur demandée sans
+ * toucher ce contrat existant.
  */
 export interface CardProps {
   icon?: IconName;
@@ -47,9 +55,10 @@ export function Card({
       data-testid={testId}
       style={{
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '10px',
+        borderRadius: '16px',
         background: semanticColors.neutral.surface,
         padding: '16px',
+        boxShadow: 'var(--keya-shadow-sm)',
       }}
     >
       {title && (
