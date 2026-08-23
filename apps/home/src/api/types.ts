@@ -87,6 +87,20 @@ export interface Me {
   memberships: MeMembership[];
 }
 
+/** Ticket F-057 — miroir de `apps.programs.serializers.
+ * ProgramRequestSerializer` (`GET/POST /api/programs/requests/`). */
+export interface ProgramRequest {
+  id: string;
+  organization: string;
+  organization_name: string;
+  requested_by: string;
+  requested_by_email: string;
+  description: string;
+  status: 'en_attente' | 'acceptee' | 'refusee';
+  program: string | null;
+  created_at: string;
+}
+
 export interface Task {
   id: string;
   type: 'task' | 'notification' | 'alert' | 'exception';

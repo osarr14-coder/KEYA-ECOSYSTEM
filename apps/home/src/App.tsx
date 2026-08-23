@@ -10,6 +10,7 @@ import { useApiResource } from './api/useApiResource';
 import { EvidenceFeedView } from './views/EvidenceFeedView';
 import { MyActionsView } from './views/MyActionsView';
 import { OverviewView } from './views/OverviewView';
+import { ProgramRequestView } from './views/ProgramRequestView';
 
 // Réutilise AppShell tel quel (ticket 007) — aucune redéfinition. Le module
 // professionnel FINANCE reste masqué tant que `userRoles` (dérivé de `/me`,
@@ -54,13 +55,23 @@ function buildModules(): AppModule[] {
   ];
 }
 
-type ViewId = 'overview' | 'evidence' | 'actions';
+type ViewId = 'overview' | 'evidence' | 'actions' | 'program-request';
 
-const TABS: { id: ViewId; label: string; icon: IconName }[] = [
+const LOT_TABS: { id: ViewId; label: string; icon: IconName }[] = [
   { id: 'overview', label: "Vue d'ensemble", icon: 'home' },
   { id: 'evidence', label: 'Avancement & preuves', icon: 'file-text' },
   { id: 'actions', label: 'Mes actions', icon: 'clipboard-check' },
 ];
+
+// Ticket F-057 — onglet supplémentaire, réservé au rôle `sponsor` (jamais
+// `client`, qui achète un lot déjà existant plutôt que de faire construire
+// sur mesure — voir `B-042-prospect-programme-sur-mesure.md`). Un sponsor
+// qui possède DÉJÀ au moins un bien peut quand même soumettre une NOUVELLE
+// demande (ex. un second projet) — cet onglet s'ajoute donc à `LOT_TABS`,
+// jamais à sa place.
+const PROGRAM_REQUEST_TAB: { id: ViewId; label: string; icon: IconName } = {
+  id: 'program-request', label: 'Programme sur mesure', icon: 'building',
+};
 
 const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';
 
@@ -143,6 +154,11 @@ export function App() {
 
   const lots = lotsState.status === 'success' ? lotsState.data : [];
   const currentLotId = selectedLotId ?? lots[0]?.id ?? null;
+  // Ticket F-057 — un sponsor voit l'onglet « Programme sur mesure » EN
+  // PLUS des onglets liés à un bien (jamais à leur place) : il peut très
+  // bien posséder déjà un bien ET vouloir soumettre une nouvelle demande.
+  const isSponsor = userRoles.includes('sponsor');
+  const tabs = isSponsor ? [...LOT_TABS, PROGRAM_REQUEST_TAB] : LOT_TABS;
 
   return (
     <AppShell
@@ -185,7 +201,15 @@ export function App() {
       {meState.status === 'success' && lotsState.status === 'error' && (
         <ApiErrorBanner error={lotsState.error} title="Impossible de charger vos biens." onRetry={lotsState.refetch} />
       )}
-      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && (
+      {/* Ticket F-057 — un sponsor SANS bien (cas normal avant que sa
+          demande soit acceptée et son programme créé) voit directement
+          l'écran de demande, jamais le message générique ci-dessous (qui
+          n'a aucun sens pour lui — il n'attend pas qu'on lui "associe" un
+          bien existant, il en demande un nouveau). */}
+      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && isSponsor && (
+        <ProgramRequestView />
+      )}
+      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && !isSponsor && (
         <p>Aucun bien ne vous est encore associé.</p>
       )}
 
@@ -209,7 +233,7 @@ export function App() {
             </label>
           )}
 
-          <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as ViewId)} aria-label="Sections HOME" />
+          <TabBar tabs={tabs} activeTabId={activeTab} onChange={(id) => setActiveTab(id as ViewId)} aria-label="Sections HOME" />
 
           {activeTab === 'overview' && (
             <OverviewView
@@ -220,6 +244,7 @@ export function App() {
           )}
           {activeTab === 'evidence' && <EvidenceFeedView lotId={currentLotId} />}
           {activeTab === 'actions' && <MyActionsView activeOrganizationId={activeOrganizationId} />}
+          {activeTab === 'program-request' && <ProgramRequestView />}
         </>
       )}
     </AppShell>

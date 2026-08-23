@@ -367,3 +367,50 @@ describe('App — erreur de chargement du profil (ticket F-033, vague 3)', () =>
     },
   );
 });
+
+describe('App — sponsor sans bien (ticket F-057, programme sur mesure)', () => {
+  const SPONSOR_ME = {
+    id: 'user-sponsor', email: 'sponsor@example.com', full_name: 'Sponsor Test',
+    memberships: [
+      { organization_id: 'org-sponsor', organization_name: 'Compte personnel — sponsor@example.com', role_code: 'sponsor', role_label: 'Sponsor' },
+    ],
+  };
+
+  it("un sponsor sans bien voit directement l'écran de demande, jamais le message générique", async () => {
+    renderApp({
+      getMe: async () => SPONSOR_ME,
+      getMyLots: async () => [],
+      getMyProgramRequests: async () => [],
+    });
+
+    expect(await screen.findByRole('form', { name: 'Soumettre une demande de programme' })).toBeInTheDocument();
+    expect(screen.queryByText('Aucun bien ne vous est encore associé.')).not.toBeInTheDocument();
+  });
+
+  it('un client (pas sponsor) sans bien voit toujours le message générique, comportement inchangé', async () => {
+    renderApp({ getMyLots: async () => [] });
+
+    expect(await screen.findByText('Aucun bien ne vous est encore associé.')).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Soumettre une demande de programme' })).not.toBeInTheDocument();
+  });
+
+  it('un sponsor qui possède déjà un bien voit un onglet supplémentaire « Programme sur mesure »', async () => {
+    renderApp({
+      getMe: async () => SPONSOR_ME,
+      getMyProgramRequests: async () => [],
+    });
+
+    await screen.findByText('Résidence Ker');
+    const tab = screen.getByRole('button', { name: 'Programme sur mesure' });
+    fireEvent.click(tab);
+
+    expect(await screen.findByRole('form', { name: 'Soumettre une demande de programme' })).toBeInTheDocument();
+  });
+
+  it("un client qui possède déjà un bien ne voit pas l'onglet « Programme sur mesure »", async () => {
+    renderApp();
+
+    await screen.findByText('Résidence Ker');
+    expect(screen.queryByRole('button', { name: 'Programme sur mesure' })).not.toBeInTheDocument();
+  });
+});
