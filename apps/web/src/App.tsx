@@ -20,8 +20,9 @@ import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
 import { PricingView } from './views/PricingView';
 import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
+import { TasksView } from './views/TasksView';
 
-type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'programs' | 'program-requests';
+type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'programs' | 'program-requests' | 'tasks';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -64,6 +65,11 @@ const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string; ic
   {
     id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check',
   },
+  // Ticket F-061 — destination réelle de la cloche AppShell (jusqu'ici un
+  // lien mort `href="/tasks"`, ticket F-045). Entrée de premier niveau,
+  // comme "Programmes"/"Demandes de programme" : une tâche n'appartient à
+  // aucun des groupes existants.
+  { id: 'tasks', label: 'Tâches', path: '/tasks', icon: 'bell' },
 ];
 
 const MODULES: AppModule[] = TAB_DEFINITIONS.map(({
@@ -215,6 +221,11 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       activeModuleId={activeTab}
       breadcrumbs={[{ label: TABS.find((tab) => tab.id === activeTab)!.label }]}
       taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
+      // Ticket F-061 — bascule vers le nouvel onglet « Tâches » (même
+      // endpoint que le compteur ci-dessus), URL synchronisée comme
+      // n'importe quel autre onglet (`useUrlSyncedTab`) : jamais une
+      // navigation `<a href>` classique, qui aurait rechargé toute la page.
+      onTaskInboxClick={() => setActiveTab('tasks')}
     >
       <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as AuthenticatedTabId)} aria-label="Sections back-office" />
 
@@ -224,6 +235,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'legal-tiers' && <LegalPaymentTiersView />}
       {activeTab === 'programs' && <ProgramsView />}
       {activeTab === 'program-requests' && <ProgramRequestsView />}
+      {activeTab === 'tasks' && <TasksView />}
     </AppShell>
   );
 }

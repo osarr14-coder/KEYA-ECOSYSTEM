@@ -313,3 +313,14 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
     expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
   });
 });
+
+describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
+  it('bascule sur l\'onglet « Tâches », jamais une navigation réelle vers /tasks', async () => {
+    renderApp();
+    await screen.findByTestId('no-exceptions');
+
+    fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
+
+    expect(await screen.findByRole('button', { name: 'Tâches' })).toHaveAttribute('aria-current', 'page');
+  });
+});

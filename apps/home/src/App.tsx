@@ -186,6 +186,16 @@ export function App() {
       activeModuleId="home"
       breadcrumbs={[{ label: 'Accueil' }]}
       taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
+      // Ticket F-061 — la cloche bascule sur l'onglet « Mes actions »
+      // existant (`MyActionsView`, même destination que le bouton « Voir
+      // toutes mes actions » de `PriorityTaskSummary`), jamais un second
+      // écran de tâches recodé. Limite connue et acceptée : un sponsor
+      // SANS bien (`currentLotId` faux) n'a pas encore cet onglet — mais
+      // sa seule notification possible à ce stade (décision sur sa
+      // demande, ticket B-043) est déjà affichée directement sur son
+      // écran d'atterrissage (`ProgramRequestView`, ticket F-059), la
+      // cloche n'est donc pas son seul chemin d'accès dans ce cas.
+      onTaskInboxClick={() => setActiveTab('actions')}
       organizationOptions={organizationOptions}
       activeOrganizationId={activeOrganizationId ?? undefined}
       onOrganizationChange={handleOrganizationChange}

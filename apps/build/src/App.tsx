@@ -9,6 +9,7 @@ import { useApiClient } from './api/ApiClientContext';
 import { useApiResource } from './api/useApiResource';
 import { AllLotsView } from './views/AllLotsView';
 import { ExceptionsView } from './views/ExceptionsView';
+import { TasksView } from './views/TasksView';
 
 // Réutilise AppShell tel quel (ticket 007), variante dense (ticket 009,
 // écran professionnel à fort volume) — aucune redéfinition. Les modules
@@ -49,11 +50,14 @@ function buildModules(): AppModule[] {
   ];
 }
 
-type ViewId = 'exceptions' | 'all_lots';
+type ViewId = 'exceptions' | 'all_lots' | 'tasks';
 
 const TABS: { id: ViewId; label: string; icon: IconName }[] = [
   { id: 'exceptions', label: 'Exceptions', icon: 'alert-triangle' },
   { id: 'all_lots', label: 'Tous les lots', icon: 'building' },
+  // Ticket F-061 — destination réelle de la cloche AppShell (jusqu'ici un
+  // lien mort `href="/tasks"`, ticket F-045).
+  { id: 'tasks', label: 'Tâches', icon: 'bell' },
 ];
 
 const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';
@@ -134,6 +138,11 @@ export function App() {
       activeModuleId="build"
       breadcrumbs={[{ label: 'BUILD' }]}
       taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
+      // Ticket F-061 — bascule vers le nouvel onglet « Tâches » (même
+      // TabBar que "Exceptions"/"Tous les lots"), jamais une navigation
+      // `<a href>` classique (cette app n'a aucun routeur, un rechargement
+      // aurait perdu l'onglet actif sans jamais retomber sur « Tâches »).
+      onTaskInboxClick={() => setActiveTab('tasks')}
       organizationOptions={organizationOptions}
       activeOrganizationId={activeOrganizationId ?? undefined}
       onOrganizationChange={handleOrganizationChange}
@@ -168,6 +177,7 @@ export function App() {
           {activeTab === 'all_lots' && (
             <AllLotsView initialSearch={lotSearchFilter} activeOrganizationId={activeOrganizationId} />
           )}
+          {activeTab === 'tasks' && <TasksView />}
         </>
       )}
     </AppShell>

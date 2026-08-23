@@ -87,6 +87,21 @@ export interface AppShellProps {
   userRoles: string[];
   breadcrumbs?: Breadcrumb[];
   taskInboxCount?: number;
+  /**
+   * Ticket F-061 — la cloche restait un lien mort (`href="/tasks"`, ticket
+   * F-045) : aucune des 3 apps qui rendent `AppShell` n'a de VRAIE route
+   * `/tasks` (jamais de routeur pour `apps/home`/`apps/build`, `apps/web`
+   * n'avait pas encore ce chemin dans `TAB_ROUTES`) — une navigation
+   * `<a href>` classique aurait rechargé la page en pure perte pour
+   * `apps/home`/`apps/build` (aucune route à intercepter au chargement),
+   * jamais silencieusement pour `apps/web` non plus (rechargement complet
+   * évitable). Optionnel : sans handler, la cloche garde son comportement
+   * `href` d'origine (rétrocompatible, aucune app n'est cassée si elle
+   * n'est pas encore mise à jour) — avec handler, l'appelant décide de la
+   * navigation en SPA (changement d'onglet local, jamais un second
+   * mécanisme de routage recodé ici).
+   */
+  onTaskInboxClick?: () => void;
   user?: AppShellUser;
   organizationOptions?: AppShellOrganizationOption[];
   activeOrganizationId?: string;
@@ -124,6 +139,7 @@ export function AppShell({
   userRoles,
   breadcrumbs = [],
   taskInboxCount = 0,
+  onTaskInboxClick,
   user,
   organizationOptions = [],
   activeOrganizationId,
@@ -419,6 +435,10 @@ export function AppShell({
 
         <a
           href="/tasks"
+          onClick={onTaskInboxClick && ((event) => {
+            event.preventDefault();
+            onTaskInboxClick();
+          })}
           aria-label={`Task Inbox — ${taskInboxCount} en attente`}
           style={{
             marginLeft: 'auto',

@@ -493,3 +493,23 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
     expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
   });
 });
+
+describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
+  it('bascule sur l\'onglet « Tâches » et met à jour l\'URL, jamais un rechargement complet', async () => {
+    localStorage.setItem('keya_access_token', 'stored-admin-token');
+    const api = createMockApiClient({
+      getMe: vi.fn().mockResolvedValue({
+        id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
+        memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+      }),
+      getMyTasks: async () => [],
+    });
+    render(withApiClient(api, <App />));
+    await screen.findByTestId('app-shell');
+
+    fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
+
+    expect(await screen.findByRole('heading', { name: 'Tâches' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/tasks');
+  });
+});

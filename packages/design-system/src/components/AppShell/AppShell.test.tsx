@@ -115,6 +115,31 @@ describe('AppShell — topbar (recherche, sélecteurs, Task Inbox, avatar)', () 
     expect(screen.getByTestId('task-inbox-count')).toHaveTextContent('7');
   });
 
+  it(
+    'ticket F-061 : sans onTaskInboxClick, la cloche garde son href /tasks (rétrocompatible)',
+    () => {
+      render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+      expect(screen.getByRole('link', { name: /Task Inbox/ })).toHaveAttribute('href', '/tasks');
+    },
+  );
+
+  it(
+    'ticket F-061 : avec onTaskInboxClick, cliquer la cloche appelle le handler sans navigation',
+    () => {
+      const onTaskInboxClick = vi.fn();
+      render(<AppShell density="dense" modules={MODULES} userRoles={[]} onTaskInboxClick={onTaskInboxClick} />);
+
+      const link = screen.getByRole('link', { name: /Task Inbox/ });
+      const event = fireEvent.click(link);
+
+      expect(onTaskInboxClick).toHaveBeenCalledTimes(1);
+      // `fireEvent.click` renvoie `false` si `preventDefault()` a été
+      // appelé sur l'événement — c'est ce qui empêche jsdom de tenter une
+      // navigation réelle vers `href="/tasks"`.
+      expect(event).toBe(false);
+    },
+  );
+
   it('déclenche onSearch avec la requête saisie', () => {
     let submittedQuery: string | undefined;
     render(

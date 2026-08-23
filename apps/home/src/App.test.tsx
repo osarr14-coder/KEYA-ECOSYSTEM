@@ -443,3 +443,15 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
     expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
   });
 });
+
+describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
+  it('bascule sur l\'onglet « Mes actions », jamais une navigation réelle vers /tasks', async () => {
+    renderApp();
+    await screen.findByText('Résidence Ker');
+
+    fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
+
+    expect(await screen.findByRole('button', { name: 'Mes actions' })).toHaveAttribute('aria-current', 'page');
+    expect(window.location.pathname).toBe('/');
+  });
+});
