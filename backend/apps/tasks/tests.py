@@ -527,6 +527,116 @@ class TestAdminCrossOrgTaskVisibility:
         assert response.data['status'] == 'done'
 
 
+def _create_task_for_inspector_in_target_org(*, inspector_user, target_organization, label='Mission test'):
+    """Même principe que `_create_task_for_admin_in_target_org` — reproduit
+    la forme exacte des Task créées par `create_task_for_mission_assigned`
+    (ticket 012) sans dépendre de la mise en place complète d'une mission
+    d'inspection (hors sujet de ce test, ticket B-045).
+    """
+    program = Program.objects.create(organization=target_organization, name='Programme cross-org inspecteur')
+    return Task.objects.create(
+        organization=target_organization,
+        type=TaskType.TASK,
+        subject_type=ContentType.objects.get_for_model(program),
+        subject_id=program.id,
+        assignee=inspector_user,
+        source='mission_assigned',
+        label=label,
+    )
+
+
+@pytest.mark.django_db
+class TestInspectorCrossOrgTaskVisibility:
+    """Ticket B-045 — un inspecteur voit et complète ses propres tâches
+    `mission_assigned` pour une organisation TIERCE (le client de la
+    mission, dont il n'est jamais membre par construction — règle
+    d'indépendance, ticket 005), invisibles via `MyTasksView`/
+    `TaskViewSet` (RLS `tasks_task` mono-organisation). Même mécanisme
+    EXACT que `TestAdminCrossOrgTaskVisibility` ci-dessus (services
+    généralisés au ticket B-045).
+    """
+
+    def test_inspector_lists_own_tasks_across_organizations_without_membership(self):
+        inspecteur_client, inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'crossorg-inspector@example.com', 'Org Cross Inspector',
+        )
+        _client_a, org_a, _user_a = _register('crossorg-inspector-a@example.com', 'Org Cross Inspector A')
+        _client_b, org_b, _user_b = _register('crossorg-inspector-b@example.com', 'Org Cross Inspector B')
+
+        set_rls_context(organization_id=org_a.id)
+        _create_task_for_inspector_in_target_org(
+            inspector_user=inspecteur_user, target_organization=org_a, label='Mission A',
+        )
+        set_rls_context(organization_id=org_b.id)
+        _create_task_for_inspector_in_target_org(
+            inspector_user=inspecteur_user, target_organization=org_b, label='Mission B',
+        )
+        set_rls_context(organization_id=inspecteur_organization.id)
+
+        assert not Membership.objects.filter(user=inspecteur_user, organization__in=[org_a, org_b]).exists()
+
+        response = inspecteur_client.get(reverse('task-inspector-inbox'))
+
+        assert response.status_code == 200
+        labels = {row['label'] for row in response.data}
+        assert {'Mission A', 'Mission B'}.issubset(labels)
+
+    def test_an_ordinary_member_cannot_list_the_inspector_cross_org_inbox(self):
+        member_client, _organization, _user = _register(
+            'crossorg-inspector-noaccess@example.com', 'Org Cross Inspector No Access',
+        )
+        response = member_client.get(reverse('task-inspector-inbox'))
+        assert response.status_code == 403
+
+    def test_an_admin_keyimmo_cannot_use_the_inspector_endpoint(self):
+        """`IsInspecteur` ne doit jamais laisser passer un rôle différent
+        (ici admin_keyimmo, qui a sa PROPRE paire de routes) — même
+        garde de non-confusion des rôles que le reste du projet.
+        """
+        admin_client, _admin_organization, _admin_user = _register_admin(
+            'crossorg-inspector-admin@example.com', 'Org Cross Inspector Admin',
+        )
+        response = admin_client.get(reverse('task-inspector-inbox'))
+        assert response.status_code == 403
+
+    def test_inspector_completes_a_cross_org_task(self):
+        inspecteur_client, inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'crossorg-inspector-complete@example.com', 'Org Cross Inspector Complete',
+        )
+        _client_a, org_a, _user_a = _register(
+            'crossorg-inspector-complete-a@example.com', 'Org Cross Inspector Complete A',
+        )
+
+        set_rls_context(organization_id=org_a.id)
+        task = _create_task_for_inspector_in_target_org(inspector_user=inspecteur_user, target_organization=org_a)
+        set_rls_context(organization_id=inspecteur_organization.id)
+
+        response = inspecteur_client.post(
+            reverse('task-inspector-complete', args=[task.id]) + f'?organization_id={org_a.id}',
+            {}, format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['status'] == 'done'
+        set_rls_context(organization_id=org_a.id)
+        refreshed = Task.objects.get(id=task.id)
+        assert refreshed.status == TaskStatus.DONE
+        assert refreshed.completed_at is not None
+
+    def test_inspector_complete_without_organization_id_is_rejected(self):
+        inspecteur_client, _inspecteur_organization, inspecteur_user = _setup_inspecteur(
+            'crossorg-inspector-noqp@example.com', 'Org Cross Inspector No QP',
+        )
+        _client_a, org_a, _user_a = _register('crossorg-inspector-noqp-a@example.com', 'Org Cross Inspector No QP A')
+
+        set_rls_context(organization_id=org_a.id)
+        task = _create_task_for_inspector_in_target_org(inspector_user=inspecteur_user, target_organization=org_a)
+
+        response = inspecteur_client.post(reverse('task-inspector-complete', args=[task.id]), {}, format='json')
+
+        assert response.status_code == 400
+
+
 @pytest.mark.django_db
 class TestPriorityOrdering:
     """Ticket 008 — `?ordering=priority` : ajouté pour que le résumé

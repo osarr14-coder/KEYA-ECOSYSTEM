@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from apps.backoffice.permissions import IsAdminKeyimmo
 from apps.core.viewsets import OrganizationScopedMixin
+from apps.inspections.permissions import IsInspecteur
 
 from . import services
 from .models import Task, TaskPriority
@@ -98,16 +99,18 @@ class AdminTaskInboxView(APIView):
     assignées à `admin_keyimmo` pour une organisation TIERCE
     (`devis_ajustement_refuse`/`lot_ledger_margin_negative`, tickets
     023/B-036) ne remontent jamais via `MyTasksView` (RLS `tasks_task`
-    mono-organisation). Voir `services.list_my_tasks_as_admin`.
+    mono-organisation). Voir `services.list_my_tasks_across_
+    organizations` (généralisée au ticket B-045, voir `InspectorTaskInboxView`
+    ci-dessous — même mécanisme, rôle différent).
     """
 
     permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request):
         status_filter = request.query_params.get('status')
-        tasks = services.list_my_tasks_as_admin(
-            admin_user=request.user,
-            admin_organization_id=request.organization.id if request.organization else None,
+        tasks = services.list_my_tasks_across_organizations(
+            user=request.user,
+            caller_organization_id=request.organization.id if request.organization else None,
             status=status_filter,
         )
         return Response(TaskSerializer(tasks, many=True).data)
@@ -117,8 +120,8 @@ class AdminTaskCompleteView(APIView):
     """`POST /api/tasks/{id}/admin-complete/?organization_id=<id>` —
     ticket B-044 : complète une tâche dont l'organisation est CELLE
     FOURNIE (pas l'organisation active de l'appelant) — voir
-    `services.complete_task_as_admin`. URL distincte de `tasks/{pk}/
-    complete/` (`TaskViewSet.complete` ci-dessus, inchangé).
+    `services.complete_task_across_organizations`. URL distincte de
+    `tasks/{pk}/complete/` (`TaskViewSet.complete` ci-dessus, inchangé).
     """
 
     permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
@@ -128,8 +131,57 @@ class AdminTaskCompleteView(APIView):
         if not organization_id:
             raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
         try:
-            task = services.complete_task_as_admin(
-                admin_organization_id=request.organization.id if request.organization else None,
+            task = services.complete_task_across_organizations(
+                caller_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                task_id=task_id,
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(TaskSerializer(task).data)
+
+
+class InspectorTaskInboxView(APIView):
+    """`GET /api/tasks/inspector-inbox/?status=` — ticket B-045 : les
+    tâches `mission_assigned` (ticket 012) assignées à un inspecteur
+    pour la mission d'un client TIERS (organisation dont il n'est jamais
+    membre, règle d'indépendance ticket 005) ne remontent jamais via
+    `MyTasksView`. Même mécanisme EXACT que `AdminTaskInboxView`
+    ci-dessus — `IsInspecteur` vérifie déjà « inspecteur dans
+    l'organisation active », suffisant ici : la boucle interne
+    (`list_my_tasks_across_organizations`) fait le reste, aucune
+    dépendance à ce que l'organisation active corresponde à la mission —
+    même réutilisation cross-org déjà faite par
+    `apps.control.views.MissionListView`.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+
+    def get(self, request):
+        status_filter = request.query_params.get('status')
+        tasks = services.list_my_tasks_across_organizations(
+            user=request.user,
+            caller_organization_id=request.organization.id if request.organization else None,
+            status=status_filter,
+        )
+        return Response(TaskSerializer(tasks, many=True).data)
+
+
+class InspectorTaskCompleteView(APIView):
+    """`POST /api/tasks/{id}/inspector-complete/?organization_id=<id>` —
+    ticket B-045. Même mécanisme EXACT que `AdminTaskCompleteView`
+    ci-dessus.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+
+    def post(self, request, task_id):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        try:
+            task = services.complete_task_across_organizations(
+                caller_organization_id=request.organization.id if request.organization else None,
                 target_organization_id=organization_id,
                 task_id=task_id,
             )

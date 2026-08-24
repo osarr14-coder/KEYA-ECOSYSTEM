@@ -857,6 +857,13 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # `Task.label` (texte descriptif, jamais une donnée chiffrée
             # sensible).
             'task-admin-inbox', 'task-admin-complete',
+            # Ticket B-045 — ajout conscient : mêmes routes, pour le rôle
+            # `inspecteur` cette fois (`IsInspecteur`) — corrige
+            # l'invisibilité des Task `mission_assigned` (organisation de
+            # la mission, jamais celle de l'inspecteur — règle
+            # d'indépendance, ticket 005). Même raisonnement que
+            # `task-admin-inbox`/`task-admin-complete` ci-dessus.
+            'task-inspector-inbox', 'task-inspector-complete',
             'my-lots', 'my-lot-overview', 'my-lot-evidence',
             # Ticket B-041 — ajout conscient : première route d'écriture
             # jamais exposée depuis `apps/home` (jusqu'ici strictement

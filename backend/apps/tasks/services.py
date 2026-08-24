@@ -357,51 +357,61 @@ def complete_task(task):
     return task
 
 
-def list_my_tasks_as_admin(*, admin_user, admin_organization_id, status=None):
-    """`GET /api/tasks/admin-inbox/` — ticket B-044 : `create_task_for_
-    devis_ajustement_refuse`/`create_task_for_lot_ledger_margin_negative`
-    (tickets 023/B-036) assignent la Task à `admin_keyimmo` mais posent
-    `organization` = celle du devis/grand-livre CIBLE, jamais celle de
-    KEIMMO (même doctrine que `decide_program_request` : admin_keyimmo
-    agit par bascule RLS explicite, jamais par appartenance réelle) — ces
-    Task sont donc invisibles via `MyTasksView` (`assignee=request.user`,
-    mais RLS `tasks_task` mono-organisation filtre la ligne AVANT que le
-    filtre applicatif ne s'applique, tant que l'organisation active de
-    l'appelant ne correspond pas).
+def list_my_tasks_across_organizations(*, user, caller_organization_id, status=None):
+    """`GET /api/tasks/admin-inbox/` (ticket B-044) et `GET /api/tasks/
+    inspector-inbox/` (ticket B-045) — deux générateurs de `Task` posent
+    `organization` = celle du sujet CIBLE, jamais celle de l'appelant :
+    `create_task_for_devis_ajustement_refuse`/`create_task_for_lot_
+    ledger_margin_negative` (tickets 023/B-036, assignee=admin_keyimmo,
+    organisation = devis/grand-livre) et `create_task_for_mission_
+    assigned` (ticket 012, assignee=inspecteur, organisation = mission —
+    l'inspecteur n'en est jamais membre, règle d'indépendance, ticket
+    005). Ces Task sont donc invisibles via `MyTasksView`
+    (`assignee=request.user`, mais RLS `tasks_task` mono-organisation
+    filtre la ligne AVANT que le filtre applicatif ne s'applique, tant
+    que l'organisation active de l'appelant ne correspond pas).
 
     Boucle de bascule RLS organisation par organisation — EXACTEMENT le
     même mécanisme que `apps.programs.services.list_program_requests_as_
     admin` (ticket B-042) et `apps.procurement.services._search_lots_by_
     name_as_admin` (ticket B-028/B-037) — jamais une policy RLS large
     (piège déjà rencontré et corrigé, migration
-    `0009_lot_admin_keyimmo_select.py`). Filtré par `assignee=admin_user` :
-    CET admin voit SES propres tâches cross-org, jamais celles d'un autre
-    admin_keyimmo — même granularité que `MyTasksView`. Volume attendu
-    faible (alertes opérationnelles, pas une recherche déclenchée à
-    chaque frappe clavier) : aucun plafond `MAX_SEARCH_RESULTS` ici,
-    même raisonnement que `list_program_requests_as_admin`.
+    `0009_lot_admin_keyimmo_select.py`). Généralisée depuis `list_my_
+    tasks_as_admin` (B-044, renommée ici) : la boucle est STRICTEMENT
+    identique quel que soit le rôle appelant, seul `assignee=user`
+    change — pas de second mécanisme dupliqué pour le même problème sur
+    la même table. Filtré par `assignee=user` : CET utilisateur voit SES
+    propres tâches cross-org, jamais celles d'un autre — même
+    granularité que `MyTasksView`. Volume attendu faible (alertes/
+    notifications opérationnelles, pas une recherche déclenchée à chaque
+    frappe clavier) : aucun plafond `MAX_SEARCH_RESULTS` ici, même
+    raisonnement que `list_program_requests_as_admin`.
     """
     results = []
     organization_ids = list(Organization.objects.values_list('id', flat=True))
     try:
         for organization_id in organization_ids:
             set_rls_context(organization_id=organization_id)
-            queryset = Task.objects.filter(assignee=admin_user)
+            queryset = Task.objects.filter(assignee=user)
             if status:
                 queryset = queryset.filter(status=status)
             results.extend(queryset)
     finally:
-        set_rls_context(organization_id=admin_organization_id)
+        set_rls_context(organization_id=caller_organization_id)
     return results
 
 
-def complete_task_as_admin(*, admin_organization_id, target_organization_id, task_id):
-    """`POST /api/tasks/{id}/admin-complete/?organization_id=<id>` —
-    ticket B-044. Même bascule RLS explicite que `apps.programs.services.
-    decide_program_request` (organisation CIBLE fournie par l'appelant) :
-    récupère la tâche PAR cette organisation, puis délègue à
-    `complete_task` (aucune duplication de logique — même fonction que le
-    chemin non-admin, `TaskViewSet.complete`).
+def complete_task_across_organizations(*, caller_organization_id, target_organization_id, task_id):
+    """`POST /api/tasks/{id}/admin-complete/?organization_id=<id>`
+    (ticket B-044) et `POST /api/tasks/{id}/inspector-complete/
+    ?organization_id=<id>` (ticket B-045). Même bascule RLS explicite
+    que `apps.programs.services.decide_program_request` (organisation
+    CIBLE fournie par l'appelant) : récupère la tâche PAR cette
+    organisation, puis délègue à `complete_task` (aucune duplication de
+    logique — même fonction que le chemin non cross-org,
+    `TaskViewSet.complete`). Généralisée depuis `complete_task_as_admin`
+    (B-044, renommée ici) — voir `list_my_tasks_across_organizations`
+    ci-dessus pour le raisonnement.
     """
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)
@@ -411,5 +421,5 @@ def complete_task_as_admin(*, admin_organization_id, target_organization_id, tas
                 raise ValidationError({'task': 'Tâche introuvable.'})
             complete_task(task)
         finally:
-            set_rls_context(organization_id=admin_organization_id)
+            set_rls_context(organization_id=caller_organization_id)
     return task
