@@ -6,6 +6,7 @@ from itertools import count
 from unittest import mock
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
 from django.db import connection, transaction
 from django.urls import reverse
 from django.utils import timezone
@@ -373,6 +374,157 @@ class TestTasksAppIsOrganizationScoped:
         )
         response = outsider_client.get(reverse('task-detail', args=[task.id]))
         assert response.status_code == 404
+
+
+def _create_task_for_admin_in_target_org(*, admin_user, target_organization, label='Alerte test'):
+    """Reproduit la forme exacte des Task créées par `create_task_for_
+    devis_ajustement_refuse`/`create_task_for_lot_ledger_margin_negative`
+    (tickets 023/B-036) — `organization` = celle CIBLE, jamais celle de
+    l'admin — sans dépendre de la mise en place complète d'un devis/
+    grand-livre, hors sujet de ce test (ticket B-044).
+    """
+    program = Program.objects.create(organization=target_organization, name='Programme cross-org')
+    return Task.objects.create(
+        organization=target_organization,
+        type=TaskType.ALERT,
+        subject_type=ContentType.objects.get_for_model(program),
+        subject_id=program.id,
+        assignee=admin_user,
+        source='devis_ajustement_refuse',
+        label=label,
+    )
+
+
+@pytest.mark.django_db
+class TestAdminCrossOrgTaskVisibility:
+    """Ticket B-044 — `admin_keyimmo` voit et complète ses propres tâches
+    assignées pour une organisation TIERCE (`devis_ajustement_refuse`/
+    `lot_ledger_margin_negative`), invisibles via `MyTasksView`/
+    `TaskViewSet` (RLS `tasks_task` mono-organisation).
+    """
+
+    def test_admin_lists_own_tasks_across_organizations_without_membership(self):
+        admin_client, admin_organization, admin_user = _register_admin(
+            'crossorg-admin@example.com', 'Org Cross Admin',
+        )
+        _client_a, org_a, _user_a = _register('crossorg-a@example.com', 'Org Cross A')
+        _client_b, org_b, _user_b = _register('crossorg-b@example.com', 'Org Cross B')
+
+        set_rls_context(organization_id=org_a.id)
+        _create_task_for_admin_in_target_org(admin_user=admin_user, target_organization=org_a, label='Alerte A')
+        set_rls_context(organization_id=org_b.id)
+        _create_task_for_admin_in_target_org(admin_user=admin_user, target_organization=org_b, label='Alerte B')
+        set_rls_context(organization_id=admin_organization.id)
+
+        assert not Membership.objects.filter(user=admin_user, organization__in=[org_a, org_b]).exists()
+
+        response = admin_client.get(reverse('task-admin-inbox'))
+
+        assert response.status_code == 200
+        labels = {row['label'] for row in response.data}
+        assert {'Alerte A', 'Alerte B'}.issubset(labels)
+
+    def test_admin_can_filter_the_cross_org_inbox_by_status(self):
+        admin_client, admin_organization, admin_user = _register_admin(
+            'crossorg-filter-admin@example.com', 'Org Cross Filter Admin',
+        )
+        _client_a, org_a, _user_a = _register('crossorg-filter-a@example.com', 'Org Cross Filter A')
+
+        set_rls_context(organization_id=org_a.id)
+        task = _create_task_for_admin_in_target_org(admin_user=admin_user, target_organization=org_a)
+        services.complete_task(task)
+        set_rls_context(organization_id=admin_organization.id)
+
+        pending = admin_client.get(reverse('task-admin-inbox') + '?status=pending')
+        done = admin_client.get(reverse('task-admin-inbox') + '?status=done')
+
+        assert all(row['id'] != str(task.id) for row in pending.data)
+        assert any(row['id'] == str(task.id) for row in done.data)
+
+    def test_an_ordinary_member_cannot_list_the_admin_cross_org_inbox(self):
+        member_client, _organization, _user = _register(
+            'crossorg-noadmin@example.com', 'Org Cross No Admin',
+        )
+        response = member_client.get(reverse('task-admin-inbox'))
+        assert response.status_code == 403
+
+    def test_admin_completes_a_cross_org_task(self):
+        admin_client, admin_organization, admin_user = _register_admin(
+            'crossorg-complete-admin@example.com', 'Org Cross Complete Admin',
+        )
+        _client_a, org_a, _user_a = _register('crossorg-complete-a@example.com', 'Org Cross Complete A')
+
+        set_rls_context(organization_id=org_a.id)
+        task = _create_task_for_admin_in_target_org(admin_user=admin_user, target_organization=org_a)
+        set_rls_context(organization_id=admin_organization.id)
+
+        response = admin_client.post(
+            reverse('task-admin-complete', args=[task.id]) + f'?organization_id={org_a.id}',
+            {}, format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['status'] == 'done'
+        set_rls_context(organization_id=org_a.id)
+        refreshed = Task.objects.get(id=task.id)
+        assert refreshed.status == TaskStatus.DONE
+        assert refreshed.completed_at is not None
+
+    def test_admin_complete_without_organization_id_is_rejected(self):
+        admin_client, _admin_organization, admin_user = _register_admin(
+            'crossorg-noqp-admin@example.com', 'Org Cross No QP Admin',
+        )
+        _client_a, org_a, _user_a = _register('crossorg-noqp-a@example.com', 'Org Cross No QP A')
+
+        set_rls_context(organization_id=org_a.id)
+        task = _create_task_for_admin_in_target_org(admin_user=admin_user, target_organization=org_a)
+
+        response = admin_client.post(reverse('task-admin-complete', args=[task.id]), {}, format='json')
+
+        assert response.status_code == 400
+
+    def test_an_ordinary_member_cannot_complete_via_the_admin_endpoint(self):
+        member_client, _organization, member_user = _register(
+            'crossorg-nocomplete@example.com', 'Org Cross No Complete',
+        )
+        admin_client, _admin_organization, admin_user = _register_admin(
+            'crossorg-nocomplete-admin@example.com', 'Org Cross No Complete Admin',
+        )
+        _target_client, target_org, _target_user = _register(
+            'crossorg-nocomplete-target@example.com', 'Org Cross No Complete Target',
+        )
+
+        set_rls_context(organization_id=target_org.id)
+        task = _create_task_for_admin_in_target_org(admin_user=admin_user, target_organization=target_org)
+        set_rls_context(organization_id=target_org.id)
+
+        response = member_client.post(
+            reverse('task-admin-complete', args=[task.id]) + f'?organization_id={target_org.id}',
+            {}, format='json',
+        )
+
+        assert response.status_code == 403
+
+    def test_ordinary_own_organization_complete_still_works_unchanged(self):
+        """Non-régression : le chemin non-admin (`TaskViewSet.complete`,
+        organisation cible = organisation active de l'appelant) reste
+        strictement inchangé par ce ticket.
+        """
+        constructeur_client, constructeur_organization, constructeur_user, lot, declaration = (
+            _setup_constructeur_org('crossorg-noregression@example.com', 'Org Cross No Regression')
+        )
+        inspecteur_client, _inspecteur_organization, _inspecteur_user = _setup_inspecteur(
+            'crossorg-noregression-inspecteur@example.com', 'Org Cross No Regression Inspecteur',
+        )
+        reserve_id = _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration)
+
+        set_rls_context(user_id=constructeur_user.id, organization_id=constructeur_organization.id)
+        task = Task.objects.get(subject_id=reserve_id, source='reserve_opened')
+
+        response = constructeur_client.post(reverse('task-complete', args=[task.id]))
+
+        assert response.status_code == 200
+        assert response.data['status'] == 'done'
 
 
 @pytest.mark.django_db

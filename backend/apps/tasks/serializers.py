@@ -9,10 +9,15 @@ class TaskSerializer(serializers.ModelSerializer):
     # cohérent avec le critère « types structurellement distincts ».
     subject_type = serializers.SerializerMethodField()
 
+    # Ticket B-044 — `organization` exposé : l'appelant (frontend) doit
+    # connaître l'organisation CIBLE d'une tâche pour pouvoir la compléter
+    # en cross-org (`POST /api/tasks/{id}/admin-complete/
+    # ?organization_id=<id>`), même besoin déjà couvert par
+    # `ProgramRequestSerializer.organization` (ticket B-042).
     class Meta:
         model = Task
         fields = [
-            'id', 'type', 'subject_type', 'subject_id', 'program', 'assignee',
+            'id', 'organization', 'type', 'subject_type', 'subject_id', 'program', 'assignee',
             'source', 'label', 'due_date', 'priority', 'status', 'created_at', 'completed_at',
         ]
         read_only_fields = fields

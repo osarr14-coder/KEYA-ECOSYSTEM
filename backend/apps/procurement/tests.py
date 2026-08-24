@@ -848,6 +848,15 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             'reserve-list', 'reserve-detail', 'reserve-messages',
             'reservecorrection-list', 'reservecorrection-detail',
             'task-list', 'task-detail', 'task-complete', 'my-tasks',
+            # Ticket B-044 — ajout conscient : `task-admin-inbox` (GET) et
+            # `task-admin-complete` (POST) réservées à `admin_keyimmo`
+            # (`IsAdminKeyimmo`) — corrige l'invisibilité des Task
+            # `devis_ajustement_refuse`/`lot_ledger_margin_negative`
+            # (organisation CIBLE, jamais celle de KEIMMO). Aucun montant
+            # ni marge exposé ici, seulement le libellé déjà présent sur
+            # `Task.label` (texte descriptif, jamais une donnée chiffrée
+            # sensible).
+            'task-admin-inbox', 'task-admin-complete',
             'my-lots', 'my-lot-overview', 'my-lot-evidence',
             # Ticket B-041 — ajout conscient : première route d'écriture
             # jamais exposée depuis `apps/home` (jusqu'ici strictement

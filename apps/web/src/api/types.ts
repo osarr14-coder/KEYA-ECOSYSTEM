@@ -172,12 +172,16 @@ export interface ProgramRequest {
   created_at: string;
 }
 
-/** Miroir de `apps.tasks.serializers` (`GET /api/me/tasks/`, ticket 006) —
- * même forme que `apps/home/src/api/types.ts::Task` (F-060 : câblage du
- * compteur `taskInboxCount` d'`AppShell`, resté à 0 par défaut jusqu'ici
- * dans cette app faute de tout consommateur de `/api/me/tasks/`). */
+/** Miroir de `apps.tasks.serializers` (ticket 006) — même forme que
+ * `apps/home/src/api/types.ts::Task` (F-060 : câblage du compteur
+ * `taskInboxCount` d'`AppShell`). `organization` (ticket B-044) :
+ * `apps/web` est réservée à `admin_keyimmo` — TOUJOURS l'organisation
+ * CIBLE d'une tâche (`devis_ajustement_refuse`/`lot_ledger_margin_
+ * negative`, jamais celle de KEIMMO), transmise à `completeAdminTask`
+ * (`api/client.ts`) pour la bascule RLS côté backend. */
 export interface Task {
   id: string;
+  organization: string;
   type: 'task' | 'notification' | 'alert' | 'exception';
   subject_type: string;
   subject_id: string;

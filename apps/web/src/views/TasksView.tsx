@@ -12,23 +12,21 @@ import { useApiResource } from '../api/useApiResource';
 /**
  * Ticket F-061 — destination réelle de la cloche `AppShell` côté
  * `apps/web` (jusqu'ici un lien mort, `href="/tasks"`, ticket F-045).
- * `GET /api/me/tasks/` (ticket 006), déjà consommé pour le compteur
- * (`taskInboxCount`, ticket F-060), même filtre `status=pending` — la
- * file ACTIONNABLE d'abord, jamais un tableau de bord KPI au premier
- * rendu (même doctrine que `ProgramRequestsView.tsx`, ticket F-058).
+ * `status=pending` — la file ACTIONNABLE d'abord, jamais un tableau de
+ * bord KPI au premier rendu (même doctrine que `ProgramRequestsView.tsx`,
+ * ticket F-058).
  *
- * Ticket F-062 — bouton « Marquer comme traité » (`POST /api/tasks/
- * {id}/complete/`, ticket 006, jusqu'ici jamais consommé par aucune
- * app). Limite connue et NON résolue par ce ticket : `TaskViewSet` est
- * scopé à l'organisation ACTIVE de l'appelant (`OrganizationScopedMixin`)
- * — une tâche assignée à `admin_keyimmo` dont l'organisation est celle
- * d'un TIERS (`devis_ajustement_refuse`/`lot_ledger_margin_negative`,
- * `apps.tasks.services`, tickets 023/B-036 — organisation = celle du
- * devis/grand-livre, jamais KEIMMO) reste invisible ET non complétable
- * ici tant que l'organisation active d'admin_keyimmo ne correspond pas
- * — comportement PRÉEXISTANT à ce ticket (RLS `tasks_task`, mono-
- * organisation, aucune branche cross-org contrairement à `Litige`),
- * signalé à l'utilisateur, pas corrigé silencieusement.
+ * Ticket F-062 — bouton « Marquer comme traité ».
+ *
+ * Ticket F-063 (suite B-044) — `getAdminTasks`/`completeAdminTask`, PAS
+ * `getMyTasks`/`completeTask` : `apps/web` est réservée à `admin_keyimmo`
+ * (voir `hasAdminKeyimmoAccess`, `App.tsx`), dont deux types de tâches
+ * (`devis_ajustement_refuse`/`lot_ledger_margin_negative`, tickets
+ * 023/B-036) ont pour organisation celle du devis/grand-livre CIBLE,
+ * jamais celle de KEIMMO — invisibles ET non complétables via l'ancien
+ * endpoint mono-organisation. `getAdminTasks` boucle sur toutes les
+ * organisations côté backend (bascule RLS) ; `completeAdminTask`
+ * transmet `task.organization` pour la bascule ciblée.
  */
 function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }) {
   const api = useApiClient();
@@ -39,7 +37,7 @@ function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }
     setCompleting(true);
     setError(null);
     try {
-      await api.completeTask(task.id);
+      await api.completeAdminTask(task.id, task.organization);
       onCompleted();
     } catch (caught) {
       const detail = caught instanceof ApiError ? caught.detail : undefined;
@@ -71,7 +69,7 @@ function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }
 
 export function TasksView() {
   const api = useApiClient();
-  const state = useApiResource(() => api.getMyTasks({ status: 'pending' }), []);
+  const state = useApiResource(() => api.getAdminTasks({ status: 'pending' }), []);
 
   return (
     <section aria-label="Tâches">

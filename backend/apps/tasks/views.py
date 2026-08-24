@@ -1,9 +1,13 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Case, F, IntegerField, Value, When
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from apps.backoffice.permissions import IsAdminKeyimmo
 from apps.core.viewsets import OrganizationScopedMixin
 
 from . import services
@@ -86,4 +90,49 @@ class TaskViewSet(
     def complete(self, request, pk=None):
         task = self.get_object()
         services.complete_task(task)
+        return Response(TaskSerializer(task).data)
+
+
+class AdminTaskInboxView(APIView):
+    """`GET /api/tasks/admin-inbox/?status=` — ticket B-044 : les tâches
+    assignées à `admin_keyimmo` pour une organisation TIERCE
+    (`devis_ajustement_refuse`/`lot_ledger_margin_negative`, tickets
+    023/B-036) ne remontent jamais via `MyTasksView` (RLS `tasks_task`
+    mono-organisation). Voir `services.list_my_tasks_as_admin`.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        status_filter = request.query_params.get('status')
+        tasks = services.list_my_tasks_as_admin(
+            admin_user=request.user,
+            admin_organization_id=request.organization.id if request.organization else None,
+            status=status_filter,
+        )
+        return Response(TaskSerializer(tasks, many=True).data)
+
+
+class AdminTaskCompleteView(APIView):
+    """`POST /api/tasks/{id}/admin-complete/?organization_id=<id>` —
+    ticket B-044 : complète une tâche dont l'organisation est CELLE
+    FOURNIE (pas l'organisation active de l'appelant) — voir
+    `services.complete_task_as_admin`. URL distincte de `tasks/{pk}/
+    complete/` (`TaskViewSet.complete` ci-dessus, inchangé).
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def post(self, request, task_id):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        try:
+            task = services.complete_task_as_admin(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                task_id=task_id,
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
         return Response(TaskSerializer(task).data)

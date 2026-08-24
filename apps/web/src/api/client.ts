@@ -455,26 +455,34 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     ),
 
     /**
-     * `GET /api/me/tasks/` (ticket 006/F-060) — inbox de l'utilisateur
-     * COURANT (`assignee=request.user`), jamais toutes les organisations :
-     * source du compteur `taskInboxCount` d'`AppShell`, resté à 0 par
-     * défaut jusqu'ici faute de tout consommateur ici (même endpoint déjà
-     * utilisé par `apps/home`, ticket 008 — aucun nouveau endpoint créé).
+     * `GET /api/tasks/admin-inbox/` (ticket B-044/F-063) — `apps/web` est
+     * réservée à `admin_keyimmo` (voir `hasAdminKeyimmoAccess`,
+     * `App.tsx`) : `GET /api/me/tasks/` ne suffit PAS ici, deux
+     * générateurs (`devis_ajustement_refuse`/`lot_ledger_margin_
+     * negative`, tickets 023/B-036) posent `organization` = celle du
+     * devis/grand-livre CIBLE, jamais celle de KEIMMO — invisibles via
+     * l'endpoint mono-organisation. Cette route boucle sur toutes les
+     * organisations côté backend (bascule RLS), remplace `getMyTasks`
+     * dans cette app UNIQUEMENT (apps/home/apps/build gardent `/api/me/
+     * tasks/` inchangé, leurs tâches ont déjà l'organisation du viewer).
      */
-    getMyTasks: (filters: { status?: string } = {}) => (
-      request<Task[]>(`/api/me/tasks/${toQueryString({ status: filters.status })}`)
+    getAdminTasks: (filters: { status?: string } = {}) => (
+      request<Task[]>(`/api/tasks/admin-inbox/${toQueryString({ status: filters.status })}`)
     ),
 
     /**
-     * `POST /api/tasks/{id}/complete/` (ticket 006/F-062) — marque une
-     * tâche traitée, jamais son sujet (`apps.tasks.services.
-     * complete_task` ne touche que la `Task` elle-même). Scopée par
-     * `TaskViewSet` à l'organisation ACTIVE de l'appelant : fonctionne
-     * pour une tâche dont l'organisation correspond à l'organisation
-     * active courante — voir `TasksView.tsx` pour la limite connue sur
-     * les tâches assignées à `admin_keyimmo` d'une AUTRE organisation.
+     * `POST /api/tasks/{id}/admin-complete/?organization_id=<id>`
+     * (ticket B-044/F-063) — même bascule RLS explicite que
+     * `decideProgramRequest` (organisation CIBLE fournie par
+     * l'appelant, `task.organization`, jamais l'organisation active de
+     * l'admin). Remplace `completeTask` dans cette app.
      */
-    completeTask: (taskId: string) => request<Task>(`/api/tasks/${taskId}/complete/`, { method: 'POST' }),
+    completeAdminTask: (taskId: string, organization: string) => (
+      request<Task>(
+        `/api/tasks/${taskId}/admin-complete/${toQueryString({ organization_id: organization })}`,
+        { method: 'POST' },
+      )
+    ),
   };
 }
 

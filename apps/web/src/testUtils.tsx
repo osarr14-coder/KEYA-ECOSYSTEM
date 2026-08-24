@@ -50,10 +50,10 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     // Ticket F-058 (apps/programs, B-042) :
     listProgramRequests: vi.fn(notMocked),
     decideProgramRequest: vi.fn(notMocked),
-    // Ticket F-060 (compteur cloche AppShell) :
-    getMyTasks: vi.fn(notMocked),
-    // Ticket F-062 (marquer une tâche traitée) :
-    completeTask: vi.fn(notMocked),
+    // Ticket F-060/F-063 (compteur cloche AppShell, B-044 cross-org) :
+    getAdminTasks: vi.fn(notMocked),
+    // Ticket F-062/F-063 (marquer une tâche traitée, B-044 cross-org) :
+    completeAdminTask: vi.fn(notMocked),
     ...overrides,
   };
 }

@@ -1,7 +1,10 @@
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from apps.core.rls import set_rls_context
+from apps.organizations.models import Organization
 from apps.programs.models import ProgramRequestStatus
 
 from .models import Task, TaskPriority, TaskStatus, TaskType
@@ -351,4 +354,62 @@ def complete_task(task):
     task.status = TaskStatus.DONE
     task.completed_at = timezone.now()
     task.save(update_fields=['status', 'completed_at'])
+    return task
+
+
+def list_my_tasks_as_admin(*, admin_user, admin_organization_id, status=None):
+    """`GET /api/tasks/admin-inbox/` — ticket B-044 : `create_task_for_
+    devis_ajustement_refuse`/`create_task_for_lot_ledger_margin_negative`
+    (tickets 023/B-036) assignent la Task à `admin_keyimmo` mais posent
+    `organization` = celle du devis/grand-livre CIBLE, jamais celle de
+    KEIMMO (même doctrine que `decide_program_request` : admin_keyimmo
+    agit par bascule RLS explicite, jamais par appartenance réelle) — ces
+    Task sont donc invisibles via `MyTasksView` (`assignee=request.user`,
+    mais RLS `tasks_task` mono-organisation filtre la ligne AVANT que le
+    filtre applicatif ne s'applique, tant que l'organisation active de
+    l'appelant ne correspond pas).
+
+    Boucle de bascule RLS organisation par organisation — EXACTEMENT le
+    même mécanisme que `apps.programs.services.list_program_requests_as_
+    admin` (ticket B-042) et `apps.procurement.services._search_lots_by_
+    name_as_admin` (ticket B-028/B-037) — jamais une policy RLS large
+    (piège déjà rencontré et corrigé, migration
+    `0009_lot_admin_keyimmo_select.py`). Filtré par `assignee=admin_user` :
+    CET admin voit SES propres tâches cross-org, jamais celles d'un autre
+    admin_keyimmo — même granularité que `MyTasksView`. Volume attendu
+    faible (alertes opérationnelles, pas une recherche déclenchée à
+    chaque frappe clavier) : aucun plafond `MAX_SEARCH_RESULTS` ici,
+    même raisonnement que `list_program_requests_as_admin`.
+    """
+    results = []
+    organization_ids = list(Organization.objects.values_list('id', flat=True))
+    try:
+        for organization_id in organization_ids:
+            set_rls_context(organization_id=organization_id)
+            queryset = Task.objects.filter(assignee=admin_user)
+            if status:
+                queryset = queryset.filter(status=status)
+            results.extend(queryset)
+    finally:
+        set_rls_context(organization_id=admin_organization_id)
+    return results
+
+
+def complete_task_as_admin(*, admin_organization_id, target_organization_id, task_id):
+    """`POST /api/tasks/{id}/admin-complete/?organization_id=<id>` —
+    ticket B-044. Même bascule RLS explicite que `apps.programs.services.
+    decide_program_request` (organisation CIBLE fournie par l'appelant) :
+    récupère la tâche PAR cette organisation, puis délègue à
+    `complete_task` (aucune duplication de logique — même fonction que le
+    chemin non-admin, `TaskViewSet.complete`).
+    """
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            task = Task.objects.filter(id=task_id, organization_id=target_organization_id).first()
+            if task is None:
+                raise ValidationError({'task': 'Tâche introuvable.'})
+            complete_task(task)
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
     return task

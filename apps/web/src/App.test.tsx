@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}, redirect = vi.fn()) {
-  const api = createMockApiClient({ getMyTasks: async () => [], ...overrides });
+  const api = createMockApiClient({ getAdminTasks: async () => [], ...overrides });
   render(withApiClient(api, <App redirect={redirect} />));
   return { api, redirect };
 }
@@ -165,7 +165,7 @@ describe(
 
     function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
       localStorage.setItem('keya_access_token', 'stored-admin-token');
-      const api = createMockApiClient({ getMyTasks: async () => [], ...overrides });
+      const api = createMockApiClient({ getAdminTasks: async () => [], ...overrides });
       render(withApiClient(api, <App />));
       return { api };
     }
@@ -301,7 +301,7 @@ describe(
   () => {
     function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
       localStorage.setItem('keya_access_token', 'stored-admin-token');
-      const api = createMockApiClient({ getMyTasks: async () => [], ...overrides });
+      const api = createMockApiClient({ getAdminTasks: async () => [], ...overrides });
       render(withApiClient(api, <App />));
       return { api };
     }
@@ -430,7 +430,7 @@ describe('App — détection hors ligne (ticket F-033, vague 2)', () => {
         id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
         memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
       }),
-      getMyTasks: async () => [],
+      getAdminTasks: async () => [],
     });
     render(withApiClient(api, <App />));
 
@@ -474,9 +474,9 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
 
   it('affiche le nombre de tâches en attente, jamais 0 par défaut', async () => {
     renderAuthenticated({
-      getMyTasks: async () => [
+      getAdminTasks: async () => [
         {
-          id: 'task-1', type: 'alert' as const, subject_type: 'procurement.devis', subject_id: 'devis-1',
+          id: 'task-1', organization: 'org-target', type: 'alert' as const, subject_type: 'procurement.devis', subject_id: 'devis-1',
           program: null, assignee: 'admin-1', source: 'devis_ajustement_refuse', label: 'Ajustement refusé',
           due_date: null, priority: 'high' as const, status: 'pending' as const,
           created_at: '2026-03-01T00:00:00Z', completed_at: null,
@@ -488,7 +488,7 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
   });
 
   it('affiche 0 en l\'absence de tâche en attente', async () => {
-    renderAuthenticated({ getMyTasks: async () => [] });
+    renderAuthenticated({ getAdminTasks: async () => [] });
 
     expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
   });
@@ -502,7 +502,7 @@ describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
         id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
         memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
       }),
-      getMyTasks: async () => [],
+      getAdminTasks: async () => [],
     });
     render(withApiClient(api, <App />));
     await screen.findByTestId('app-shell');

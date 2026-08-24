@@ -197,11 +197,12 @@ function AuthenticatedApp() {
 function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   const api = useApiClient();
   const [activeTab, setActiveTab] = useUrlSyncedTab(TAB_ROUTES, 'backoffice');
-  // Ticket F-060 — câble le compteur de la cloche AppShell
-  // (`taskInboxCount`, jamais renseigné jusqu'ici, toujours 0 par défaut) :
-  // même endpoint `/api/me/tasks/` déjà consommé par apps/home (ticket 008),
-  // aucun nouveau endpoint créé côté backend.
-  const taskInboxState = useApiResource(() => api.getMyTasks({ status: 'pending' }), []);
+  // Ticket F-060/F-063 — câble le compteur de la cloche AppShell.
+  // `getAdminTasks` (ticket B-044), pas `getMyTasks` : cette app est
+  // réservée à `admin_keyimmo`, dont les tâches `devis_ajustement_refuse`/
+  // `lot_ledger_margin_negative` ont l'organisation CIBLE, jamais celle
+  // de KEIMMO — invisibles via l'endpoint mono-organisation.
+  const taskInboxState = useApiResource(() => api.getAdminTasks({ status: 'pending' }), []);
 
   return (
     <AppShell
