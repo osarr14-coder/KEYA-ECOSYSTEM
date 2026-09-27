@@ -210,8 +210,17 @@ describe('App — sélection du bien', () => {
     expect(await screen.findByLabelText('Sélection du bien')).toBeInTheDocument();
   });
 
-  it("affiche un message explicite quand aucun bien n'est associé au client", async () => {
-    renderApp({ getMyLots: async () => [] });
+  it("affiche un message explicite quand aucun bien n'est associé (rôle sans parcours d'achat)", async () => {
+    // Ticket F-066 — un `client` sans bien atterrit désormais sur le
+    // catalogue (voir le test dédié ci-dessous) ; le message générique reste
+    // celui des autres rôles.
+    renderApp({
+      getMe: async () => ({
+        ...SINGLE_MEMBERSHIP_ME,
+        memberships: [{ ...SINGLE_MEMBERSHIP_ME.memberships[0], role_code: 'constructeur', role_label: 'Constructeur' }],
+      }),
+      getMyLots: async () => [],
+    });
 
     expect(await screen.findByText(/aucun bien ne vous est encore associé/i)).toBeInTheDocument();
   });
@@ -387,11 +396,20 @@ describe('App — sponsor sans bien (ticket F-057, programme sur mesure)', () =>
     expect(screen.queryByText('Aucun bien ne vous est encore associé.')).not.toBeInTheDocument();
   });
 
-  it('un client (pas sponsor) sans bien voit toujours le message générique, comportement inchangé', async () => {
-    renderApp({ getMyLots: async () => [] });
+  it('ticket F-066 — un client (pas sponsor) sans bien atterrit sur le catalogue, jamais sur la demande sur mesure', async () => {
+    renderApp({ getMyLots: async () => [], getMyReservations: async () => [], getCatalogLots: async () => [] });
 
-    expect(await screen.findByText('Aucun bien ne vous est encore associé.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Acheter un bien' })).toBeInTheDocument();
+    expect(screen.queryByText('Aucun bien ne vous est encore associé.')).not.toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Soumettre une demande de programme' })).not.toBeInTheDocument();
+  });
+
+  it('ticket F-066 — un client qui possède déjà un bien a un onglet supplémentaire « Acheter un bien »', async () => {
+    renderApp({ getMyReservations: async () => [], getCatalogLots: async () => [] });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Acheter un bien' }));
+
+    expect(await screen.findByRole('heading', { name: 'Acheter un bien' })).toBeInTheDocument();
   });
 
   it('un sponsor qui possède déjà un bien voit un onglet supplémentaire « Programme sur mesure »', async () => {

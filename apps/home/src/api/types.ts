@@ -132,3 +132,38 @@ export function toTrustEventData(event: ApiTrustEvent): TrustEventData {
     createdAt: event.created_at,
   };
 }
+
+/** Miroir de `apps.sales.serializers.CatalogLotSerializer` (`GET
+ * /api/catalog/lots/`, ticket B-048). Montants en chaîne (`DecimalField`
+ * DRF) : jamais d'arithmétique côté frontend, seulement de l'affichage. */
+export interface CatalogLot {
+  id: string;
+  name: string;
+  surface: string | null;
+  sale_price: string;
+  currency: string;
+  organization: { id: string; name: string };
+  program: { id: string; name: string };
+  asset: { id: string; name: string; location: string };
+}
+
+/** Miroir de `apps.sales.models.ReservationStatus` (ticket B-048, CDC V3 §6.1).
+ * `reserved`/`committed` ne sont atteints qu'avec les encaissements
+ * simulés (Phase 3). */
+export type ReservationStatus = 'requested' | 'held' | 'reserved' | 'committed' | 'expired' | 'cancelled';
+
+/** Miroir de `apps.sales.serializers.ReservationSerializer`. */
+export interface Reservation {
+  id: string;
+  status: ReservationStatus;
+  status_label: string;
+  held_until: string;
+  price_amount: string;
+  currency: string;
+  lot: { id: string; name: string; surface: string | null };
+  program: { id: string; name: string };
+  organization: { id: string; name: string };
+  cancellation_reason: string;
+  created_at: string;
+  updated_at: string;
+}

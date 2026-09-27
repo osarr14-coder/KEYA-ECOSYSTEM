@@ -2,9 +2,11 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import ProtectedError
 
 from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
+from apps.sales import services as sales_services
 
 from .models import (
     Asset,
@@ -40,6 +42,24 @@ class NoProgramCostError(Exception):
     — 409, pas une réponse vide silencieuse.
     """
 
+
+class LotCommercialStatusManagedByReservationError(Exception):
+    """Ticket B-048 — statut manuel refusé pendant une réservation bloquante
+    (réponse 409, voir `LotViewSet.update`)."""
+
+
+def _delete_or_explain(queryset):
+    """Ticket B-048 — un objet encore référencé (réservation, déclaration de
+    travaux… en `on_delete=PROTECT`) ne se supprime pas : erreur explicite
+    plutôt qu'une `ProtectedError` non rattrapée (500). Le collecteur Django
+    lève AVANT toute suppression SQL : rien n'est supprimé à moitié."""
+    try:
+        return queryset.delete()
+    except ProtectedError:
+        raise ValidationError(
+            'Suppression impossible : cet élément est déjà référencé (réservation, '
+            'déclaration de travaux…). Son historique doit être conservé.'
+        )
 
 def create_program_cost(
     *, admin, admin_organization_id, target_organization_id, program_id,
@@ -118,7 +138,7 @@ def delete_program(*, admin_organization_id, target_organization_id, program_id)
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)
         try:
-            deleted, _ = Program.objects.filter(id=program_id, organization_id=target_organization_id).delete()
+            deleted, _ = _delete_or_explain(Program.objects.filter(id=program_id, organization_id=target_organization_id))
             if not deleted:
                 raise ValidationError({'program': 'Programme introuvable.'})
         finally:
@@ -165,7 +185,7 @@ def delete_asset(*, admin_organization_id, target_organization_id, asset_id):
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)
         try:
-            deleted, _ = Asset.objects.filter(id=asset_id, organization_id=target_organization_id).delete()
+            deleted, _ = _delete_or_explain(Asset.objects.filter(id=asset_id, organization_id=target_organization_id))
             if not deleted:
                 raise ValidationError({'asset': 'Bien introuvable.'})
         finally:
@@ -211,6 +231,15 @@ def update_lot(
             # mutation que name/surface ci-dessus (réservé à admin_keyimmo,
             # LotViewSet.update).
             if commercial_status is not None:
+                # Ticket B-048 — pendant une réservation bloquante, le statut
+                # est piloté par le cycle de réservation (apps/sales) : le
+                # modifier à la main le désynchroniserait. Hors réservation,
+                # il reste modifiable (vente conclue hors plateforme).
+                if commercial_status != lot.commercial_status and sales_services.has_blocking_reservation(lot):
+                    raise LotCommercialStatusManagedByReservationError(
+                        'Ce lot fait l\'objet d\'une réservation en cours : son statut commercial '
+                        'suit le cycle de réservation et ne se modifie pas à la main.'
+                    )
                 lot.commercial_status = commercial_status
                 update_fields.append('commercial_status')
             if sale_price is not None:
@@ -227,7 +256,7 @@ def delete_lot(*, admin_organization_id, target_organization_id, lot_id):
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)
         try:
-            deleted, _ = Lot.objects.filter(id=lot_id, organization_id=target_organization_id).delete()
+            deleted, _ = _delete_or_explain(Lot.objects.filter(id=lot_id, organization_id=target_organization_id))
             if not deleted:
                 raise ValidationError({'lot': 'Lot introuvable.'})
         finally:

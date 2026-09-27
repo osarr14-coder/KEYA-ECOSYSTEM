@@ -1,9 +1,9 @@
 import type {
-  Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, CountryPackSummary,
+  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, CountryPackSummary,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
-  OrganizationSearchResult, PricingCanal, PricingConfig, Program, ProgramRequest, Task,
+  OrganizationSearchResult, PricingCanal, PricingConfig, Program, ProgramRequest, ReservationStatus, Task,
 } from './types';
 
 export class ApiError extends Error {
@@ -433,6 +433,27 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
      * les organisations avec leur état commercial. Distincte de `searchLots`
      * (devis), qui exclut les lots au devis verrouillé.
      */
+    /**
+     * `GET /api/reservations/admin/?status=` (ticket B-048) — toutes les
+     * réservations, toutes organisations (admin, ADV). Les blocages échus y
+     * sont déjà expirés par le serveur.
+     */
+    listReservations: (status?: ReservationStatus) => (
+      request<AdminReservation[]>(`/api/reservations/admin/${toQueryString({ status })}`)
+    ),
+
+    /**
+     * `POST /api/reservations/{id}/admin-cancel/?organization_id=` (ticket
+     * B-048) — motif obligatoire ; seule une réservation `held` s'annule
+     * (409 sinon).
+     */
+    cancelReservation: (reservationId: string, organizationId: string, reason: string) => (
+      request<AdminReservation>(
+        `/api/reservations/${reservationId}/admin-cancel/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { reason } },
+      )
+    ),
+
     searchLotsForCommercial: (query: string) =>
       request<CommercialLot[]>(`/api/programs/admin/lots/${toQueryString({ q: query })}`),
 

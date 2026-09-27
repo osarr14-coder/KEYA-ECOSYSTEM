@@ -803,6 +803,9 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             ('my-tasks', [], {}),
             ('me', [], {}),
             ('procurement-my-candidatures', [], {}),
+            # Ticket B-048 :
+            ('catalog-lot-list', [], {}),
+            ('my-reservations', [], {}),
         ]
         for name, args, _kwargs in requests:
             response = own_client.get(reverse(name, args=args))
@@ -953,6 +956,14 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # réservée à admin_keyimmo/gestionnaire_adv — jamais accessible
             # au rôle constructeur/sponsor. Aucun montant de devis exposé.
             'program-commercial-lot-search',
+            # Ticket B-048 — ajout conscient : catalogue et réservations.
+            # `catalog-lot-list` et `my-reservations` (GET) sont accessibles à
+            # tout utilisateur authentifié, donc au constructeur — ajoutés au
+            # balayage ci-dessus, qui prouve qu'ils n'exposent aucun montant de
+            # devis. `reservation-create` exige le rôle client ;
+            # `reservation-admin-*` admin_keyimmo/gestionnaire_adv.
+            'catalog-lot-list', 'reservation-create', 'reservation-admin-list',
+            'reservation-admin-cancel', 'my-reservations', 'my-reservation-cancel',
         }
         assert actual == expected
 

@@ -10,6 +10,7 @@ import { useApiResource } from './api/useApiResource';
 import { EvidenceFeedView } from './views/EvidenceFeedView';
 import { MyActionsView } from './views/MyActionsView';
 import { OverviewView } from './views/OverviewView';
+import { ClientSalesView } from './views/ClientSalesView';
 import { ProgramRequestView } from './views/ProgramRequestView';
 
 // Réutilise AppShell tel quel (ticket 007) — aucune redéfinition. Le module
@@ -55,7 +56,7 @@ function buildModules(): AppModule[] {
   ];
 }
 
-type ViewId = 'overview' | 'evidence' | 'actions' | 'program-request';
+type ViewId = 'overview' | 'evidence' | 'actions' | 'program-request' | 'sales';
 
 const LOT_TABS: { id: ViewId; label: string; icon: IconName }[] = [
   { id: 'overview', label: "Vue d'ensemble", icon: 'home' },
@@ -71,6 +72,13 @@ const LOT_TABS: { id: ViewId; label: string; icon: IconName }[] = [
 // jamais à sa place.
 const PROGRAM_REQUEST_TAB: { id: ViewId; label: string; icon: IconName } = {
   id: 'program-request', label: 'Programme sur mesure', icon: 'building',
+};
+
+// Ticket F-066 — même principe pour le rôle `client` : catalogue et
+// réservations, en plus des onglets d'un bien déjà acquis (un client peut
+// acheter un second bien).
+const SALES_TAB: { id: ViewId; label: string; icon: IconName } = {
+  id: 'sales', label: 'Acheter un bien', icon: 'wallet',
 };
 
 const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';
@@ -169,7 +177,8 @@ export function App() {
   // PLUS des onglets liés à un bien (jamais à leur place) : il peut très
   // bien posséder déjà un bien ET vouloir soumettre une nouvelle demande.
   const isSponsor = userRoles.includes('sponsor');
-  const tabs = isSponsor ? [...LOT_TABS, PROGRAM_REQUEST_TAB] : LOT_TABS;
+  const isClient = userRoles.includes('client');
+  const tabs = [...LOT_TABS, ...(isSponsor ? [PROGRAM_REQUEST_TAB] : []), ...(isClient ? [SALES_TAB] : [])];
 
   return (
     <AppShell
@@ -231,7 +240,12 @@ export function App() {
       {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && isSponsor && (
         <ProgramRequestView />
       )}
-      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && !isSponsor && (
+      {/* Ticket F-066 — un client sans bien atterrit sur le catalogue et ses
+          réservations (CDC V3 §9.2, étapes 1-2), jamais sur un message vide. */}
+      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && isClient && (
+        <ClientSalesView />
+      )}
+      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && !isSponsor && !isClient && (
         <p>Aucun bien ne vous est encore associé.</p>
       )}
 
@@ -267,6 +281,7 @@ export function App() {
           {activeTab === 'evidence' && <EvidenceFeedView lotId={currentLotId} />}
           {activeTab === 'actions' && <MyActionsView activeOrganizationId={activeOrganizationId} />}
           {activeTab === 'program-request' && <ProgramRequestView />}
+          {activeTab === 'sales' && <ClientSalesView />}
         </>
       )}
     </AppShell>

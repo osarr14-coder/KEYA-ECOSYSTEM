@@ -251,6 +251,8 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
                 commercial_status=request.data.get('commercial_status'),
                 sale_price=request.data.get('sale_price'),
             )
+        except services.LotCommercialStatusManagedByReservationError as exc:
+            return Response({'detail': str(exc)}, status=409)
         except DjangoValidationError as exc:
             raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
         return Response(LotSerializer(lot).data)

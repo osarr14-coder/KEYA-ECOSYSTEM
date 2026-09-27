@@ -23,10 +23,12 @@ import { LotsCommercialView } from './views/LotsCommercialView';
 import { PricingView } from './views/PricingView';
 import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
+import { ReservationsView } from './views/ReservationsView';
 import { TasksView } from './views/TasksView';
 
 type AuthenticatedTabId =
-  'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'programs' | 'program-requests' | 'tasks';
+  'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'programs' | 'program-requests'
+  | 'tasks';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -79,6 +81,15 @@ const TAB_DEFINITIONS: {
     label: 'Lots — prix & statut',
     path: '/lots',
     icon: 'wallet',
+    group: 'Ventes & tarification',
+    roles: ADMIN_AND_ADV,
+  },
+  // Ticket F-067 — cycle de réservation (backend B-048).
+  {
+    id: 'reservations',
+    label: 'Réservations',
+    path: '/reservations',
+    icon: 'clipboard-check',
     group: 'Ventes & tarification',
     roles: ADMIN_AND_ADV,
   },
@@ -273,6 +284,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'pricing' && <PricingView />}
       {activeTab === 'legal-tiers' && <LegalPaymentTiersView />}
       {activeTab === 'lots' && <LotsCommercialView canEditPrice={isAdmin} />}
+      {activeTab === 'reservations' && <ReservationsView />}
       {activeTab === 'programs' && <ProgramsView />}
       {activeTab === 'program-requests' && <ProgramRequestsView />}
       {activeTab === 'tasks' && <TasksView />}

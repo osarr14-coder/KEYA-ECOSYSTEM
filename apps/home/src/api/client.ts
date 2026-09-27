@@ -1,5 +1,5 @@
 import type {
-  EvidenceFeedItem, LotOverview, Me, MyLot, ProgramRequest, Task,
+  CatalogLot, EvidenceFeedItem, LotOverview, Me, MyLot, ProgramRequest, Reservation, Task,
 } from './types';
 
 export class ApiError extends Error {
@@ -124,6 +124,15 @@ export function createApiClient({
      * complete_task` ne touche que la `Task` elle-même).
      */
     completeTask: (taskId: string) => request<Task>(`/api/tasks/${taskId}/complete/`, { method: 'POST' }),
+    // Ticket F-066 — catalogue et réservations (backend B-048).
+    getCatalogLots: () => request<CatalogLot[]>('/api/catalog/lots/'),
+    getMyReservations: () => request<Reservation[]>('/api/me/reservations/'),
+    requestReservation: (lotId: string, organizationId: string) => (
+      request<Reservation>('/api/reservations/', { method: 'POST', json: { lot: lotId, organization: organizationId } })
+    ),
+    cancelMyReservation: (reservationId: string) => (
+      request<Reservation>(`/api/me/reservations/${reservationId}/cancel/`, { method: 'POST' })
+    ),
   };
 }
 

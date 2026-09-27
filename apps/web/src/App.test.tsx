@@ -530,12 +530,12 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
     return { api, getAdminTasks };
   }
 
-  it('entre dans apps/web et ne voit que Lots, Programmes et Demandes de programme', async () => {
+  it('entre dans apps/web et ne voit que Lots, Réservations (F-067), Programmes et Demandes de programme', async () => {
     renderAsAdv();
 
     const tabBar = await screen.findByRole('navigation', { name: 'Sections back-office' });
     const tabLabels = Array.from(tabBar.querySelectorAll('button')).map((button) => button.textContent);
-    expect(tabLabels).toEqual(['Lots — prix & statut', 'Programmes', 'Demandes de programme']);
+    expect(tabLabels).toEqual(['Lots — prix & statut', 'Réservations', 'Programmes', 'Demandes de programme']);
     expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
   });
 

@@ -386,3 +386,29 @@ export interface LegalPaymentTierTemplate {
   activated_at: string | null;
   steps: LegalPaymentTierStep[];
 }
+
+/** Miroir de `apps.sales.models.ReservationStatus` (ticket B-048, CDC V3
+ * §6.1). `reserved`/`committed` ne sont atteints qu'avec les encaissements
+ * simulés (Phase 3). */
+export type ReservationStatus = 'requested' | 'held' | 'reserved' | 'committed' | 'expired' | 'cancelled';
+
+/** Miroir de `apps.sales.serializers.AdminReservationSerializer` (`GET
+ * /api/reservations/admin/`, ticket B-048). Montants en chaîne (format
+ * `DecimalField` DRF), jamais convertis. */
+export interface AdminReservation {
+  id: string;
+  status: ReservationStatus;
+  status_label: string;
+  held_until: string;
+  price_amount: string;
+  currency: string;
+  lot: { id: string; name: string; surface: string | null };
+  program: { id: string; name: string };
+  organization: { id: string; name: string };
+  client: { id: string; email: string; full_name: string };
+  cancellation_reason: string;
+  cancelled_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

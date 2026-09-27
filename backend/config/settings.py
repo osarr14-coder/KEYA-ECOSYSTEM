@@ -50,8 +50,15 @@ INSTALLED_APPS = [
     'apps.support',
     'apps.procurement',
     'apps.pricing',
+    'apps.audit',
+    'apps.sales',
     'apps.core',
 ]
+
+# Ticket B-048 — durée de blocage d'une réservation (CDC V3 §6.1 :
+# « paramètre visible du scénario, proposé à 24 heures, sans valeur
+# juridique »). Exposée au client via `Reservation.held_until`.
+RESERVATION_HOLD_HOURS = config('RESERVATION_HOLD_HOURS', default=24, cast=int)
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
