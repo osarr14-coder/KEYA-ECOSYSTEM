@@ -1,13 +1,12 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, type ReactNode, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Input, semanticColors,
+  Button, Icon, Input, Pill, type PillTone, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
 import type { ClientPaymentCall } from '../api/types';
-import { useApiResource } from '../api/useApiResource';
 
 /**
  * Ticket F-068 — appels de fonds du client (backend B-050/B-051, CDC V3
@@ -18,17 +17,43 @@ import { useApiResource } from '../api/useApiResource';
  * (compte FICTIF, référence propre à l'appel) puis « J'ai effectué le
  * virement ». Sa déclaration n'est pas une preuve : l'appel n'est « couvert »
  * qu'une fois le virement confirmé par Finance (KEYIMMO).
+ *
+ * Ticket F-074 (direction « Confiance premium ») — composants
+ * PRÉSENTATIONNELS : les appels sont chargés une seule fois par le parcours
+ * d'acquisition (`AcquisitionJourney`), qui en dérive aussi les étapes et la
+ * prochaine action.
  */
 
-const SETTLEMENT_LABELS: Record<NonNullable<ClientPaymentCall['settlement']>, string> = {
+export const SETTLEMENT_LABELS: Record<NonNullable<ClientPaymentCall['settlement']>, string> = {
   to_pay: 'À payer',
   partial: 'Partiellement couvert',
   settled: 'Couvert',
 };
 
-function formatAmount(value: string | null, currency: string) {
+export function settlementTone(call: ClientPaymentCall): PillTone {
+  if (call.settlement === 'settled') return 'success';
+  if (call.notice?.status === 'declared') return 'primary';
+  if (call.settlement === 'partial') return 'alert';
+  return 'accent';
+}
+
+export function settlementText(call: ClientPaymentCall) {
+  if (call.settlement !== 'settled' && call.notice?.status === 'declared') return 'En vérification';
+  return call.settlement ? SETTLEMENT_LABELS[call.settlement] : '—';
+}
+
+export function callLabel(call: ClientPaymentCall) {
+  return call.tier_label ? `${call.kind_label} — ${call.tier_label}` : call.kind_label;
+}
+
+export function formatCallAmount(value: string | null, currency: string) {
   if (value === null) return '—';
   return `${Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${currency}`;
+}
+
+/** Un appel encore déclarable : ni couvert, ni déjà en vérification. */
+export function canDeclare(call: ClientPaymentCall) {
+  return call.settlement !== 'settled' && call.notice?.status !== 'declared';
 }
 
 function today() {
@@ -41,6 +66,10 @@ function errorDetail(caught: unknown, fallback: string) {
   }
   return fallback;
 }
+
+const fieldLabelStyle = {
+  display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px', fontWeight: 600,
+} as const;
 
 function DeclareForm({ call, onDeclared }: { call: ClientPaymentCall; onDeclared: () => void }) {
   const api = useApiClient();
@@ -66,19 +95,19 @@ function DeclareForm({ call, onDeclared }: { call: ClientPaymentCall; onDeclared
     <form
       onSubmit={(event) => { void handleSubmit(event); }}
       aria-label={`Déclarer mon virement — ${call.kind_label}`}
-      style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '8px' }}
+      style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}
     >
-      <label>
+      <label style={{ ...fieldLabelStyle, flex: '1 1 200px' }}>
         Référence de mon virement
         <Input
           aria-label="Référence de mon virement"
           value={reference}
           onChange={(event) => setReference(event.target.value)}
           required
-          style={{ marginTop: '4px', width: '220px' }}
+          placeholder="ex. VIR-0001"
         />
       </label>
-      <label>
+      <label style={{ ...fieldLabelStyle, flex: '0 1 180px' }}>
         Date du virement
         <Input
           aria-label="Date du virement"
@@ -86,10 +115,9 @@ function DeclareForm({ call, onDeclared }: { call: ClientPaymentCall; onDeclared
           value={paidOn}
           onChange={(event) => setPaidOn(event.target.value)}
           required
-          style={{ marginTop: '4px' }}
         />
       </label>
-      <Button type="submit" disabled={submitting || reference.trim() === ''}>
+      <Button type="submit" variant="accent" disabled={submitting || reference.trim() === ''}>
         {submitting ? 'Envoi…' : "J'ai effectué le virement"}
       </Button>
       {error && <p role="alert" style={{ width: '100%', margin: 0 }}>{error}</p>}
@@ -97,81 +125,94 @@ function DeclareForm({ call, onDeclared }: { call: ClientPaymentCall; onDeclared
   );
 }
 
-function CallRow({ call, onChanged }: { call: ClientPaymentCall; onChanged: () => void }) {
+function InstructionField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+      <dt
+        style={{
+          fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: semanticColors.neutral.textMuted,
+        }}
+      >
+        {label}
+      </dt>
+      <dd style={{ margin: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * Un appel de fonds : libellé, montant, état ; les messages de déclaration
+ * (en vérification, rejetée) ; et, s'il reste à payer, les instructions de
+ * virement et le formulaire de déclaration.
+ */
+export function CallRow({ call, onChanged }: { call: ClientPaymentCall; onChanged: () => void }) {
   const notice = call.notice ?? null;
   const settled = call.settlement === 'settled';
   const awaitingConfirmation = notice?.status === 'declared';
-  const canDeclare = !settled && !awaitingConfirmation;
 
   return (
-    <li
-      data-testid="payment-call"
-      style={{
-        listStyle: 'none', padding: '12px', marginTop: '8px',
-        border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '12px',
-      }}
-    >
-      <strong>{call.tier_label ? `${call.kind_label} — ${call.tier_label}` : call.kind_label}</strong>
-      {` : ${formatAmount(call.amount, call.currency)} · `}
-      <span data-testid="payment-call-settlement">{call.settlement ? SETTLEMENT_LABELS[call.settlement] : '—'}</span>
-      {call.settlement === 'partial' && ` (${formatAmount(call.settled_amount, call.currency)} reçus)`}
+    <li data-testid="payment-call" style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <strong>{callLabel(call)}</strong>
+        <span>{` : ${formatCallAmount(call.amount, call.currency)} · `}</span>
+        <Pill tone={settlementTone(call)} data-testid="payment-call-settlement">
+          {call.settlement ? SETTLEMENT_LABELS[call.settlement] : '—'}
+        </Pill>
+        {call.settlement === 'partial' && <span>{` (${formatCallAmount(call.settled_amount, call.currency)} reçus)`}</span>}
+      </div>
 
       {awaitingConfirmation && notice && (
-        <p style={{ margin: '6px 0 0' }} data-testid="payment-notice">
+        <p style={{ margin: 0 }} data-testid="payment-notice">
           {`Virement déclaré le ${notice.paid_on} (réf. ${notice.client_reference}) — en attente de confirmation par KEYIMMO.`}
         </p>
       )}
       {notice?.status === 'rejected' && !settled && (
-        <p role="status" style={{ margin: '6px 0 0' }} data-testid="payment-notice">
+        <p role="status" style={{ margin: 0, color: semanticColors.danger.text }} data-testid="payment-notice">
           {`Virement non reçu par KEYIMMO : ${notice.rejection_reason}. Vérifiez votre virement puis déclarez-le à nouveau.`}
         </p>
       )}
 
-      {canDeclare && call.payment_instructions && (
-        <div style={{ marginTop: '8px' }}>
-          <p style={{ margin: 0 }}>Virement à effectuer (simulation — aucun fonds réel) :</p>
-          <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '2px 12px', margin: '4px 0 0' }}>
-            <dt>Bénéficiaire</dt>
-            <dd style={{ margin: 0 }}>{call.payment_instructions.beneficiary}</dd>
-            <dt>Banque</dt>
-            <dd style={{ margin: 0 }}>{call.payment_instructions.bank}</dd>
-            <dt>IBAN</dt>
-            <dd style={{ margin: 0 }}>{call.payment_instructions.iban}</dd>
-            <dt>Montant</dt>
-            <dd style={{ margin: 0 }}>{formatAmount(call.amount, call.currency)}</dd>
-            <dt>Référence à indiquer</dt>
-            <dd style={{ margin: 0 }}><strong data-testid="payment-reference">{call.payment_reference}</strong></dd>
+      {canDeclare(call) && call.payment_instructions && (
+        <>
+          <dl
+            aria-label="Virement à effectuer (simulation — aucun fonds réel)"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '14px 20px',
+              margin: 0,
+              padding: '18px',
+              borderRadius: '16px',
+              background: semanticColors.neutral.subtle,
+            }}
+          >
+            <InstructionField label="Bénéficiaire">{call.payment_instructions.beneficiary}</InstructionField>
+            <InstructionField label="Banque">{call.payment_instructions.bank}</InstructionField>
+            <InstructionField label="IBAN">{call.payment_instructions.iban}</InstructionField>
+            <InstructionField label="Montant">{formatCallAmount(call.amount, call.currency)}</InstructionField>
+            <InstructionField label="Référence à indiquer">
+              <span
+                data-testid="payment-reference"
+                style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '16px', color: semanticColors.neutral.heading,
+                }}
+              >
+                {call.payment_reference}
+              </span>
+            </InstructionField>
           </dl>
           <DeclareForm call={call} onDeclared={onChanged} />
-        </div>
+          <p
+            style={{
+              margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: semanticColors.neutral.textMuted,
+            }}
+          >
+            <Icon name="shield-check" size={18} color={semanticColors.progress.fill} />
+            Simulation — aucun fonds réel. Votre déclaration est vérifiée par KEYIMMO sur le relevé bancaire avant d&apos;être
+            comptabilisée.
+          </p>
+        </>
       )}
     </li>
-  );
-}
-
-export function ClientPaymentCallsPanel({ reservationId }: { reservationId: string }) {
-  const api = useApiClient();
-  const state = useApiResource(() => api.getMyPaymentCalls(reservationId), [reservationId]);
-
-  if (state.status === 'loading') return null;
-  if (state.status === 'error') {
-    return <ApiErrorBanner error={state.error} title="Impossible de charger vos appels de fonds." onRetry={state.refetch} />;
-  }
-  if (state.data.length === 0) return null;
-
-  return (
-    <section aria-label="Appels de fonds" style={{ marginTop: '8px' }}>
-      <strong>Appels de fonds</strong>
-      <p style={{ margin: '2px 0 4px', fontSize: '12px' }}>Simulation — aucun fonds réel n&apos;est demandé.</p>
-      <ul style={{ margin: 0, padding: 0 }}>
-        {state.data.map((call) => (
-          <CallRow
-            key={`${call.id}-${call.settlement}-${call.notice?.id ?? ''}-${call.notice?.status ?? ''}`}
-            call={call}
-            onChanged={state.refetch}
-          />
-        ))}
-      </ul>
-    </section>
   );
 }

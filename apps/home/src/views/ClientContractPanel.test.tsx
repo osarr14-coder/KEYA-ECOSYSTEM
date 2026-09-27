@@ -1,10 +1,21 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
 import type { ContractVersion } from '../api/types';
+import { useApiResource } from '../api/useApiResource';
 import { createMockApiClient, withApiClient } from '../testUtils';
-import { ClientContractPanel } from './ClientContractPanel';
+import { ContractVersions } from './ClientContractPanel';
+
+/** Ticket F-074 — même flux de données que `AcquisitionJourney` : chargement
+ * des versions, rendu présentationnel, rechargement après signature. */
+function ClientContractPanel({ reservationId }: { reservationId: string }) {
+  const api = useApiClient();
+  const state = useApiResource(() => api.getMyContracts(reservationId), [reservationId]);
+  if (state.status !== 'success') return null;
+  return <ContractVersions contracts={state.data} onSigned={state.refetch} />;
+}
 
 function contract(overrides: Partial<ContractVersion> = {}): ContractVersion {
   return {

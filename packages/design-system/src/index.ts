@@ -60,6 +60,9 @@ export type { SelectProps } from './components/Select/Select';
 export { ALL_TRUST_LEVELS, LEVEL_META, StatusBadge } from './components/StatusBadge/StatusBadge';
 export type { StatusBadgeProps, TrustEventData, TrustLevel } from './components/StatusBadge/StatusBadge';
 
+export { Stepper } from './components/Stepper/Stepper';
+export type { StepState, StepperProps, StepperStep } from './components/Stepper/Stepper';
+
 export { TabBar } from './components/TabBar/TabBar';
 export type { TabBarProps, TabBarTab } from './components/TabBar/TabBar';
 

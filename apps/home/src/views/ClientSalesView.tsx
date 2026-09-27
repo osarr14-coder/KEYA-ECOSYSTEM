@@ -1,40 +1,31 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card,
+  AlertBanner, ApiErrorBanner, Button, Card, Icon, PageHeader, Pill, semanticColors, typography,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
 import type { CatalogLot, Reservation, ReservationStatus } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
-import { ClientContractPanel } from './ClientContractPanel';
-import { ClientPaymentCallsPanel } from './ClientPaymentCallsPanel';
+import { formatAmount, formatDateTime } from '../format';
+import { AcquisitionJourney, reservationMessage, reservationTone } from './AcquisitionJourney';
 
 /**
  * Ticket F-066 — parcours d'achat du client (CDC V3 §9.2, étapes 1-2) :
  * catalogue des lots publiés, demande de réservation, suivi du blocage.
  * Backend B-048 : la disponibilité et le refus en cas de concurrence (T01)
  * sont décidés par le serveur, jamais recalculés ici.
+ *
+ * Ticket F-074 (direction « Confiance premium ») — « Mon acquisition » :
+ * chaque réservation active devient un parcours guidé (`AcquisitionJourney`),
+ * le catalogue une grille de cartes, les réservations closes un historique.
  */
 
+// Réexportés pour compatibilité (tests F-066) — source unique : `format.ts`.
+export { formatAmount, formatDateTime };
+
 const ACTIVE_STATUSES: ReservationStatus[] = ['held', 'reserved', 'committed'];
-
-// CDC V3 §5 : « l'interface indique son fuseau ». Scénario en Côte
-// d'Ivoire : heure d'Abidjan (GMT, sans heure d'été).
-const DISPLAY_TIME_ZONE = 'Africa/Abidjan';
-
-export function formatAmount(value: string, currency: string) {
-  const amount = Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
-  return `${amount} ${currency}`;
-}
-
-export function formatDateTime(iso: string) {
-  const formatted = new Date(iso).toLocaleString('fr-FR', {
-    dateStyle: 'long', timeStyle: 'short', timeZone: DISPLAY_TIME_ZONE,
-  });
-  return `${formatted} (heure d'Abidjan, GMT)`;
-}
 
 function errorDetail(caught: unknown, fallback: string) {
   if (caught instanceof ApiError && caught.body && typeof caught.body === 'object' && 'detail' in caught.body) {
@@ -43,78 +34,18 @@ function errorDetail(caught: unknown, fallback: string) {
   return fallback;
 }
 
-function nextStep(reservation: Reservation) {
-  switch (reservation.status) {
-    case 'held':
-      // Ticket F-071 (backend B-056) — le conseiller KEYIMMO (ADV) valide
-      // d'abord le dossier, puis le client règle les frais par virement.
-      return reservation.validated_at
-        ? `Réservation validée par KEYIMMO. Réglez les frais de réservation ci-dessous avant le ${formatDateTime(reservation.held_until)}, `
-          + 'puis déclarez votre virement : KEYIMMO le confirmera à réception.'
-        : `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. `
-          + 'Votre demande est en attente de validation par votre conseiller KEYIMMO, qui vous enverra ensuite l’appel des frais de réservation.';
-    case 'reserved':
-      return 'Frais de réservation encaissés : le bien vous est réservé. '
-        + 'Prochaine étape : signature du contrat et complément du premier versement.';
-    case 'committed':
-      return 'Acquisition concrétisée (simulation) : contrat signé et premier versement couvert.';
-    case 'expired':
-      return 'Le délai de blocage est écoulé sans versement : le bien a été libéré.';
-    case 'cancelled':
-      return reservation.cancellation_reason
-        ? `Réservation annulée — motif : ${reservation.cancellation_reason}`
-        : 'Réservation annulée.';
-    default:
-      return reservation.status_label;
-  }
-}
-
-function ReservationRow({ reservation, onChanged }: { reservation: Reservation; onChanged: () => void }) {
-  const api = useApiClient();
-  const [confirming, setConfirming] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function cancel() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api.cancelMyReservation(reservation.id);
-      onChanged();
-    } catch (caught) {
-      setError(errorDetail(caught, "L'annulation a échoué. Réessayez."));
-      setSubmitting(false);
-    }
-  }
-
+function PastReservationRow({ reservation }: { reservation: Reservation }) {
   return (
-    <li data-testid="reservation" style={{ padding: '12px 0', borderBottom: '1px solid var(--keya-border, #E5E7EB)' }}>
-      <strong>{reservation.program.name} — {reservation.lot.name}</strong>
-      {' · '}
-      <span data-testid="reservation-status">{reservation.status_label}</span>
-      {' · '}
-      {formatAmount(reservation.price_amount, reservation.currency)}
-      <p style={{ margin: '4px 0 0' }}>{nextStep(reservation)}</p>
-      {/* Ticket F-066 (partie 2) — contrat, tant que la réservation vit. */}
-      {ACTIVE_STATUSES.includes(reservation.status) && <ClientContractPanel reservationId={reservation.id} />}
-      {/* Ticket F-068 — appels de fonds et leur couverture. */}
-      {ACTIVE_STATUSES.includes(reservation.status) && <ClientPaymentCallsPanel reservationId={reservation.id} />}
-      {reservation.status === 'held' && !confirming && (
-        <Button type="button" variant="secondary" onClick={() => setConfirming(true)} style={{ marginTop: '8px' }}>
-          Annuler cette réservation
-        </Button>
-      )}
-      {reservation.status === 'held' && confirming && (
-        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-          <Button type="button" onClick={() => { void cancel(); }} disabled={submitting}>
-            {submitting ? 'Annulation…' : "Confirmer l'annulation"}
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => setConfirming(false)} disabled={submitting}>
-            Garder la réservation
-          </Button>
-        </div>
-      )}
-      {error && <p role="alert" style={{ margin: '4px 0 0' }}>{error}</p>}
+    <li
+      data-testid="reservation"
+      style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '14px 0', borderBottom: `1px solid ${semanticColors.neutral.border}` }}
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+        <strong>{reservation.program.name} — {reservation.lot.name}</strong>
+        <Pill tone={reservationTone(reservation)} data-testid="reservation-status">{reservation.status_label}</Pill>
+        <span style={{ color: semanticColors.neutral.textMuted }}>{formatAmount(reservation.price_amount, reservation.currency)}</span>
+      </div>
+      <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{reservationMessage(reservation)}</p>
     </li>
   );
 }
@@ -137,24 +68,51 @@ function CatalogLotCard({ lot, onReserved }: { lot: CatalogLot; onReserved: () =
   }
 
   return (
-    <li data-testid="catalog-lot" style={{ padding: '12px 0', borderBottom: '1px solid var(--keya-border, #E5E7EB)' }}>
-      <strong>{lot.program.name} — {lot.name}</strong>
-      <p style={{ margin: '4px 0' }}>
-        {lot.asset.name}
-        {lot.asset.location ? ` · ${lot.asset.location}` : ''}
-        {lot.surface ? ` · ${lot.surface} m²` : ''}
-        {' · '}
-        <strong>{formatAmount(lot.sale_price, lot.currency)}</strong>
-      </p>
-      <p style={{ margin: '0 0 8px', fontSize: '13px' }}>Programme porté par {lot.organization.name}</p>
-      <Button type="button" onClick={() => { void reserve(); }} disabled={submitting}>
-        {submitting ? 'Réservation…' : 'Réserver ce bien'}
-      </Button>
-      {error && (
-        <div style={{ marginTop: '8px' }}>
-          <AlertBanner title={error} />
+    <li
+      data-testid="catalog-lot"
+      style={{
+        listStyle: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        border: `1px solid ${semanticColors.neutral.border}`,
+        borderRadius: '20px',
+        overflow: 'hidden',
+        background: semanticColors.neutral.surface,
+      }}
+    >
+      <div
+        aria-hidden="true"
+        style={{
+          height: '120px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(135deg, #0B1D3A, #1C3563)',
+          color: '#E2C47A',
+        }}
+      >
+        <Icon name="building" size={44} />
+      </div>
+      <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
+        <strong style={{ fontFamily: typography.headingFontFamily, fontSize: '19px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+          {lot.program.name} — {lot.name}
+        </strong>
+        <span style={{ color: semanticColors.neutral.textMuted }}>
+          {lot.asset.name}
+          {lot.asset.location ? ` · ${lot.asset.location}` : ''}
+          {lot.surface ? ` · ${lot.surface} m²` : ''}
+        </span>
+        <span style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+          {formatAmount(lot.sale_price, lot.currency)}
+        </span>
+        <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>Programme porté par {lot.organization.name}</span>
+        <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
+          <Button type="button" onClick={() => { void reserve(); }} disabled={submitting} style={{ width: '100%' }}>
+            {submitting ? 'Réservation…' : 'Réserver ce bien'}
+          </Button>
         </div>
-      )}
+        {error && <AlertBanner title={error} />}
+      </div>
     </li>
   );
 }
@@ -169,47 +127,66 @@ export function ClientSalesView() {
     catalogState.refetch();
   }
 
+  const reservations = reservationsState.status === 'success' ? reservationsState.data : [];
+  const active = reservations.filter((reservation) => ACTIVE_STATUSES.includes(reservation.status));
+  const past = reservations.filter((reservation) => !ACTIVE_STATUSES.includes(reservation.status));
+
   return (
-    <section aria-label="Acheter un bien" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <h2 style={{ margin: 0 }}>Acheter un bien</h2>
+    <section aria-label="Mon acquisition" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+      <PageHeader
+        eyebrow="Espace acquéreur"
+        title="Mon acquisition"
+        subtitle={active.length > 0
+          ? 'Suivez chaque étape de votre achat : une seule action vous est demandée à la fois.'
+          : 'Choisissez un bien disponible : il est bloqué pour vous pendant la validation de votre dossier.'}
+      />
 
-      <Card title="Mes réservations" icon="clipboard-check">
-        {reservationsState.status === 'loading' && <p>Chargement…</p>}
-        {reservationsState.status === 'error' && (
-          <ApiErrorBanner
-            error={reservationsState.error}
-            title="Impossible de charger vos réservations."
-            onRetry={reservationsState.refetch}
-          />
-        )}
-        {reservationsState.status === 'success' && reservationsState.data.length === 0 && (
-          <p>Vous n&apos;avez encore réservé aucun bien.</p>
-        )}
-        {reservationsState.status === 'success' && reservationsState.data.length > 0 && (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {reservationsState.data.map((reservation) => (
-              <ReservationRow key={reservation.id} reservation={reservation} onChanged={refreshAll} />
-            ))}
-          </ul>
-        )}
-      </Card>
+      {reservationsState.status === 'loading' && <p>Chargement…</p>}
+      {reservationsState.status === 'error' && (
+        <ApiErrorBanner
+          error={reservationsState.error}
+          title="Impossible de charger vos réservations."
+          onRetry={reservationsState.refetch}
+        />
+      )}
+      {reservationsState.status === 'success' && reservations.length === 0 && (
+        <Card>
+          <p style={{ margin: 0 }}>Vous n&apos;avez encore réservé aucun bien.</p>
+        </Card>
+      )}
 
-      <Card title="Biens disponibles" icon="building">
+      {active.map((reservation) => (
+        <AcquisitionJourney key={reservation.id} reservation={reservation} onChanged={refreshAll} />
+      ))}
+
+      <Card title="Biens disponibles" icon="building" eyebrow="Catalogue">
         {catalogState.status === 'loading' && <p>Chargement…</p>}
         {catalogState.status === 'error' && (
           <ApiErrorBanner error={catalogState.error} title="Impossible de charger le catalogue." onRetry={catalogState.refetch} />
         )}
         {catalogState.status === 'success' && catalogState.data.length === 0 && (
-          <p>Aucun bien n&apos;est disponible à la réservation pour le moment.</p>
+          <p style={{ margin: 0 }}>Aucun bien n&apos;est disponible à la réservation pour le moment.</p>
         )}
         {catalogState.status === 'success' && catalogState.data.length > 0 && (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          <ul
+            style={{
+              margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px',
+            }}
+          >
             {catalogState.data.map((lot) => (
               <CatalogLotCard key={lot.id} lot={lot} onReserved={refreshAll} />
             ))}
           </ul>
         )}
       </Card>
+
+      {past.length > 0 && (
+        <Card title="Historique" icon="clipboard-check" aria-label="Réservations closes">
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {past.map((reservation) => <PastReservationRow key={reservation.id} reservation={reservation} />)}
+          </ul>
+        </Card>
+      )}
     </section>
   );
 }

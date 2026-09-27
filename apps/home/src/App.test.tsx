@@ -102,8 +102,9 @@ describe('App — critère produit 26.1 : les 5 éléments identifiables sans in
     await screen.findByText('Résidence Ker');
     fireEvent.click(await screen.findByRole('button', { name: 'Voir toutes mes actions' }));
 
-    // Onglet "Mes actions" désormais actif, avec la liste complète chargée.
-    expect(screen.getByRole('button', { name: 'Mes actions' })).toHaveAttribute('aria-current', 'page');
+    // Entrée "Mes actions" de la barre latérale désormais active (ticket
+    // F-074 : navigation unique), avec la liste complète chargée.
+    expect(screen.getByRole('link', { name: /^Mes actions/ })).toHaveAttribute('aria-current', 'page');
     expect(await screen.findByText('Action test à faire')).toBeInTheDocument();
   });
 
@@ -120,7 +121,7 @@ describe('App — critère produit 26.1 : les 5 éléments identifiables sans in
     });
 
     await screen.findByText('Résidence Ker');
-    fireEvent.click(screen.getByRole('button', { name: 'Mes actions' }));
+    fireEvent.click(screen.getByRole('link', { name: /^Mes actions/ }));
 
     expect(await screen.findByText('Action test à faire')).toBeInTheDocument();
   });
@@ -399,17 +400,17 @@ describe('App — sponsor sans bien (ticket F-057, programme sur mesure)', () =>
   it('ticket F-066 — un client (pas sponsor) sans bien atterrit sur le catalogue, jamais sur la demande sur mesure', async () => {
     renderApp({ getMyLots: async () => [], getMyReservations: async () => [], getCatalogLots: async () => [] });
 
-    expect(await screen.findByRole('heading', { name: 'Acheter un bien' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Mon acquisition' })).toBeInTheDocument();
     expect(screen.queryByText('Aucun bien ne vous est encore associé.')).not.toBeInTheDocument();
     expect(screen.queryByRole('form', { name: 'Soumettre une demande de programme' })).not.toBeInTheDocument();
   });
 
-  it('ticket F-066 — un client qui possède déjà un bien a un onglet supplémentaire « Acheter un bien »', async () => {
+  it('ticket F-066/F-074 — un client qui possède déjà un bien a une entrée supplémentaire « Mon acquisition »', async () => {
     renderApp({ getMyReservations: async () => [], getCatalogLots: async () => [] });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Acheter un bien' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Mon acquisition' }));
 
-    expect(await screen.findByRole('heading', { name: 'Acheter un bien' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Mon acquisition' })).toBeInTheDocument();
   });
 
   it('un sponsor qui possède déjà un bien voit un onglet supplémentaire « Programme sur mesure »', async () => {
@@ -419,7 +420,7 @@ describe('App — sponsor sans bien (ticket F-057, programme sur mesure)', () =>
     });
 
     await screen.findByText('Résidence Ker');
-    const tab = screen.getByRole('button', { name: 'Programme sur mesure' });
+    const tab = screen.getByRole('link', { name: 'Programme sur mesure' });
     fireEvent.click(tab);
 
     expect(await screen.findByRole('form', { name: 'Soumettre une demande de programme' })).toBeInTheDocument();
@@ -429,7 +430,7 @@ describe('App — sponsor sans bien (ticket F-057, programme sur mesure)', () =>
     renderApp();
 
     await screen.findByText('Résidence Ker');
-    expect(screen.queryByRole('button', { name: 'Programme sur mesure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Programme sur mesure' })).not.toBeInTheDocument();
   });
 });
 
@@ -469,7 +470,7 @@ describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
 
     fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
 
-    expect(await screen.findByRole('button', { name: 'Mes actions' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByRole('link', { name: /^Mes actions/ })).toHaveAttribute('aria-current', 'page');
     expect(window.location.pathname).toBe('/');
   });
 });

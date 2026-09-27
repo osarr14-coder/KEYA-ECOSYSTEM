@@ -1,9 +1,26 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { useApiClient } from '../api/ApiClientContext';
 import type { ClientPaymentCall } from '../api/types';
+import { useApiResource } from '../api/useApiResource';
 import { createMockApiClient, withApiClient } from '../testUtils';
-import { ClientPaymentCallsPanel } from './ClientPaymentCallsPanel';
+import { CallRow } from './ClientPaymentCallsPanel';
+
+/** Ticket F-074 — même flux de données que `AcquisitionJourney` : les appels
+ * sont chargés une fois, chaque `CallRow` est présentationnel. */
+function ClientPaymentCallsPanel({ reservationId }: { reservationId: string }) {
+  const api = useApiClient();
+  const state = useApiResource(() => api.getMyPaymentCalls(reservationId), [reservationId]);
+  if (state.status !== 'success' || state.data.length === 0) return null;
+  return (
+    <ul>
+      {state.data.map((item) => (
+        <CallRow key={`${item.id}-${item.settlement}-${item.notice?.status ?? ''}`} call={item} onChanged={state.refetch} />
+      ))}
+    </ul>
+  );
+}
 
 function call(overrides: Partial<ClientPaymentCall> = {}): ClientPaymentCall {
   return {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, Select, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
+  AlertBanner, ApiErrorBanner, AppShell, Select, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
   type AppModule, type IconName, logoutToLoginScreen,
 } from '@keya/design-system';
 
@@ -32,7 +32,7 @@ import { ProgramRequestView } from './views/ProgramRequestView';
 // rendu (jamais mémoïsée) pour ne jamais embarquer un jeton périmé.
 const APP_ORIGINS = resolveAppOrigins();
 
-function buildModules(): AppModule[] {
+function crossAppModules(): AppModule[] {
   const accessToken = localStorage.getItem('keya_access_token');
   const refreshToken = localStorage.getItem('keya_refresh_token');
   const crossAppHref = (origin: string) => (
@@ -40,45 +40,39 @@ function buildModules(): AppModule[] {
   );
 
   return [
-    { id: 'home', label: 'Accueil', href: '/', icon: 'home' },
     {
-      id: 'build', label: 'BUILD', href: crossAppHref(APP_ORIGINS.build), requiredRoles: ['constructeur'], icon: 'building',
+      id: 'build', label: 'BUILD', href: crossAppHref(APP_ORIGINS.build), requiredRoles: ['constructeur'], icon: 'building', group: 'Autres espaces',
     },
     {
-      id: 'control', label: 'CONTROL', href: crossAppHref(APP_ORIGINS.control), requiredRoles: ['inspecteur'], icon: 'clipboard-check',
+      id: 'control', label: 'CONTROL', href: crossAppHref(APP_ORIGINS.control), requiredRoles: ['inspecteur'], icon: 'clipboard-check', group: 'Autres espaces',
     },
     {
-      id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'], icon: 'wallet',
+      id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'], icon: 'wallet', group: 'Autres espaces',
     },
     {
-      id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'], icon: 'shield-check',
+      id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'], icon: 'shield-check', group: 'Autres espaces',
     },
   ];
 }
 
-type ViewId = 'overview' | 'evidence' | 'actions' | 'program-request' | 'sales';
+type ViewId = 'acquisition' | 'overview' | 'evidence' | 'actions' | 'program-request';
 
-const LOT_TABS: { id: ViewId; label: string; icon: IconName }[] = [
-  { id: 'overview', label: "Vue d'ensemble", icon: 'home' },
-  { id: 'evidence', label: 'Avancement & preuves', icon: 'file-text' },
-  { id: 'actions', label: 'Mes actions', icon: 'clipboard-check' },
-];
-
-// Ticket F-057 — onglet supplémentaire, réservé au rôle `sponsor` (jamais
-// `client`, qui achète un lot déjà existant plutôt que de faire construire
-// sur mesure — voir `B-042-prospect-programme-sur-mesure.md`). Un sponsor
-// qui possède DÉJÀ au moins un bien peut quand même soumettre une NOUVELLE
-// demande (ex. un second projet) — cet onglet s'ajoute donc à `LOT_TABS`,
-// jamais à sa place.
-const PROGRAM_REQUEST_TAB: { id: ViewId; label: string; icon: IconName } = {
-  id: 'program-request', label: 'Programme sur mesure', icon: 'building',
-};
-
-// Ticket F-066 — même principe pour le rôle `client` : catalogue et
-// réservations, en plus des onglets d'un bien déjà acquis (un client peut
-// acheter un second bien).
-const SALES_TAB: { id: ViewId; label: string; icon: IconName } = {
-  id: 'sales', label: 'Acheter un bien', icon: 'wallet',
+/**
+ * Ticket F-074 (direction « Confiance premium ») — navigation UNIQUE : les
+ * anciens onglets (`TabBar`) deviennent les entrées de la barre latérale
+ * (`AppShell.onModuleSelect`), sans rechargement. « Mes actions » est
+ * désormais toujours visible (un client sans bien reçoit aussi des
+ * notifications : appel de fonds, confirmation de virement…).
+ */
+const VIEW_MODULES: Record<ViewId, { label: string; icon: IconName }> = {
+  // Ticket F-066 — parcours d'achat du client (ex-onglet « Acheter un bien »).
+  acquisition: { label: 'Mon acquisition', icon: 'wallet' },
+  overview: { label: "Vue d'ensemble", icon: 'home' },
+  evidence: { label: 'Avancement & preuves', icon: 'file-text' },
+  actions: { label: 'Mes actions', icon: 'clipboard-check' },
+  // Ticket F-057 — réservé au rôle `sponsor` (jamais `client`, qui achète
+  // un lot existant plutôt que de faire construire sur mesure).
+  'program-request': { label: 'Programme sur mesure', icon: 'building' },
 };
 
 const ACTIVE_ORGANIZATION_STORAGE_KEY = 'keya_active_organization_id';
@@ -161,7 +155,7 @@ export function App() {
     [meState.status, activeOrganizationId],
   );
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ViewId>('overview');
+  const [selectedView, setSelectedView] = useState<ViewId | null>(null);
 
   // Un lot sélectionné manuellement dans une organisation devient invalide
   // après un changement d'organisation — jamais le laisser survivre au
@@ -173,40 +167,51 @@ export function App() {
 
   const lots = lotsState.status === 'success' ? lotsState.data : [];
   const currentLotId = selectedLotId ?? lots[0]?.id ?? null;
-  // Ticket F-057 — un sponsor voit l'onglet « Programme sur mesure » EN
-  // PLUS des onglets liés à un bien (jamais à leur place) : il peut très
-  // bien posséder déjà un bien ET vouloir soumettre une nouvelle demande.
   const isSponsor = userRoles.includes('sponsor');
   const isClient = userRoles.includes('client');
-  const tabs = [...LOT_TABS, ...(isSponsor ? [PROGRAM_REQUEST_TAB] : []), ...(isClient ? [SALES_TAB] : [])];
+  const lotsReady = meState.status === 'success' && lotsState.status === 'success';
+
+  const availableViews: ViewId[] = [
+    ...(isClient ? ['acquisition' as const] : []),
+    ...(currentLotId ? ['overview' as const, 'evidence' as const] : []),
+    'actions',
+    ...(isSponsor ? ['program-request' as const] : []),
+  ];
+  // Vue par défaut : le bien s'il existe, sinon le parcours d'achat (client)
+  // ou la demande sur mesure (sponsor) — jamais un écran vide.
+  const defaultView: ViewId = currentLotId
+    ? 'overview'
+    : isClient ? 'acquisition' : isSponsor ? 'program-request' : 'overview';
+  const activeView: ViewId = selectedView && availableViews.includes(selectedView) ? selectedView : defaultView;
+  const pendingTaskCount = taskInboxState.status === 'success' ? taskInboxState.data.length : 0;
+
+  const modules: AppModule[] = [
+    ...availableViews.map((view) => ({
+      id: view,
+      label: VIEW_MODULES[view].label,
+      icon: VIEW_MODULES[view].icon,
+      href: `#${view}`,
+      badge: view === 'actions' ? pendingTaskCount : undefined,
+    })),
+    ...crossAppModules(),
+  ];
 
   return (
     <AppShell
       // Ticket F-070 — déconnexion volontaire, vers l'écran de connexion.
       onLogout={() => logoutToLoginScreen()}
       density="confortable"
-      // Ticket F-039 — seule app du projet à activer le bandeau <header>
-      // navy (prop `brand`), resté HOME-only, intouché par F-048.
+      // Ticket F-039/F-073 — filet or sous la barre du haut (espace client).
       brand
-      // Ticket F-048 — révision LIMITÉE de la doctrine 17.3 : le bloc navy
-      // de sidebar (AppShell, toujours rendu) est désormais universel,
-      // `appLabel` fournit le nom d'app affiché dedans sur les 4 apps.
-      appLabel="Accueil"
-      modules={buildModules()}
+      appLabel="Espace client"
+      modules={modules}
       userRoles={userRoles}
-      activeModuleId="home"
-      breadcrumbs={[{ label: 'Accueil' }]}
-      taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
-      // Ticket F-061 — la cloche bascule sur l'onglet « Mes actions »
-      // existant (`MyActionsView`, même destination que le bouton « Voir
-      // toutes mes actions » de `PriorityTaskSummary`), jamais un second
-      // écran de tâches recodé. Limite connue et acceptée : un sponsor
-      // SANS bien (`currentLotId` faux) n'a pas encore cet onglet — mais
-      // sa seule notification possible à ce stade (décision sur sa
-      // demande, ticket B-043) est déjà affichée directement sur son
-      // écran d'atterrissage (`ProgramRequestView`, ticket F-059), la
-      // cloche n'est donc pas son seul chemin d'accès dans ce cas.
-      onTaskInboxClick={() => setActiveTab('actions')}
+      activeModuleId={lotsReady ? activeView : undefined}
+      onModuleSelect={(id) => setSelectedView(id as ViewId)}
+      taskInboxCount={pendingTaskCount}
+      // Ticket F-061 — la cloche ouvre « Mes actions » (`MyActionsView`),
+      // jamais un second écran de tâches recodé.
+      onTaskInboxClick={() => setSelectedView('actions')}
       organizationOptions={organizationOptions}
       activeOrganizationId={activeOrganizationId ?? undefined}
       onOrganizationChange={handleOrganizationChange}
@@ -234,27 +239,17 @@ export function App() {
       {meState.status === 'success' && lotsState.status === 'error' && (
         <ApiErrorBanner error={lotsState.error} title="Impossible de charger vos biens." onRetry={lotsState.refetch} />
       )}
-      {/* Ticket F-057 — un sponsor SANS bien (cas normal avant que sa
-          demande soit acceptée et son programme créé) voit directement
-          l'écran de demande, jamais le message générique ci-dessous (qui
-          n'a aucun sens pour lui — il n'attend pas qu'on lui "associe" un
-          bien existant, il en demande un nouveau). */}
-      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && isSponsor && (
-        <ProgramRequestView />
-      )}
-      {/* Ticket F-066 — un client sans bien atterrit sur le catalogue et ses
-          réservations (CDC V3 §9.2, étapes 1-2), jamais sur un message vide. */}
-      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && isClient && (
-        <ClientSalesView />
-      )}
-      {meState.status === 'success' && lotsState.status === 'success' && lots.length === 0 && !isSponsor && !isClient && (
+      {lotsReady && activeView === 'acquisition' && <ClientSalesView />}
+      {lotsReady && activeView === 'program-request' && <ProgramRequestView />}
+      {lotsReady && activeView === 'actions' && <MyActionsView activeOrganizationId={activeOrganizationId} />}
+      {lotsReady && activeView === 'overview' && !currentLotId && (
         <p>Aucun bien ne vous est encore associé.</p>
       )}
 
-      {meState.status === 'success' && currentLotId && (
+      {lotsReady && currentLotId && (activeView === 'overview' || activeView === 'evidence') && (
         <>
           {lots.length > 1 && (
-            <label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', fontWeight: 600 }}>
               Bien
               <Select
                 aria-label="Sélection du bien"
@@ -271,19 +266,14 @@ export function App() {
             </label>
           )}
 
-          <TabBar tabs={tabs} activeTabId={activeTab} onChange={(id) => setActiveTab(id as ViewId)} aria-label="Sections HOME" />
-
-          {activeTab === 'overview' && (
+          {activeView === 'overview' && (
             <OverviewView
               lotId={currentLotId}
-              onSeeAllActions={() => setActiveTab('actions')}
+              onSeeAllActions={() => setSelectedView('actions')}
               activeOrganizationId={activeOrganizationId}
             />
           )}
-          {activeTab === 'evidence' && <EvidenceFeedView lotId={currentLotId} />}
-          {activeTab === 'actions' && <MyActionsView activeOrganizationId={activeOrganizationId} />}
-          {activeTab === 'program-request' && <ProgramRequestView />}
-          {activeTab === 'sales' && <ClientSalesView />}
+          {activeView === 'evidence' && <EvidenceFeedView lotId={currentLotId} />}
         </>
       )}
     </AppShell>
