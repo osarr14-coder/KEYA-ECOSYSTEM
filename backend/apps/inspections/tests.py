@@ -79,6 +79,7 @@ def _open_reserve_via_inspection(inspecteur_client, constructeur_organization, d
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
+            'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'note': 'Fissure visible en façade',
         },
         format='json',
@@ -199,6 +200,7 @@ class TestConstructeurCannotChangeReserveStatus:
                 'work_declaration': str(declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
                 'reserve': str(reserve_id),
+                'decisions': [{'reserve_id': str(str(reserve_id)), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
             },
             format='json',
         )
@@ -289,6 +291,7 @@ class TestFullReserveHistoryIsReadableAfterLevee:
                 'work_declaration': str(declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
                 'reserve': reserve_id,
+                'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
             },
             format='json',
         )

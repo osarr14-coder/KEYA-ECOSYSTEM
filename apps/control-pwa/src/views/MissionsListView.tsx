@@ -11,6 +11,10 @@ import type { Mission, SyncStatus } from '../db/types';
 
 export interface MissionsListViewProps {
   onSelectMission: (missionId: string) => void;
+  /** Audit UI R1 (K04, PO-2026-09-27-04) — mode EN LIGNE : liste lue
+   * directement sur le serveur (la date serveur fait foi), sans cache local
+   * ni statut de synchronisation. Absent : mode hors ligne historique. */
+  loadMissions?: () => Promise<Mission[]>;
 }
 
 /**
@@ -92,7 +96,7 @@ type LoadState = 'loading' | 'error' | 'ready';
  *    n'affiche simplement aucun statut (comportement déjà accepté pour une
  *    mission jamais entamée), les autres gardent le leur.
  */
-export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
+export function MissionsListView({ onSelectMission, loadMissions }: MissionsListViewProps) {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [statusByMission, setStatusByMission] = useState<Record<string, SyncStatus>>({});
   const [loadState, setLoadState] = useState<LoadState>('loading');
@@ -113,7 +117,7 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
     (async () => {
       let cachedMissions: Mission[];
       try {
-        cachedMissions = await getCachedMissions();
+        cachedMissions = loadMissions ? await loadMissions() : await getCachedMissions();
       } catch {
         if (!cancelled) setLoadState('error');
         return;
@@ -121,6 +125,7 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
       if (cancelled) return;
       setMissions(cachedMissions);
       setLoadState('ready');
+      if (loadMissions) return;
 
       const entries = await Promise.allSettled(
         cachedMissions.map(async (mission) => {

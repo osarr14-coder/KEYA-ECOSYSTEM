@@ -30,7 +30,7 @@ describe(
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
       // --- Session 1 : l'inspecteur saisit son inspection hors ligne ---
-      const firstSession = render(<App />);
+      const firstSession = render(<App offlineMode />);
 
       expect(await screen.findByText('Hors ligne')).toBeInTheDocument();
 
@@ -99,7 +99,7 @@ describe(
       firstSession.unmount();
 
       // --- Session 2 : réouverture de l'application ---
-      render(<App />);
+      render(<App offlineMode />);
       fireEvent.click(await screen.findByText('Lot 12'));
       await screen.findByRole('heading', { name: 'Lot 12 — Résidence Ker' });
 
@@ -148,7 +148,7 @@ describe('App — passe 2 : la synchronisation démarre au retour du réseau, ja
       }),
     } as Response);
 
-    render(<App />);
+    render(<App offlineMode />);
     fireEvent.click(await screen.findByText('Lot 12'));
     await screen.findByRole('heading', { name: 'Lot 12 — Résidence Ker' });
     fireEvent.click(await screen.findByLabelText('Réserve'));
@@ -184,7 +184,7 @@ describe('App — passe 2 : la synchronisation démarre au retour du réseau, ja
 
 describe('App — interface tactile 360-430px', () => {
   it('contraint la largeur du contenu entre 360 et 430px', async () => {
-    render(<App />);
+    render(<App offlineMode />);
     await screen.findByText('Mes missions');
     const container = screen.getByText('Mes missions').closest('div');
     expect(container).toHaveStyle({ maxWidth: '430px', minWidth: '360px' });

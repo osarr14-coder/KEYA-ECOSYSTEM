@@ -4,9 +4,11 @@ import {
   AlertBanner, BRAND_NAME, BRAND_GRADIENT, Icon, brandColors, logoutToLoginScreen, typography, useOnlineStatus,
 } from '@keya/design-system';
 
+import { OFFLINE_MODE_ENABLED } from './config';
 import { getAllDrafts, saveMissions } from './db/repository';
 import { createDefaultApiClient, startSyncEngine } from './sync/syncEngine';
 import { InspectionFormView } from './views/InspectionFormView';
+import { MissionReviewView } from './views/MissionReviewView';
 import { MissionsListView } from './views/MissionsListView';
 
 /**
@@ -122,7 +124,13 @@ function LogoutButton() {
     </button>
   );
 }
-export function App() {
+export interface AppProps {
+  /** Audit UI R1 (K04) : `false` par défaut (`OFFLINE_MODE_ENABLED`) — avis
+   * en ligne. `true` ne sert qu'à exercer le code hors ligne conservé. */
+  offlineMode?: boolean;
+}
+
+export function App({ offlineMode = OFFLINE_MODE_ENABLED }: AppProps = {}) {
   const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
   const isOnline = useOnlineStatus();
 
@@ -132,7 +140,7 @@ export function App() {
   // ci-dessus (état React, redondant et non nécessaire ici). Démarré/arrêté
   // avec le cycle de vie de `<App />`, pas plus tôt/tard.
   const apiClient = useMemo(() => createDefaultApiClient(), []);
-  useEffect(() => startSyncEngine(apiClient), [apiClient]);
+  useEffect(() => (offlineMode ? startSyncEngine(apiClient) : undefined), [apiClient, offlineMode]);
 
   return (
     <div style={{ maxWidth: '430px', minWidth: '360px', margin: '0 auto', padding: '12px' }}>
@@ -140,16 +148,29 @@ export function App() {
       {!isOnline && (
         <div style={{ marginBottom: '12px' }}>
           <AlertBanner title="Hors ligne">
-            Vos saisies sont enregistrées sur cet appareil et seront synchronisées à la reconnexion.
+            {offlineMode
+              ? 'Vos saisies sont enregistrées sur cet appareil et seront synchronisées à la reconnexion.'
+              : 'La connexion est nécessaire pour consulter les missions et enregistrer un avis (date serveur).'}
           </AlertBanner>
         </div>
       )}
 
-      {selectedMissionId === null ? (
-        <MissionsListView onSelectMission={setSelectedMissionId} />
-      ) : (
+      {selectedMissionId === null && (
+        <MissionsListView
+          onSelectMission={setSelectedMissionId}
+          loadMissions={offlineMode ? undefined : apiClient.listMissions}
+        />
+      )}
+      {selectedMissionId !== null && offlineMode && (
         <InspectionFormView
           missionId={selectedMissionId}
+          onBack={() => setSelectedMissionId(null)}
+        />
+      )}
+      {selectedMissionId !== null && !offlineMode && (
+        <MissionReviewView
+          missionId={selectedMissionId}
+          api={apiClient}
           onBack={() => setSelectedMissionId(null)}
         />
       )}

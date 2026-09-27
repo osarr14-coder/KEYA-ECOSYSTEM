@@ -11,9 +11,7 @@ import { useApiResource } from './api/useApiResource';
 import {
   ADMIN_KEYIMMO_ROLE, FINANCE_ROLE, GESTIONNAIRE_ADV_ROLE, deriveAllRoleCodes, hasBackofficeAccess,
 } from './auth/adminAccess';
-import {
-  isSameOriginRedirect,
-} from './auth/redirectTarget';
+import { onlyFragmentChanges } from './auth/redirectTarget';
 import type { TabRoute } from './navigation/tabRouting';
 import { useUrlSyncedTab } from './navigation/useUrlSyncedTab';
 import { BackofficeView } from './views/BackofficeView';
@@ -164,7 +162,9 @@ export interface AppProps {
  * inoffensif mais inutile, évité par la condition ci-dessous).
  */
 function defaultRedirect(url: string) {
-  const needsExplicitReload = isSameOriginRedirect(url, window.location.href);
+  // Audit UI R1 : jamais de rechargement quand le chemin change (depuis
+  // `/connexion`), sinon il annule la navigation — voir `onlyFragmentChanges`.
+  const needsExplicitReload = onlyFragmentChanges(url, window.location.href);
   window.location.assign(url);
   if (needsExplicitReload) {
     window.location.reload();

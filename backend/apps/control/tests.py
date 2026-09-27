@@ -89,6 +89,7 @@ class TestSyncInspectionApplied:
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
+                'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'note': 'Checklist: Sécurité ✓\nCommentaire: fissure visible',
                 'correlation_id': correlation_id,
                 'known_latest_event_id': None,
@@ -178,6 +179,7 @@ class TestSyncInspectionApplied:
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
+                'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '55555555-5555-5555-5555-555555555551',
                 'known_latest_event_id': None,
             },
@@ -204,6 +206,7 @@ class TestSyncInspectionApplied:
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
                 'reserve': reserve_id,
+                'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
                 'outcome': InspectionOutcome.CONFORME,
                 'note': 'Bornage corrigé, conforme.',
                 'correlation_id': '55555555-5555-5555-5555-555555555552',
@@ -256,6 +259,7 @@ class TestSyncInspectionConflict:
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
+            'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'note': 'Second inspecteur : réserve — ne doit jamais écraser le premier',
             'correlation_id': '22222222-2222-2222-2222-222222222222',
             # Saisi hors ligne AVANT de connaître le résultat du premier —
@@ -304,6 +308,7 @@ class TestSyncInspectionConflict:
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
+                'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '33333333-3333-3333-3333-333333333330',
                 'known_latest_event_id': None,
             },
@@ -324,6 +329,7 @@ class TestSyncInspectionConflict:
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
             'reserve': reserve_id,
+            'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
             'outcome': InspectionOutcome.CONFORME,
             'correlation_id': '33333333-3333-3333-3333-333333333331',
             'known_latest_event_id': known_event_id,
@@ -332,7 +338,9 @@ class TestSyncInspectionConflict:
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
             'reserve': reserve_id,
+            'decisions': [{'reserve_id': str(reserve_id), 'decision': 'maintenue', 'motif': 'Correction insuffisante'}],  # Audit UI R1 (K01) : décision explicite
             'outcome': InspectionOutcome.AVEC_RESERVE,
+            'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'correlation_id': '33333333-3333-3333-3333-333333333332',
             'known_latest_event_id': known_event_id,
         }
@@ -385,6 +393,7 @@ class TestSyncInspectionConflictObservability:
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
+            'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'correlation_id': '77777777-7777-7777-7777-777777777772',
             'known_latest_event_id': None,
         }
@@ -681,6 +690,7 @@ class TestMissionListView:
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
+                'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '99999999-9999-9999-9999-999999999991',
                 'known_latest_event_id': None,
             },
@@ -755,6 +765,7 @@ class TestMissionListView:
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
+                'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '77777777-7777-7777-7777-777777777771',
                 'known_latest_event_id': None,
             },
@@ -813,6 +824,7 @@ class TestMissionListView:
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
+                'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '88888888-8888-8888-8888-888888888881',
                 'known_latest_event_id': None,
             },
@@ -842,6 +854,7 @@ class TestMissionListView:
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
                 'reserve': reserve_id, 'outcome': InspectionOutcome.CONFORME,
+                'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
                 'correlation_id': '88888888-8888-8888-8888-888888888882',
                 'known_latest_event_id': reserve_latest_event_id,
             },
@@ -916,6 +929,7 @@ class TestMissionListView:
                 'organization': str(organization.id),
                 'work_declaration': second_declaration_response.data['id'],
                 'outcome': InspectionOutcome.AVEC_RESERVE,
+                'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             },
             format='json',
         )

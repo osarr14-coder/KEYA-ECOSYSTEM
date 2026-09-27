@@ -45,9 +45,23 @@ class SyncInspectionSerializer(serializers.Serializer):
     outcome = serializers.ChoiceField(choices=InspectionOutcome.choices)
     note = serializers.CharField(required=False, allow_blank=True, default='')
     reserve = serializers.UUIDField(required=False, allow_null=True)
+    # Audit UI R1 (K02/K03) : réserves structurées et décisions explicites.
+    reserves = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    decisions = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     correlation_id = serializers.UUIDField()
     # `None` (absent du payload JSON) est une valeur légitime : "le client
     # n'a jamais observé le moindre événement pour cette cible" — distinct
     # d'un champ manquant par erreur, donc jamais `required=False` seul :
     # `allow_null=True` accepte explicitement `null` en JSON.
     known_latest_event_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+
+
+class MissionOpinionSerializer(serializers.Serializer):
+    """Audit UI R1 (K01–K04) — avis en ligne d'une mission. Les règles
+    métier sont appliquées par `apps.inspections.services.create_inspection`."""
+
+    outcome = serializers.ChoiceField(choices=InspectionOutcome.choices)
+    note = serializers.CharField(required=False, allow_blank=True, default='')
+    reserves = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    decisions = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    examined_evidence_ids = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)

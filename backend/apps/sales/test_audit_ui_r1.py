@@ -275,3 +275,204 @@ class TestR02AdminHasNoBusinessPower:
         client1.post(reverse('reservation-create'), {'lot': str(lot.id), 'organization': str(promoter.id)}, format='json')
         journal = _login(ADMIN).get(reverse('admin-journal')).json()
         assert any(entry['actor'] == 'client1.demo@keya.test' for entry in journal)
+
+
+# ─── K01–K03 : avis en ligne du contrôleur (CDC §7.1, T05/T06) ─────────────
+
+from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
+
+from apps.inspections.models import Inspection, Reserve  # noqa: E402
+from apps.inspections.services import get_reserve_status, is_milestone_technically_accepted  # noqa: E402
+from apps.programs.models import Milestone  # noqa: E402
+
+CONSTRUCTEUR = 'constructeur.demo@keya.test'
+INSPECTEUR = 'inspecteur.demo@keya.test'
+_pdf_counter = 0
+
+
+def _pdf():
+    global _pdf_counter
+    _pdf_counter += 1
+    return SimpleUploadedFile(
+        f'piece-{_pdf_counter}.pdf', f'%PDF-1.4\n% piece {_pdf_counter}\n%%EOF\n'.encode(), content_type='application/pdf',
+    )
+
+
+def _add_evidence(builder, declaration_id):
+    document = builder.post(
+        reverse('document-list'), {'file': _pdf(), 'category': 'rapport_chantier', 'source': 'mobile_app_photo'},
+        format='multipart',
+    )
+    assert document.status_code == 201, document.data
+    evidence = builder.post(
+        reverse('evidence-list'), {'work_declaration': declaration_id, 'documents': [document.data['id']]}, format='json',
+    )
+    assert evidence.status_code == 201, evidence.data
+    return evidence.data['id'], document.data['id']
+
+
+def _assign(adv, promoter, declaration_id):
+    inspector = User.objects.get(email=INSPECTEUR)
+    response = adv.post(reverse('backoffice-mission-create'), {
+        'organization': str(promoter.id), 'work_declaration': declaration_id, 'assigned_inspector': str(inspector.id),
+    }, format='json')
+    assert response.status_code == 201, response.data
+    return response.data['id']
+
+
+def _declared_foundations():
+    """Le constructeur de démo déclare « Fondations » du Lot A1 avec une
+    pièce ; le gestionnaire affecte le contrôleur de démo."""
+    _seed()
+    builder = _login(CONSTRUCTEUR)
+    promoter, lot = _promoter_lot()
+    set_rls_context(organization_id=promoter.id)
+    milestone = Milestone.objects.get(lot=lot, code='fondations')
+    declared = builder.post(reverse('workdeclaration-list'), {'milestone': str(milestone.id)}, format='json')
+    assert declared.status_code == 201, declared.data
+    declaration_id = str(declared.data['id'])
+    evidence_id, document_id = _add_evidence(builder, declaration_id)
+    mission_id = _assign(_login(ADV), promoter, declaration_id)
+    return builder, promoter, milestone, declaration_id, evidence_id, document_id, mission_id
+
+
+def _opinion(inspector, mission_id, **payload):
+    return inspector.post(reverse('control-mission-opinion', args=[mission_id]), payload, format='json')
+
+
+@pytest.mark.django_db
+class TestK01SubmittedPieces:
+    def test_the_assigned_controller_sees_the_declaration_and_each_versioned_piece(self):
+        _b, _p, _m, declaration_id, evidence_id, document_id, mission_id = _declared_foundations()
+        detail = _login(INSPECTEUR).get(reverse('control-mission-detail', args=[mission_id]))
+        assert detail.status_code == 200, detail.data
+        assert detail.data['declaration']['id'] == declaration_id
+        assert detail.data['declaration']['declared_by'] == CONSTRUCTEUR
+        [evidence] = detail.data['evidences']
+        assert (evidence['id'], evidence['version'], evidence['added_by']) == (evidence_id, 1, CONSTRUCTEUR)
+        assert evidence['documents'][0]['id'] == document_id
+        assert len(evidence['documents'][0]['sha256']) == 64
+
+    def test_the_controller_can_read_a_submitted_piece_but_nobody_else(self):
+        _b, _p, _m, _d, _e, document_id, mission_id = _declared_foundations()
+        url = reverse('control-mission-document', args=[mission_id, document_id])
+        response = _login(INSPECTEUR).get(url)
+        assert response.status_code == 200
+        assert b''.join(response.streaming_content).startswith(b'%PDF')
+        for email in (ADV, ADMIN, CONSTRUCTEUR):
+            assert _login(email).get(url).status_code in (403, 404), email
+
+    def test_the_opinion_records_the_examined_versions(self):
+        _b, promoter, _m, _d, evidence_id, _doc, mission_id = _declared_foundations()
+        response = _opinion(_login(INSPECTEUR), mission_id, outcome='conforme', examined_evidence_ids=[evidence_id])
+        assert response.status_code == 201, response.data
+        set_rls_context(organization_id=promoter.id)
+        inspection = Inspection.objects.get(id=response.data['inspection_id'])
+        assert inspection.examined_evidence_ids == [evidence_id]
+        assert response.data['recorded_at']
+
+
+@pytest.mark.django_db
+class TestK02StructuredReserves:
+    def test_a_negative_opinion_opens_several_structured_reserves_dated_by_the_server(self):
+        _b, promoter, _m, _d, _e, _doc, mission_id = _declared_foundations()
+        response = _opinion(_login(INSPECTEUR), mission_id, outcome='avec_reserve', note='Commentaire après décision', reserves=[
+            {'motif': 'Enrobage insuffisant', 'expected_action': 'Reprendre l’enrobage'},
+            {'motif': 'Photo illisible', 'expected_action': 'Fournir une photo nette'},
+        ])
+        assert response.status_code == 201, response.data
+        set_rls_context(organization_id=promoter.id)
+        reserves = Reserve.objects.filter(opened_by_inspection_id=response.data['inspection_id']).order_by('motif')
+        assert [(r.motif, r.expected_action) for r in reserves] == [
+            ('Enrobage insuffisant', 'Reprendre l’enrobage'), ('Photo illisible', 'Fournir une photo nette'),
+        ]
+        assert all(r.created_at is not None for r in reserves)
+
+    def test_a_reserve_without_motif_or_expected_action_is_refused_and_nothing_is_written(self):
+        _b, promoter, _m, _d, _e, _doc, mission_id = _declared_foundations()
+        inspector = _login(INSPECTEUR)
+        assert _opinion(inspector, mission_id, outcome='avec_reserve', reserves=[{'motif': 'Fissure'}]).status_code == 400
+        assert _opinion(inspector, mission_id, outcome='avec_reserve').status_code == 400
+        set_rls_context(organization_id=promoter.id)
+        assert not Inspection.objects.exists()
+
+
+@pytest.mark.django_db
+class TestK03ExplicitDecisionPerReserveT06:
+    def _with_reserve(self):
+        builder, promoter, milestone, declaration_id, _e, _doc, mission_id = _declared_foundations()
+        inspector = _login(INSPECTEUR)
+        opened = _opinion(inspector, mission_id, outcome='avec_reserve', reserves=[
+            {'motif': 'Enrobage insuffisant', 'expected_action': 'Reprendre l’enrobage'},
+        ])
+        assert opened.status_code == 201, opened.data
+        set_rls_context(organization_id=promoter.id)
+        reserve = Reserve.objects.get(opened_by_inspection_id=opened.data['inspection_id'])
+        correction_evidence, _doc2 = _add_evidence(builder, declaration_id)
+        correction = builder.post(
+            reverse('reservecorrection-list'), {'reserve': str(reserve.id), 'evidence': correction_evidence}, format='json',
+        )
+        assert correction.status_code == 201, correction.data
+        follow_up = _assign(_login(ADV), promoter, declaration_id)
+        return promoter, milestone, reserve, inspector, follow_up
+
+    def test_a_conforming_recontrol_without_an_explicit_decision_is_refused(self):
+        promoter, milestone, reserve, inspector, follow_up = self._with_reserve()
+        response = _opinion(inspector, follow_up, outcome='conforme')
+        assert response.status_code == 400
+        assert 'levée ou maintenue explicitement' in response.data['detail']
+        set_rls_context(organization_id=promoter.id)
+        assert get_reserve_status(reserve) == 'correction_proposee'
+        assert not is_milestone_technically_accepted(milestone)
+
+    def test_the_old_follow_up_route_no_longer_lifts_implicitly(self):
+        promoter, _milestone, reserve, inspector, _follow_up = self._with_reserve()
+        declaration_id = str(reserve.opened_by_inspection.work_declaration_id)
+        response = inspector.post(reverse('inspection-list'), {
+            'organization': str(promoter.id), 'work_declaration': declaration_id, 'outcome': 'conforme',
+            'reserve': str(reserve.id),
+        }, format='json')
+        assert response.status_code == 400
+        set_rls_context(organization_id=promoter.id)
+        assert get_reserve_status(reserve) == 'correction_proposee'
+
+    def test_maintained_reserve_stays_open_then_an_explicit_lift_accepts_the_milestone(self):
+        promoter, milestone, reserve, inspector, follow_up = self._with_reserve()
+        refused = _opinion(inspector, follow_up, outcome='conforme', decisions=[
+            {'reserve_id': str(reserve.id), 'decision': 'maintenue', 'motif': 'Toujours insuffisant'},
+        ])
+        assert refused.status_code == 400
+        maintained = _opinion(inspector, follow_up, outcome='avec_reserve', decisions=[
+            {'reserve_id': str(reserve.id), 'decision': 'maintenue', 'motif': 'Toujours insuffisant'},
+        ])
+        assert maintained.status_code == 201, maintained.data
+        set_rls_context(organization_id=promoter.id)
+        assert get_reserve_status(reserve) == 'maintenue'
+        assert not is_milestone_technically_accepted(milestone)
+
+        second = _assign(_login(ADV), promoter, str(reserve.opened_by_inspection.work_declaration_id))
+        lifted = _opinion(inspector, second, outcome='conforme', decisions=[
+            {'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Enrobage conforme sur la pièce v2'},
+        ])
+        assert lifted.status_code == 201, lifted.data
+        set_rls_context(organization_id=promoter.id)
+        assert get_reserve_status(reserve) == 'levee'
+        assert Inspection.objects.get(id=lifted.data['inspection_id']).reserve_decisions == [
+            {'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Enrobage conforme sur la pièce v2'},
+        ]
+        assert is_milestone_technically_accepted(milestone)
+
+    def test_t05_the_builder_cannot_decide_a_reserve(self):
+        promoter, _milestone, reserve, _inspector, follow_up = self._with_reserve()
+        builder = _login(CONSTRUCTEUR)
+        assert _opinion(builder, follow_up, outcome='conforme', decisions=[
+            {'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Je lève moi-même'},
+        ]).status_code == 403
+        set_rls_context(organization_id=promoter.id)
+        assert get_reserve_status(reserve) == 'correction_proposee'
+
+    def test_a_completed_mission_cannot_receive_a_second_opinion(self):
+        _b, _p, _m, _d, _e, _doc, mission_id = _declared_foundations()
+        inspector = _login(INSPECTEUR)
+        assert _opinion(inspector, mission_id, outcome='conforme').status_code == 201
+        assert _opinion(inspector, mission_id, outcome='conforme').status_code == 409

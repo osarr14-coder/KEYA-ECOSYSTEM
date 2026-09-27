@@ -107,6 +107,7 @@ class SyncOutcome:
 def sync_inspection(
     *, inspector, inspector_organization, target_organization_id,
     work_declaration_id, outcome, note, correlation_id, known_latest_event_id=None, reserve_id=None,
+    reserves=None, decisions=None,
 ):
     """Point d'entrée CONTROL pour synchroniser une inspection saisie hors
     ligne. Délègue entièrement à `apps.inspections.services.create_inspection`
@@ -138,6 +139,8 @@ def sync_inspection(
             reserve_id=reserve_id,
             expected_latest_event_id=known_latest_event_id,
             client_correlation_id=correlation_id,
+            reserves=reserves,
+            decisions=decisions,
         )
     except inspections_services.SyncConflict as exc:
         logger.warning('control_sync_inspection_conflict correlation_id=%s', correlation_id)
@@ -148,3 +151,158 @@ def sync_inspection(
         correlation_id, inspection.id,
     )
     return SyncOutcome(status='applied', inspection=inspection, latest_event_id=str(inspection.latest_event_id))
+
+
+# ─── Audit UI R1 (K01–K04) : avis EN LIGNE sur une mission ────────────────
+
+class MissionNotFound(Exception):
+    """Mission inexistante, d'une autre instance ou affectée à un autre
+    contrôleur — toujours 404, jamais une indication d'existence."""
+
+
+class MissionAlreadyCompleted(Exception):
+    """L'avis de cette mission est déjà enregistré (409)."""
+
+
+def _mission_for(inspector, mission_id):
+    from apps.inspections.models import InspectionMission
+
+    # Lisible sous le contexte du contrôleur grâce à la branche
+    # `assigned_inspector_id = current_user` de la policy RLS (inspections
+    # 0006). JAMAIS de jointure vers lot/programme ici : sous ce contexte,
+    # RLS éliminerait la ligne (voir `list_missions_for_inspector`).
+    mission = InspectionMission.objects.filter(id=mission_id, assigned_inspector=inspector).first()
+    if mission is None:
+        raise MissionNotFound()
+    return mission
+
+
+def _check_active_instance(mission):
+    """Audit UI R1 (D01), sous le contexte RLS de l'organisation de la
+    mission : une mission hors de l'instance active n'existe pas (404)."""
+    if not inspections_services.mission_in_active_instance(mission):
+        raise MissionNotFound()
+
+
+def _mission_flags(mission, inspector):
+    from apps.inspections.models import Inspection
+
+    inspections = Inspection.objects.filter(work_declaration_id=mission.work_declaration_id)
+    completed = inspections.filter(inspector=inspector, created_at__gt=mission.created_at).exists()
+    follow_up = inspections.filter(created_at__lte=mission.created_at).exists()
+    return completed, follow_up
+
+
+def mission_detail(*, inspector, caller_organization_id, mission_id):
+    """K01 : déclaration du constructeur, pièces soumises par version
+    (fichier, déposant, date) et réserves ouvertes à trancher (K03)."""
+    from apps.evidence.models import Evidence
+    from apps.inspections.models import ReserveCorrection
+
+    mission = _mission_for(inspector, mission_id)
+    set_rls_context(organization_id=mission.organization_id)
+    try:
+        _check_active_instance(mission)
+        declaration = mission.work_declaration
+        lot = declaration.milestone.lot
+        completed, follow_up = _mission_flags(mission, inspector)
+        evidences = []
+        for version, evidence in enumerate(
+            Evidence.objects.filter(work_declaration=declaration).select_related('added_by').order_by('created_at'),
+            start=1,
+        ):
+            evidences.append({
+                'id': str(evidence.id),
+                'version': version,
+                'added_by': evidence.added_by.email,
+                'added_at': evidence.created_at.isoformat(),
+                'documents': [
+                    {
+                        'id': str(document.id), 'file_name': document.file.name.rsplit('/', 1)[-1],
+                        'sha256': document.hash,
+                    }
+                    for document in evidence.documents.order_by('created_at')
+                ],
+            })
+        open_reserves = []
+        for reserve in inspections_services._open_reserves_of(declaration).values():
+            status = inspections_services.get_reserve_status(reserve)
+            open_reserves.append({
+                'id': str(reserve.id),
+                'motif': reserve.motif or reserve.description or 'Réserve',
+                'expected_action': reserve.expected_action,
+                'opened_at': reserve.created_at.isoformat(),
+                'status': status,
+                'status_label': inspections_services.RESERVE_STATUS_LABELS.get(status, status or ''),
+                'corrections': [
+                    {'submitted_at': correction.created_at.isoformat(), 'submitted_by': correction.submitted_by.email}
+                    for correction in ReserveCorrection.objects.filter(reserve=reserve).select_related(
+                        'submitted_by',
+                    ).order_by('created_at')
+                ],
+            })
+        return {
+            'id': str(mission.id),
+            'lot_name': lot.name,
+            'asset_name': lot.asset.name,
+            'program_name': lot.asset.program.name,
+            'milestone_label': declaration.milestone.label,
+            'completed': completed,
+            'follow_up': follow_up,
+            'declaration': {
+                'id': str(declaration.id),
+                'declared_by': declaration.declared_by.email,
+                'declared_at': declaration.created_at.isoformat(),
+                'note': declaration.note,
+            },
+            'evidences': evidences,
+            'open_reserves': open_reserves,
+        }
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def submit_opinion(*, inspector, inspector_organization, mission_id, outcome, note, reserves, decisions,
+                   examined_evidence_ids):
+    """K01–K04 : avis EN LIGNE, horodaté par le serveur. Toutes les règles
+    (réserves structurées, décision explicite par réserve, versions
+    examinées) sont celles de `inspections_services.create_inspection`."""
+    mission = _mission_for(inspector, mission_id)
+    set_rls_context(organization_id=mission.organization_id)
+    try:
+        _check_active_instance(mission)
+        completed, _follow_up = _mission_flags(mission, inspector)
+    finally:
+        set_rls_context(organization_id=inspector_organization.id)
+    if completed:
+        raise MissionAlreadyCompleted()
+    return inspections_services.create_inspection(
+        inspector=inspector,
+        inspector_organization=inspector_organization,
+        target_organization_id=mission.organization_id,
+        work_declaration_id=mission.work_declaration_id,
+        outcome=outcome,
+        note=note,
+        reserves=reserves,
+        decisions=decisions,
+        examined_evidence_ids=examined_evidence_ids,
+    )
+
+
+def mission_document(*, inspector, caller_organization_id, mission_id, document_id):
+    """K01 : une pièce soumise, lisible par le SEUL contrôleur affecté à la
+    mission, et seulement si elle appartient à la déclaration contrôlée.
+    Retourne `(nom de fichier, fichier ouvert)`."""
+    mission = _mission_for(inspector, mission_id)
+    set_rls_context(organization_id=mission.organization_id)
+    try:
+        _check_active_instance(mission)
+        document = Document.objects.filter(
+            id=document_id, organization_id=mission.organization_id,
+            evidences__work_declaration_id=mission.work_declaration_id,
+        ).first()
+        if document is None:
+            raise MissionNotFound()
+        return document.file.name.rsplit('/', 1)[-1], document.file.open('rb')
+    finally:
+        set_rls_context(organization_id=caller_organization_id)

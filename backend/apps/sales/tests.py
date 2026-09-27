@@ -643,6 +643,9 @@ def _accept_milestone(promoter, lot_id, code, outcome='conforme'):
     create_inspection(
         inspector=inspector, inspector_organization=inspector_org, target_organization_id=promoter.id,
         work_declaration_id=declaration.id, outcome=outcome,
+        # Audit UI R1 (K02) : un avis non conforme ouvre une réserve structurée.
+        reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}]
+        if outcome == 'avec_reserve' else None,
     )
     set_rls_context(organization_id=promoter.id)
     return milestone, declaration, inspector
@@ -1047,6 +1050,9 @@ def _accept_with_evidence(promoter, lot_id, code, author, outcome='conforme'):
     create_inspection(
         inspector=inspector, inspector_organization=inspector_org, target_organization_id=promoter.id,
         work_declaration_id=declaration.id, outcome=outcome,
+        # Audit UI R1 (K02) : un avis non conforme ouvre une réserve structurée.
+        reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}]
+        if outcome == 'avec_reserve' else None,
     )
     set_rls_context(organization_id=promoter.id)
     return milestone, declaration

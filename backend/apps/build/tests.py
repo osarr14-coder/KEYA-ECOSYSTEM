@@ -270,7 +270,7 @@ class TestReservesOuvertes:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
-            outcome=InspectionOutcome.AVEC_RESERVE, note='Fissure',
+            outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
 
         response = client.get(reverse('build-exceptions'))
@@ -296,7 +296,7 @@ class TestReservesOuvertes:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, evidence_id=evidence.id,
-            outcome=InspectionOutcome.AVEC_RESERVE, note='Fissure',
+            outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
 
         response = client.get(reverse('build-exceptions'))
@@ -322,7 +322,7 @@ class TestReservesOuvertes:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, evidence_id=evidence.id,
-            outcome=InspectionOutcome.AVEC_RESERVE, note='Fissure',
+            outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
 
         response = client.get(reverse('build-exceptions'))
@@ -342,13 +342,14 @@ class TestReservesOuvertes:
         inspection = create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
-            outcome=InspectionOutcome.AVEC_RESERVE, note='Fissure',
+            outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
         reserve = inspection.opened_reserve
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
             outcome=InspectionOutcome.CONFORME, reserve_id=reserve.id,
+            decisions=[{'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
         )
 
         response = client.get(reverse('build-exceptions'))
@@ -375,7 +376,7 @@ class TestReservesOuvertes:
         inspection = create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
-            outcome=InspectionOutcome.AVEC_RESERVE, note='Fissure',
+            outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
         reserve = inspection.opened_reserve
 
@@ -385,6 +386,7 @@ class TestReservesOuvertes:
                 inspector=inspecteur, inspector_organization=inspecteur_organization,
                 target_organization_id=organization.id, work_declaration_id=declaration.id,
                 outcome=InspectionOutcome.CONFORME, reserve_id=reserve.id,
+                decisions=[{'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
             )
 
         response = client.get(reverse('build-exceptions'))
@@ -456,7 +458,7 @@ class TestConstructeurCannotChangeReserveStatusFromBuild:
         inspection = create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
-            outcome=InspectionOutcome.AVEC_RESERVE,
+            outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],
         )
         reserve = inspection.opened_reserve
 

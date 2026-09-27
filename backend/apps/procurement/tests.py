@@ -893,6 +893,11 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             'my-lot-litiges',
             'build-lots', 'build-exceptions',
             'control-mission-list', 'control-sync-document', 'control-sync-evidence', 'control-sync-inspection',
+            # Audit UI R1 (K01–K03) — ajout conscient : détail de mission,
+            # avis et consultation des pièces soumises, réservés à
+            # l'inspecteur affecté (`IsInspecteur` + mission le concernant),
+            # aucun montant de devis exposé.
+            'control-mission-detail', 'control-mission-opinion', 'control-mission-document',
             'backoffice-user-search', 'backoffice-user-detail', 'backoffice-user-deactivate',
             'backoffice-mission-create',
             # Ticket B-041 — ajout conscient : liste transverse (toutes

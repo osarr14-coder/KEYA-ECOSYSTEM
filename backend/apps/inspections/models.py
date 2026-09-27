@@ -67,6 +67,16 @@ class Inspection(models.Model):
     # a pas besoin — champ propre à la voie de synchronisation CONTROL.
     client_correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
 
+    # Audit UI R1 (K01) : versions examinées — identifiants des `Evidence` de
+    # la déclaration que le contrôleur avait sous les yeux au moment de son
+    # avis (CDC R1 §7.2 : un avis reste lié à la version examinée).
+    examined_evidence_ids = models.JSONField(default=list, blank=True)
+    # Audit UI R1 (K03) : décision EXPLICITE sur chaque réserve ouverte de la
+    # déclaration — `[{reserve_id, decision: 'levee'|'maintenue', motif}]`.
+    # Jamais de levée implicite : chaque décision produit aussi un
+    # `TrustEvent` sur la réserve (voir `services._decide_reserve`).
+    reserve_decisions = models.JSONField(default=list, blank=True)
+
     class Meta:
         db_table = 'inspections_inspection'
         constraints = [
@@ -82,6 +92,18 @@ class Inspection(models.Model):
     def __str__(self):
         return f'Inspection {self.outcome} — {self.lot} ({self.created_at:%Y-%m-%d})'
 
+    @property
+    def opened_reserve(self):
+        """Première réserve ouverte par cette inspection (`None` sinon).
+        Compatibilité : une inspection peut désormais en ouvrir plusieurs
+        (audit UI R1, K02) — voir `opened_reserves`."""
+        # Juste après la création, les réserves sont gardées sur l'objet :
+        # relues sous le contexte RLS du contrôleur, elles seraient invisibles.
+        created = getattr(self, 'created_reserves', None)
+        if created is not None:
+            return created[0] if created else None
+        return self.opened_reserves.order_by('created_at', 'id').first()
+
 
 class Reserve(models.Model):
     """Machine à état explicite — le statut courant n'est PAS un champ sur
@@ -96,14 +118,19 @@ class Reserve(models.Model):
         Organization, on_delete=models.CASCADE, related_name='reserves',
     )
     lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name='reserves')
-    # OneToOne : une inspection ouvre au plus une réserve. Permet
-    # `inspection.opened_reserve` en accès direct (objet, pas manager) —
-    # exposé par InspectionSerializer pour que le client sache quelle
-    # réserve vient d'être créée par sa requête.
-    opened_by_inspection = models.OneToOneField(
-        Inspection, on_delete=models.PROTECT, related_name='opened_reserve',
+    # Audit UI R1 (K02) : une inspection non conforme peut ouvrir PLUSIEURS
+    # réserves (auparavant OneToOne, une seule). `inspection.opened_reserve`
+    # reste disponible (propriété, première réserve) pour compatibilité.
+    opened_by_inspection = models.ForeignKey(
+        Inspection, on_delete=models.PROTECT, related_name='opened_reserves',
     )
     description = models.TextField(blank=True)
+    # Audit UI R1 (K02) : réserve STRUCTURÉE — motif et action attendue du
+    # constructeur, tous deux obligatoires à l'ouverture (contrôle dans
+    # `services.create_inspection`). Date : `created_at`, posée par le
+    # serveur. Vides pour les réserves antérieures à cette évolution.
+    motif = models.CharField(max_length=255, blank=True, default='')
+    expected_action = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

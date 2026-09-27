@@ -243,6 +243,7 @@ class TestVerticalSliceMVP1:
                 'organization': str(organization.id),
                 'work_declaration': declaration_id,
                 'outcome': 'avec_reserve',
+                'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'note': 'Limite de propriété à clarifier avec le voisin.',
                 'correlation_id': inspection1_correlation_id,
                 'known_latest_event_id': None,
@@ -357,6 +358,7 @@ class TestVerticalSliceMVP1:
                 'work_declaration': declaration_id,
                 'outcome': 'conforme',
                 'reserve': reserve_id,
+                'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
                 'note': 'Bornage corrigé, conforme.',
                 'correlation_id': followup_correlation_id,
                 'known_latest_event_id': known_latest_event_id,

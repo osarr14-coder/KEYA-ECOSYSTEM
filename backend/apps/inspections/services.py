@@ -6,6 +6,7 @@ from apps.core.demo import demo_scope
 from apps.core.rls import set_rls_context
 from apps.evidence.models import Evidence, WorkDeclaration
 from apps.organizations.models import Membership, Organization
+from apps.programs.models import Program
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
 
@@ -54,6 +55,7 @@ def create_inspection(
     *, inspector, inspector_organization, target_organization_id,
     work_declaration_id=None, evidence_id=None, outcome, note='', reserve_id=None,
     expected_latest_event_id=_NOT_CHECKING_CONFLICT, client_correlation_id=None,
+    reserves=None, decisions=None, examined_evidence_ids=None,
 ):
     """Point d'entrée unique pour créer une `Inspection` — et donc la SEULE
     façon de faire progresser le cycle de vie d'une `Reserve`
@@ -90,6 +92,9 @@ def create_inspection(
                 reserve_id=reserve_id,
                 expected_latest_event_id=expected_latest_event_id,
                 client_correlation_id=client_correlation_id,
+                reserves=reserves,
+                decisions=decisions,
+                examined_evidence_ids=examined_evidence_ids,
             )
         finally:
             # Toujours restaurer le contexte de l'inspecteur avant de rendre
@@ -102,7 +107,8 @@ def create_inspection(
 
 def _create_inspection_row(*, inspector, target_organization_id, work_declaration_id,
                             evidence_id, outcome, note, reserve_id,
-                            expected_latest_event_id=_NOT_CHECKING_CONFLICT, client_correlation_id=None):
+                            expected_latest_event_id=_NOT_CHECKING_CONFLICT, client_correlation_id=None,
+                            reserves=None, decisions=None, examined_evidence_ids=None):
     target_organization = Organization.objects.filter(id=target_organization_id).first()
     if target_organization is None:
         raise ValidationError("organization cible introuvable.")
@@ -150,6 +156,12 @@ def _create_inspection_row(*, inspector, target_organization_id, work_declaratio
         if current_event_id != expected_latest_event_id:
             raise SyncConflict(current_event)
 
+    declaration = work_declaration or evidence.work_declaration
+    new_reserves, reserve_decisions, open_reserves = _validate_opinion(
+        declaration=declaration, outcome=outcome, reserves=reserves, decisions=decisions,
+    )
+    examined = _examined_evidence_ids(declaration, examined_evidence_ids)
+
     inspection = Inspection.objects.create(
         organization=target_organization,
         lot=lot,
@@ -160,6 +172,8 @@ def _create_inspection_row(*, inspector, target_organization_id, work_declaratio
         reserve=reserve,
         note=note,
         client_correlation_id=client_correlation_id,
+        examined_evidence_ids=examined,
+        reserve_decisions=reserve_decisions,
     )
 
     inspection_level = TrustLevel.VERIFIE if outcome == InspectionOutcome.CONFORME else TrustLevel.CONTROLE
@@ -168,23 +182,37 @@ def _create_inspection_row(*, inspector, target_organization_id, work_declaratio
         actor=inspector, source=f'inspection_{outcome}',
     )
 
-    if reserve is not None:
+    # Audit UI R1 (K03) : décision EXPLICITE sur chaque réserve ouverte —
+    # jamais une levée implicite déduite de l'avis global.
+    decision_events = {}
+    for item in reserve_decisions:
+        decided = open_reserves[item['reserve_id']]
+        decision_events[item['reserve_id']] = _decide_reserve(
+            reserve=decided, decision=item['decision'], inspector=inspector, organization=target_organization,
+        )
+    # Audit UI R1 (K02) : réserves structurées, plusieurs possibles. Leurs
+    # identifiants sont gardés sur l'objet (attribut transitoire, comme
+    # `latest_event_id`) : relues sous le contexte RLS du contrôleur, elles
+    # seraient invisibles (elles vivent dans l'organisation du lot).
+    inspection.created_reserves = [
+        _open_new_reserve(
+            inspection=inspection, inspector=inspector, organization=target_organization, lot=lot,
+            motif=item['motif'], expected_action=item['expected_action'],
+        )
+        for item in new_reserves
+    ]
+    inspection.opened_reserve_ids = [str(reserve.id) for reserve in inspection.created_reserves]
+
+    if reserve is not None and str(reserve.id) in decision_events:
         # La cible d'un futur conflit sur CETTE réserve est la réserve
         # elle-même (voir la comparaison `expected_latest_event_id`
-        # ci-dessus) — c'est donc SON dernier événement (`levee`/`rejetee`),
+        # ci-dessus) — c'est donc SON dernier événement (`levee`/`maintenue`),
         # jamais celui de l'inspection de suivi, qu'il faut rendre au client.
-        latest_event = _advance_existing_reserve(
-            reserve=reserve, outcome=outcome, inspector=inspector, organization=target_organization,
-        )
+        latest_event = decision_events[str(reserve.id)]
     else:
-        if outcome == InspectionOutcome.AVEC_RESERVE:
-            _open_new_reserve(inspection=inspection, inspector=inspector, organization=target_organization, lot=lot)
-        # Sans réserve (ouverture ou simple « conforme »), la cible d'un
-        # futur conflit reste le work_declaration/evidence lui-même — dérivé
-        # comme « sa dernière Inspection », qui EST celle-ci (voir
-        # `_NOT_CHECKING_CONFLICT` ci-dessus, même logique dupliquée ici
-        # plutôt que requêtée à nouveau : l'événement vient d'être créé,
-        # dans la même transaction).
+        # Sans réserve suivie, la cible d'un futur conflit reste le
+        # work_declaration/evidence lui-même — dérivé comme « sa dernière
+        # Inspection », qui EST celle-ci (voir `_NOT_CHECKING_CONFLICT`).
         latest_event = inspection_event
 
     # Ticket 013 (bug 2 du rapport bout-en-bout) : sans cette valeur, un
@@ -201,8 +229,91 @@ def _create_inspection_row(*, inspector, target_organization_id, work_declaratio
     return inspection
 
 
-def _open_new_reserve(*, inspection, inspector, organization, lot):
-    reserve = Reserve.objects.create(organization=organization, lot=lot, opened_by_inspection=inspection)
+def _open_reserves_of(declaration):
+    """Réserves encore ouvertes, ouvertes par une inspection de cette
+    déclaration (sur elle ou l'une de ses pièces), par id (str)."""
+    reserves = Reserve.objects.filter(
+        opened_by_inspection__in=_declaration_inspections(declaration),
+    ).order_by('created_at')
+    return {str(reserve.id): reserve for reserve in reserves if is_reserve_open(reserve)}
+
+
+def _validate_opinion(*, declaration, outcome, reserves, decisions):
+    """Audit UI R1 (K02/K03, CDC R1 §7.1) — règles d'un avis, appliquées par
+    le serveur quelle que soit la voie d'entrée (API, CONTROL) :
+
+    - chaque réserve ouverte de la déclaration reçoit une décision
+      explicite, « levee » ou « maintenue », avec motif ;
+    - un avis conforme lève toutes les réserves et n'en ouvre aucune ;
+    - un avis non conforme ouvre au moins une réserve structurée (motif et
+      action attendue) ou en maintient une.
+
+    Retourne (nouvelles réserves, décisions normalisées, réserves ouvertes).
+    """
+    open_reserves = _open_reserves_of(declaration)
+    normalized_decisions = []
+    for item in decisions or []:
+        reserve_id = str(item.get('reserve_id') or '')
+        decision = item.get('decision')
+        motif = (item.get('motif') or '').strip()
+        if reserve_id not in open_reserves:
+            raise ValidationError('Réserve inconnue ou déjà close pour cette déclaration.')
+        if any(existing['reserve_id'] == reserve_id for existing in normalized_decisions):
+            raise ValidationError('Une réserve ne peut recevoir qu’une seule décision par avis.')
+        if decision not in RESERVE_DECISIONS:
+            raise ValidationError('Décision de réserve invalide : « levee » ou « maintenue ».')
+        if not motif:
+            raise ValidationError('Le motif de chaque décision de réserve est obligatoire.')
+        normalized_decisions.append({'reserve_id': reserve_id, 'decision': decision, 'motif': motif})
+    undecided = [reserve for reserve_id, reserve in open_reserves.items()
+                 if reserve_id not in {item['reserve_id'] for item in normalized_decisions}]
+    if undecided:
+        raise ValidationError(
+            'Chaque réserve ouverte doit être levée ou maintenue explicitement, avec motif '
+            f'({len(undecided)} réserve(s) sans décision).',
+        )
+
+    new_reserves = []
+    for item in reserves or []:
+        motif = (item.get('motif') or '').strip()
+        expected_action = (item.get('expected_action') or '').strip()
+        if not motif or not expected_action:
+            raise ValidationError('Chaque réserve exige un motif et une action attendue du constructeur.')
+        new_reserves.append({'motif': motif[:255], 'expected_action': expected_action})
+
+    maintained = any(item['decision'] == RESERVE_MAINTAINED for item in normalized_decisions)
+    if outcome == InspectionOutcome.CONFORME:
+        if maintained:
+            raise ValidationError('Un avis conforme exige la levée de chaque réserve ouverte.')
+        if new_reserves:
+            raise ValidationError('Un avis conforme n’ouvre aucune réserve.')
+    elif not new_reserves and not maintained:
+        raise ValidationError(
+            'Un avis non conforme ouvre au moins une réserve (motif et action attendue) ou en maintient une.',
+        )
+    return new_reserves, normalized_decisions, open_reserves
+
+
+def _examined_evidence_ids(declaration, examined_evidence_ids):
+    """Audit UI R1 (K01) : versions examinées. Absent : toutes les pièces
+    de la déclaration au moment de l'avis. Fourni : uniquement des pièces de
+    cette déclaration."""
+    current = [str(evidence_id) for evidence_id in Evidence.objects.filter(
+        work_declaration=declaration,
+    ).order_by('created_at').values_list('id', flat=True)]
+    if examined_evidence_ids is None:
+        return current
+    examined = [str(evidence_id) for evidence_id in examined_evidence_ids]
+    if any(evidence_id not in current for evidence_id in examined):
+        raise ValidationError('Une pièce examinée n’appartient pas à cette déclaration.')
+    return examined
+
+
+def _open_new_reserve(*, inspection, inspector, organization, lot, motif='', expected_action=''):
+    reserve = Reserve.objects.create(
+        organization=organization, lot=lot, opened_by_inspection=inspection,
+        motif=motif, expected_action=expected_action,
+    )
     trust_repository.create(
         subject=reserve, organization=organization, level=TrustLevel.CONTROLE,
         actor=inspector, source='ouverte',
@@ -225,22 +336,31 @@ def _open_new_reserve(*, inspection, inspector, organization, lot):
     return reserve
 
 
-def _advance_existing_reserve(*, reserve, outcome, inspector, organization):
-    """Retourne le DERNIER `TrustEvent` créé (`levee`/`rejetee`) — c'est lui
+RESERVE_LIFTED = 'levee'
+RESERVE_MAINTAINED = 'maintenue'
+RESERVE_DECISIONS = {RESERVE_LIFTED, RESERVE_MAINTAINED}
+
+
+def _decide_reserve(*, reserve, decision, inspector, organization):
+    """Audit UI R1 (K03) — décision explicite du contrôleur sur UNE réserve.
+    Retourne le DERNIER `TrustEvent` créé (`levee`/`maintenue`) — c'est lui
     qui devient le nouveau `expected_latest_event_id` de cette réserve pour
-    tout appelant suivant, jamais l'intermédiaire `nouvelle_inspection`."""
+    tout appelant suivant, jamais l'intermédiaire `nouvelle_inspection`.
+    Une réserve maintenue reste OUVERTE (le constructeur peut proposer une
+    nouvelle correction) ; auparavant, un recontrôle défavorable la fermait
+    (`rejetee`, source conservée pour l'historique)."""
     trust_repository.create(
         subject=reserve, organization=organization, level=TrustLevel.CONTROLE,
         actor=inspector, source='nouvelle_inspection',
     )
-    if outcome == InspectionOutcome.CONFORME:
+    if decision == RESERVE_LIFTED:
         return trust_repository.create(
             subject=reserve, organization=organization, level=TrustLevel.VALIDE,
             actor=inspector, source='levee',
         )
     return trust_repository.create(
         subject=reserve, organization=organization, level=TrustLevel.CONTROLE,
-        actor=inspector, source='rejetee',
+        actor=inspector, source='maintenue',
     )
 
 
@@ -282,7 +402,17 @@ def get_reserve_status(reserve):
 # partagent exactement la même définition, jamais deux copies qui pourraient
 # diverger. Déplacé depuis apps/home/services.py au ticket 009, quand un
 # second consommateur (apps/build) en a eu besoin.
-OPEN_RESERVE_STATUSES = {'ouverte', 'correction_proposee', 'nouvelle_inspection'}
+OPEN_RESERVE_STATUSES = {'ouverte', 'correction_proposee', 'nouvelle_inspection', 'maintenue'}
+
+# Audit UI R1 (K03) — libellés affichés au contrôleur et au constructeur.
+RESERVE_STATUS_LABELS = {
+    'ouverte': 'Ouverte',
+    'correction_proposee': 'Correction proposée',
+    'nouvelle_inspection': 'En recontrôle',
+    'maintenue': 'Maintenue',
+    'levee': 'Levée',
+    'rejetee': 'Close sans levée (historique)',
+}
 
 
 def is_reserve_open(reserve):
@@ -460,6 +590,15 @@ def lot_has_open_reserve(lot):
     return _find_open_reserve_for_lot(lot) is not None
 
 
+def mission_in_active_instance(mission):
+    """Audit UI R1 (D01) — la mission relève-t-elle de l'instance de
+    démonstration active ? À appeler sous le contexte RLS de l'organisation
+    de la mission (lot, bien et programme y sont lisibles)."""
+    return Program.objects.filter(
+        demo_scope(), assets__lots__milestones__work_declarations__id=mission.work_declaration_id,
+    ).exists()
+
+
 def list_missions_for_inspector(*, inspector, caller_organization_id):
     """Les missions affectées à `inspector`, avec un statut « faite / à
     faire » dérivé — jamais stocké (voir `InspectionMission`, doctrine
@@ -487,15 +626,18 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
     jamais dans la requête initiale.
     """
     missions = list(
-        InspectionMission.objects.filter(
-            demo_scope('work_declaration__milestone__lot__asset__program__'), assigned_inspector=inspector,
-        ).order_by('-created_at')
+        InspectionMission.objects.filter(assigned_inspector=inspector).order_by('-created_at')
     )
 
     rows = []
     for mission in missions:
         set_rls_context(organization_id=mission.organization_id)
         try:
+            # Audit UI R1 (D01) : filtre d'instance appliqué APRÈS la bascule
+            # vers l'organisation cible — une jointure vers le programme dans
+            # la requête initiale serait éliminée par RLS (voir ci-dessus).
+            if not mission_in_active_instance(mission):
+                continue
             # Ticket 014 (friction du rapport bout-en-bout) : filtrer
             # seulement par work_declaration+inspecteur trouvait n'IMPORTE
             # QUELLE Inspection déjà soumise sur ce work_declaration — y

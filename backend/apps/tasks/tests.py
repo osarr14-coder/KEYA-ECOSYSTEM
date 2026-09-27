@@ -84,6 +84,7 @@ def _open_reserve_via_inspection(inspecteur_client, constructeur_organization, d
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
+            'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'note': 'Fissure visible en façade',
         },
         format='json',
@@ -142,6 +143,7 @@ class TestReserveOpenedCreatesTaskForConstructeur:
                     'organization': str(constructeur_organization.id),
                     'work_declaration': str(declaration.id),
                     'outcome': InspectionOutcome.AVEC_RESERVE,
+                    'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 },
                 format='json',
             )

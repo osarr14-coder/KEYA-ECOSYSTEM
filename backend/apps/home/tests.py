@@ -348,7 +348,7 @@ class TestOpenReserveSurfacesAsMainProblem:
         inspection = create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
-            outcome=InspectionOutcome.AVEC_RESERVE, note='Fissure visible',
+            outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure visible',
         )
         reserve = inspection.opened_reserve
         return client, organization, lot, inspecteur, inspecteur_organization, reserve
@@ -380,6 +380,7 @@ class TestOpenReserveSurfacesAsMainProblem:
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
             outcome=InspectionOutcome.CONFORME, reserve_id=reserve.id,
+            decisions=[{'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
         )
 
         response = client.get(reverse('my-lot-overview', args=[lot.id]))

@@ -66,6 +66,7 @@ def _open_reserve(inspecteur_client, constructeur_organization, declaration):
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
+            'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
         },
         format='json',
     )

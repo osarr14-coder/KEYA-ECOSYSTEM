@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import permissions
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.http import FileResponse
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,7 +12,9 @@ from apps.inspections.permissions import IsInspecteur
 from apps.inspections.serializers import InspectionSerializer
 
 from . import services
-from .serializers import SyncDocumentSerializer, SyncEvidenceSerializer, SyncInspectionSerializer
+from .serializers import (
+    MissionOpinionSerializer, SyncDocumentSerializer, SyncEvidenceSerializer, SyncInspectionSerializer,
+)
 
 
 class SyncDocumentView(APIView):
@@ -111,6 +114,8 @@ class SyncInspectionView(APIView):
                 correlation_id=data['correlation_id'],
                 known_latest_event_id=str(known_latest_event_id) if known_latest_event_id else None,
                 reserve_id=data.get('reserve'),
+                reserves=data.get('reserves') or [],
+                decisions=data.get('decisions') or [],
             )
         except inspections_services.IndependenceRuleViolation as exc:
             raise PermissionDenied(str(exc))
@@ -170,3 +175,77 @@ class MissionListView(APIView):
             caller_organization_id=request.organization.id if request.organization else None,
         )
         return Response(missions)
+
+
+class MissionDetailView(APIView):
+    """`GET /api/control/missions/{id}/` — audit UI R1 (K01) : déclaration,
+    pièces soumises par version et réserves ouvertes. Seul le contrôleur
+    affecté ; toute autre demande reçoit 404."""
+
+    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+
+    def get(self, request, mission_id):
+        try:
+            return Response(services.mission_detail(
+                inspector=request.user,
+                caller_organization_id=request.organization.id if request.organization else None,
+                mission_id=mission_id,
+            ))
+        except services.MissionNotFound:
+            raise NotFound('Mission introuvable.')
+
+
+class MissionOpinionView(APIView):
+    """`POST /api/control/missions/{id}/avis/` — audit UI R1 (K01–K04) : avis
+    EN LIGNE, date du serveur. 201 avec `{inspection_id, recorded_at}` ;
+    400 si une règle du CDC §7.1 n'est pas respectée (message explicite) ;
+    409 si l'avis de la mission est déjà enregistré."""
+
+    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+
+    def post(self, request, mission_id):
+        serializer = MissionOpinionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            inspection = services.submit_opinion(
+                inspector=request.user,
+                inspector_organization=request.organization,
+                mission_id=mission_id,
+                outcome=data['outcome'],
+                note=data['note'],
+                reserves=data['reserves'],
+                decisions=data['decisions'],
+                examined_evidence_ids=data['examined_evidence_ids'],
+            )
+        except services.MissionNotFound:
+            raise NotFound('Mission introuvable.')
+        except services.MissionAlreadyCompleted:
+            return Response({'detail': 'L’avis de cette mission est déjà enregistré.'}, status=409)
+        except inspections_services.IndependenceRuleViolation as exc:
+            raise PermissionDenied(str(exc))
+        except DjangoValidationError as exc:
+            messages = getattr(exc, 'messages', [str(exc)])
+            return Response({'detail': ' '.join(messages)}, status=400)
+        return Response(
+            {'inspection_id': str(inspection.id), 'recorded_at': inspection.created_at.isoformat()}, status=201,
+        )
+
+
+class MissionDocumentView(APIView):
+    """`GET /api/control/missions/{id}/documents/{document_id}/` — audit UI
+    R1 (K01) : pièce soumise, servie au SEUL contrôleur affecté, jamais par
+    un lien public (CDC §10)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+
+    def get(self, request, mission_id, document_id):
+        try:
+            file_name, handle = services.mission_document(
+                inspector=request.user,
+                caller_organization_id=request.organization.id if request.organization else None,
+                mission_id=mission_id, document_id=document_id,
+            )
+        except services.MissionNotFound:
+            raise NotFound('Pièce introuvable.')
+        return FileResponse(handle, filename=file_name)

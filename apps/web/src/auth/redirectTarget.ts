@@ -76,6 +76,22 @@ export function isSameOriginRedirect(targetUrl: string, currentHref: string): bo
 }
 
 /**
+ * Audit UI R1 (étape 1) — bug réel trouvé en capture navigateur : depuis la
+ * page publique `/connexion` (F-079), la cible `/#access_token=…` change le
+ * CHEMIN ; `assign()` lance donc déjà une vraie navigation, et le
+ * `reload()` forcé juste après rechargeait `/connexion` en l'annulant —
+ * admin, ADV et Finance restaient sur l'écran de connexion. Le rechargement
+ * explicite n'est nécessaire que si SEUL le fragment change (même origine,
+ * même chemin, même requête).
+ */
+export function onlyFragmentChanges(targetUrl: string, currentHref: string): boolean {
+  const target = new URL(targetUrl, currentHref);
+  const current = new URL(currentHref);
+  return isSameOriginRedirect(targetUrl, currentHref)
+    && target.pathname === current.pathname && target.search === current.search;
+}
+
+/**
  * Nom conservé pour ne rien casser côté appelants existants (`App.tsx`,
  * tests) — délègue à `buildCrossAppUrl` (ticket F-040, `@keya/design-system`),
  * même logique exacte, jamais dupliquée.

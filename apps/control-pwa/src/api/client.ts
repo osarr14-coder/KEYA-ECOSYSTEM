@@ -24,6 +24,58 @@ export interface SyncInspectionResult {
   latestEventId?: string;
 }
 
+/** Audit UI R1 (K01) — pièces soumises par le constructeur, par version. */
+export interface SubmittedDocument {
+  id: string;
+  fileName: string;
+  sha256: string;
+}
+
+export interface SubmittedEvidence {
+  id: string;
+  version: number;
+  addedBy: string;
+  addedAt: string;
+  documents: SubmittedDocument[];
+}
+
+/** Audit UI R1 (K02/K03) — réserve structurée, ouverte ou en attente de décision. */
+export interface OpenReserve {
+  id: string;
+  motif: string;
+  expectedAction: string;
+  openedAt: string;
+  statusLabel: string;
+  corrections: { submittedAt: string; submittedBy: string }[];
+}
+
+export interface MissionDetail {
+  id: string;
+  lotName: string;
+  assetName: string;
+  programName: string;
+  milestoneLabel: string;
+  followUp: boolean;
+  completed: boolean;
+  declaration: { id: string; declaredBy: string; declaredAt: string; note: string };
+  evidences: SubmittedEvidence[];
+  openReserves: OpenReserve[];
+}
+
+export interface OpinionPayload {
+  outcome: 'conforme' | 'avec_reserve';
+  examinedEvidenceIds: string[];
+  reserves: { motif: string; expectedAction: string }[];
+  decisions: { reserveId: string; decision: 'levee' | 'maintenue'; motif: string }[];
+  note: string;
+}
+
+export interface OpinionResult {
+  inspectionId: string;
+  /** Date SERVEUR de l'avis (K04 : la date serveur fait foi). */
+  recordedAt: string;
+}
+
 /**
  * Client HTTP dédié à la synchronisation CONTROL (ticket 010, passe 2) —
  * même schéma que `apps/build/src/api/client.ts` (`ApiError`, un `getAccessToken`
@@ -164,7 +216,90 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
     }));
   }
 
-  return { syncDocument, syncEvidence, syncInspection, listMissions };
+  function errorDetail(body: unknown, fallback: string) {
+    if (body && typeof body === 'object' && 'detail' in body) return String((body as { detail: unknown }).detail);
+    return fallback;
+  }
+
+  /** `GET /api/control/missions/{id}/` — audit UI R1 (K01) : déclaration,
+   * pièces soumises (versions, déposant, date) et réserves ouvertes. */
+  async function getMissionDetail(missionId: string): Promise<MissionDetail> {
+    const response = await fetch(`${baseUrl}/api/control/missions/${missionId}/`, { method: 'GET', headers: authHeaders() });
+    if (!response.ok) throw new ApiError(response.status, `Mission introuvable (${response.status})`);
+    const data = await response.json();
+    return {
+      id: data.id,
+      lotName: data.lot_name,
+      assetName: data.asset_name,
+      programName: data.program_name,
+      milestoneLabel: data.milestone_label,
+      followUp: data.follow_up,
+      completed: data.completed,
+      declaration: {
+        id: data.declaration.id,
+        declaredBy: data.declaration.declared_by,
+        declaredAt: data.declaration.declared_at,
+        note: data.declaration.note,
+      },
+      evidences: (data.evidences as Array<Record<string, unknown>>).map((evidence) => ({
+        id: String(evidence.id),
+        version: Number(evidence.version),
+        addedBy: String(evidence.added_by),
+        addedAt: String(evidence.added_at),
+        documents: (evidence.documents as Array<Record<string, string>>).map((document) => ({
+          id: document.id, fileName: document.file_name, sha256: document.sha256,
+        })),
+      })),
+      openReserves: (data.open_reserves as Array<Record<string, unknown>>).map((reserve) => ({
+        id: String(reserve.id),
+        motif: String(reserve.motif),
+        expectedAction: String(reserve.expected_action),
+        openedAt: String(reserve.opened_at),
+        statusLabel: String(reserve.status_label),
+        corrections: (reserve.corrections as Array<Record<string, string>>).map((correction) => ({
+          submittedAt: correction.submitted_at, submittedBy: correction.submitted_by,
+        })),
+      })),
+    };
+  }
+
+  /** `POST /api/control/missions/{id}/avis/` — audit UI R1 (K01–K04) : avis
+   * EN LIGNE, versions examinées, réserves structurées et décision
+   * explicite par réserve. Les refus du serveur (règles du CDC §7.1)
+   * remontent tels quels. */
+  async function submitOpinion(missionId: string, payload: OpinionPayload): Promise<OpinionResult> {
+    const response = await fetch(`${baseUrl}/api/control/missions/${missionId}/avis/`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        outcome: payload.outcome,
+        examined_evidence_ids: payload.examinedEvidenceIds,
+        reserves: payload.reserves.map((reserve) => ({ motif: reserve.motif, expected_action: reserve.expectedAction })),
+        decisions: payload.decisions.map((decision) => ({
+          reserve_id: decision.reserveId, decision: decision.decision, motif: decision.motif,
+        })),
+        note: payload.note,
+      }),
+    });
+    let body: unknown;
+    try { body = await response.json(); } catch { body = undefined; }
+    if (!response.ok) throw new ApiError(response.status, errorDetail(body, `L’avis n’a pas été enregistré (${response.status}).`));
+    const data = body as { inspection_id: string; recorded_at: string };
+    return { inspectionId: data.inspection_id, recordedAt: data.recorded_at };
+  }
+
+  /** Pièce du constructeur, lue avec la session (aucun lien public, CDC §10). */
+  async function fetchDocument(missionId: string, documentId: string): Promise<Blob> {
+    const response = await fetch(`${baseUrl}/api/control/missions/${missionId}/documents/${documentId}/`, {
+      method: 'GET', headers: authHeaders(),
+    });
+    if (!response.ok) throw new ApiError(response.status, `Pièce indisponible (${response.status})`);
+    return response.blob();
+  }
+
+  return {
+    syncDocument, syncEvidence, syncInspection, listMissions, getMissionDetail, submitOpinion, fetchDocument,
+  };
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;

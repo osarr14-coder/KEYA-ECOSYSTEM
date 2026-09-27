@@ -93,7 +93,7 @@ class TestChantierPathB054:
 
         create_inspection(
             inspector=inspector, inspector_organization=inspector_org, target_organization_id=organization.id,
-            work_declaration_id=declaration_id, outcome='avec_reserve',
+            work_declaration_id=declaration_id, outcome='avec_reserve', reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],
         )
         row = _milestones(builder, lot)['fondations']
         assert (row['status'], row['latest_outcome'], row['control_scheduled']) == ('under_reserve', 'avec_reserve', False)
@@ -111,6 +111,7 @@ class TestChantierPathB054:
         create_inspection(
             inspector=inspector, inspector_organization=inspector_org, target_organization_id=organization.id,
             work_declaration_id=declaration_id, outcome='conforme', reserve_id=row['reserve_id'],
+            decisions=[{'reserve_id': str(row['reserve_id']), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
         )
         set_rls_context(organization_id=organization.id)
         assert _milestones(builder, lot)['fondations']['status'] == 'accepted'

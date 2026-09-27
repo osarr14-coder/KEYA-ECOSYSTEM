@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Me } from '../api/types';
-import { buildRedirectUrl, isSameOriginRedirect, resolveRedirectApp } from './redirectTarget';
+import {
+  buildRedirectUrl, isSameOriginRedirect, onlyFragmentChanges, resolveRedirectApp,
+} from './redirectTarget';
 
 function makeMe(roleCode: string | null): Me {
   return {
@@ -107,3 +109,20 @@ describe(
     });
   },
 );
+
+describe('onlyFragmentChanges (audit UI R1) — rechargement explicite seulement si seul le fragment change', () => {
+  it('connexion depuis « / » vers apps/web -> true (sinon la session ne serait jamais lue)', () => {
+    expect(onlyFragmentChanges('http://localhost:5176/#access_token=a&refresh_token=b', 'http://localhost:5176/')).toBe(true);
+  });
+
+  it('connexion depuis « /connexion » vers apps/web -> false (un reload annulerait la navigation)', () => {
+    expect(onlyFragmentChanges(
+      'http://localhost:5176/#access_token=a&refresh_token=b',
+      'http://localhost:5176/connexion',
+    )).toBe(false);
+  });
+
+  it('origine différente (HOME/BUILD/CONTROL) -> false', () => {
+    expect(onlyFragmentChanges('http://localhost:5174/#access_token=a', 'http://localhost:5176/connexion')).toBe(false);
+  });
+});

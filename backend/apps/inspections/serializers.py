@@ -14,20 +14,29 @@ class InspectionSerializer(serializers.ModelSerializer):
     # ensemble. Sans ce champ, un client n'aurait aucun moyen de savoir
     # quelle réserve vient d'être ouverte par sa requête.
     opened_reserve = serializers.SerializerMethodField()
+    # Audit UI R1 (K02) : toutes les réserves ouvertes par cette inspection.
+    opened_reserves = serializers.SerializerMethodField()
 
     class Meta:
         model = Inspection
         fields = [
             'id', 'lot', 'inspector', 'work_declaration', 'evidence', 'outcome',
-            'reserve', 'opened_reserve', 'note', 'created_at', 'client_correlation_id',
+            'reserve', 'opened_reserve', 'opened_reserves', 'note', 'created_at', 'client_correlation_id',
+            'examined_evidence_ids', 'reserve_decisions',
         ]
         read_only_fields = fields
 
     def get_opened_reserve(self, inspection):
-        try:
-            return inspection.opened_reserve.id
-        except Reserve.DoesNotExist:
-            return None
+        reserve_ids = self.get_opened_reserves(inspection)
+        return reserve_ids[0] if reserve_ids else None
+
+    def get_opened_reserves(self, inspection):
+        # Juste après la création : identifiants transmis par le service (les
+        # réserves ne sont pas lisibles sous le contexte RLS du contrôleur).
+        if hasattr(inspection, 'opened_reserve_ids'):
+            return inspection.opened_reserve_ids
+        reserves = inspection.opened_reserves.order_by('created_at', 'id')
+        return [str(reserve_id) for reserve_id in reserves.values_list('id', flat=True)]
 
 
 class InspectionCreateSerializer(serializers.Serializer):
@@ -46,6 +55,13 @@ class InspectionCreateSerializer(serializers.Serializer):
     outcome = serializers.ChoiceField(choices=InspectionOutcome.choices)
     note = serializers.CharField(required=False, allow_blank=True, default='')
     reserve = serializers.UUIDField(required=False, allow_null=True)
+    # Audit UI R1 (K01–K03) : réserves structurées, décisions explicites et
+    # versions examinées — règles appliquées par `services.create_inspection`.
+    reserves = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    decisions = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    examined_evidence_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, allow_null=True, default=None,
+    )
 
     def validate(self, attrs):
         if bool(attrs.get('work_declaration')) == bool(attrs.get('evidence')):
@@ -60,11 +76,19 @@ class ReserveSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Reserve
-        fields = ['id', 'lot', 'opened_by_inspection', 'description', 'status', 'created_at']
+        fields = [
+            'id', 'lot', 'opened_by_inspection', 'description', 'motif', 'expected_action', 'status', 'status_label',
+            'created_at',
+        ]
         read_only_fields = fields
+
+    status_label = serializers.SerializerMethodField()
 
     def get_status(self, reserve):
         return services.get_reserve_status(reserve)
+
+    def get_status_label(self, reserve):
+        return services.RESERVE_STATUS_LABELS.get(services.get_reserve_status(reserve), '')
 
 
 class ReserveCorrectionSerializer(serializers.ModelSerializer):
