@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, BRAND_GRADIENT, Button, Field, Input, TabBar, brandColors, typography,
+  AlertBanner, ApiErrorBanner, AppShell, BRAND_GRADIENT, Button, Field, Input, brandColors, typography,
   useIsMobile, useOnlineStatus, type AppModule, type IconName, logoutToLoginScreen,
 } from '@keya/design-system';
 
@@ -27,11 +27,11 @@ import { PricingView } from './views/PricingView';
 import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
 import { ReservationsView } from './views/ReservationsView';
-import { TasksView } from './views/TasksView';
+import { type NavigationTarget, TodayView } from './views/TodayView';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
-  | 'program-requests' | 'controls' | 'payment-notices' | 'tasks';
+  | 'program-requests' | 'controls' | 'payment-notices' | 'todo';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -67,79 +67,61 @@ const ADMIN_AND_ADV = [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE];
 // `IsKeyimmoTeam` côté backend.
 const KEYIMMO_TEAM = [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE, FINANCE_ROLE];
 
+/*
+ * Ticket F-075 (direction « Confiance premium ») — navigation UNIQUE par la
+ * barre latérale (plus de `TabBar` en double), regroupée par métier :
+ * « À faire » en tête (écran d'arrivée de toute l'équipe, chemin `/`), puis
+ * Ventes, Finance, Chantier, Programmes, Administration. Le Back-office
+ * (recherche d'utilisateurs) passe sous `/back-office`.
+ */
 const TAB_DEFINITIONS: {
   id: AuthenticatedTabId; label: string; path: string; icon: IconName; group?: string; roles: string[];
 }[] = [
+  // Ticket F-075 — reprend l'ancien écran « Tâches » (F-061/F-063).
   {
-    id: 'backoffice', label: 'Back-office', path: '/', icon: 'shield-check', roles: ADMIN_ONLY,
+    id: 'todo', label: 'À faire', path: '/', icon: 'bell', roles: KEYIMMO_TEAM,
   },
+  // Ticket F-067 — cycle de réservation (backend B-048), présenté en
+  // dossiers clients (F-075).
   {
-    id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Ventes & tarification', roles: ADMIN_ONLY,
-  },
-  {
-    id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet', group: 'Ventes & tarification', roles: ADMIN_ONLY,
-  },
-  {
-    id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale', group: 'Ventes & tarification', roles: ADMIN_ONLY,
-  },
-  // Ticket F-064 — prix et statut commercial des lots existants.
-  {
-    id: 'lots',
-    label: 'Lots — prix & statut',
-    path: '/lots',
-    icon: 'wallet',
-    group: 'Ventes & tarification',
-    roles: ADMIN_AND_ADV,
-  },
-  // Ticket F-067 — cycle de réservation (backend B-048).
-  {
-    id: 'reservations',
-    label: 'Réservations',
-    path: '/reservations',
-    icon: 'clipboard-check',
-    group: 'Ventes & tarification',
-    roles: KEYIMMO_TEAM,
+    id: 'reservations', label: 'Dossiers clients', path: '/reservations', icon: 'clipboard-check', group: 'Ventes', roles: KEYIMMO_TEAM,
   },
   // Ticket F-071 — virements déclarés par les clients, confirmés par
   // Finance (backend B-056).
   {
-    id: 'payment-notices',
-    label: 'Virements déclarés',
-    path: '/virements',
-    icon: 'wallet',
-    group: 'Ventes & tarification',
-    roles: KEYIMMO_TEAM,
+    id: 'payment-notices', label: 'Virements déclarés', path: '/virements', icon: 'wallet', group: 'Ventes', roles: KEYIMMO_TEAM,
+  },
+  // Ticket F-064 — prix et statut commercial des lots existants.
+  {
+    id: 'lots', label: 'Lots — prix & statut', path: '/lots', icon: 'wallet', group: 'Ventes', roles: ADMIN_AND_ADV,
   },
   // Ticket F-068 — comptes simulés et décaissements (backend B-052).
   {
-    id: 'finance',
-    label: 'Comptes & décaissements',
-    path: '/finance',
-    icon: 'wallet',
-    group: 'Ventes & tarification',
-    roles: KEYIMMO_TEAM,
-  },
-  {
-    id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building', roles: ADMIN_AND_ADV,
-  },
-  // Ticket F-058 — pendant admin de ProgramRequestView.tsx (apps/home,
-  // ticket F-057). Entrée de premier niveau, comme "Programmes" (pas
-  // dans le groupe "Ventes & tarification" : une demande sur mesure
-  // n'est ni un devis, ni un tarif, ni un palier légal).
-  {
-    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', roles: ADMIN_AND_ADV,
+    id: 'finance', label: 'Comptes & décaissements', path: '/finance', icon: 'wallet', group: 'Finance', roles: KEYIMMO_TEAM,
   },
   // Ticket F-069 — affectation des contrôles de chantier (backend B-054),
   // admin seul comme `POST /api/backoffice/missions/` (ticket 012).
   {
-    id: 'controls', label: 'Contrôles à affecter', path: '/controles', icon: 'shield-check', roles: ADMIN_ONLY,
+    id: 'controls', label: 'Contrôles à affecter', path: '/controles', icon: 'shield-check', group: 'Chantier', roles: ADMIN_ONLY,
   },
-  // Ticket F-061 — destination réelle de la cloche AppShell (jusqu'ici un
-  // lien mort `href="/tasks"`, ticket F-045). Entrée de premier niveau,
-  // comme "Programmes"/"Demandes de programme" : une tâche n'appartient à
-  // aucun des groupes existants.
+  // Ticket F-049 — création Program/Asset/Lot ; F-058 — demandes sur mesure.
   {
-    id: 'tasks', label: 'Tâches', path: '/tasks', icon: 'bell', roles: KEYIMMO_TEAM,
+    id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building', group: 'Programmes', roles: ADMIN_AND_ADV,
+  },
+  {
+    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', group: 'Programmes', roles: ADMIN_AND_ADV,
+  },
+  {
+    id: 'backoffice', label: 'Utilisateurs', path: '/back-office', icon: 'shield-check', group: 'Administration', roles: ADMIN_ONLY,
+  },
+  {
+    id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY,
+  },
+  {
+    id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet', group: 'Administration', roles: ADMIN_ONLY,
+  },
+  {
+    id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale', group: 'Administration', roles: ADMIN_ONLY,
   },
 ];
 
@@ -278,48 +260,45 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   // sur `/` (Back-office, admin seul) ou un lien vers un onglet admin est
   // ramené sur « Lots — prix & statut ».
   const visibleTabs = useMemo(() => visibleTabDefinitions(userRoles), [userRoles.join(',')]);
-  const tabs = visibleTabs.map(({ id, label, icon }) => ({ id, label, icon }));
   const tabRoutes: TabRoute<AuthenticatedTabId>[] = visibleTabs.map(({ id, path }) => ({ id, path }));
   const [activeTab, setActiveTab] = useUrlSyncedTab(tabRoutes, visibleTabs[0].id);
-  // Ticket F-060/F-063 — câble le compteur de la cloche AppShell.
-  // `getMyInboxTasks` (ticket B-044), pas `getMyTasks` : les tâches
-  // `devis_ajustement_refuse`/`lot_ledger_margin_negative` ont
-  // l'organisation CIBLE, jamais celle de KEIMMO — invisibles via
-  // l'endpoint mono-organisation. Ticket F-065 : boîte réservée à
-  // admin_keyimmo (403 pour l'ADV) — jamais appelée, cloche masquée.
-  // Ticket F-071 (backend B-056) — boîte PERSONNELLE transverse pour toute
-  // l'équipe : l'ADV y reçoit « Réservation à valider » / « Paiement reçu »,
-  // Finance « Virement déclaré à confirmer ». Cloche visible pour tous.
-  const taskInboxState = useApiResource(() => api.getMyInboxTasks({ status: 'pending' }), []);
+  // Ticket F-075 — dossier à ouvrir directement (depuis « À faire »).
+  const [dossier, setDossier] = useState<{ id: string; nonce: number } | null>(null);
+  // Ticket F-060/F-063/F-071 — boîte PERSONNELLE transverse (cloche et
+  // compteur de « À faire ») : l'ADV y reçoit « Réservation à valider » /
+  // « Paiement reçu », Finance « Virement déclaré à confirmer ».
+  const taskInboxState = useApiResource(() => api.getMyInboxTasks({ status: 'pending' }), [activeTab]);
+  const pendingCount = taskInboxState.status === 'success' ? taskInboxState.data.length : 0;
+  const modules: AppModule[] = MODULES.map((module) => (module.id === 'todo' ? { ...module, badge: pendingCount } : module));
+
+  function navigate(target: NavigationTarget) {
+    setDossier(target.reservationId ? { id: target.reservationId, nonce: Date.now() } : null);
+    setActiveTab(target.tab as AuthenticatedTabId);
+  }
 
   return (
     <AppShell
       // Ticket F-070 — déconnexion volontaire, vers l'écran de connexion.
       onLogout={() => logoutToLoginScreen()}
       density="dense"
-      // Ticket F-056 (suite F-053/054/055) — révision de la doctrine 17.3 :
-      // `brand` (bandeau <header> dégradé navy/or) était HOME-only depuis
-      // F-048 ; retour utilisateur explicite demandant le même traitement
-      // visuel complet sur le back-office — activé ici comme sur
-      // apps/build. Le bloc navy de sidebar, lui, était déjà universel sur
-      // les 4 apps depuis F-048.
       brand
-      // "KEYIMMO", pas "Back-office" : évite la redite avec le libellé
-      // d'onglet de navigation déjà présent dans la même sidebar.
-      appLabel="KEYIMMO"
-      modules={MODULES}
+      appLabel="Back-office KEYIMMO"
+      modules={modules}
       userRoles={userRoles}
       activeModuleId={activeTab}
-      breadcrumbs={[{ label: tabs.find((tab) => tab.id === activeTab)!.label }]}
-      taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
-      // Ticket F-061 — bascule vers le nouvel onglet « Tâches » (même
-      // endpoint que le compteur ci-dessus), URL synchronisée comme
-      // n'importe quel autre onglet (`useUrlSyncedTab`) : jamais une
-      // navigation `<a href>` classique, qui aurait rechargé toute la page.
-      onTaskInboxClick={() => setActiveTab('tasks')}
+      onModuleSelect={(id) => navigate({ tab: id })}
+      taskInboxCount={pendingCount}
+      // Ticket F-061/F-075 — la cloche ouvre « À faire », URL synchronisée.
+      onTaskInboxClick={() => navigate({ tab: 'todo' })}
     >
-      <TabBar tabs={tabs} activeTabId={activeTab} onChange={(id) => setActiveTab(id as AuthenticatedTabId)} aria-label="Sections back-office" />
-
+      {activeTab === 'todo' && (
+        <TodayView
+          onNavigate={navigate}
+          availableTabs={visibleTabs.map((tab) => tab.id)}
+          showSales={visibleTabs.some((tab) => tab.id === 'reservations')}
+          showPaymentNotices={visibleTabs.some((tab) => tab.id === 'payment-notices')}
+        />
+      )}
       {activeTab === 'backoffice' && <BackofficeView />}
       {activeTab === 'devis' && <DevisView />}
       {activeTab === 'pricing' && <PricingView />}
@@ -327,6 +306,8 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'lots' && <LotsCommercialView canEditPrice={isAdmin} />}
       {activeTab === 'reservations' && (
         <ReservationsView
+          key={dossier ? `${dossier.id}-${dossier.nonce}` : 'list'}
+          openReservationId={dossier?.id ?? null}
           permissions={{ canManageSales: isAdmin || isAdv, canRecordMovements: isFinance }}
         />
       )}
@@ -335,7 +316,6 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'programs' && <ProgramsView />}
       {activeTab === 'program-requests' && <ProgramRequestsView />}
       {activeTab === 'controls' && <ControlsView />}
-      {activeTab === 'tasks' && <TasksView />}
     </AppShell>
   );
 }

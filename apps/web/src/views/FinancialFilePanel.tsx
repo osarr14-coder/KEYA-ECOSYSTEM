@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Input, Select, semanticColors,
+  ApiErrorBanner, Button, Input, Pill, Select, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -44,7 +44,7 @@ function callLabel(call: PaymentCall | PaymentCallCandidate) {
 }
 
 const blockStyle = {
-  border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px', marginTop: '8px',
+  border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '14px', padding: '14px 16px', marginTop: '10px',
 } as const;
 
 function useAction() {
@@ -75,7 +75,7 @@ function CandidateButton({
     <div style={{ marginTop: '4px' }}>
       <Button
         type="button"
-        variant="secondary"
+        variant="accent"
         disabled={!candidate.available || pending}
         onClick={() => {
           void run(
@@ -245,11 +245,15 @@ export function FinancialFilePanel({
   const refresh = () => { state.refetch(); onChanged(); };
 
   return (
-    <section aria-label={`Dossier financier — ${reservation.lot.name}`} style={{ marginTop: '12px' }}>
-      <strong>Dossier financier</strong>
-      <p style={{ margin: '4px 0 0', fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em' }}>{SIMULATION_NOTICE}</p>
+    <section aria-label={`Dossier financier — ${reservation.lot.name}`}>
+      <p style={{
+        margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: semanticColors.accent.text,
+      }}
+      >
+        {SIMULATION_NOTICE}
+      </p>
 
-      <h4 style={{ margin: '8px 0 4px' }}>Appels de fonds</h4>
+      <h4 style={{ margin: '16px 0 4px' }}>Appels de fonds</h4>
       {file.calls.length === 0 && <p style={{ margin: 0 }}>Aucun appel émis.</p>}
       {file.calls.length > 0 && (
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -267,8 +271,13 @@ export function FinancialFilePanel({
                 <td>{callLabel(call)}</td>
                 <td style={{ textAlign: 'right' }}>{formatAmount(call.amount, call.currency)}</td>
                 <td style={{ textAlign: 'right' }}>{formatAmount(call.settled_amount, call.currency)}</td>
-                <td style={{ paddingLeft: '12px' }} data-testid="call-settlement">
-                  {call.settlement ? SETTLEMENT_LABELS[call.settlement] : '—'}
+                <td style={{ paddingLeft: '12px' }}>
+                  <Pill
+                    tone={call.settlement === 'settled' ? 'success' : call.settlement === 'partial' ? 'alert' : 'accent'}
+                    data-testid="call-settlement"
+                  >
+                    {call.settlement ? SETTLEMENT_LABELS[call.settlement] : '—'}
+                  </Pill>
                 </td>
               </tr>
             ))}
@@ -285,7 +294,7 @@ export function FinancialFilePanel({
         />
       ))}
 
-      <h4 style={{ margin: '12px 0 4px' }}>Encaissements</h4>
+      <h4 style={{ margin: '20px 0 4px' }}>Encaissements</h4>
       {file.receipts.length === 0 && <p style={{ margin: 0 }}>Aucun encaissement enregistré.</p>}
       {file.receipts.map((receipt) => (
         <ReceiptBlock

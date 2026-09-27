@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Input, Select,
+  ApiErrorBanner, Button, Card, Icon, Input, KeyFigure, PageHeader, Pill, type PillTone, Select, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -74,18 +74,17 @@ function CancelForm({ reservation, onCancelled }: { reservation: AdminReservatio
       onSubmit={(event) => { void handleSubmit(event); }}
       aria-label={`Annuler la réservation ${reservation.lot.name}`}
       style={{
-        display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '8px',
+        display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap',
       }}
     >
-      <label>
-        Motif d&apos;annulation
+      <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px', fontWeight: 600, flex: '1 1 260px', maxWidth: '420px' }}>
+        Refuser le dossier — motif d&apos;annulation
         <Input
           type="text"
           aria-label="Motif d'annulation"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           required
-          style={{ marginTop: '4px', width: '320px' }}
         />
       </label>
       <Button type="submit" variant="secondary" disabled={submitting || reason.trim() === ''}>
@@ -119,8 +118,8 @@ function ValidateButton({ reservation, onValidated }: { reservation: AdminReserv
   }
 
   return (
-    <div style={{ marginTop: '8px' }}>
-      <Button type="button" onClick={() => { void validate(); }} disabled={pending}>
+    <div>
+      <Button type="button" variant="accent" onClick={() => { void validate(); }} disabled={pending}>
         {pending ? 'Validation…' : 'Valider la réservation et appeler les frais'}
       </Button>
       {error && <p role="alert" style={{ margin: '4px 0 0' }}>{error}</p>}
@@ -128,103 +127,285 @@ function ValidateButton({ reservation, onValidated }: { reservation: AdminReserv
   );
 }
 
-function ReservationCard({
-  reservation, onChanged, permissions,
-}: { reservation: AdminReservation; onChanged: () => void; permissions: SalesPermissions }) {
+function initials(reservation: AdminReservation) {
+  const source = reservation.client.full_name || reservation.client.email;
+  return source.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join('');
+}
+
+function clientLabel(reservation: AdminReservation) {
+  return reservation.client.full_name || reservation.client.email;
+}
+
+export function reservationTone(status: ReservationStatus): PillTone {
+  switch (status) {
+    case 'committed': return 'success';
+    case 'reserved': return 'primary';
+    case 'held': return 'accent';
+    case 'cancelled': return 'danger';
+    default: return 'neutral';
+  }
+}
+
+/**
+ * Ticket F-075 (direction « Confiance premium ») — fiche dossier : l'essentiel
+ * d'un dossier client en un écran (identité, chiffres clés, prochaine action,
+ * contrat, paiements). Les panneaux Contrat et Dossier financier sont
+ * inchangés : seules leur mise en page et la hiérarchie évoluent.
+ */
+function ReservationDossier({
+  reservation, onChanged, onBack, permissions,
+}: {
+  reservation: AdminReservation;
+  onChanged: () => void;
+  onBack: () => void;
+  permissions: SalesPermissions;
+}) {
+  const needsValidation = reservation.status === 'held' && !reservation.validated_at;
   return (
-    <Card title={`${reservation.program.name} — ${reservation.lot.name}`} icon="building">
-      <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 16px', margin: 0 }}>
-        <dt>Statut</dt>
-        <dd style={{ margin: 0 }} data-testid="reservation-status">{reservation.status_label}</dd>
-        <dt>Client</dt>
-        <dd style={{ margin: 0 }}>
-          {reservation.client.full_name
-            ? `${reservation.client.full_name} (${reservation.client.email})`
-            : reservation.client.email}
-        </dd>
-        <dt>Organisation</dt>
-        <dd style={{ margin: 0 }}>{reservation.organization.name}</dd>
-        <dt>Prix figé</dt>
-        <dd style={{ margin: 0 }}>{formatAmount(reservation.price_amount, reservation.currency)}</dd>
+    <article aria-label={`Dossier — ${clientLabel(reservation)}, ${reservation.lot.name}`} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div>
+        <Button type="button" variant="secondary" onClick={onBack}>
+          <Icon name="chevron-left" size={16} />
+          Dossiers clients
+        </Button>
+      </div>
+
+      <header style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        <span
+          aria-hidden="true"
+          style={{
+            width: '56px', height: '56px', flexShrink: 0, borderRadius: '50%', display: 'inline-flex', alignItems: 'center',
+            justifyContent: 'center', background: semanticColors.primary.background, color: semanticColors.primary.text,
+            fontWeight: 700, fontSize: '18px',
+          }}
+        >
+          {initials(reservation)}
+        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 320px', minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontSize: '28px' }}>{`${clientLabel(reservation)} · ${reservation.lot.name}`}</h2>
+          <span style={{ color: semanticColors.neutral.textMuted }}>
+            {[
+              reservation.program.name,
+              reservation.lot.surface ? `${Number(reservation.lot.surface).toLocaleString('fr-FR')} m²` : null,
+              reservation.client.email,
+            ].filter(Boolean).join(' · ')}
+          </span>
+        </div>
+        <Pill tone={reservationTone(reservation.status)} data-testid="reservation-status">{reservation.status_label}</Pill>
+      </header>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+        <KeyFigure label="Prix figé" value={formatAmount(reservation.price_amount, reservation.currency)} />
+        <KeyFigure label="Organisation" textual value={reservation.organization.name} />
         {reservation.status === 'held' && (
-          <>
-            <dt>Blocage jusqu&apos;au</dt>
-            <dd style={{ margin: 0 }}>{formatDateTime(reservation.held_until)}</dd>
-          </>
+          <KeyFigure
+            label="Blocage jusqu'au"
+            textual
+            value={formatDateTime(reservation.held_until)}
+            tone="accent"
+          />
         )}
-        <dt>Validation ADV</dt>
-        <dd style={{ margin: 0 }} data-testid="reservation-validation">
-          {reservation.validated_at
-            ? `Validée${reservation.validated_by ? ` par ${reservation.validated_by}` : ''} le ${formatDateTime(reservation.validated_at)}`
-            : 'En attente de validation'}
-        </dd>
-        {reservation.status === 'cancelled' && (
-          <>
+        <KeyFigure
+          label="Validation ADV"
+          textual
+          tone={reservation.validated_at ? 'success' : needsValidation ? 'accent' : 'neutral'}
+          value={(
+            <span data-testid="reservation-validation">
+              {reservation.validated_at
+                ? `Validée${reservation.validated_by ? ` par ${reservation.validated_by}` : ''} le ${formatDateTime(reservation.validated_at)}`
+                : 'En attente de validation'}
+            </span>
+          )}
+        />
+      </div>
+
+      {reservation.status === 'cancelled' && (
+        <Card title="Annulation" icon="alert-triangle">
+          <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '6px 16px', margin: 0 }}>
             <dt>Annulée par</dt>
             <dd style={{ margin: 0 }}>{reservation.cancelled_by ?? '—'}</dd>
             <dt>Motif</dt>
             <dd style={{ margin: 0 }}>{reservation.cancellation_reason || '—'}</dd>
-          </>
-        )}
-      </dl>
-      {permissions.canManageSales && reservation.status === 'held' && !reservation.validated_at && (
-        <ValidateButton reservation={reservation} onValidated={onChanged} />
+          </dl>
+        </Card>
       )}
+
       {permissions.canManageSales && reservation.status === 'held' && (
-        <CancelForm reservation={reservation} onCancelled={onChanged} />
+        <section
+          aria-label="Prochaine action"
+          style={{
+            border: `2px solid ${needsValidation ? semanticColors.accent.solid : semanticColors.neutral.border}`,
+            borderRadius: '20px',
+            background: semanticColors.neutral.surface,
+            padding: 'clamp(16px, 3vw, 24px)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: semanticColors.accent.text }}>
+            Prochaine action
+          </span>
+          <h3 style={{ margin: 0, fontSize: '22px' }}>
+            {needsValidation ? 'Valider le dossier et appeler les frais de réservation' : 'Suivre le paiement des frais de réservation'}
+          </h3>
+          <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
+            {needsValidation
+              ? 'La validation émet l’appel des frais : le client est notifié et reçoit ses instructions de virement.'
+              : 'Le client a reçu l’appel des frais ; Finance confirmera son virement à réception.'}
+          </p>
+          {needsValidation && <ValidateButton reservation={reservation} onValidated={onChanged} />}
+          <CancelForm reservation={reservation} onCancelled={onChanged} />
+        </section>
       )}
-      {/* Ticket F-067 (partie 2) — contrat, historique compris même après
-          expiration ou annulation (lecture seule dans ce cas). */}
-      {permissions.canManageSales && <AdminContractPanel reservation={reservation} />}
-      <FinancialFilePanel
-        reservation={reservation}
-        canIssueCalls={permissions.canManageSales}
-        canRecordMovements={permissions.canRecordMovements}
-        onChanged={onChanged}
-      />
-    </Card>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start' }}>
+        <div style={{ flex: '1 1 480px', minWidth: 0 }}>
+          <Card title="Paiements" icon="wallet">
+            <FinancialFilePanel
+              reservation={reservation}
+              canIssueCalls={permissions.canManageSales}
+              canRecordMovements={permissions.canRecordMovements}
+              onChanged={onChanged}
+            />
+            {!['held', 'reserved', 'committed'].includes(reservation.status) && (
+              <p style={{ margin: 0 }}>Dossier clos : aucun mouvement possible.</p>
+            )}
+          </Card>
+        </div>
+        {/* Ticket F-067 (partie 2) — contrat, historique compris même après
+            expiration ou annulation (lecture seule dans ce cas). */}
+        {permissions.canManageSales && (
+          <div style={{ flex: '1 1 380px', minWidth: 0 }}>
+            <Card title="Contrat" icon="file-text">
+              <AdminContractPanel reservation={reservation} />
+            </Card>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function ReservationRow({ reservation, onOpen }: { reservation: AdminReservation; onOpen: () => void }) {
+  return (
+    <tr data-testid="reservation-row">
+      <td>
+        <div style={{ fontWeight: 700 }}>{clientLabel(reservation)}</div>
+        <div style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{reservation.client.email}</div>
+      </td>
+      <td>
+        <div style={{ fontWeight: 600 }}>{reservation.lot.name}</div>
+        <div style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{reservation.program.name}</div>
+      </td>
+      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatAmount(reservation.price_amount, reservation.currency)}</td>
+      <td>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <Pill tone={reservationTone(reservation.status)}>{reservation.status_label}</Pill>
+          {reservation.status === 'held' && !reservation.validated_at && <Pill tone="alert">À valider</Pill>}
+        </div>
+      </td>
+      <td style={{ textAlign: 'right' }}>
+        <Button type="button" variant="secondary" onClick={onOpen} aria-label={`Ouvrir le dossier ${clientLabel(reservation)} — ${reservation.lot.name}`}>
+          Ouvrir
+        </Button>
+      </td>
+    </tr>
   );
 }
 
 const DEFAULT_PERMISSIONS: SalesPermissions = { canManageSales: true, canRecordMovements: false };
 
-export function ReservationsView({ permissions = DEFAULT_PERMISSIONS }: { permissions?: SalesPermissions }) {
+export function ReservationsView({
+  permissions = DEFAULT_PERMISSIONS, openReservationId,
+}: { permissions?: SalesPermissions; openReservationId?: string | null }) {
   const api = useApiClient();
-  const [statusFilter, setStatusFilter] = useState<ReservationStatus | ''>('held');
+  // Ticket F-075 — ouvert depuis « À faire » sur un dossier précis : tous
+  // statuts confondus, le dossier peut ne plus être « bloqué ».
+  const [statusFilter, setStatusFilter] = useState<ReservationStatus | ''>(openReservationId ? '' : 'held');
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(openReservationId ?? null);
   const state = useApiResource(() => api.listReservations(statusFilter || undefined), [statusFilter]);
 
-  return (
-    <section aria-label="Réservations">
-      <h2>Réservations</h2>
-      <label>
-        Statut
-        <Select
-          aria-label="Filtrer par statut"
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value as ReservationStatus | '')}
-          style={{ marginTop: '4px', width: '220px' }}
-        >
-          {STATUS_OPTIONS.map((option) => (
-            <option key={option.label} value={option.value}>{option.label}</option>
-          ))}
-        </Select>
-      </label>
+  const all = state.status === 'success' ? state.data : [];
+  const selected = selectedId ? all.find((reservation) => reservation.id === selectedId) : undefined;
+  const needle = query.trim().toLowerCase();
+  const rows = needle
+    ? all.filter((reservation) => [
+      reservation.client.full_name, reservation.client.email, reservation.lot.name, reservation.program.name,
+    ].some((value) => value.toLowerCase().includes(needle)))
+    : all;
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
-        {state.status === 'loading' && <p>Chargement…</p>}
-        {state.status === 'error' && (
-          <ApiErrorBanner error={state.error} title="Impossible de charger les réservations." onRetry={state.refetch} />
-        )}
-        {state.status === 'success' && state.data.length === 0 && <p>Aucune réservation dans cet état.</p>}
-        {state.status === 'success' && state.data.map((reservation) => (
-          <ReservationCard
-            key={reservation.id}
-            reservation={reservation}
-            onChanged={state.refetch}
-            permissions={permissions}
+  if (selected) {
+    return (
+      <ReservationDossier
+        reservation={selected}
+        onChanged={state.refetch}
+        onBack={() => setSelectedId(null)}
+        permissions={permissions}
+      />
+    );
+  }
+
+  return (
+    <section aria-label="Réservations" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <PageHeader
+        eyebrow="Ventes"
+        title="Dossiers clients"
+        subtitle="Chaque réservation est un dossier : validation, contrat, appels de fonds et encaissements."
+      />
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
+          Statut
+          <Select
+            aria-label="Filtrer par statut"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as ReservationStatus | '')}
+            style={{ width: '220px' }}
+          >
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.label} value={option.value}>{option.label}</option>
+            ))}
+          </Select>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px', fontWeight: 600, flex: '1 1 240px', maxWidth: '420px' }}>
+          Rechercher
+          <Input
+            type="search"
+            aria-label="Rechercher un dossier"
+            placeholder="Client, lot, programme…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
           />
-        ))}
+        </label>
       </div>
+
+      {state.status === 'loading' && <p>Chargement…</p>}
+      {state.status === 'error' && (
+        <ApiErrorBanner error={state.error} title="Impossible de charger les réservations." onRetry={state.refetch} />
+      )}
+      {state.status === 'success' && all.length === 0 && <p>Aucune réservation dans cet état.</p>}
+      {state.status === 'success' && all.length > 0 && rows.length === 0 && <p>Aucun dossier ne correspond à la recherche.</p>}
+      {rows.length > 0 && (
+        <Card>
+          <table>
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Lot</th>
+                <th style={{ textAlign: 'right' }}>Prix figé</th>
+                <th>État</th>
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((reservation) => (
+                <ReservationRow key={reservation.id} reservation={reservation} onOpen={() => setSelectedId(reservation.id)} />
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </section>
   );
 }

@@ -179,7 +179,8 @@ describe(
 
       expect(await screen.findByTestId('app-shell')).toHaveAttribute('data-density', 'dense');
       expect(screen.queryByLabelText('Connexion')).not.toBeInTheDocument();
-      expect(screen.getByLabelText('Rechercher un utilisateur par email')).toBeInTheDocument();
+      // Ticket F-075 — écran d'arrivée : « À faire ».
+      expect(await screen.findByRole('heading', { name: 'Vos priorités du jour' })).toBeInTheDocument();
       // Ticket F-070 — déconnexion volontaire dans la barre du haut.
       expect(screen.getByRole('button', { name: /Se déconnecter/ })).toBeInTheDocument();
     });
@@ -265,6 +266,7 @@ describe(
       const getUserDetail = vi.fn().mockResolvedValue(ADMIN_DETAIL);
       renderAuthenticated({ getMe, searchUsers, getUserDetail });
 
+      fireEvent.click(await screen.findByRole('link', { name: 'Utilisateurs' }));
       fireEvent.change(await screen.findByLabelText('Rechercher un utilisateur par email'), {
         target: { value: 'cible' },
       });
@@ -288,13 +290,13 @@ describe(
         renderAuthenticated({ getMe });
 
         await screen.findByTestId('app-shell');
-        expect(screen.getByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
+        expect(screen.getByRole('link', { name: 'À faire' })).toHaveAttribute('aria-current', 'page');
         expect(screen.queryByLabelText('Rechercher un lot (nom)')).not.toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole('button', { name: "Devis / Appels d'offres" }));
+        fireEvent.click(screen.getByRole('link', { name: "Devis / Appels d'offres" }));
 
         expect(await screen.findByLabelText('Rechercher un lot (nom)')).toBeInTheDocument();
-        expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Vos priorités du jour' })).not.toBeInTheDocument();
       },
     );
   },
@@ -315,20 +317,21 @@ describe(
       memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
     });
 
-    it('charger directement /tarifs affiche l\'onglet Tarifs actif, jamais Back-office par défaut', async () => {
+    it('charger directement /tarifs affiche l\'écran Tarifs actif, jamais « À faire » par défaut', async () => {
       window.history.replaceState(null, '', '/tarifs');
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
-      expect(screen.getByRole('button', { name: 'Tarifs' })).toHaveAttribute('aria-current', 'page');
-      expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Tarifs' })).toHaveAttribute('aria-current', 'page');
+      expect(screen.queryByRole('heading', { name: 'Vos priorités du jour' })).not.toBeInTheDocument();
     });
 
-    it('changer d\'onglet via TabBar met à jour l\'URL (pushState), sans recharger la page', async () => {
+    it('changer d\'écran via la barre latérale met à jour l\'URL (pushState), sans recharger la page (F-075)', async () => {
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
-      fireEvent.click(screen.getByRole('button', { name: "Devis / Appels d'offres" }));
+      // `fireEvent.click` renvoie false : la navigation native du lien est annulée.
+      expect(fireEvent.click(screen.getByRole('link', { name: "Devis / Appels d'offres" }))).toBe(false);
 
       await screen.findByLabelText('Rechercher un lot (nom)');
       expect(window.location.pathname).toBe('/devis');
@@ -338,7 +341,7 @@ describe(
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
-      fireEvent.click(screen.getByRole('button', { name: 'Paliers légaux' }));
+      fireEvent.click(screen.getByRole('link', { name: 'Paliers légaux' }));
       await screen.findByRole('heading', { name: /paliers légaux/i });
 
       act(() => {
@@ -346,15 +349,15 @@ describe(
         window.dispatchEvent(new PopStateEvent('popstate'));
       });
 
-      expect(await screen.findByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
+      expect(await screen.findByRole('link', { name: 'À faire' })).toHaveAttribute('aria-current', 'page');
     });
 
-    it('un chemin admin inconnu retombe sur Back-office et corrige l\'URL affichée', async () => {
+    it('un chemin admin inconnu retombe sur « À faire » et corrige l\'URL affichée', async () => {
       window.history.replaceState(null, '', '/ecran-qui-n-existe-pas');
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
-      expect(screen.getByRole('button', { name: 'Back-office' })).toHaveAttribute('aria-current', 'page');
+      expect(screen.getByRole('link', { name: 'À faire' })).toHaveAttribute('aria-current', 'page');
       expect(window.location.pathname).toBe('/');
     });
 
@@ -363,7 +366,7 @@ describe(
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
-      fireEvent.click(screen.getByRole('button', { name: 'Programmes' }));
+      fireEvent.click(screen.getByRole('link', { name: 'Programmes' }));
 
       await screen.findByRole('heading', { name: 'Programmes' });
       expect(window.location.pathname).toBe('/programmes');
@@ -374,20 +377,27 @@ describe(
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
-      fireEvent.click(screen.getByRole('button', { name: 'Demandes de programme' }));
+      fireEvent.click(screen.getByRole('link', { name: 'Demandes de programme' }));
 
       await screen.findByRole('heading', { name: 'Demandes de programme' });
       expect(window.location.pathname).toBe('/demandes-programme');
     });
 
-    // Ticket F-051 — regroupement de sidebar (AppShell), premier usage réel.
-    it('la sidebar affiche "Ventes & tarification" au-dessus de Devis/Tarifs/Paliers légaux', async () => {
+    // Ticket F-051/F-075 — barre latérale regroupée par métier.
+    it('la barre latérale regroupe les écrans par métier, « À faire » en tête (F-075)', async () => {
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
-      expect(screen.getByText('Ventes & tarification')).toBeInTheDocument();
-      // Back-office et Programmes restent de premier niveau, aucun en-tête.
-      expect(screen.getAllByText('Ventes & tarification')).toHaveLength(1);
+      const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
+      const entries = Array.from(sidebar.querySelectorAll('li')).map((item) => item.textContent);
+      expect(entries).toEqual([
+        'À faire',
+        'Ventes', 'Dossiers clients', 'Virements déclarés', 'Lots — prix & statut',
+        'Finance', 'Comptes & décaissements',
+        'Chantier', 'Contrôles à affecter',
+        'Programmes', 'Programmes', 'Demandes de programme',
+        'Administration', 'Utilisateurs', "Devis / Appels d'offres", 'Tarifs', 'Paliers légaux',
+      ]);
     });
   },
 );
@@ -499,7 +509,7 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
 });
 
 describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
-  it('bascule sur l\'onglet « Tâches » et met à jour l\'URL, jamais un rechargement complet', async () => {
+  it('ouvre « À faire » et met à jour l\'URL, jamais un rechargement complet (F-075)', async () => {
     localStorage.setItem('keya_access_token', 'stored-admin-token');
     const api = createMockApiClient({
       getMe: vi.fn().mockResolvedValue({
@@ -510,11 +520,13 @@ describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
     });
     render(withApiClient(api, <App />));
     await screen.findByTestId('app-shell');
+    fireEvent.click(screen.getByRole('link', { name: 'Tarifs' }));
+    expect(window.location.pathname).toBe('/tarifs');
 
     fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
 
-    expect(await screen.findByRole('heading', { name: 'Tâches' })).toBeInTheDocument();
-    expect(window.location.pathname).toBe('/tasks');
+    expect(await screen.findByRole('heading', { name: 'Vos priorités du jour' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 });
 
@@ -534,32 +546,33 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
     return { api, getMyInboxTasks };
   }
 
-  it('entre dans apps/web et ne voit que Lots, Réservations (F-067), Comptes (F-068), Programmes et Demandes', async () => {
+  it('entre dans apps/web et ne voit que À faire, les ventes, les comptes et les programmes', async () => {
     renderAsAdv();
 
-    const tabBar = await screen.findByRole('navigation', { name: 'Sections back-office' });
-    const tabLabels = Array.from(tabBar.querySelectorAll('button')).map((button) => button.textContent);
-    expect(tabLabels).toEqual([
-      'Lots — prix & statut', 'Réservations', 'Virements déclarés', 'Comptes & décaissements', 'Programmes',
-      'Demandes de programme', 'Tâches',
+    await screen.findByTestId('app-shell');
+    const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
+    const labels = Array.from(sidebar.querySelectorAll('a')).map((link) => link.textContent);
+    expect(labels).toEqual([
+      'À faire', 'Dossiers clients', 'Virements déclarés', 'Lots — prix & statut', 'Comptes & décaissements', 'Programmes',
+      'Demandes de programme',
     ]);
     expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
   });
 
-  it('arrive sur « Lots — prix & statut », jamais sur le Back-office (admin seul)', async () => {
+  it('arrive sur « À faire », jamais sur un écran admin', async () => {
     renderAsAdv();
 
-    expect(await screen.findByRole('heading', { name: 'Lots — prix & statut' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Vos priorités du jour' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
-    expect(window.location.pathname).toBe('/lots');
+    expect(window.location.pathname).toBe('/');
   });
 
-  it('un lien direct vers un onglet admin (/tarifs) retombe sur son premier onglet', async () => {
+  it('un lien direct vers un écran admin (/tarifs) retombe sur « À faire »', async () => {
     window.history.replaceState(null, '', '/tarifs');
     renderAsAdv();
 
-    expect(await screen.findByRole('heading', { name: 'Lots — prix & statut' })).toBeInTheDocument();
-    expect(window.location.pathname).toBe('/lots');
+    expect(await screen.findByRole('heading', { name: 'Vos priorités du jour' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
   });
 
   it('ticket F-071 — cloche visible : boîte personnelle transverse (réservations à valider, paiements reçus)', async () => {
@@ -588,7 +601,7 @@ describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
     ],
   };
 
-  it('entre dans apps/web et ne voit que Réservations, Virements déclarés, Comptes et Tâches', async () => {
+  it('entre dans apps/web et ne voit que À faire, Dossiers clients, Virements déclarés et Comptes', async () => {
     localStorage.setItem('keya_access_token', 'stored-finance-token');
     const getMyInboxTasks = vi.fn().mockResolvedValue([]);
     const api = createMockApiClient({
@@ -598,9 +611,10 @@ describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
     });
     render(withApiClient(api, <App />));
 
-    const tabBar = await screen.findByRole('navigation', { name: 'Sections back-office' });
-    const tabLabels = Array.from(tabBar.querySelectorAll('button')).map((button) => button.textContent);
-    expect(tabLabels).toEqual(['Réservations', 'Virements déclarés', 'Comptes & décaissements', 'Tâches']);
+    await screen.findByTestId('app-shell');
+    const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
+    const labels = Array.from(sidebar.querySelectorAll('a')).map((link) => link.textContent);
+    expect(labels).toEqual(['À faire', 'Dossiers clients', 'Virements déclarés', 'Comptes & décaissements']);
     expect(getMyInboxTasks).toHaveBeenCalledWith({ status: 'pending' });
   });
 

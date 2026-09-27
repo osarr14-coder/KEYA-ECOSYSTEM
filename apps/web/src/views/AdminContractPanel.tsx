@@ -189,9 +189,8 @@ export function AdminContractPanel({ reservation }: { reservation: AdminReservat
   const canCreate = ACTIVE_RESERVATION_STATUSES.includes(reservation.status) && !hasVersionInProgress;
 
   return (
-    <section aria-label={`Contrat — ${reservation.lot.name}`} style={{ marginTop: '12px' }}>
-      <strong>Contrat</strong>
-      {versions.length === 0 && <p style={{ margin: '4px 0 0' }}>Aucune version rédigée.</p>}
+    <section aria-label={`Contrat — ${reservation.lot.name}`}>
+      {versions.length === 0 && <p style={{ margin: '0 0 8px' }}>Aucune version rédigée.</p>}
       {canCreate && latest && !newVersionOpen && (
         <div style={{ marginTop: '8px' }}>
           <Button type="button" variant="secondary" onClick={() => setNewVersionOpen(true)}>

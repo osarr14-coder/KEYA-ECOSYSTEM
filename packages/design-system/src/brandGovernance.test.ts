@@ -60,8 +60,8 @@ const FORBIDDEN_COMPONENT_DIRS = [
   'Card', 'Icon', 'TabBar',
   // Ticket F-073 — nouveaux composants partagés.
   'Pill', 'PageHeader', 'Field', 'GlobalStyles',
-  // Ticket F-074.
-  'Stepper',
+  // Tickets F-074, F-075.
+  'Stepper', 'KeyFigure',
 ];
 
 function readSourceFiles(dir: string): { file: string; content: string }[] {

@@ -31,21 +31,22 @@ describe('GlobalStyles — consolidation des styles de tableau (ticket F-041)', 
   });
 });
 
-describe('GlobalStyles — débordement horizontal des tableaux sur mobile (ticket F-051)', () => {
+describe('GlobalStyles — débordement horizontal des tableaux sur mobile (tickets F-051, F-075)', () => {
   it(
-    'pose display: block + overflow-x: auto sur table — vérifié en navigateur réel que '
-    + 'overflow-x seul ne suffit pas (voir commentaire du fichier source)',
+    'pose display: block + overflow-x: auto sur table SOUS le seuil mobile seulement — vérifié en navigateur '
+    + 'réel que overflow-x seul ne suffit pas (F-051), et qu\'un tableau "block" ne s\'étire plus en grand écran (F-075)',
     () => {
       const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
 
       const tableBlocks = css.match(/(?<![-\w])table\s*\{[^}]*\}/g) ?? [];
-      expect(tableBlocks).toHaveLength(1);
-      expect(tableBlocks[0]).toContain('display: block');
-      expect(tableBlocks[0]).toContain('overflow-x: auto');
-      // Ne casse pas la règle F-041 existante (border-collapse/width),
-      // toujours dans le MÊME bloc, jamais un second sélecteur table.
+      expect(tableBlocks).toHaveLength(2);
+      // Règle générale : largeur pleine, jamais "block".
       expect(tableBlocks[0]).toContain('border-collapse: collapse');
       expect(tableBlocks[0]).toContain('width: 100%');
+      expect(tableBlocks[0]).not.toContain('display: block');
+      // Règle mobile : défilement propre au tableau.
+      const mobile = css.slice(css.indexOf(`@media (max-width: ${MOBILE_BREAKPOINT_PX}px)`));
+      expect(mobile).toMatch(/table\s*\{[^}]*display: block;[^}]*overflow-x: auto/);
     },
   );
 });

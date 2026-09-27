@@ -26,7 +26,12 @@ function reservation(overrides: Partial<AdminReservation> = {}): AdminReservatio
   };
 }
 
-function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
+/** Ticket F-075 — la liste mène à la fiche dossier. */
+async function openDossier() {
+  fireEvent.click(await screen.findByRole('button', { name: /Ouvrir le dossier/ }));
+}
+
+function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}, openReservationId: string | null = null) {
   const api = createMockApiClient({
     listReservations: vi.fn().mockResolvedValue([reservation()]),
     listContracts: vi.fn().mockResolvedValue([]),
@@ -36,24 +41,54 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
     getTeamPaymentCalls: vi.fn().mockResolvedValue({ calls: [], candidates: [], blocking_reason: null }),
     ...overrides,
   });
-  render(withApiClient(api, <ReservationsView />));
+  render(withApiClient(api, <ReservationsView openReservationId={openReservationId} />));
   return { api };
 }
 
 describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-067)', () => {
-  it('liste par défaut les réservations bloquées, avec client, prix figé et échéance datée', async () => {
+  it('liste par défaut les réservations bloquées ; la fiche montre client, prix figé et échéance datée', async () => {
     const { api } = renderView();
 
-    expect(await screen.findByRole('heading', { name: 'Résidence Démonstration Abidjan — Lot A12' })).toBeInTheDocument();
+    const row = await screen.findByTestId('reservation-row');
     expect(api.listReservations).toHaveBeenCalledWith('held');
-    expect(screen.getByText('Awa Koné (acquereur@example.com)')).toBeInTheDocument();
-    expect(screen.getByText(/30\s000\s000 XOF/)).toBeInTheDocument();
-    expect(screen.getByText("28 septembre 2026 à 14:30 (heure d'Abidjan, GMT)")).toBeInTheDocument();
+    expect(row).toHaveTextContent('Awa Koné');
+    expect(row).toHaveTextContent('Lot A12');
+    expect(row).toHaveTextContent('À valider');
+
+    await openDossier();
+    expect(screen.getByRole('heading', { name: 'Awa Koné · Lot A12' })).toBeInTheDocument();
+    const dossier = screen.getByRole('article', { name: 'Dossier — Awa Koné, Lot A12' });
+    expect(dossier).toHaveTextContent('acquereur@example.com');
+    expect(dossier.textContent!.replace(/\s/g, ' ')).toContain('30 000 000 XOF');
+    expect(dossier).toHaveTextContent("28 septembre 2026 à 14:30 (heure d'Abidjan, GMT)");
+  });
+
+  it('ticket F-075 — la recherche filtre la liste (client, lot, programme) ; « Dossiers clients » revient à la liste', async () => {
+    renderView({
+      listReservations: vi.fn().mockResolvedValue([
+        reservation(),
+        reservation({ id: 'reservation-2', client: { id: 'c2', email: 'yao@example.com', full_name: 'Yao Kouassi' }, lot: { id: 'l2', name: 'Lot B3', surface: null } }),
+      ]),
+    });
+    expect(await screen.findAllByTestId('reservation-row')).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText('Rechercher un dossier'), { target: { value: 'yao' } });
+    expect(screen.getAllByTestId('reservation-row')).toHaveLength(1);
+    expect(screen.getByTestId('reservation-row')).toHaveTextContent('Yao Kouassi');
+
+    await openDossier();
+    fireEvent.click(screen.getByRole('button', { name: 'Dossiers clients' }));
+    expect(screen.getByTestId('reservation-row')).toBeInTheDocument();
+  });
+
+  it('ticket F-075 — ouvert depuis « À faire » : dossier affiché directement, tous statuts confondus', async () => {
+    const { api } = renderView({}, 'reservation-1');
+    expect(await screen.findByRole('article', { name: 'Dossier — Awa Koné, Lot A12' })).toBeInTheDocument();
+    expect(api.listReservations).toHaveBeenCalledWith(undefined);
   });
 
   it('changer le filtre relance la liste avec le statut choisi, « Toutes » sans filtre', async () => {
     const { api } = renderView();
-    await screen.findByTestId('reservation-status');
+    await screen.findByTestId('reservation-row');
 
     fireEvent.change(screen.getByLabelText('Filtrer par statut'), { target: { value: 'expired' } });
     await waitFor(() => expect(api.listReservations).toHaveBeenLastCalledWith('expired'));
@@ -65,6 +100,7 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
     const cancelReservation = vi.fn().mockResolvedValue(reservation({ status: 'cancelled' }));
     const listReservations = vi.fn().mockResolvedValueOnce([reservation()]).mockResolvedValue([]);
     renderView({ cancelReservation, listReservations });
+    await openDossier();
 
     const button = await screen.findByRole('button', { name: 'Annuler la réservation' });
     expect(button).toBeDisabled();
@@ -78,6 +114,7 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
   it('un refus du serveur (blocage déjà expiré) est affiché tel quel', async () => {
     const cancelReservation = vi.fn().mockRejectedValue(new ApiError(409, 'conflict', 'Ce blocage a déjà expiré.'));
     renderView({ cancelReservation });
+    await openDossier();
 
     fireEvent.change(await screen.findByLabelText("Motif d'annulation"), { target: { value: 'Test' } });
     fireEvent.click(screen.getByRole('button', { name: 'Annuler la réservation' }));
@@ -91,6 +128,7 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
         status: 'cancelled', status_label: 'Annulée', cancelled_by: 'adv@example.com', cancellation_reason: 'Doublon',
       })]),
     });
+    await openDossier();
 
     expect(await screen.findByText('adv@example.com')).toBeInTheDocument();
     expect(screen.getByText('Doublon')).toBeInTheDocument();
@@ -103,6 +141,7 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
       .mockResolvedValueOnce([reservation()])
       .mockResolvedValue([reservation({ validated_at: '2026-09-27T15:00:00Z', validated_by: 'adv.demo@keya.test' })]);
     renderView({ validateReservation, listReservations });
+    await openDossier();
 
     expect(await screen.findByTestId('reservation-validation')).toHaveTextContent('En attente de validation');
     fireEvent.click(screen.getByRole('button', { name: 'Valider la réservation et appeler les frais' }));

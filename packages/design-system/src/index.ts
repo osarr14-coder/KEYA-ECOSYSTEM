@@ -45,6 +45,9 @@ export { useOnlineStatus } from './hooks/useOnlineStatus';
 export { useTheme } from './hooks/useTheme';
 export type { ThemePreference } from './hooks/useTheme';
 
+export { KeyFigure } from './components/KeyFigure/KeyFigure';
+export type { KeyFigureProps } from './components/KeyFigure/KeyFigure';
+
 export { PageHeader } from './components/PageHeader/PageHeader';
 export type { PageHeaderProps } from './components/PageHeader/PageHeader';
 

@@ -131,13 +131,14 @@ Pour dérouler le scénario du CDC V3 (§9) sans intervention en base :
 | `client1.demo@keya.test`, `client2.demo@keya.test` | client (acquéreur) | HOME |
 | `adv.demo@keya.test` | gestionnaire ADV | apps/web |
 | `admin.demo@keya.test` | admin KEYIMMO | apps/web |
-| `finance.demo@keya.test` | Finance (démo) | apps/web (Réservations, Comptes & décaissements) |
+| `finance.demo@keya.test` | Finance (démo) | apps/web (Dossiers clients, Virements déclarés, Comptes & décaissements) |
 | `constructeur.demo@keya.test` | constructeur | BUILD |
 | `inspecteur.demo@keya.test` | bureau de contrôle | CONTROL |
 
 Parcours conseillé (CDC §9.1, circuit de paiement B-056) : `client1` réserve le Lot A1 dans HOME
-→ `adv` reçoit « Réservation à valider » (cloche) et clique « Valider la réservation et appeler les
-frais » (apps/web, Réservations), puis rédige, soumet et approuve le contrat → `client1` voit les
+(« Mon acquisition ») → `adv` voit « Réservation à valider » dans « À faire », clique « Ouvrir »
+puis « Valider la réservation et appeler les frais » (fiche dossier), rédige, soumet et approuve
+le contrat → `client1` voit sa prochaine action « Régler : Frais de réservation » avec les
 instructions de virement (compte FICTIF) et clique « J'ai effectué le virement » → `finance`
 confirme dans « Virements déclarés » (la réservation passe « Réservée », l'ADV et le client sont
 notifiés) → `adv` émet le complément (2 900 000) → `client1` le déclare, `finance` le confirme,

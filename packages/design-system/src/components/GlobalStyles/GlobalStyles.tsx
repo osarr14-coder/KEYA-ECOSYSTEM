@@ -271,11 +271,13 @@ const GLOBAL_CSS = `
    * mise en page tableau tourne normalement à l'intérieur — seule la
    * boîte EXTÉRIEURE devient un bloc défilant.
    */
+  /* Ticket F-075 — "display: block" (défilement propre au tableau, F-051)
+     n'est plus appliqué qu'EN DESSOUS du seuil mobile (voir la media query
+     plus bas) : sur grand écran, un tableau "block" ne s'étirait plus sur
+     toute la largeur de sa carte (colonnes tassées à gauche). */
   table {
     border-collapse: collapse;
     width: 100%;
-    display: block;
-    overflow-x: auto;
   }
   /* Ticket F-073 — lignes plus aérées (0.3em → 0.7em) : les tableaux
      denses étaient le principal grief de lisibilité des écrans pros. */
@@ -347,6 +349,10 @@ const GLOBAL_CSS = `
    * jamais une seconde valeur à resynchroniser manuellement.
    */
   @media (max-width: ${MOBILE_BREAKPOINT_PX}px) {
+    table {
+      display: block;
+      overflow-x: auto;
+    }
     [data-testid="app-shell-header"] {
       flex-wrap: wrap;
     }
