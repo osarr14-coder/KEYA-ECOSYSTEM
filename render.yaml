@@ -40,7 +40,10 @@ services:
     # la base. Voir apps/organizations/management/commands/seed_admin.py.
     # `createcachetable` (ticket B-047) : table du cache partagé qui porte
     # les compteurs de throttle (config/settings.py, CACHES) ; idempotent.
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python manage.py createcachetable && python manage.py seed_admin"
+    # `seed_demo_scenario` (ticket B-053) : comptes de démonstration par rôle,
+    # programme et lots fictifs — OPT-IN, ne fait rien tant que DEMO_PASSWORD
+    # n'est pas défini sur ce service (voir DEPLOY_RENDER.md).
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python manage.py createcachetable && python manage.py seed_admin && python manage.py seed_demo_scenario"
     startCommand: "gunicorn config.wsgi:application"
     envVars:
       - key: PYTHON_VERSION
@@ -74,6 +77,11 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         generateValue: true
+      # Ticket B-053 — mot de passe commun des comptes de démonstration, choisi
+      # par le propriétaire du déploiement (jamais écrit dans le dépôt). Vide =
+      # aucun compte de démonstration.
+      - key: DEMO_PASSWORD
+        sync: false
 
   # ── HOME (client) ──────────────────────────────────────────────────────
   - type: web

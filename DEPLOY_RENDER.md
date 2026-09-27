@@ -110,6 +110,32 @@ d'associer et d'écraser la configuration de ce service existant.
   `NUM_PROXIES` du service backend. Mal réglé, soit un attaquant
   contourne le throttle, soit tous les utilisateurs partagent un compteur.
 
+## Comptes de démonstration (ticket B-053)
+
+Pour dérouler le scénario du CDC V3 (§9) sans intervention en base :
+
+1. Service `keya-ecosystem-backend` → **Environment** → renseigner `DEMO_PASSWORD`
+   (au moins 10 caractères, choisi par vous — il n'est écrit nulle part dans le dépôt).
+2. **Manual Deploy** → *Deploy latest commit* : le `buildCommand` lance
+   `seed_demo_scenario`, qui crée (ou remet à jour) les comptes ci-dessous avec ce mot de
+   passe, le programme « Résidence Démonstration Abidjan » (2 lots à 30 000 000 XOF) et le
+   barème de paiement de démonstration. Relancé à chaque déploiement, il ne réinitialise
+   jamais une démonstration en cours.
+3. Se connecter sur `https://keya-ecosystem-web.onrender.com` : chaque compte est redirigé
+   vers l'application de son rôle.
+
+| Compte | Rôle | Application |
+|---|---|---|
+| `client1.demo@keya.test`, `client2.demo@keya.test` | client (acquéreur) | HOME |
+| `adv.demo@keya.test` | gestionnaire ADV | apps/web |
+| `admin.demo@keya.test` | admin KEYIMMO | apps/web |
+| `finance.demo@keya.test` | Finance (démo) | aucun écran encore (F-068) |
+| `constructeur.demo@keya.test` | constructeur | BUILD |
+| `inspecteur.demo@keya.test` | bureau de contrôle | CONTROL |
+
+Données intégralement fictives. Pour retirer l'accès : vider `DEMO_PASSWORD` ne supprime
+pas les comptes ; changer sa valeur puis redéployer change leur mot de passe.
+
 ## Redéployer après un nouveau commit
 
 Render redéploie automatiquement à chaque push sur `master` (comportement
