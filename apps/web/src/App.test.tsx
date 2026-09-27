@@ -21,8 +21,16 @@ afterEach(() => {
   window.history.replaceState(null, '', '/');
 });
 
-function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}, redirect = vi.fn()) {
-  const api = createMockApiClient({ getMyInboxTasks: async () => [], ...overrides });
+/** Ticket F-079 — `/` est désormais la page d'accueil publique : les tests
+ * du formulaire de connexion l'ouvrent à son adresse, `/connexion`. */
+function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}, redirect = vi.fn(), path = '/connexion') {
+  window.history.replaceState(null, '', path);
+  const api = createMockApiClient({
+    getMyInboxTasks: async () => [],
+    getPublicOffer: async () => [],
+    getPublicWorksites: async () => [],
+    ...overrides,
+  });
   render(withApiClient(api, <App redirect={redirect} />));
   return { api, redirect };
 }
@@ -625,5 +633,130 @@ describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
     await fillAndSubmit();
 
     await waitFor(() => expect(redirect).toHaveBeenCalledWith(expect.stringContaining('localhost:5176')));
+  });
+});
+
+describe('App — pages publiques (ticket F-079)', () => {
+  const PROGRAM = {
+    id: 'program-1', name: 'Résidence Démonstration Abidjan', promoter: 'Promoteur Démonstration', locations: ['Cocody'],
+    currency: 'XOF', total_lots: 2, available_lots: 1, price_from: '30000000.00',
+    lots: [{ id: 'lot-1', name: 'Lot A1', asset: 'Bâtiment A', surface: '82.00', price: '30000000.00' }],
+    payment_schedule: {
+      reservation_fee: '100000',
+      steps: [
+        { code: 'reservation', label: 'Premier versement (réservation)', cumulative_cap_percent: '10.00' },
+        { code: 'livraison', label: 'Livraison', cumulative_cap_percent: '100.00' },
+      ],
+    },
+  };
+  const WORKSITE = {
+    program: 'Résidence Démonstration Abidjan', lot: 'Lot A1', location: 'Cocody', accepted: 1, total: 2,
+    milestones: [
+      { label: 'Fondations', status: 'accepted', status_label: 'Accepté techniquement' },
+      { label: 'Gros œuvre', status: 'awaiting_control', status_label: 'En attente de contrôle' },
+    ],
+  };
+
+  it('sans session, `/` affiche la page d’accueil publique : bandeau démonstration, programmes, chantiers, simulateur', async () => {
+    const getPublicOffer = vi.fn().mockResolvedValue([PROGRAM]);
+    renderApp({ getPublicOffer, getPublicWorksites: vi.fn().mockResolvedValue([WORKSITE]) }, vi.fn(), '/');
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Achetez votre logement en toute confiance' })).toBeInTheDocument();
+    expect(screen.getByTestId('demo-ribbon')).toHaveTextContent('DÉMONSTRATION');
+    const program = await screen.findByTestId('public-program');
+    expect(program).toHaveTextContent('Résidence Démonstration Abidjan');
+    expect(program).toHaveTextContent('1 lot disponible');
+    expect(await screen.findByTestId('public-worksite')).toHaveTextContent('1 / 2 étapes acceptées');
+    expect(screen.getByTestId('public-worksite')).toHaveTextContent('En cours : Gros œuvre — En attente de contrôle');
+    // Simulateur : prix du lot le moins cher par défaut, échéancier du barème.
+    expect(screen.getByTestId('simulated-price').textContent!.replace(/\s/g, ' ')).toBe('30 000 000 XOF');
+    expect(screen.getAllByTestId('simulator-row').map((row) => row.textContent!.replace(/\s/g, ' '))).toEqual([
+      expect.stringContaining('100 000 XOF'),
+      expect.stringContaining('2 900 000 XOF'),
+      expect.stringContaining('27 000 000 XOF'),
+    ]);
+    // Aucun formulaire de connexion sur l'accueil, aucun faux témoignage.
+    expect(screen.queryByLabelText('Connexion')).not.toBeInTheDocument();
+    expect(screen.queryByText(/ce qu.en disent nos clients/i)).not.toBeInTheDocument();
+  });
+
+  it('un programme complet reste affiché, sans bouton de réservation', async () => {
+    renderApp({ getPublicOffer: vi.fn().mockResolvedValue([{ ...PROGRAM, available_lots: 0, lots: [] }]) }, vi.fn(), '/');
+
+    const program = await screen.findByTestId('public-program');
+    expect(program).toHaveTextContent('Complet');
+    expect(screen.queryByRole('button', { name: /Réserver — créer mon espace/ })).not.toBeInTheDocument();
+  });
+
+  it('« Se connecter » ouvre le formulaire à /connexion, sans rechargement ; le retour navigateur revient à l’accueil', async () => {
+    renderApp({}, vi.fn(), '/');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Se connecter' }));
+    expect(screen.getByLabelText('Connexion')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/connexion');
+
+    act(() => {
+      window.history.replaceState(null, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Achetez votre logement en toute confiance' })).toBeInTheDocument();
+  });
+
+  it('inscription d’un acquéreur : compte client créé, connexion, redirection vers HOME', async () => {
+    const registerClient = vi.fn().mockResolvedValue(undefined);
+    const login = vi.fn().mockResolvedValue({ access: 'tok', refresh: 'ref' });
+    const getMe = vi.fn().mockResolvedValue({
+      id: 'u', email: 'awa@example.com', full_name: 'Awa',
+      memberships: [{ organization_id: 'o', organization_name: 'Compte personnel', role_code: 'client', role_label: 'Client' }],
+    });
+    const { redirect } = renderApp({ registerClient, login, getMe }, vi.fn(), '/inscription');
+
+    fireEvent.change(screen.getByLabelText('Nom complet'), { target: { value: 'Awa Koné' } });
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'awa@example.com' } });
+    fireEvent.change(screen.getByLabelText('Mot de passe (8 caractères minimum)'), { target: { value: 'motdepasse' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Créer mon espace' }));
+
+    await waitFor(() => expect(registerClient).toHaveBeenCalledWith({
+      email: 'awa@example.com', password: 'motdepasse', full_name: 'Awa Koné',
+    }));
+    expect(login).toHaveBeenCalledWith('awa@example.com', 'motdepasse');
+    await waitFor(() => expect(redirect).toHaveBeenCalledWith(expect.stringContaining('localhost:5173')));
+  });
+
+  it('un refus du serveur à l’inscription (email déjà utilisé) est affiché tel quel, sans connexion', async () => {
+    const registerClient = vi.fn().mockRejectedValue(
+      new ApiError(400, 'bad request', undefined, { email: ['Un compte existe déjà avec cet email.'] }),
+    );
+    const login = vi.fn();
+    renderApp({ registerClient, login }, vi.fn(), '/inscription');
+
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'awa@example.com' } });
+    fireEvent.change(screen.getByLabelText('Mot de passe (8 caractères minimum)'), { target: { value: 'motdepasse' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Créer mon espace' }));
+
+    expect(await screen.findByText('Un compte existe déjà avec cet email.')).toBeInTheDocument();
+    expect(login).not.toHaveBeenCalled();
+  });
+});
+
+describe('App — pages publiques : ordre des programmes (ticket F-079)', () => {
+  it('les programmes avec des lots disponibles passent avant les programmes complets', async () => {
+    const base = {
+      promoter: 'P', locations: [], currency: 'XOF', total_lots: 1, price_from: '10000000.00',
+      payment_schedule: { reservation_fee: '100000', steps: [] },
+    };
+    renderApp({
+      getPublicOffer: vi.fn().mockResolvedValue([
+        { ...base, id: 'full', name: 'Programme complet', available_lots: 0, lots: [] },
+        {
+          ...base, id: 'open', name: 'Programme ouvert', available_lots: 1, price_from: '20000000.00',
+          lots: [{ id: 'l', name: 'Lot 1', asset: 'A', surface: null, price: '20000000.00' }],
+        },
+      ]),
+    }, vi.fn(), '/');
+
+    const cards = await screen.findAllByTestId('public-program');
+    expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual(['Programme ouvert', 'Programme complet']);
+    expect(screen.getByTestId('simulated-price').textContent!.replace(/\s/g, ' ')).toBe('20 000 000 XOF');
   });
 });

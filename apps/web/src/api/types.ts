@@ -622,3 +622,29 @@ export interface PaymentNotice {
   rejection_reason: string;
   simulation: boolean;
 }
+
+/** Ticket F-079 (backend B-057) — vitrine publique anonyme. */
+export interface PublicProgram {
+  id: string;
+  name: string;
+  promoter: string;
+  locations: string[];
+  currency: string;
+  lots: { id: string; name: string; asset: string; surface: string | null; price: string }[];
+  total_lots: number;
+  available_lots: number;
+  price_from: string;
+  payment_schedule: {
+    reservation_fee: string;
+    steps: { code: string; label: string; cumulative_cap_percent: string }[];
+  };
+}
+
+export interface PublicWorksite {
+  program: string;
+  lot: string;
+  location: string;
+  accepted: number;
+  total: number;
+  milestones: { label: string; status: string; status_label: string }[];
+}

@@ -165,6 +165,8 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'login': '5/min',
         'register': '20/hour',
+        # Ticket B-057 — vitrine publique anonyme (lecture seule).
+        'public': '60/min',
     },
     # Ticket B-047 — SANS ce réglage, DRF identifie l'appelant par
     # l'en-tête X-Forwarded-For ENTIER, que le client choisit librement :

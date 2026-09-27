@@ -59,7 +59,9 @@ const SESSION_KEYS = ['keya_access_token', 'keya_refresh_token', 'keya_active_or
  */
 export function logoutToLoginScreen(assign: (url: string) => void = (url) => window.location.assign(url)): void {
   for (const key of SESSION_KEYS) localStorage.removeItem(key);
-  assign(`${resolveAppOrigins().web}/?logout=1`);
+  // Ticket F-079 — `/connexion` : `/` est désormais la page d'accueil
+  // publique ; une déconnexion ramène directement au formulaire.
+  assign(`${resolveAppOrigins().web}/connexion?logout=1`);
 }
 
 /** Côté apps/web, au démarrage : honore `?logout=1` (voir ci-dessus).

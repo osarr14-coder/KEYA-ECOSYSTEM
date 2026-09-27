@@ -69,5 +69,5 @@ CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_TASK_ALWAYS_EAGER', 'True') ==
 # de DRF (voir la docstring de TestLoginThrottling).
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,
-    'DEFAULT_THROTTLE_RATES': {'login': None, 'register': None},
+    'DEFAULT_THROTTLE_RATES': {'login': None, 'register': None, 'public': None},
 }

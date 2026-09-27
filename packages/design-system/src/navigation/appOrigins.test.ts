@@ -59,7 +59,7 @@ describe('déconnexion (ticket F-070)', () => {
     expect(localStorage.getItem('keya_refresh_token')).toBeNull();
     expect(localStorage.getItem('keya_active_organization_id')).toBeNull();
     expect(localStorage.getItem('keya_theme')).toBe('dark');
-    expect(assign).toHaveBeenCalledWith('http://localhost:5176/?logout=1');
+    expect(assign).toHaveBeenCalledWith('http://localhost:5176/connexion?logout=1');
   });
 
   it('consumeLogoutRequest efface la session d’apps/web et retire le paramètre de l’URL', () => {

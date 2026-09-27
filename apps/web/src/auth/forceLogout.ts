@@ -12,5 +12,6 @@
  */
 export function forceLogout(): void {
   localStorage.removeItem('keya_access_token');
-  window.location.href = '/';
+  // Ticket F-079 — formulaire de connexion, plus la page d'accueil publique.
+  window.location.href = '/connexion';
 }

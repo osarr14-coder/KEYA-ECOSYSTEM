@@ -123,7 +123,9 @@ Pour dérouler le scénario du CDC V3 (§9) sans intervention en base :
    passe, le programme « Résidence Démonstration Abidjan » (2 lots à 30 000 000 XOF) et le
    barème de paiement de démonstration. Relancé à chaque déploiement, il ne réinitialise
    jamais une démonstration en cours.
-3. Se connecter sur `https://keya-ecosystem-web.onrender.com` : chaque compte est redirigé
+3. `https://keya-ecosystem-web.onrender.com` affiche la page d'accueil publique (programmes,
+   garanties, chantiers suivis, simulateur — F-079) ; « Se connecter » ouvre
+   `https://keya-ecosystem-web.onrender.com/connexion` : chaque compte est redirigé
    vers l'application de son rôle.
 
 | Compte | Rôle | Application |

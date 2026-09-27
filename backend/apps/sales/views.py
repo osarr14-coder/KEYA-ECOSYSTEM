@@ -1,12 +1,13 @@
 from rest_framework import permissions
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.backoffice.permissions import IsAdminKeyimmoOrGestionnaireADV, IsFinance, IsKeyimmoTeam
 from apps.evidence.permissions import IsConstructeur
 
-from . import services
+from . import public, services
 from .models import ReservationStatus
 from .permissions import IsClient
 from .serializers import (
@@ -57,6 +58,34 @@ class CatalogLotListView(APIView):
     def get(self, request):
         lots = services.list_published_lots(caller_organization_id=_caller_organization_id(request))
         return Response(CatalogLotSerializer(lots, many=True).data)
+
+
+class PublicOfferView(APIView):
+    """`GET /api/public/offer/` — ticket B-057. Vitrine anonyme : programmes
+    avec lots disponibles et barème de paiement (simulateur). Aucune
+    authentification (un jeton invalide ne doit jamais bloquer la vitrine),
+    débit limité, lecture seule — voir `apps/sales/public.py`."""
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'public'
+    throttle_classes = [ScopedRateThrottle]
+
+    def get(self, request):
+        return Response(public.public_offer())
+
+
+class PublicWorksitesView(APIView):
+    """`GET /api/public/worksites/` — ticket B-057. Avancement des chantiers
+    en cours, jalon par jalon, sans aucune donnée client."""
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'public'
+    throttle_classes = [ScopedRateThrottle]
+
+    def get(self, request):
+        return Response(public.public_worksites())
 
 
 class ReservationCreateView(APIView):

@@ -11,6 +11,10 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
   const notMocked = () => Promise.reject(new Error('not mocked'));
   return {
     login: vi.fn(notMocked),
+    // Ticket F-079 (vitrine publique, B-057) :
+    registerClient: vi.fn(notMocked),
+    getPublicOffer: vi.fn(notMocked),
+    getPublicWorksites: vi.fn(notMocked),
     getMe: vi.fn(notMocked),
     searchUsers: vi.fn(notMocked),
     getUserDetail: vi.fn(notMocked),

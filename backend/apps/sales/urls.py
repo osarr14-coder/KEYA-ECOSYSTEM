@@ -10,6 +10,8 @@ from .views import (
     BeneficiaryDisbursementConfirmView,
     BeneficiaryDisbursementListView,
     CatalogLotListView,
+    PublicOfferView,
+    PublicWorksitesView,
     DisbursementCancelView,
     DisbursementCreateView,
     DisbursementEligibilityView,
@@ -36,6 +38,9 @@ from .views import (
 
 urlpatterns = [
     path('catalog/lots/', CatalogLotListView.as_view(), name='catalog-lot-list'),
+    # Ticket B-057 — vitrine publique anonyme (page d'accueil, F-079).
+    path('public/offer/', PublicOfferView.as_view(), name='public-offer'),
+    path('public/worksites/', PublicWorksitesView.as_view(), name='public-worksites'),
     path('reservations/', ReservationCreateView.as_view(), name='reservation-create'),
     path('reservations/admin/', AdminReservationListView.as_view(), name='reservation-admin-list'),
     path(

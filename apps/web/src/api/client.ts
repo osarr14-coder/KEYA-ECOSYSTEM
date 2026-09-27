@@ -1,7 +1,7 @@
 import type {
   AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, ContractAction,
   ContractVersion, ControlToAssign, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
-  InspectorSummary, PaymentNotice, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
+  InspectorSummary, PaymentNotice, PublicProgram, PublicWorksite, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
@@ -157,8 +157,40 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     return (await response.json()) as LoginResult;
   }
 
+  /**
+   * Ticket F-079 — lectures ANONYMES de la vitrine publique (backend B-057) :
+   * jamais de jeton envoyé (une session expirée ne doit pas casser la page
+   * d'accueil), jamais de déconnexion forcée sur erreur.
+   */
+  async function publicGet<T>(path: string): Promise<T> {
+    const response = await fetch(`${baseUrl}${path}`);
+    if (!response.ok) {
+      throw new ApiError(response.status, `Échec de chargement (${response.status})`);
+    }
+    return (await response.json()) as T;
+  }
+
+  /** `POST /api/auth/register/` — inscription d'un acquéreur (rôle
+   * `client`, libre-service côté serveur). Les erreurs de validation (email
+   * déjà utilisé, mot de passe trop court) sont renvoyées telles quelles. */
+  async function registerClient(payload: { email: string; password: string; full_name: string }): Promise<void> {
+    const response = await fetch(`${baseUrl}/api/auth/register/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, role: 'client' }),
+    });
+    if (!response.ok) {
+      let body: unknown;
+      try { body = await response.json(); } catch { body = undefined; }
+      throw new ApiError(response.status, `Échec de l'inscription (${response.status})`, undefined, body);
+    }
+  }
+
   return {
     login,
+    registerClient,
+    getPublicOffer: () => publicGet<PublicProgram[]>('/api/public/offer/'),
+    getPublicWorksites: () => publicGet<PublicWorksite[]>('/api/public/worksites/'),
     /** Sans argument, lit `getAccessToken()` (session déjà persistée —
      * ticket 021). Avec un token explicite, l'utilise à la place (ticket
      * 020 : le formulaire de connexion appelle `getMe(access)` avec le

@@ -805,6 +805,10 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             ('procurement-my-candidatures', [], {}),
             # Ticket B-048 :
             ('catalog-lot-list', [], {}),
+            # Ticket B-057 — vitrine publique anonyme (prix de vente publiés
+            # et états de jalons seulement) :
+            ('public-offer', [], {}),
+            ('public-worksites', [], {}),
             ('my-reservations', [], {}),
             # Ticket B-049 (n'importe quel identifiant : 404 attendu, jamais
             # une fuite) :
@@ -1016,6 +1020,11 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             'reservation-validate', 'my-payment-notice-create', 'finance-payment-notice-list',
             'finance-payment-notice-confirm', 'finance-payment-notice-reject',
             'my-task-inbox', 'my-task-inbox-complete',
+            # Ticket B-057 — ajout conscient : vitrine publique ANONYME, lecture
+            # seule (programmes, lots disponibles avec prix de vente, barème ;
+            # états des jalons des chantiers en cours). Aucune donnée client,
+            # aucun montant de devis (ajoutées au balayage ci-dessus).
+            'public-offer', 'public-worksites',
         }
         assert actual == expected
 

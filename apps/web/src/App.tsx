@@ -12,7 +12,7 @@ import {
   ADMIN_KEYIMMO_ROLE, FINANCE_ROLE, GESTIONNAIRE_ADV_ROLE, deriveAllRoleCodes, hasBackofficeAccess,
 } from './auth/adminAccess';
 import {
-  buildRedirectUrl, isSameOriginRedirect, resolveAppOrigins, resolveRedirectApp,
+  isSameOriginRedirect,
 } from './auth/redirectTarget';
 import type { TabRoute } from './navigation/tabRouting';
 import { useUrlSyncedTab } from './navigation/useUrlSyncedTab';
@@ -28,6 +28,11 @@ import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
 import { ReservationsView } from './views/ReservationsView';
 import { type NavigationTarget, TodayView } from './views/TodayView';
+import { signInAndRedirect } from './auth/signInAndRedirect';
+import { PublicHome } from './public/PublicHome';
+import { PublicLayout } from './public/PublicLayout';
+import { SignupView } from './public/SignupView';
+import { type PublicPath, usePublicPath } from './public/usePublicPath';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
@@ -189,7 +194,7 @@ export function App({ redirect = defaultRedirect }: AppProps) {
           </AlertBanner>
         </div>
       )}
-      {storedAccessToken ? <AuthenticatedApp /> : <LoginView redirect={redirect} />}
+      {storedAccessToken ? <AuthenticatedApp /> : <PublicSite redirect={redirect} />}
     </>
   );
 }
@@ -327,7 +332,22 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
  * 021 pour cohabiter avec `AuthenticatedApp` ci-dessus — comportement et
  * markup strictement inchangés.
  */
-function LoginView({ redirect }: { redirect: (url: string) => void }) {
+/**
+ * Ticket F-079 — sans session : pages publiques (accueil `/`, connexion
+ * `/connexion`, inscription `/inscription`), dans le même gabarit.
+ */
+function PublicSite({ redirect }: { redirect: (url: string) => void }) {
+  const [path, navigate] = usePublicPath();
+  return (
+    <PublicLayout path={path} navigate={navigate}>
+      {path === '/connexion' && <LoginView redirect={redirect} navigate={navigate} />}
+      {path === '/inscription' && <SignupView redirect={redirect} navigate={navigate} />}
+      {path === '/' && <PublicHome navigate={navigate} />}
+    </PublicLayout>
+  );
+}
+
+function LoginView({ redirect, navigate }: { redirect: (url: string) => void; navigate: (path: PublicPath) => void }) {
   const api = useApiClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -343,11 +363,7 @@ function LoginView({ redirect }: { redirect: (url: string) => void }) {
     setSubmitting(true);
     setError(null);
     try {
-      const { access, refresh } = await api.login(email, password);
-      const me = await api.getMe(access);
-      const targetApp = resolveRedirectApp(me);
-      const origins = resolveAppOrigins();
-      redirect(buildRedirectUrl(origins[targetApp], access, refresh));
+      await signInAndRedirect(api, email, password, redirect);
       // Volontairement PAS de `setSubmitting(false)` ici : une redirection
       // réelle va démonter ce composant, remettre le formulaire actif
       // entre-temps ne ferait que clignoter avant la navigation.
@@ -374,7 +390,7 @@ function LoginView({ redirect }: { redirect: (url: string) => void }) {
   // visible (voir Field.tsx) — mêmes requêtes getByLabelText qu'avant ce
   // ticket, aucune régression de test attendue.
   return (
-    <main style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: 'calc(100vh - 100px)' }}>
       <div
         style={{
           width: '440px',
@@ -477,8 +493,19 @@ function LoginView({ redirect }: { redirect: (url: string) => void }) {
           <Button type="submit" disabled={submitting}>
             {submitting ? 'Connexion…' : 'Se connecter'}
           </Button>
+          {/* Ticket F-079 — un visiteur sans compte n'est jamais bloqué ici. */}
+          <p style={{ margin: 0, fontSize: '14px' }}>
+            Pas encore de compte ?{' '}
+            <a
+              href="/inscription"
+              onClick={(event) => { event.preventDefault(); navigate('/inscription'); }}
+              style={{ fontWeight: 700 }}
+            >
+              Créer mon espace acquéreur
+            </a>
+          </p>
         </form>
       </div>
-    </main>
+    </div>
   );
 }

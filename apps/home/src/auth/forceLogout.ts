@@ -11,5 +11,6 @@
 export function forceLogout(): void {
   localStorage.removeItem('keya_access_token');
   const webUrl = import.meta.env.VITE_WEB_URL ?? 'http://localhost:5176';
-  window.location.href = `${webUrl}/`;
+  // Ticket F-079 — `/` est la page d'accueil publique : formulaire directement.
+  window.location.href = `${webUrl}/connexion`;
 }
