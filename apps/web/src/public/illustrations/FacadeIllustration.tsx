@@ -20,7 +20,8 @@ import { semanticColors, useIsMobile } from '@keya/design-system';
 const INK = semanticColors.neutral.heading;
 const FINE = semanticColors.neutral.textMuted;
 const BRICK = semanticColors.neutral.border;
-const MILESTONE_1 = semanticColors.accent.text;
+// Décision PO du 27/09 : doré réservé à la marque et à l'action principale.
+const MILESTONE_1 = INK;
 
 export const FACADE_CAPTION = 'Illustration — Résidence Démonstration Abidjan · programme fictif, sans valeur contractuelle';
 

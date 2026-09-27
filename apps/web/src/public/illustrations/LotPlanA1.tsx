@@ -22,11 +22,12 @@ const MUTED = semanticColors.neutral.textMuted;
 const SURFACE = semanticColors.neutral.surface;
 const STORAGE = semanticColors.neutral.background;
 const PARQUET = semanticColors.accent.soft;
-const PARQUET_LINE = semanticColors.accent.text;
+const PARQUET_LINE = semanticColors.neutral.textMuted;
 const TILE_LINE = semanticColors.neutral.border;
 const WET = semanticColors.neutral.subtle;
 const WET_LINE = semanticColors.neutral.textMuted;
-const ENTRANCE = semanticColors.accent.text;
+// Décision PO du 27/09 : doré réservé à la marque et à l'action principale.
+const ENTRANCE = INK;
 
 export const PLAN_CAPTION = 'Plan indicatif du lot A1 · T3 · 82,00 m² · surfaces fictives — programme fictif';
 
@@ -51,7 +52,7 @@ function PlanDrawing({ label }: { label: 'thumbnail' | 'viewer' }) {
         <defs>
         <pattern id={ids.parquet} width={8} height={8} patternUnits="userSpaceOnUse">
         <rect width={8} height={8} style={{ fill: PARQUET }} />
-        <line x1={0} y1={4} x2={8} y2={4} strokeWidth={0.5} strokeOpacity={0.6} style={{ stroke: PARQUET_LINE }} />
+        <line x1={0} y1={4} x2={8} y2={4} strokeWidth={0.5} strokeOpacity={0.3} style={{ stroke: PARQUET_LINE }} />
         </pattern>
         <pattern id={ids.tile} width={16} height={16} patternUnits="userSpaceOnUse">
         <rect width={16} height={16} style={{ fill: SURFACE }} />
