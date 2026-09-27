@@ -156,3 +156,28 @@ class LitigeResolveView(APIView):
             raise ValidationError(getattr(exc, 'messages', [str(exc)]))
 
         return Response(LitigeSerializer(litige).data)
+
+
+class ControlsToAssignView(APIView):
+    """`GET /api/backoffice/controls/` — ticket B-054 : déclarations à
+    contrôler (en attente de contrôle ou sous réserve), toutes
+    organisations, avec la mission en cours. Réservé à `admin_keyimmo`,
+    comme l'affectation elle-même (`CreateMissionView`)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        rows = inspections_services.list_controls_to_assign(
+            caller_organization_id=request.organization.id if request.organization else None,
+        )
+        return Response(rows)
+
+
+class InspectorListView(APIView):
+    """`GET /api/backoffice/inspectors/` — ticket B-054 : contrôleurs
+    affectables."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+
+    def get(self, request):
+        return Response(services.list_inspectors(admin_user=request.user))

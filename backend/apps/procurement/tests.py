@@ -812,6 +812,8 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             ('my-payment-calls', [own_lot.id], {}),
             # Ticket B-052 : sorties exécutées vers SA propre organisation.
             ('beneficiary-disbursement-list', [], {}),
+            # Ticket B-054 : jalons de SON propre lot.
+            ('build-lot-milestones', [own_lot.id], {}),
         ]
         for name, args, _kwargs in requests:
             response = own_client.get(reverse(name, args=args))
@@ -996,6 +998,11 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             'finance-account-list', 'finance-program-account', 'finance-disbursement-create',
             'finance-disbursement-eligibility', 'finance-disbursement-execute', 'finance-disbursement-cancel',
             'finance-disbursement-reconcile', 'beneficiary-disbursement-list', 'beneficiary-disbursement-confirm',
+            # Ticket B-054 — ajout conscient : jalons d'un lot de
+            # l'organisation active (constructeur, 404 hors organisation ;
+            # ajouté au balayage ci-dessus) ; contrôles à affecter et
+            # contrôleurs, admin seul — états dérivés, aucun montant.
+            'build-lot-milestones', 'backoffice-control-list', 'backoffice-inspector-list',
         }
         assert actual == expected
 

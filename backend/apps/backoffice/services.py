@@ -66,3 +66,24 @@ def deactivate_user(user):
     user.is_active = False
     user.save(update_fields=['is_active'])
     return user
+
+
+def list_inspectors(*, admin_user):
+    """Ticket B-054 — comptes actifs détenant le rôle `inspecteur`, avec
+    leurs organisations. `membership_select` n'autorise que ses propres
+    lignes : lecture utilisateur par utilisateur, même bascule étroite que
+    `get_user_memberships` ci-dessus (coût linéaire assumé à l'échelle du
+    MVP). La règle d'indépendance reste vérifiée à l'affectation."""
+    inspectors = []
+    try:
+        for user in User.objects.filter(is_active=True).order_by('email'):
+            set_rls_context(user_id=user.id)
+            memberships = list(Membership.objects.filter(user=user).select_related('organization', 'role'))
+            if any(membership.role.code == 'inspecteur' for membership in memberships):
+                inspectors.append({
+                    'id': str(user.id), 'email': user.email, 'full_name': user.full_name,
+                    'organizations': sorted({membership.organization.name for membership in memberships}),
+                })
+    finally:
+        set_rls_context(user_id=admin_user.id)
+    return inspectors

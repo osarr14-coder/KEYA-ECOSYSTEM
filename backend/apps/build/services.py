@@ -320,3 +320,34 @@ def build_lot_rows(organization):
             'created_at': lot.created_at.isoformat(),
         })
     return rows
+
+
+def lot_milestone_rows(organization, lot_id):
+    """Ticket B-054 — jalons du lot avec leur état de contrôle
+    (`apps.inspections.services.milestone_control_state`), `None` si le lot
+    n'appartient pas à l'organisation active."""
+    from apps.inspections import services as inspections_services
+
+    lot = Lot.objects.filter(id=lot_id, organization=organization).first()
+    if lot is None:
+        return None
+    rows = []
+    for milestone in lot.milestones.order_by('order'):
+        milestone.lot = lot
+        state = inspections_services.milestone_control_state(milestone)
+        reserve = state['reserve']
+        rows.append({
+            'id': str(milestone.id),
+            'order': milestone.order,
+            'code': milestone.code,
+            'label': milestone.label,
+            'status': state['status'],
+            'status_label': inspections_services.CONTROL_STATUS_LABELS[state['status']],
+            'work_declaration_id': str(state['declaration'].id) if state['declaration'] else None,
+            'evidence_count': state['evidence_count'],
+            'latest_outcome': state['latest_outcome'],
+            'reserve_id': str(reserve.id) if reserve else None,
+            'correction_submitted': state['correction_submitted'],
+            'control_scheduled': state['pending_mission'] is not None,
+        })
+    return rows

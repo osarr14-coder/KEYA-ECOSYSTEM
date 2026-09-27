@@ -549,3 +549,117 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
         finally:
             set_rls_context(organization_id=caller_organization_id)
     return rows
+
+
+# ─── État de contrôle d'un jalon — ticket B-054 (CDC V3 §7.1) ───────────────
+
+NOT_DECLARED = 'not_declared'
+AWAITING_DOCUMENTS = 'awaiting_documents'
+AWAITING_CONTROL = 'awaiting_control'
+UNDER_RESERVE = 'under_reserve'
+ACCEPTED = 'accepted'
+
+CONTROL_STATUS_LABELS = {
+    NOT_DECLARED: 'Non déclaré',
+    AWAITING_DOCUMENTS: 'Déclaré — pièce à joindre',
+    AWAITING_CONTROL: 'En attente de contrôle',
+    UNDER_RESERVE: 'Sous réserve',
+    ACCEPTED: 'Accepté techniquement',
+}
+
+
+def _declaration_inspections(declaration):
+    return Inspection.objects.filter(Q(work_declaration=declaration) | Q(evidence__work_declaration=declaration))
+
+
+def pending_mission_for(declaration):
+    """La mission affectée sur cette déclaration et pas encore accomplie
+    (aucune inspection de l'inspecteur assigné postérieure à l'affectation
+    — même bornage que `list_missions_for_inspector`, ticket 014), `None`
+    sinon."""
+    inspections = _declaration_inspections(declaration)
+    for mission in InspectionMission.objects.filter(work_declaration=declaration).select_related(
+        'assigned_inspector',
+    ).order_by('-created_at'):
+        if not inspections.filter(inspector_id=mission.assigned_inspector_id, created_at__gt=mission.created_at).exists():
+            return mission
+    return None
+
+
+def milestone_control_state(milestone):
+    """État de contrôle du jalon, DÉRIVÉ de sa dernière déclaration (jamais
+    stocké, doctrine Visible Trust). Sous contexte RLS de l'organisation du
+    lot. Voir B-054 pour la table des états."""
+    declaration = WorkDeclaration.objects.filter(milestone=milestone).order_by('-created_at').first()
+    state = {
+        'status': NOT_DECLARED, 'declaration': None, 'evidence_count': 0, 'latest_outcome': None,
+        'reserve': None, 'correction_submitted': False, 'pending_mission': None,
+    }
+    if declaration is None:
+        return state
+    inspections = _declaration_inspections(declaration)
+    latest = inspections.order_by('-created_at').first()
+    open_reserve = _find_open_reserve_for_lot(milestone.lot)
+    reserve = open_reserve if open_reserve and inspections.filter(id=open_reserve.opened_by_inspection_id).exists() else None
+    evidence_count = Evidence.objects.filter(work_declaration=declaration).count()
+    state.update({
+        'declaration': declaration,
+        'evidence_count': evidence_count,
+        'latest_outcome': latest.outcome if latest else None,
+        'reserve': reserve,
+        'correction_submitted': bool(reserve and ReserveCorrection.objects.filter(reserve=reserve).exists()),
+        'pending_mission': pending_mission_for(declaration),
+    })
+    if evidence_count == 0:
+        state['status'] = AWAITING_DOCUMENTS
+    elif is_milestone_technically_accepted(milestone):
+        state['status'] = ACCEPTED
+    elif reserve is not None:
+        state['status'] = UNDER_RESERVE
+    else:
+        state['status'] = AWAITING_CONTROL
+    return state
+
+
+def list_controls_to_assign(*, caller_organization_id):
+    """Déclarations à contrôler (`awaiting_control`, `under_reserve`), toutes
+    organisations — admin KEYIMMO (ticket B-054). Même boucle de bascule RLS
+    que les autres listes transverses ; tout est matérialisé en dicts sous
+    le contexte de chaque organisation."""
+    rows = []
+    organization_ids = list(Organization.objects.values_list('id', flat=True))
+    try:
+        for organization_id in organization_ids:
+            set_rls_context(organization_id=organization_id)
+            milestone_ids = set(
+                WorkDeclaration.objects.filter(organization_id=organization_id).values_list('milestone_id', flat=True),
+            )
+            from apps.programs.models import Milestone
+
+            for milestone in Milestone.objects.filter(id__in=milestone_ids).select_related(
+                'lot', 'lot__asset', 'lot__asset__program', 'lot__organization',
+            ):
+                state = milestone_control_state(milestone)
+                if state['status'] not in (AWAITING_CONTROL, UNDER_RESERVE):
+                    continue
+                mission = state['pending_mission']
+                rows.append({
+                    'organization': {'id': str(organization_id), 'name': milestone.lot.organization.name},
+                    'program': {'id': str(milestone.lot.asset.program_id), 'name': milestone.lot.asset.program.name},
+                    'lot': {'id': str(milestone.lot_id), 'name': milestone.lot.name},
+                    'milestone': {'id': str(milestone.id), 'code': milestone.code, 'label': milestone.label},
+                    'work_declaration_id': str(state['declaration'].id),
+                    'declared_at': state['declaration'].created_at,
+                    'status': state['status'],
+                    'status_label': CONTROL_STATUS_LABELS[state['status']],
+                    'evidence_count': state['evidence_count'],
+                    'latest_outcome': state['latest_outcome'],
+                    'correction_submitted': state['correction_submitted'],
+                    'pending_mission': {
+                        'id': str(mission.id), 'inspector_email': mission.assigned_inspector.email,
+                        'assigned_at': mission.created_at,
+                    } if mission else None,
+                })
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+    return sorted(rows, key=lambda row: row['declared_at'])

@@ -327,9 +327,13 @@ class TestBackofficeNeverExposesATrustEventShortcut:
         """
         from apps.backoffice.urls import urlpatterns
         names = {pattern.name for pattern in urlpatterns}
+        # Ticket B-054 — ajout conscient de deux LECTURES (contrôles à
+        # affecter, contrôleurs) : aucune n'écrit quoi que ce soit, a fortiori
+        # jamais un `TrustEvent` ; l'affectation reste `backoffice-mission-create`.
         assert names == {
             'backoffice-user-search', 'backoffice-user-detail', 'backoffice-user-deactivate',
             'backoffice-mission-create', 'backoffice-litige-list', 'backoffice-litige-resolve',
+            'backoffice-control-list', 'backoffice-inspector-list',
         }
 
     def test_backoffice_module_never_imports_or_references_the_trust_module(self):

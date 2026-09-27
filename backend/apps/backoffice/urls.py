@@ -1,8 +1,10 @@
 from django.urls import path
 
 from .views import (
+    ControlsToAssignView,
     CreateMissionView,
     DeactivateUserView,
+    InspectorListView,
     LitigeListView,
     LitigeResolveView,
     UserDetailView,
@@ -29,4 +31,8 @@ urlpatterns = [
         'backoffice/litiges/<uuid:litige_id>/resolve/',
         LitigeResolveView.as_view(), name='backoffice-litige-resolve',
     ),
+    # Ticket B-054 — lectures nécessaires à l'affectation d'une mission
+    # depuis apps/web (écriture : `backoffice-mission-create` ci-dessus).
+    path('backoffice/controls/', ControlsToAssignView.as_view(), name='backoffice-control-list'),
+    path('backoffice/inspectors/', InspectorListView.as_view(), name='backoffice-inspector-list'),
 ]

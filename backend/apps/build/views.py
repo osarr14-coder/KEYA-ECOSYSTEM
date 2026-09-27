@@ -1,4 +1,5 @@
 from rest_framework import permissions
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -85,3 +86,21 @@ class AllLotsView(APIView):
             field = self.DEFAULT_ORDERING_FIELD
             descending = False
         return sorted(rows, key=lambda row: row[field], reverse=descending)
+
+
+class LotMilestonesView(APIView):
+    """`GET /api/build/lots/{id}/milestones/` — ticket B-054 : jalons d'un
+    lot de l'organisation active et leur état de contrôle dérivé (non
+    déclaré, pièce à joindre, en attente de contrôle, sous réserve,
+    accepté). Un lot d'une autre organisation : 404 (RLS + filtre)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, lot_id):
+        organization = request.organization
+        if organization is None:
+            raise NotFound()
+        rows = services.lot_milestone_rows(organization, lot_id)
+        if rows is None:
+            raise NotFound()
+        return Response(rows)
