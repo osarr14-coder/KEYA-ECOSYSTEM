@@ -150,6 +150,40 @@ class TestC03C04C06PaymentSchedule:
 
 
 @pytest.mark.django_db
+class TestPO18PlannedDatesAndManagerIssuedCalls:
+    """PO-2026-09-27-18 (C06, CDC §8.1) : dates prévisionnelles fictives dans
+    l'échéancier ; chaque appel est émis par le gestionnaire, jamais
+    déclenché par une acceptation technique."""
+
+    def test_each_row_carries_a_fictitious_planned_date_after_the_reservation(self):
+        from datetime import date
+
+        client, _adv, _promoter, reservation_id = _reserve_and_examine()
+        reservation = next(row for row in client.get(reverse('my-reservations')).data if row['id'] == reservation_id)
+        rows = reservation['payment_schedule']['rows']
+        planned = [date.fromisoformat(row['planned_on']) for row in rows]
+        assert planned == sorted(planned)
+        assert (planned[1] - planned[0]).days == 90
+        assert 'émis par le gestionnaire' in rows[1]['condition']
+
+    def test_a_technical_acceptance_never_creates_a_client_call(self):
+        from apps.sales.models import PaymentCall
+
+        _builder, promoter, _milestone, _declaration_id, _evidence_id, _doc, mission_id = _declared_foundations()
+        client = _login(CLIENT)
+        lot = Lot.objects.get(organization=promoter, name='Lot A1')
+        reservation = client.post(reverse('reservation-create'), {'lot': str(lot.id), 'organization': str(promoter.id)}, format='json')
+        assert reservation.status_code == 201, reservation.data
+        from apps.core.rls import set_rls_context
+
+        set_rls_context(organization_id=promoter.id)
+        before = PaymentCall.objects.count()
+        assert _opinion(_login(INSPECTEUR), mission_id, outcome='conforme').status_code == 201
+        set_rls_context(organization_id=promoter.id)
+        assert PaymentCall.objects.count() == before
+
+
+@pytest.mark.django_db
 class TestF01F02SignalledTransferAndReceipt:
     """F01, F02 (PO-2026-09-27-05, T12) : le signalement du client n'est
     qu'un avis ; Finance enregistre l'encaissement avec une référence

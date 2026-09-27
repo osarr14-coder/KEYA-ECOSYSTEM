@@ -11,7 +11,7 @@ import type {
   ClientPaymentCall, ContractVersion, PaymentSchedule, Reservation,
 } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
-import { formatAmount, formatDateTime } from '../format';
+import { formatAmount, formatDate, formatDateTime } from '../format';
 import { ContractVersions } from './ClientContractPanel';
 import {
   CallRow, callLabel, canDeclare, formatCallAmount, settlementText, settlementTone,
@@ -346,6 +346,9 @@ export function PaymentScheduleCard({ schedule, currency }: { schedule: PaymentS
               <span style={{ flex: '1 1 140px', fontWeight: 600 }}>{row.label}</span>
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAmount(row.amount, currency)}</span>
             </div>
+            <span data-testid="schedule-planned" style={{ fontSize: '14px' }}>
+              {`Date prévisionnelle (fictive) : ${formatDate(row.planned_on)}`}
+            </span>
             <span style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>
               {row.fee_included ? `Dont frais de réservation : ${formatAmount(row.fee_included, currency)}. ${row.condition}` : row.condition}
             </span>
@@ -354,7 +357,7 @@ export function PaymentScheduleCard({ schedule, currency }: { schedule: PaymentS
       </ol>
       <p style={{ margin: '12px 0 0', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
         {`Barème Country Pack ${schedule.country_pack}, version ${schedule.version} — valeurs de démonstration, non validées juridiquement. `}
-        Les paliers suivent l’avancement technique : aucune date n’est fixée.
+        Dates prévisionnelles, sans valeur d’échéance : chaque appel est émis par votre conseiller.
       </p>
     </Card>
   );

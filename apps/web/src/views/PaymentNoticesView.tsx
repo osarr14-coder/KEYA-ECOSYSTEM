@@ -7,9 +7,9 @@ import {
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
-import type { PaymentNotice, PaymentNoticeReceipt } from '../api/types';
+import type { AdminReservation, PaymentNotice, PaymentNoticeReceipt } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
-import { formatAmount } from './FinancialFilePanel';
+import { FinancialFilePanel, formatAmount } from './FinancialFilePanel';
 
 /**
  * Ticket F-071 (backend B-056) — virements déclarés par les clients.
@@ -235,6 +235,59 @@ function NoticeCard({ notice, canAct, onDone }: { notice: PaymentNotice; canAct:
   );
 }
 
+const RECEIVABLE_STATUSES: AdminReservation['status'][] = ['held', 'reserved', 'committed'];
+
+/**
+ * Audit UI R1 (PO-2026-09-27-19, CDC §8.1 : flux principal) — Finance
+ * enregistre un encaissement simulé SANS signalement préalable du client :
+ * choix du dossier, référence bancaire simulée obligatoire, montant et date
+ * reçus, puis affectation à un ou plusieurs appels et rapprochement. Le
+ * montant non affecté reste visible (T12) ; la réservation avance d'elle-même
+ * (T03).
+ */
+function ReceiptEntry() {
+  const api = useApiClient();
+  const state = useApiResource(() => api.listReservations(), []);
+  const [reservationId, setReservationId] = useState('');
+  const [nonce, setNonce] = useState(0);
+  const reservations = state.status === 'success'
+    ? state.data.filter((reservation) => RECEIVABLE_STATUSES.includes(reservation.status)) : [];
+  const selected = reservations.find((reservation) => reservation.id === reservationId);
+  return (
+    <Card title="Enregistrer un encaissement" icon="wallet" aria-label="Enregistrer un encaissement">
+      <p style={{ margin: '0 0 12px', color: semanticColors.neutral.textMuted }}>
+        Flux principal : un virement figure au relevé fictif, avec ou sans signalement du client. Choisissez le dossier,
+        enregistrez l’encaissement, affectez-le à un ou plusieurs appels, puis rapprochez-le.
+      </p>
+      {state.status === 'error' && (
+        <ApiErrorBanner error={state.error} title="Impossible de charger les dossiers." onRetry={state.refetch} />
+      )}
+      <label style={{ ...fieldLabel, maxWidth: '520px' }}>
+        Dossier
+        <Select aria-label="Dossier de l’encaissement" value={reservationId} onChange={(event) => setReservationId(event.target.value)}>
+          <option value="">Choisir un dossier…</option>
+          {reservations.map((reservation) => (
+            <option key={reservation.id} value={reservation.id}>
+              {`${reservation.client.full_name || reservation.client.email} — ${reservation.lot.name} (${reservation.status_label})`}
+            </option>
+          ))}
+        </Select>
+      </label>
+      {selected && (
+        <div style={{ marginTop: '12px' }}>
+          <FinancialFilePanel
+            key={`${selected.id}-${nonce}`}
+            reservation={selected}
+            canIssueCalls={false}
+            canRecordMovements
+            onChanged={() => { state.refetch(); setNonce((value) => value + 1); }}
+          />
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
   const api = useApiClient();
   const [filter, setFilter] = useState<'declared' | 'all'>('declared');
@@ -247,9 +300,9 @@ export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
     <section aria-label="Virements déclarés">
       <PageHeader
         eyebrow="Finance"
-        title="Virements déclarés"
+        title="Virements déclarés et encaissements"
         subtitle={canAct
-          ? 'Un signalement du client n’est pas un encaissement. Cherchez le virement sur le relevé fictif, puis enregistrez l’encaissement (référence bancaire simulée, montant, date) ou indiquez qu’il est introuvable.'
+          ? 'Enregistrez chaque virement du relevé fictif. Un signalement du client n’est pas un encaissement : cherchez-le au relevé, puis enregistrez-le ou indiquez qu’il est introuvable.'
           : 'Signalements des clients et encaissements enregistrés par Finance.'}
         actions={(
           <label style={fieldLabel}>
@@ -267,6 +320,8 @@ export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
         )}
       />
       <SimulatedMark detail="Virements et encaissements" style={{ margin: '0 0 16px' }} />
+      {canAct && <div style={{ marginBottom: '24px' }}><ReceiptEntry key={state.status === 'success' ? notices.length : 0} /></div>}
+      <h2 style={{ fontSize: '20px', margin: '0 0 12px' }}>Virements signalés par les clients</h2>
       {state.status === 'success' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
           <KeyFigure label="Signalements à traiter" value={toConfirm.length} tone={toConfirm.length ? 'accent' : 'neutral'} data-testid="kf-to-confirm" />

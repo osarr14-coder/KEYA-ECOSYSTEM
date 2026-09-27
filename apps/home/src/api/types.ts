@@ -185,6 +185,8 @@ export interface PaymentScheduleRow {
   fee_included: string | null;
   cumulative_cap_percent: string;
   condition: string;
+  /** Audit UI R1 (C06) : date prévisionnelle FICTIVE (AAAA-MM-JJ), jamais une échéance. */
+  planned_on: string;
 }
 
 export interface PaymentSchedule {

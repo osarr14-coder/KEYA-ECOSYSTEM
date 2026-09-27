@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
-import type { PaymentNotice } from '../api/types';
+import type { AdminReservation, PaymentNotice } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { PaymentNoticesView } from './PaymentNoticesView';
 
@@ -32,7 +32,10 @@ function notice(overrides: Partial<PaymentNotice> = {}): PaymentNotice {
 }
 
 function renderView(canAct: boolean, overrides: Parameters<typeof createMockApiClient>[0] = {}) {
-  const api = createMockApiClient({ listPaymentNotices: vi.fn().mockResolvedValue([notice()]), ...overrides });
+  // PO-2026-09-27-19 : l'écran charge aussi les dossiers (« Enregistrer un encaissement »).
+  const api = createMockApiClient({
+    listPaymentNotices: vi.fn().mockResolvedValue([notice()]), listReservations: vi.fn().mockResolvedValue([]), ...overrides,
+  });
   render(withApiClient(api, <PaymentNoticesView canAct={canAct} />));
   return { api };
 }
@@ -130,5 +133,76 @@ describe('PaymentNoticesView — chiffres clés (ticket F-078)', () => {
 
     expect(await screen.findByTestId('kf-to-confirm-value')).toHaveTextContent('2');
     expect(screen.getByTestId('kf-to-confirm-amount-value').textContent!.replace(/\s/g, ' ')).toBe('3 000 000 XOF');
+  });
+});
+
+const DOSSIER: AdminReservation = {
+  id: 'reservation-1', status: 'held', status_label: 'Bloquée', held_until: '2026-09-28T14:30:00Z',
+  price_amount: '30000000.00', currency: 'XOF', lot: { id: 'lot-1', name: 'Lot A1', surface: '82.00' },
+  program: { id: 'program-1', name: 'Résidence Démonstration Abidjan' },
+  organization: { id: 'org-promoteur', name: 'Constructeur Démonstration' },
+  client: { id: 'client-1', email: 'client1.demo@keya.test', full_name: 'Awa Koné' },
+  cancellation_reason: '', cancelled_by: null, created_at: '2026-09-27T14:30:00Z', updated_at: '2026-09-27T14:30:00Z',
+};
+
+const CALL = {
+  id: 'call-frais', reservation: 'reservation-1', kind: 'frais' as const, kind_label: 'Frais de réservation', tier_code: '',
+  tier_label: '', cumulative_cap_percent: null, amount: '100000.00', currency: 'XOF', issued_by: 'adv.demo@keya.test',
+  issued_at: '2026-09-27T15:00:00Z', allocated_amount: '100000.00', settled_amount: '0.00', settlement: 'to_pay' as const,
+};
+
+describe('PaymentNoticesView — encaissement sans signalement du client (PO-2026-09-27-19, CDC §8.1)', () => {
+  it('Finance choisit le dossier, enregistre l’encaissement avec une référence bancaire simulée', async () => {
+    const recordReceipt = vi.fn().mockResolvedValue({});
+    renderView(true, {
+      listPaymentNotices: vi.fn().mockResolvedValue([]),
+      listReservations: vi.fn().mockResolvedValue([DOSSIER]),
+      getFinanceFile: vi.fn().mockResolvedValue({ reservation: DOSSIER, calls: [{ ...CALL, allocated_amount: '0.00' }], receipts: [] }),
+      recordReceipt,
+    });
+
+    const entry = await screen.findByRole('region', { name: 'Enregistrer un encaissement' });
+    expect(entry).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText('Dossier de l’encaissement'), { target: { value: 'reservation-1' } });
+    const submit = await screen.findByRole('button', { name: "Enregistrer l'encaissement" });
+    expect(submit).toBeDisabled(); // référence bancaire simulée obligatoire
+    fireEvent.change(screen.getByLabelText('Référence bancaire simulée'), { target: { value: 'SIM-ENC-0100' } });
+    fireEvent.change(screen.getByLabelText('Montant reçu'), { target: { value: '150000' } });
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(recordReceipt).toHaveBeenCalledWith('reservation-1', 'org-promoteur', expect.objectContaining({
+      bank_reference: 'SIM-ENC-0100', amount: '150000',
+    })));
+  });
+
+  it('T12 : justificatif fictif, affectations à plusieurs appels et montant non affecté visibles', async () => {
+    renderView(true, {
+      listPaymentNotices: vi.fn().mockResolvedValue([]),
+      listReservations: vi.fn().mockResolvedValue([DOSSIER]),
+      getFinanceFile: vi.fn().mockResolvedValue({
+        reservation: DOSSIER,
+        calls: [CALL, { ...CALL, id: 'call-pv', kind: 'premier_versement', kind_label: 'Complément du premier versement', amount: '2900000.00', allocated_amount: '40000.00' }],
+        receipts: [{
+          id: 'receipt-1', bank_reference: 'SIM-ENC-0100', amount: '150000.00', currency: 'XOF', received_on: '2026-09-28',
+          status: 'bank_executed_sim', status_label: 'Reçu en banque (simulé)', recorded_by: 'finance.demo@keya.test',
+          recorded_at: '2026-09-28T09:00:00Z', reconciled_by: null, reconciled_at: null, unallocated_amount: '10000.00',
+          allocations: [
+            { id: 'a1', payment_call: 'call-frais', amount: '100000.00', created_at: '2026-09-28T09:01:00Z' },
+            { id: 'a2', payment_call: 'call-pv', amount: '40000.00', created_at: '2026-09-28T09:02:00Z' },
+          ],
+          simulation: true,
+        }],
+      }),
+    });
+
+    fireEvent.change(await screen.findByLabelText('Dossier de l’encaissement'), { target: { value: 'reservation-1' } });
+    const block = await screen.findByTestId('receipt-block');
+    expect(block).toHaveTextContent('Justificatif bancaire fictif');
+    expect(block).toHaveTextContent('SIMULÉ — SANS VALEUR OPÉRATIONNELLE');
+    const allocations = screen.getByTestId('receipt-allocations').textContent!.replace(/\s/g, ' ');
+    expect(allocations).toContain('100 000 XOF → Frais de réservation');
+    expect(allocations).toContain('40 000 XOF → Complément du premier versement');
+    expect(screen.getByTestId('receipt-unallocated').textContent!.replace(/\s/g, ' ')).toBe('10 000 XOF');
+    expect(block).toHaveTextContent('reste visible après rapprochement');
   });
 });

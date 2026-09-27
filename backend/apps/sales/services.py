@@ -654,6 +654,12 @@ def compute_payment_call_candidates(reservation):
     return template, candidates, None
 
 
+# Audit UI R1 (C06, décision du PO) — décalages FICTIFS, en jours depuis la
+# réservation, des dates prévisionnelles de l'échéancier de démonstration :
+# aucune valeur contractuelle, aucun déclenchement automatique d'appel.
+PLANNED_CALL_OFFSET_DAYS = {'reservation': 0, 'fondations': 90, 'elevation': 270}
+
+
 def payment_schedule(reservation):
     """Audit UI R1 (C03, C04, C06) — échéancier FICTIF du contrat, tiré du
     barème actif du Country Pack (valeurs de démonstration, non validées
@@ -668,8 +674,12 @@ def payment_schedule(reservation):
         return None
     price = reservation.price_amount
     fee = _amount(settings.RESERVATION_FEE_AMOUNT)
+    start = timezone.localtime(reservation.created_at).date()
     rows, previous = [], Decimal('0')
     for index, step in enumerate(steps):
+        # Audit UI R1 (C06) : date PRÉVISIONNELLE fictive, jamais une
+        # échéance : chaque appel reste émis par le gestionnaire (CDC §8.1).
+        planned_on = start + timedelta(days=PLANNED_CALL_OFFSET_DAYS.get(step.code, 120 * index))
         cumulative = _amount(price) if index == len(steps) - 1 else _amount(price * step.cumulative_cap_percent / 100)
         amount = cumulative - previous
         previous = cumulative
@@ -678,12 +688,14 @@ def payment_schedule(reservation):
                 'code': step.code, 'label': 'Premier versement', 'amount': amount, 'fee_included': fee,
                 'cumulative_cap_percent': step.cumulative_cap_percent,
                 'condition': 'Frais de réservation inclus, puis complément après encaissement des frais.',
+                'planned_on': planned_on,
             })
             continue
         rows.append({
             'code': step.code, 'label': f'Palier « {step.label} »', 'amount': amount, 'fee_included': None,
             'cumulative_cap_percent': step.cumulative_cap_percent,
-            'condition': f'Appelé après acceptation technique du jalon « {step.label} ».',
+            'condition': f'Appel émis par le gestionnaire, après acceptation technique du jalon « {step.label} ».',
+            'planned_on': planned_on,
         })
     return {
         'version': template.version,

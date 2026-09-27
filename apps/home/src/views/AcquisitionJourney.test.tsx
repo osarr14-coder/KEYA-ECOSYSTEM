@@ -65,10 +65,12 @@ const SCHEDULE = {
     {
       code: 'reservation', label: 'Premier versement', amount: '3000000', fee_included: '100000', cumulative_cap_percent: '10.00',
       condition: 'Frais de réservation inclus, puis complément après encaissement des frais.',
+      planned_on: '2026-09-27',
     },
     {
       code: 'fondations', label: 'Palier « Fondations »', amount: '12000000', fee_included: null, cumulative_cap_percent: '50.00',
-      condition: 'Appelé après acceptation technique du jalon « Fondations ».',
+      condition: 'Appel émis par le gestionnaire, après acceptation technique du jalon « Fondations ».',
+      planned_on: '2026-12-26',
     },
   ],
 };
@@ -175,7 +177,9 @@ describe('AcquisitionJourney — rendu du parcours (ticket F-074)', () => {
     // C06 : échéancier contractuel fictif, montant et condition de chaque appel.
     const schedule = screen.getByRole('region', { name: 'Échéancier du contrat' });
     expect(within(schedule).getAllByTestId('schedule-row')).toHaveLength(2);
-    expect(schedule).toHaveTextContent('Appelé après acceptation technique du jalon « Fondations ».');
+    expect(schedule).toHaveTextContent('Appel émis par le gestionnaire, après acceptation technique du jalon « Fondations ».');
+    // C06 (décision du PO) : dates prévisionnelles fictives, libellées comme telles.
+    expect(within(schedule).getAllByTestId('schedule-planned')[1]).toHaveTextContent('Date prévisionnelle (fictive) : 26 déc. 2026');
     expect(schedule).toHaveTextContent('non validées juridiquement');
   });
 

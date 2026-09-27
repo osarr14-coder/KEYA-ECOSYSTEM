@@ -88,6 +88,7 @@ class ReservationSerializer(serializers.ModelSerializer):
                     'code': row['code'], 'label': row['label'], 'amount': str(row['amount']),
                     'fee_included': str(row['fee_included']) if row['fee_included'] is not None else None,
                     'cumulative_cap_percent': str(row['cumulative_cap_percent']), 'condition': row['condition'],
+                    'planned_on': row['planned_on'].isoformat(),
                 }
                 for row in schedule['rows']
             ],

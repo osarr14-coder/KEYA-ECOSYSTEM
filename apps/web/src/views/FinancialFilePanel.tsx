@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Input, Pill, Select, semanticColors, SimulatedMark,
+  ApiErrorBanner, Button, Input, Pill, Select, semanticColors, SimulatedMark, formatCalendarDate, formatServerDateTime,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -139,6 +139,15 @@ function ReceiptForm({ reservation, onRecorded }: { reservation: AdminReservatio
   );
 }
 
+const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+/**
+ * Audit UI R1 (F02, PO-2026-09-27-19, CDC §8.1, T12) — un encaissement
+ * simulé présenté comme son justificatif bancaire FICTIF : référence
+ * bancaire simulée, montant et date reçus, état CDC §8.3, affectations à un
+ * ou plusieurs appels, montant non affecté toujours visible (jamais consommé
+ * deux fois). Finance affecte autant de fois que nécessaire, puis rapproche.
+ */
 function ReceiptBlock({
   receipt, calls, organizationId, canAct, onChanged,
 }: {
@@ -147,28 +156,49 @@ function ReceiptBlock({
   const api = useApiClient();
   const openCalls = calls.filter((call) => Number(call.allocated_amount ?? 0) < Number(call.amount));
   const [callId, setCallId] = useState(openCalls[0]?.id ?? '');
+  const unallocated = Number(receipt.unallocated_amount ?? 0);
   const [amount, setAmount] = useState(receipt.unallocated_amount ?? '');
   const { pending, error, run } = useAction();
-  const unallocated = Number(receipt.unallocated_amount ?? 0);
   const callLabels = new Map(calls.map((call) => [call.id, callLabel(call)]));
+  const muted = { color: semanticColors.neutral.textMuted } as const;
 
   return (
-    <article aria-label={`Encaissement ${receipt.bank_reference}`} style={blockStyle}>
-      <p style={{ margin: 0 }}>
-        <strong>{receipt.bank_reference}</strong>
-        {` · ${formatAmount(receipt.amount, receipt.currency)} reçus le ${receipt.received_on} · `}
-        <span data-testid="receipt-status">{receipt.status_label}</span>
-        {` · non affecté : ${formatAmount(receipt.unallocated_amount, receipt.currency)}`}
-      </p>
-      {receipt.allocations.length > 0 && (
-        <ul style={{ margin: '4px 0 0', paddingLeft: '20px' }}>
-          {receipt.allocations.map((allocation) => (
-            <li key={allocation.id}>
-              {`${formatAmount(allocation.amount, receipt.currency)} affectés à ${callLabels.get(allocation.payment_call) ?? 'un appel'}`}
-            </li>
-          ))}
-        </ul>
-      )}
+    <article
+      aria-label={`Justificatif bancaire fictif ${receipt.bank_reference}`}
+      data-testid="receipt-block"
+      style={{ ...blockStyle, display: 'flex', flexDirection: 'column', gap: '8px' }}
+    >
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <strong>Justificatif bancaire fictif</strong>
+        <Pill tone={receipt.status === 'reconciled_sim' ? 'success' : 'primary'} data-testid="receipt-status">{receipt.status_label}</Pill>
+        <SimulatedMark detail="Encaissement" />
+      </div>
+      <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 16px', margin: 0 }}>
+        <dt style={muted}>Référence bancaire simulée</dt>
+        <dd style={{ margin: 0, fontFamily: MONO }}>{receipt.bank_reference}</dd>
+        <dt style={muted}>Montant reçu</dt>
+        <dd style={{ margin: 0 }}>{formatAmount(receipt.amount, receipt.currency)}</dd>
+        <dt style={muted}>Reçu le</dt>
+        <dd style={{ margin: 0 }}>{formatCalendarDate(receipt.received_on)}</dd>
+        <dt style={muted}>Enregistré par</dt>
+        <dd style={{ margin: 0 }}>{`${receipt.recorded_by}, le ${formatServerDateTime(receipt.recorded_at)}`}</dd>
+        <dt style={muted}>Affectations</dt>
+        <dd style={{ margin: 0 }}>
+          {receipt.allocations.length === 0 ? 'Aucune' : (
+            <ul style={{ margin: 0, paddingLeft: '18px' }} data-testid="receipt-allocations">
+              {receipt.allocations.map((allocation) => (
+                <li key={allocation.id}>
+                  {`${formatAmount(allocation.amount, receipt.currency)} → ${callLabels.get(allocation.payment_call) ?? 'un appel'}`}
+                </li>
+              ))}
+            </ul>
+          )}
+        </dd>
+        <dt style={muted}>Non affecté</dt>
+        <dd style={{ margin: 0, fontWeight: unallocated > 0 ? 700 : 400 }} data-testid="receipt-unallocated">
+          {formatAmount(receipt.unallocated_amount, receipt.currency)}
+        </dd>
+      </dl>
       {canAct && unallocated > 0 && openCalls.length > 0 && (
         <form
           onSubmit={(event) => {
@@ -179,13 +209,15 @@ function ReceiptBlock({
             ).then((ok) => { if (ok) onChanged(); });
           }}
           aria-label={`Affecter l'encaissement ${receipt.bank_reference}`}
-          style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '8px' }}
+          style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}
         >
           <label>
             Appel
             <Select aria-label="Appel à couvrir" value={callId} onChange={(event) => setCallId(event.target.value)} style={{ marginTop: '4px' }}>
               {openCalls.map((call) => (
-                <option key={call.id} value={call.id}>{`${callLabel(call)} (${formatAmount(call.amount, call.currency)})`}</option>
+                <option key={call.id} value={call.id}>
+                  {`${callLabel(call)} — reste ${formatAmount(String(Number(call.amount) - Number(call.allocated_amount ?? 0)), call.currency)}`}
+                </option>
               ))}
             </Select>
           </label>
@@ -197,19 +229,25 @@ function ReceiptBlock({
         </form>
       )}
       {canAct && receipt.status === 'bank_executed_sim' && (
-        <Button
-          type="button"
-          style={{ marginTop: '8px' }}
-          disabled={pending}
-          onClick={() => {
-            void run(() => api.reconcileReceipt(receipt.id, organizationId), 'Rapprochement refusé.')
-              .then((ok) => { if (ok) onChanged(); });
-          }}
-        >
-          Rapprocher
-        </Button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <Button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              void run(() => api.reconcileReceipt(receipt.id, organizationId), 'Rapprochement refusé.')
+                .then((ok) => { if (ok) onChanged(); });
+            }}
+          >
+            Rapprocher
+          </Button>
+          {unallocated > 0 && (
+            <span style={{ fontSize: '13px', ...muted }}>
+              Le montant non affecté reste visible après rapprochement ; il n’est jamais imputé automatiquement.
+            </span>
+          )}
+        </div>
       )}
-      {error && <p role="alert" style={{ margin: '4px 0 0' }}>{error}</p>}
+      {error && <p role="alert" style={{ margin: 0 }}>{error}</p>}
     </article>
   );
 }
