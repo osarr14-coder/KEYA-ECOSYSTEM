@@ -30,6 +30,16 @@ import { describe, expect, it } from 'vitest';
  * actif autorisés, `<main>`/items inactifs jamais colorés par la
  * marque).
  *
+ * **Mise à jour F-073** (direction « Confiance premium », validée par
+ * l'utilisateur) — navy et or deviennent l'identité de TOUTES les apps,
+ * mais par deux canaux distincts : `AppShell` (barre latérale navy, seule
+ * exception autorisée à importer `brandColors`) et des rôles SÉMANTIQUES
+ * thémés (`semanticColors.primary`/`accent`, variables CSS dans
+ * `GlobalStyles.tsx`). La règle de ce test est donc INCHANGÉE et reste
+ * utile : un composant partagé consomme un rôle (`accent.solid`), jamais
+ * le hex figé de `brandColors` — sinon le mode sombre ne pourrait plus
+ * l'adapter. `Pill` et `PageHeader` (créés par F-073) rejoignent la liste.
+ *
  * `levelMeta.ts` (TrustLevel, ticket 003/007) est INCLUS dans ce scan —
  * ce test protège aussi, comme effet de bord, l'invariant « aucun
  * ticket ne doit modifier levelMeta.ts ni s'en inspirer pour de
@@ -48,6 +58,8 @@ const FORBIDDEN_COMPONENT_DIRS = [
   // `fillColor` (F-046) — générique, aucun littéral "brandColors" dans son
   // code source, la couleur est fournie par l'appelant (voir ProgressBar.tsx).
   'Card', 'Icon', 'TabBar',
+  // Ticket F-073 — nouveaux composants partagés.
+  'Pill', 'PageHeader', 'Field', 'GlobalStyles',
 ];
 
 function readSourceFiles(dir: string): { file: string; content: string }[] {

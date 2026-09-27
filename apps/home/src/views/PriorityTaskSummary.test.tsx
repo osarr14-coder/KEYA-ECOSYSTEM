@@ -1,4 +1,4 @@
-import { brandColors, semanticColors } from '@keya/design-system';
+import { semanticColors } from '@keya/design-system';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -91,7 +91,7 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
     expect(onSeeAllActions).toHaveBeenCalledOnce();
   });
 
-  it('le CTA "Voir toutes mes actions" est en navy plein, texte blanc (ticket F-046)', async () => {
+  it('le CTA "Voir toutes mes actions" utilise l\'action principale navy (tickets F-046, F-073)', async () => {
     const api = createMockApiClient({
       getMyTasks: async () => [
         {
@@ -112,7 +112,9 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
     // ce texte, déjà corrigé pour le mode sombre — voir Button.tsx. En
     // clair, `neutral.surface` VAUT `#FFFFFF` (comportement inchangé),
     // mais ce n'est plus la même VALEUR DE TOKEN qu'avant ce ticket.
-    expect(button).toHaveStyle({ background: brandColors.navy, color: semanticColors.neutral.surface });
+    // Ticket F-073 — plus de surcharge : le token `primary` (navy en clair)
+    // du design system suffit, et reste lisible en mode sombre.
+    expect(button).toHaveStyle({ background: semanticColors.primary.background, color: semanticColors.primary.text });
   });
 
   it('affiche un bouton "Réessayer" sur l\'erreur, qui redéclenche le chargement (ticket F-033)', async () => {

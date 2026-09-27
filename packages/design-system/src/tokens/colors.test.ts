@@ -43,6 +43,9 @@ describe('semanticColors', () => {
       ...Object.values(semanticColors.danger),
       ...Object.values(semanticColors.neutral),
       ...Object.values(semanticColors.progress),
+      ...Object.values(semanticColors.primary),
+      ...Object.values(semanticColors.accent),
+      ...Object.values(semanticColors.success),
     ];
     flat.forEach((value) => {
       expect(value).toMatch(/^var\(--keya-[\w-]+\)$/);

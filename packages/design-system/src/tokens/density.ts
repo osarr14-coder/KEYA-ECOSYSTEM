@@ -20,19 +20,22 @@ export interface DensityTokens {
 }
 
 export const densityTokens: Record<Density, DensityTokens> = {
+  // Ticket F-073 — lisibilité : le corps « dense » passe de 13px à 14px
+  // (retour utilisateur répété sur la lisibilité des écrans pros), le
+  // « confortable » de 15px à 16px. Dense reste strictement plus compact.
   dense: {
-    rowHeight: '32px',
-    paddingInline: '8px',
-    paddingBlock: '4px',
-    fontSize: '13px',
-    gap: '4px',
+    rowHeight: '36px',
+    paddingInline: '12px',
+    paddingBlock: '6px',
+    fontSize: '14px',
+    gap: '6px',
   },
   confortable: {
-    rowHeight: '48px',
-    paddingInline: '16px',
-    paddingBlock: '12px',
-    fontSize: '15px',
-    gap: '8px',
+    rowHeight: '52px',
+    paddingInline: '20px',
+    paddingBlock: '14px',
+    fontSize: '16px',
+    gap: '10px',
   },
 };
 

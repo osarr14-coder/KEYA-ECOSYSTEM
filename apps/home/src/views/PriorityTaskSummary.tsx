@@ -1,5 +1,5 @@
 import {
-  ApiErrorBanner, Button, Card, brandColors,
+  ApiErrorBanner, Button, Card,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -59,20 +59,13 @@ export function PriorityTaskSummary({ onSeeAllActions, activeOrganizationId }: P
         <div>
           <strong>{priorityTask.label}</strong>
           <p>Échéance : {formatDueDate(priorityTask.due_date)}</p>
-          {/* Ticket F-046 — remplace l'accent bordure or/texte navy (F-039)
-              par un remplissage navy plein, texte blanc : `variant="primary"`
-              pose déjà `color: '#FFFFFF'`, seul `background` est réécrit.
-              PAS un remplissage OR (déjà écarté par F-039 : contraste
-              ~2,6:1, échec WCAG AA) — navy/blanc est une paire DISTINCTE,
-              déjà en production sur le bandeau `AppShell` (`brand`),
-              ~16,8:1, largement AAA. Toujours le seul bouton de HOME (en
-              dehors d'AppShell) à consommer brandColors — voir le test de
-              garde `brandGovernance.test.ts`. */}
+          {/* Ticket F-073 — `primary` EST désormais navy (token thémé) : plus
+              de surcharge `brandColors.navy`, qui aurait donné navy sur navy
+              en mode sombre (où `primary` passe en or clair, texte navy). */}
           <Button
             type="button"
             variant="primary"
             onClick={onSeeAllActions}
-            style={{ background: brandColors.navy }}
           >
             Voir toutes mes actions
           </Button>

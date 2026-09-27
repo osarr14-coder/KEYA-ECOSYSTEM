@@ -21,8 +21,9 @@ describe('TabBar — état actif visuellement distinct (ticket 023)', () => {
 
     const active = screen.getByRole('button', { name: 'Exceptions' });
     const inactive = screen.getByRole('button', { name: 'Tous les lots' });
-    expect(active).toHaveStyle({ fontWeight: '600' });
-    expect(inactive).toHaveStyle({ fontWeight: '400' });
+    // Ticket F-073 — graisses 700/500 (ancien 600/400).
+    expect(active).toHaveStyle({ fontWeight: '700' });
+    expect(inactive).toHaveStyle({ fontWeight: '500' });
   });
 
   it('appelle onChange avec l\'id de l\'onglet cliqué', () => {

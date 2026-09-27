@@ -16,9 +16,15 @@
  * (boutons, champs, tableaux) ne doit jamais hériter de la serif par
  * accident.
  */
+/*
+ * Ticket F-073 (direction « Confiance premium ») — `Manrope` (interface,
+ * géométrique et très lisible aux petites tailles) remplace Public Sans ;
+ * `Fraunces` (titres, serif à fort contraste) remplace Source Serif 4. Même
+ * séparation stricte titres/interface qu'en F-053.
+ */
 export const typography = {
   fontFamily:
-    "'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+    "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
   headingFontFamily:
-    "'Source Serif 4', Georgia, 'Times New Roman', serif",
+    "'Fraunces', Georgia, 'Times New Roman', serif",
 };

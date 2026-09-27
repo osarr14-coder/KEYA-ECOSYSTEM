@@ -184,43 +184,38 @@ describe('AppShell — topbar (recherche, sélecteurs, Task Inbox, avatar)', () 
   });
 });
 
-describe('AppShell — identité de marque KEYIMMO AFRIC (ticket F-039, prop brand)', () => {
-  it('sans brand (défaut) : en-tête neutre, aucun repère de marque — comportement BUILD/CONTROL/apps/web inchangé', () => {
+describe('AppShell — prop brand (ticket F-039, révisé F-073)', () => {
+  it('sans brand (défaut) : filet neutre sous la barre du haut, aucun second logo', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
     expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
-    expect(screen.getByTestId('app-shell-header')).not.toHaveStyle({ background: BRAND_GRADIENT });
+    expect(screen.getByTestId('app-shell-header').style.borderBottom).toBe(`1px solid ${semanticColors.neutral.border}`);
   });
 
-  it('avec brand : en-tête en navy (dégradé, ticket F-053), bordure or, repère de marque affiché', () => {
+  it('avec brand : filet or sous la barre du haut, mais plus de bandeau navy ni de logo en double', () => {
     render(<AppShell density="confortable" brand modules={MODULES} userRoles={[]} />);
     const header = screen.getByTestId('app-shell-header');
-    expect(header).toHaveStyle({ background: BRAND_GRADIENT, color: '#FFFFFF' });
     expect(header).toHaveStyle({ borderBottom: `2px solid ${brandColors.gold}` });
-    expect(screen.getByTestId('brand-mark')).toBeInTheDocument();
-    // Ticket F-048 — requête scopée au bandeau <header> : le bloc sidebar
-    // (toujours rendu, indépendamment de `brand`) affiche AUSSI ce texte
-    // désormais, `getByText` global serait ambigu (2 correspondances).
-    expect(within(header).getByText('KEYIMMO AFRIC')).toBeInTheDocument();
-  });
-
-  it('brand=false explicite se comporte comme l\'absence du prop', () => {
-    render(<AppShell density="confortable" brand={false} modules={MODULES} userRoles={[]} />);
+    expect(header).not.toHaveStyle({ background: BRAND_GRADIENT });
     expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
+    expect(screen.getAllByText('KEYIMMO AFRIC')).toHaveLength(1);
   });
 });
 
-describe('AppShell — bloc navy de sidebar, révision limitée de la doctrine 17.3 (ticket F-048)', () => {
-  it('le bloc sidebar est TOUJOURS rendu, indépendamment de brand (contrairement au bandeau <header>)', () => {
+/**
+ * Ticket F-073 — direction « Confiance premium » validée par l'utilisateur :
+ * révision de la doctrine 17.3 / F-048. La barre latérale ENTIÈRE est navy
+ * sur les 4 apps ; l'entrée active passe en or translucide + texte blanc
+ * (fin de la « décision D » de F-048). Invariant conservé : le CONTENU
+ * (`<main>`) ne reçoit jamais les couleurs de marque.
+ */
+describe('AppShell — barre latérale navy pleine hauteur (ticket F-073)', () => {
+  it('la barre latérale entière porte le dégradé navy, toujours, indépendamment de brand', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    const sidebar = screen.getByTestId('app-shell-sidebar');
+    expect(sidebar).toHaveStyle({ background: BRAND_GRADIENT });
     const block = screen.getByTestId('sidebar-brand-block');
-    expect(block).toBeInTheDocument();
-    expect(block).toHaveStyle({ background: BRAND_GRADIENT, color: '#FFFFFF' });
     expect(within(block).getByText('K+')).toBeInTheDocument();
     expect(within(block).getByText('KEYIMMO AFRIC')).toBeInTheDocument();
-    // Le bandeau <header>, lui, reste HOME-only (F-039, intouché) : sans
-    // `brand`, aucun repère de marque n'y apparaît, même avec le bloc
-    // sidebar désormais toujours présent.
-    expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
   });
 
   it('appLabel absent : aucune ligne vide, seule "KEYIMMO AFRIC" s\'affiche', () => {
@@ -230,7 +225,7 @@ describe('AppShell — bloc navy de sidebar, révision limitée de la doctrine 1
     expect(within(block).queryByText('BUILD Control Tower')).not.toBeInTheDocument();
   });
 
-  it('appLabel fourni : affiché comme ligne secondaire dans le bloc sidebar', () => {
+  it('appLabel fourni : affiché comme ligne secondaire dans le bloc de marque', () => {
     render(<AppShell density="dense" appLabel="BUILD" modules={MODULES} userRoles={[]} />);
     const block = screen.getByTestId('sidebar-brand-block');
     expect(within(block).getByText('BUILD')).toBeInTheDocument();
@@ -245,29 +240,64 @@ describe('AppShell — bloc navy de sidebar, révision limitée de la doctrine 1
     expect(within(block).queryByText('BUILD')).not.toBeInTheDocument();
   });
 
-  it('item de navigation actif : bordure gauche or, fond/texte inchangés (décision D)', () => {
+  it('entrée active : repère or à gauche, fond or translucide, texte blanc en gras', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} activeModuleId="home" />);
     const active = screen.getByText('Accueil').closest('a');
     expect(active).toHaveStyle({
       borderLeft: `3px solid ${brandColors.gold}`,
-      background: semanticColors.neutral.background,
-      color: semanticColors.neutral.text,
+      background: 'rgba(196, 154, 44, 0.18)',
+      color: '#FFFFFF',
+      fontWeight: '700',
     });
   });
 
-  it('item de navigation INACTIF ne reçoit jamais brandColors (garde contre la dérive de portée)', () => {
+  it('entrée inactive : ni repère or, ni fond, texte clair lisible sur navy', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} activeModuleId="home" />);
     const inactive = screen.getByText('Tâches').closest('a');
     expect(inactive).not.toHaveStyle({ borderLeft: `3px solid ${brandColors.gold}` });
-    expect(inactive).not.toHaveStyle({ background: brandColors.navy });
-    expect(inactive).not.toHaveStyle({ color: brandColors.gold });
+    expect(inactive).toHaveStyle({ background: 'transparent', color: '#D5DCE8' });
   });
 
-  it('la zone de contenu (<main>) ne reçoit jamais brandColors (garde contre la dérive de portée)', () => {
+  it('la zone de contenu (<main>) ne reçoit jamais les couleurs de marque (garde contre la dérive de portée)', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]}>Contenu</AppShell>);
     const main = screen.getByText('Contenu').closest('main');
     expect(main).not.toHaveStyle({ background: brandColors.navy });
     expect(main).not.toHaveStyle({ color: brandColors.gold });
+  });
+
+  it('titre de la barre du haut : absent par défaut, affiché si title est fourni', () => {
+    const { rerender } = render(<AppShell density="dense" modules={MODULES} userRoles={[]} activeModuleId="tasks" />);
+    expect(screen.queryByTestId('app-shell-title')).not.toBeInTheDocument();
+
+    rerender(<AppShell density="dense" modules={MODULES} userRoles={[]} activeModuleId="tasks" title="Fiche dossier" />);
+    expect(screen.getByTestId('app-shell-title')).toHaveTextContent('Fiche dossier');
+  });
+
+  it('compteur de module : affiché s\'il est positif, masqué à 0', () => {
+    const withBadges: AppModule[] = [
+      { id: 'todo', label: 'À faire', href: '/todo', badge: 3 },
+      { id: 'files', label: 'Dossiers', href: '/files', badge: 0 },
+    ];
+    render(<AppShell density="dense" modules={withBadges} userRoles={[]} />);
+    expect(screen.getByTestId('module-badge-todo')).toHaveTextContent('3');
+    expect(screen.queryByTestId('module-badge-files')).not.toBeInTheDocument();
+  });
+});
+
+describe('AppShell — navigation unique par la barre latérale (ticket F-073)', () => {
+  it('sans onModuleSelect, le lien garde son href natif', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    const link = screen.getByText('Tâches').closest('a')!;
+    expect(link).toHaveAttribute('href', '/tasks');
+    expect(fireEvent.click(link)).toBe(true);
+  });
+
+  it('avec onModuleSelect, un clic appelle le handler avec l\'id, sans navigation', () => {
+    const onModuleSelect = vi.fn();
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} onModuleSelect={onModuleSelect} />);
+    const event = fireEvent.click(screen.getByText('Tâches').closest('a')!);
+    expect(onModuleSelect).toHaveBeenCalledWith('tasks');
+    expect(event).toBe(false);
   });
 });
 
@@ -297,7 +327,7 @@ describe('AppShell — responsive mobile, dette de F-039 (ticket F-050)', () => 
     mockMatchMediaMobile();
     render(<AppShell density="confortable" modules={MODULES} userRoles={[]} />);
 
-    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '56px minmax(0, 1fr)' });
+    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '64px minmax(0, 1fr)' });
   });
 
   it('en dessous du seuil mobile, les libellés de module sont masqués (rail icônes seules)', () => {
@@ -318,7 +348,7 @@ describe('AppShell — responsive mobile, dette de F-039 (ticket F-050)', () => 
   it('au-dessus du seuil (comportement par défaut de ce projet de test, matchMedia absent), rien ne change', () => {
     render(<AppShell density="confortable" modules={MODULES} userRoles={[]} />);
 
-    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '220px minmax(0, 1fr)' });
+    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '264px minmax(0, 1fr)' });
     expect(screen.getByText('Accueil')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /replier la navigation/i })).toBeInTheDocument();
   });

@@ -15,13 +15,21 @@ describe('Button — variantes', () => {
     // sombre) avant ce correctif. En clair, `neutral.surface` VAUT
     // `#FFFFFF` (comportement visuel strictement inchangé), mais ce n'est
     // plus la même VALEUR DE TOKEN qu'avant ce ticket.
-    expect(button).toHaveStyle({ background: semanticColors.neutral.text, color: semanticColors.neutral.surface });
+    // Ticket F-073 — token dédié `primary` (navy en clair, or clair en
+    // sombre), le texte s'inverse avec lui.
+    expect(button).toHaveStyle({ background: semanticColors.primary.background, color: semanticColors.primary.text });
+  });
+
+  it('ticket F-073 : variante accent — or plein, texte navy (tokens accent)', () => {
+    render(<Button variant="accent">Payer</Button>);
+    const button = screen.getByRole('button', { name: 'Payer' });
+    expect(button).toHaveStyle({ background: semanticColors.accent.solid, color: semanticColors.accent.onSolid });
   });
 
   it('variante secondary : fond transparent, bordure neutre, texte encre', () => {
     render(<Button variant="secondary">Annuler</Button>);
     const button = screen.getByRole('button', { name: 'Annuler' });
-    expect(button).toHaveStyle({ background: 'transparent', color: semanticColors.neutral.text });
+    expect(button).toHaveStyle({ background: 'transparent', color: semanticColors.neutral.heading });
     // Ticket F-051 — style inline direct, pas toHaveStyle/getComputedStyle
     // (voir Input.test.tsx) : `getComputedStyle` de jsdom ne resérialise
     // pas fiablement un shorthand `border` contenant un var() non résolu

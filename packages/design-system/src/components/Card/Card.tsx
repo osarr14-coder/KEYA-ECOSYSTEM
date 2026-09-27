@@ -47,12 +47,17 @@ export interface CardProps {
    * perdu silencieusement. */
   'aria-label'?: string;
   'data-testid'?: string;
+  /** Ticket F-073 — surtitre en petites capitales or, au-dessus du titre. */
+  eyebrow?: string;
+  /** Ticket F-073 — action(s) alignée(s) à droite du titre (bouton, lien). */
+  action?: ReactNode;
 }
 
 export function Card({
-  icon, title, children, tone = 'neutral', className, 'aria-label': ariaLabel, 'data-testid': testId,
+  icon, title, children, tone = 'neutral', className, 'aria-label': ariaLabel, 'data-testid': testId, eyebrow, action,
 }: CardProps) {
-  const iconColor = tone === 'accent' ? semanticColors.progress.fill : semanticColors.neutral.textMuted;
+  const iconColor = tone === 'accent' ? semanticColors.progress.fill : semanticColors.accent.text;
+  const hasHeader = Boolean(title || eyebrow || action);
 
   return (
     <section
@@ -61,26 +66,47 @@ export function Card({
       data-testid={testId}
       style={{
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '16px',
+        // Ticket F-073 — cartes plus généreuses (rayon 20, marge interne
+        // 24px, réduite sur petit écran) et ombre plus douce.
+        borderRadius: '20px',
         background: semanticColors.neutral.surface,
-        padding: '16px',
-        boxShadow: 'var(--keya-shadow-md)',
+        padding: 'clamp(16px, 3vw, 24px)',
+        boxShadow: 'var(--keya-shadow-sm)',
       }}
     >
-      {title && (
-        <h2
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginTop: 0,
-            marginBottom: '12px',
-            fontSize: '15px',
-          }}
-        >
-          {icon && <Icon name={icon} size={18} color={iconColor} />}
-          {title}
-        </h2>
+      {hasHeader && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexGrow: 1, minWidth: 0 }}>
+            {eyebrow && (
+              <span
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  color: semanticColors.accent.text,
+                }}
+              >
+                {eyebrow}
+              </span>
+            )}
+            {title && (
+              <h2
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  margin: 0,
+                  fontSize: '20px',
+                }}
+              >
+                {icon && <Icon name={icon} size={20} color={iconColor} />}
+                {title}
+              </h2>
+            )}
+          </div>
+          {action && <div style={{ flexShrink: 0 }}>{action}</div>}
+        </div>
       )}
       {children}
     </section>

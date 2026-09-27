@@ -30,8 +30,15 @@ import { semanticColors } from '../../tokens/colors';
  * = contraste quasi nul, régression trouvée et corrigée AVANT ce commit
  * via la même capture d'écran).
  */
+/**
+ * Ticket F-073 (direction « Confiance premium ») — `primary` passe sur le
+ * token dédié `semanticColors.primary` (navy en clair, or clair en
+ * sombre) ; nouvelle variante `accent` (or plein, texte navy) réservée à
+ * L'action décisive d'un écran (payer, valider, enregistrer l'avis) — une
+ * seule par écran, jamais pour une action courante.
+ */
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'accent' | 'danger';
 }
 
 /**
@@ -44,15 +51,21 @@ const VARIANT_STYLE: Record<
   { background: string; color: string; border: string; boxShadow?: string }
 > = {
   primary: {
-    background: semanticColors.neutral.text,
-    color: semanticColors.neutral.surface,
+    background: semanticColors.primary.background,
+    color: semanticColors.primary.text,
     border: 'none',
     boxShadow: 'var(--keya-shadow-sm)',
   },
   secondary: {
     background: 'transparent',
-    color: semanticColors.neutral.text,
+    color: semanticColors.neutral.heading,
     border: `1px solid ${semanticColors.neutral.border}`,
+  },
+  accent: {
+    background: semanticColors.accent.solid,
+    color: semanticColors.accent.onSolid,
+    border: 'none',
+    boxShadow: 'var(--keya-shadow-sm)',
   },
   danger: {
     background: semanticColors.danger.solid!,
@@ -72,12 +85,12 @@ export function Button({ variant = 'primary', style, className, ...rest }: Butto
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '6px',
+        gap: '8px',
         minHeight: '44px',
-        padding: '0 16px',
-        borderRadius: '10px',
-        fontSize: '14px',
-        fontWeight: 600,
+        padding: '0 18px',
+        borderRadius: '12px',
+        fontSize: '15px',
+        fontWeight: 700,
         ...variantStyle,
         ...style,
       }}

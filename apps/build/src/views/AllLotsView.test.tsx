@@ -1,5 +1,6 @@
 import { Blob as NodeBlob } from 'node:buffer';
 
+import { densityTokens } from '@keya/design-system';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -94,7 +95,7 @@ describe('AllLotsView — densité réglable (tokens du ticket 007)', () => {
     expect(denseButton).toHaveAttribute('aria-pressed', 'false');
     // La hauteur de ligne change bien avec la densité (valeur du token, pas
     // une valeur en dur redéfinie ici).
-    expect(row).toHaveStyle({ height: '48px' });
+    expect(row).toHaveStyle({ height: densityTokens.confortable.rowHeight });
   });
 });
 

@@ -63,8 +63,8 @@ export function AlertBanner({
         gap: '8px',
         background: semanticColors.alert.background,
         border: `1px solid ${semanticColors.alert.border}`,
-        borderRadius: '8px',
-        padding: '12px',
+        borderRadius: '14px',
+        padding: '14px 16px',
         color: semanticColors.alert.text,
       }}
     >

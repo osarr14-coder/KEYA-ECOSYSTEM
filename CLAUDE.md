@@ -4307,6 +4307,31 @@ scoper sa branche aussi étroitement que possible, jamais une visibilité
 globale par simple commodité — relancer la suite complète avant de
 conclure qu'une policy RLS élargie est sans effet de bord.
 
+## Direction « Confiance premium » — révision de la doctrine 17.3 (ticket F-073)
+
+Voir `F-073-design-system-confiance-premium.md`. L'utilisateur a validé la
+direction A (maquettes) : navy/or deviennent l'identité des 4 apps. Cela
+**remplace** la doctrine 17.3 (« brandColors réservé à HOME ») et la
+« décision D » de F-048 (entrée active à fond neutre). Ce qui reste vrai :
+
+- `brandColors` (hex figés) n'est importé que par `AppShell` (barre latérale
+  navy pleine hauteur, logo, compteurs) et quelques surfaces de marque hors
+  AppShell déjà existantes (bandeau CONTROL, écran de connexion, carte
+  programme HOME). Les composants partagés consomment des **rôles
+  sémantiques thémés** : `semanticColors.primary` (action principale, navy en
+  clair / or clair en sombre), `accent` (or plein + texte or lisible +
+  fond doux), `success`, `neutral.heading`/`neutral.subtle`. Garde :
+  `brandGovernance.test.ts` (liste étendue à `Pill`, `PageHeader`, `Field`,
+  `GlobalStyles`).
+- Chaque token `semanticColors` doit avoir sa variable dans les 3 blocs de
+  thème de `GlobalStyles.tsx` (test dédié).
+- Le contenu (`<main>`) ne reçoit jamais les couleurs de marque en fond.
+- `levelMeta.ts` (TrustLevel) reste intouchable ; `Pill` (état métier) n'est
+  jamais une variante de `StatusBadge` (niveaux Visible Trust).
+- Navigation unique visée : `AppShell.onModuleSelect` permet aux apps de
+  piloter leurs vues depuis la barre latérale (F-074 à F-076 retirent les
+  `TabBar` redondantes).
+
 ## Conventions de code
 
 - Français pour les noms de domaine métier alignés avec les tickets (`Bien`, `Lot`, ...)

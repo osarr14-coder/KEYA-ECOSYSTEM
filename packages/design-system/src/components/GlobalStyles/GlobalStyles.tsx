@@ -36,11 +36,13 @@ import { typography } from '../../tokens/typography';
  */
 const ROOT_COLOR_VARIABLES = `
   :root {
-    --keya-neutral-border: #E5E7EB;
-    --keya-neutral-background: #F9FAFB;
+    --keya-neutral-border: #E4DCCB;
+    --keya-neutral-background: #F7F3EA;
     --keya-neutral-surface: #FFFFFF;
-    --keya-neutral-text: #111827;
-    --keya-neutral-text-muted: #4B5563;
+    --keya-neutral-text: #16202E;
+    --keya-neutral-text-muted: #5B6472;
+    --keya-neutral-heading: #0B1D3A;
+    --keya-neutral-subtle: #F4F1EA;
     --keya-alert-background: #FFFBEB;
     --keya-alert-border: #D97706;
     --keya-alert-icon: #D97706;
@@ -54,37 +56,40 @@ const ROOT_COLOR_VARIABLES = `
        (tokens/colors.ts) pour la justification complète : remplissage
        solide de bouton, texte blanc fixe, jamais réinversé par thème. */
     --keya-danger-solid: #B91C1C;
-    --keya-progress-track: #E5E7EB;
-    --keya-progress-fill: #34D399;
+    --keya-progress-track: #EDE5D2;
+    --keya-progress-fill: #2F7D5B;
     /* Triplet R, G, B (pas un hex) — consommé par rgba(var(--keya-focus-ring-rgb), alpha)
        ci-dessous, technique vérifiée en navigateur réel avant intégration. */
-    --keya-focus-ring-rgb: 17, 24, 39;
+    --keya-focus-ring-rgb: 11, 29, 58;
+    --keya-primary-background: #0B1D3A;
+    --keya-primary-text: #FFFFFF;
+    /* Or plein et son texte : identiques dans les 3 blocs (même principe
+       que --keya-danger-solid, un remplissage fixe jamais réinversé). */
+    --keya-accent-solid: #C49A2C;
+    --keya-accent-on-solid: #0B1D3A;
+    --keya-accent-text: #8A6A12;
+    --keya-accent-soft: #F4ECD6;
+    --keya-success-background: #E3F2EA;
+    --keya-success-text: #1E5E42;
 
-    /* Ticket F-053 — ombres portées, remplacent la bordure plate de "Card"
-       (packages/design-system/src/components/Card) et l'aplat de "Button"
-       (variantes primary/danger). Valeur UNIQUE, non redéfinie dans les
-       blocs sombres ci-dessous : une ombre représente un éclairage
-       ambiant, quasi toujours sombre même sur une surface sombre — même
-       raisonnement que "danger.solid" (tokens/colors.ts), une valeur
-       délibérément FIGÉE plutôt qu'inversée par thème. Rgba neutre
-       (15,23,42 — décomposition RGB de "--keya-neutral-background" sombre,
-       #0F172A), jamais une teinte de marque ("brandColors", hors périmètre
-       de ce fichier par doctrine, voir le test de garde de ce fichier).
-       Effet plus discret qu'attendu en mode sombre sur une surface déjà
-       sombre — limite connue, acceptée pour cette première passe (voir
-       F-053-refonte-visuelle-professionnelle.md). */
-    --keya-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-    --keya-shadow-md: 0 6px 16px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
-    --keya-shadow-lg: 0 20px 44px rgba(15, 23, 42, 0.16), 0 4px 10px rgba(15, 23, 42, 0.06);
+    /* Ticket F-053 — ombres portées. Valeur UNIQUE, non redéfinie dans les
+       blocs sombres : une ombre représente un éclairage ambiant, quasi
+       toujours sombre même sur une surface sombre. Ticket F-073 : teinte
+       navy (11, 29, 58) plutôt que gris ardoise, plus douce sur l'ivoire. */
+    --keya-shadow-sm: 0 1px 2px rgba(11, 29, 58, 0.05);
+    --keya-shadow-md: 0 8px 24px rgba(11, 29, 58, 0.06), 0 1px 3px rgba(11, 29, 58, 0.04);
+    --keya-shadow-lg: 0 20px 44px rgba(11, 29, 58, 0.16), 0 4px 10px rgba(11, 29, 58, 0.06);
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --keya-neutral-border: #51637D;
-      --keya-neutral-background: #0F172A;
-      --keya-neutral-surface: #1E293B;
-      --keya-neutral-text: #F1F5F9;
-      --keya-neutral-text-muted: #A3B2C7;
+      --keya-neutral-border: #4A5F82;
+      --keya-neutral-background: #0A1628;
+      --keya-neutral-surface: #13233F;
+      --keya-neutral-text: #F3F1EC;
+      --keya-neutral-text-muted: #AEB9CB;
+      --keya-neutral-heading: #F3F1EC;
+      --keya-neutral-subtle: #1A2C4B;
       --keya-alert-background: #451A03;
       --keya-alert-border: #F59E0B;
       --keya-alert-icon: #F59E0B;
@@ -94,18 +99,28 @@ const ROOT_COLOR_VARIABLES = `
       --keya-danger-icon: #F87171;
       --keya-danger-text: #FCA5A5;
       --keya-danger-solid: #B91C1C;
-      --keya-progress-track: #334155;
-      --keya-progress-fill: #34D399;
-      --keya-focus-ring-rgb: 241, 245, 249;
+      --keya-progress-track: #2A3B58;
+      --keya-progress-fill: #4CB88A;
+      --keya-focus-ring-rgb: 243, 241, 236;
+      --keya-primary-background: #E2C47A;
+      --keya-primary-text: #0B1D3A;
+      --keya-accent-solid: #C49A2C;
+      --keya-accent-on-solid: #0B1D3A;
+      --keya-accent-text: #E2C47A;
+      --keya-accent-soft: #3A3016;
+      --keya-success-background: #12352A;
+      --keya-success-text: #8FD9B6;
     }
   }
 
   :root[data-theme="dark"] {
-    --keya-neutral-border: #51637D;
-    --keya-neutral-background: #0F172A;
-    --keya-neutral-surface: #1E293B;
-    --keya-neutral-text: #F1F5F9;
-    --keya-neutral-text-muted: #A3B2C7;
+    --keya-neutral-border: #4A5F82;
+    --keya-neutral-background: #0A1628;
+    --keya-neutral-surface: #13233F;
+    --keya-neutral-text: #F3F1EC;
+    --keya-neutral-text-muted: #AEB9CB;
+    --keya-neutral-heading: #F3F1EC;
+    --keya-neutral-subtle: #1A2C4B;
     --keya-alert-background: #451A03;
     --keya-alert-border: #F59E0B;
     --keya-alert-icon: #F59E0B;
@@ -115,9 +130,17 @@ const ROOT_COLOR_VARIABLES = `
     --keya-danger-icon: #F87171;
     --keya-danger-text: #FCA5A5;
     --keya-danger-solid: #B91C1C;
-    --keya-progress-track: #334155;
-    --keya-progress-fill: #34D399;
-    --keya-focus-ring-rgb: 241, 245, 249;
+    --keya-progress-track: #2A3B58;
+    --keya-progress-fill: #4CB88A;
+    --keya-focus-ring-rgb: 243, 241, 236;
+    --keya-primary-background: #E2C47A;
+    --keya-primary-text: #0B1D3A;
+    --keya-accent-solid: #C49A2C;
+    --keya-accent-on-solid: #0B1D3A;
+    --keya-accent-text: #E2C47A;
+    --keya-accent-soft: #3A3016;
+    --keya-success-background: #12352A;
+    --keya-success-text: #8FD9B6;
   }
 `;
 
@@ -169,14 +192,27 @@ const GLOBAL_CSS = `
   }
   /* Ticket F-072 — survol visible des entrées de navigation (barre latérale,
      onglets) : sans lui, rien n'indiquait qu'une entrée est cliquable. */
-  .keya-nav-link:hover:not([aria-current="page"]),
-  .keya-tab:hover:not([aria-current="page"]) {
-    background: rgba(var(--keya-focus-ring-rgb), 0.07);
+  /* Ticket F-073 — la barre latérale est désormais navy dans les deux
+     thèmes : survol en blanc translucide, focus en or. */
+  .keya-nav-link:hover:not([aria-current="page"]) {
+    background: rgba(255, 255, 255, 0.08);
+    color: #FFFFFF;
   }
-  .keya-nav-link:focus-visible,
+  .keya-tab:hover:not([aria-current="page"]) {
+    background: rgba(var(--keya-focus-ring-rgb), 0.06);
+  }
+  .keya-nav-link:focus-visible {
+    outline: 2px solid ${semanticColors.accent.solid};
+    outline-offset: -2px;
+  }
   .keya-tab:focus-visible {
     outline: 2px solid ${semanticColors.neutral.text};
     outline-offset: -2px;
+  }
+  /* Ticket F-073 — liens de contenu : navy souligné au survol, jamais le
+     bleu par défaut du navigateur. */
+  main a:not(.keya-btn):hover {
+    color: ${semanticColors.accent.text};
   }
   .keya-btn:focus-visible,
   .keya-input:focus-visible,
@@ -241,21 +277,24 @@ const GLOBAL_CSS = `
     display: block;
     overflow-x: auto;
   }
+  /* Ticket F-073 — lignes plus aérées (0.3em → 0.7em) : les tableaux
+     denses étaient le principal grief de lisibilité des écrans pros. */
   th {
     text-align: left;
-    padding: 0.3em 0.6em;
+    padding: 0.7em 0.9em;
     border-bottom: 2px solid ${semanticColors.neutral.border};
     font-size: 0.85em;
     font-weight: 500;
+    letter-spacing: 0.02em;
     color: ${semanticColors.neutral.textMuted};
   }
   td {
-    padding: 0.3em 0.6em;
+    padding: 0.7em 0.9em;
     border-bottom: 1px solid ${semanticColors.neutral.border};
     font-variant-numeric: tabular-nums;
   }
   tbody tr:hover td {
-    background: ${semanticColors.neutral.background};
+    background: ${semanticColors.neutral.subtle};
   }
 
   /*
@@ -287,9 +326,11 @@ const GLOBAL_CSS = `
    * éditorial dans les 4 apps, inventaire F-042 réutilisé tel quel), une
    * serif y détonnerait.
    */
-  h1 { font-size: 1.75em; font-weight: 700; line-height: 1.2; text-wrap: balance; font-family: ${typography.headingFontFamily}; }
-  h2 { font-size: 1.35em; font-weight: 700; line-height: 1.3; text-wrap: balance; font-family: ${typography.headingFontFamily}; }
-  h3 { font-size: 1.1em; font-weight: 600; line-height: 1.35; text-wrap: balance; font-family: ${typography.headingFontFamily}; }
+  /* Ticket F-073 — Fraunces se lit mieux en graisse 600 qu'en 700 ; titres
+     en couleur « heading » (navy en clair). */
+  h1 { font-size: 1.75em; font-weight: 600; line-height: 1.2; text-wrap: balance; font-family: ${typography.headingFontFamily}; color: ${semanticColors.neutral.heading}; letter-spacing: -0.01em; }
+  h2 { font-size: 1.35em; font-weight: 600; line-height: 1.3; text-wrap: balance; font-family: ${typography.headingFontFamily}; color: ${semanticColors.neutral.heading}; }
+  h3 { font-size: 1.1em; font-weight: 600; line-height: 1.35; text-wrap: balance; font-family: ${typography.headingFontFamily}; color: ${semanticColors.neutral.heading}; }
   h4 { font-size: 1em; font-weight: 600; line-height: 1.4; text-wrap: balance; }
 
   /*
@@ -315,13 +356,13 @@ const GLOBAL_CSS = `
   }
 `;
 
-// Ticket F-053 — Source Serif 4 (titres) + Public Sans (interface, voir
+// Ticket F-073 — Fraunces (titres) + Manrope (interface, voir
 // tokens/typography.ts), chargées une seule fois ici, jamais dupliquées
 // par app. `data-testid` volontairement ABSENT de ce <link> : le test
 // « rend une balise <style> unique » (GlobalStyles.test.tsx) cible
 // `getByTestId('global-styles')`, qui doit continuer à résoudre le
 // <style> lui-même sans ambiguïté.
-const GOOGLE_FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Public+Sans:wght@400;500;600;700&display=swap';
+const GOOGLE_FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap';
 
 export function GlobalStyles() {
   return (

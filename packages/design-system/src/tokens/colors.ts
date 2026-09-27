@@ -51,6 +51,44 @@ export interface NeutralColorTokens {
   surface: string;
   text: string;
   textMuted: string;
+  /** Ticket F-073 — couleur des titres (navy en clair, texte principal en
+   * sombre). Distincte de `text` : un titre éditorial ne se confond plus
+   * avec le corps de texte. */
+  heading: string;
+  /** Ticket F-073 — fond très discret d'un élément « au repos » (étape à
+   * venir, pastille neutre), entre `background` et `surface`. */
+  subtle: string;
+}
+
+/**
+ * Ticket F-073 — direction « Confiance premium » retenue par l'utilisateur :
+ * l'identité navy/or n'est plus réservée à HOME. Elle est exposée ici sous
+ * forme de TOKENS SÉMANTIQUES thémés (`var(--keya-*)`, valeurs claires ET
+ * sombres dans `GlobalStyles.tsx`), jamais via les hex littéraux de
+ * `brandColors` — un composant partagé ne dépend toujours pas de la palette
+ * de marque figée, il consomme un rôle (action principale, accent).
+ */
+export interface PrimaryColorTokens {
+  /** Fond de l'action principale (navy en clair, or clair en sombre). */
+  background: string;
+  /** Texte posé sur `background`. */
+  text: string;
+}
+
+export interface AccentColorTokens {
+  /** Or plein (bouton `accent`, repère) — identique dans les deux thèmes. */
+  solid: string;
+  /** Texte posé sur `solid` (navy, fixe). */
+  onSolid: string;
+  /** Or lisible EN TEXTE sur le fond courant (surtitres, montants clés). */
+  text: string;
+  /** Fond doux teinté or (pastille « à faire », étape en cours). */
+  soft: string;
+}
+
+export interface SuccessColorTokens {
+  background: string;
+  text: string;
 }
 
 export interface ProgressColorTokens {
@@ -105,6 +143,9 @@ export const semanticColors: {
   danger: SemanticColorTokens;
   neutral: NeutralColorTokens;
   progress: ProgressColorTokens;
+  primary: PrimaryColorTokens;
+  accent: AccentColorTokens;
+  success: SuccessColorTokens;
 } = {
   alert: {
     background: 'var(--keya-alert-background)',
@@ -135,9 +176,25 @@ export const semanticColors: {
     // `GlobalStyles.tsx` pour les deux valeurs réelles et leurs ratios de
     // contraste vérifiés (clair ET sombre).
     textMuted: 'var(--keya-neutral-text-muted)',
+    heading: 'var(--keya-neutral-heading)',
+    subtle: 'var(--keya-neutral-subtle)',
   },
   progress: {
     track: 'var(--keya-progress-track)',
     fill: 'var(--keya-progress-fill)',
+  },
+  primary: {
+    background: 'var(--keya-primary-background)',
+    text: 'var(--keya-primary-text)',
+  },
+  accent: {
+    solid: 'var(--keya-accent-solid)',
+    onSolid: 'var(--keya-accent-on-solid)',
+    text: 'var(--keya-accent-text)',
+    soft: 'var(--keya-accent-soft)',
+  },
+  success: {
+    background: 'var(--keya-success-background)',
+    text: 'var(--keya-success-text)',
   },
 };

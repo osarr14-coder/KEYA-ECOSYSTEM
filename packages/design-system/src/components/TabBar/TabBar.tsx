@@ -60,15 +60,13 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
               flexShrink: 0,
               whiteSpace: 'nowrap',
               border: 'none',
-              borderBottom: isActive ? `3px solid ${semanticColors.neutral.text}` : '3px solid transparent',
+              // Ticket F-073 — repère actif en or (token sémantique
+              // `accent`, thémé) + graisse ; texte principal pour tous.
+              borderBottom: isActive ? `3px solid ${semanticColors.accent.solid}` : '3px solid transparent',
               background: 'transparent',
-              // Ticket F-072 — jamais sous 14px ; onglets inactifs en texte
-              // principal (le gris atténué était peu lisible), l'actif se
-              // distingue par sa bordure épaisse et sa graisse (jamais
-              // couleur de marque ici, gouvernance F-039).
-              fontSize: '14px',
-              fontWeight: isActive ? 600 : 400,
-              color: semanticColors.neutral.text,
+              fontSize: '15px',
+              fontWeight: isActive ? 700 : 500,
+              color: isActive ? semanticColors.neutral.heading : semanticColors.neutral.text,
             }}
           >
             {tab.icon && <Icon name={tab.icon} size={16} />}

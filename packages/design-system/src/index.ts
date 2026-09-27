@@ -45,6 +45,12 @@ export { useOnlineStatus } from './hooks/useOnlineStatus';
 export { useTheme } from './hooks/useTheme';
 export type { ThemePreference } from './hooks/useTheme';
 
+export { PageHeader } from './components/PageHeader/PageHeader';
+export type { PageHeaderProps } from './components/PageHeader/PageHeader';
+
+export { Pill } from './components/Pill/Pill';
+export type { PillProps, PillTone } from './components/Pill/Pill';
+
 export { ProgressBar } from './components/ProgressBar/ProgressBar';
 export type { ProgressBarProps } from './components/ProgressBar/ProgressBar';
 
@@ -59,7 +65,8 @@ export type { TabBarProps, TabBarTab } from './components/TabBar/TabBar';
 
 export { brandColors, semanticColors } from './tokens/colors';
 export type {
-  BrandColorTokens, NeutralColorTokens, ProgressColorTokens, SemanticColorTokens,
+  AccentColorTokens, BrandColorTokens, NeutralColorTokens, PrimaryColorTokens, ProgressColorTokens,
+  SemanticColorTokens, SuccessColorTokens,
 } from './tokens/colors';
 
 export { ALL_DENSITIES, densityTokens } from './tokens/density';

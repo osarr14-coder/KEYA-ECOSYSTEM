@@ -40,6 +40,9 @@ export interface AppModule {
    * même discipline que les libellés de module eux-mêmes.
    */
   group?: string;
+  /** Ticket F-073 — compteur optionnel affiché à droite du libellé (ex.
+   * nombre d'éléments « À faire »). Masqué à 0 ou absent. */
+  badge?: number;
 }
 
 export interface Breadcrumb {
@@ -68,17 +71,15 @@ export interface AppShellProps {
    * densité, mais coupler le rendu de marque à la densité créerait un
    * couplage implicite fragile — c'est à l'app consommatrice de le
    * demander explicitement, même principe que `requiredRoles`/`userRoles`.
-   * Absent ou `false` : comportement strictement inchangé (BUILD/CONTROL/
-   * apps/web, aucune régression possible).
+   * Ticket F-073 — la barre latérale navy porte désormais l'identité sur
+   * les 4 apps ; `brand` ne pose plus qu'un filet or sous la barre du haut
+   * (plus de bandeau navy ni de second logo, qui faisaient doublon).
    */
   brand?: boolean;
   /**
-   * Ticket F-048 — révision LIMITÉE et PRÉCISE de la doctrine 17.3
-   * (« brandColors réservé à HOME ») : nom de l'app affiché dans le
-   * nouveau bloc navy TOUJOURS visible en haut de la sidebar (jamais
-   * gated par `brand`, contrairement au bandeau `<header>` de F-039,
-   * qui reste HOME-only et intouché). Optionnel — sans valeur, seule
-   * la ligne « KEYIMMO AFRIC » s'affiche, pas de ligne vide.
+   * Ticket F-048 — nom de l'app affiché sous « KEYIMMO AFRIC » dans le
+   * bloc de marque en haut de la barre latérale. Optionnel — sans valeur,
+   * aucune ligne vide.
    */
   appLabel?: string;
   modules: AppModule[];
@@ -120,6 +121,18 @@ export interface AppShellProps {
   onProgramChange?: (programId: string) => void;
   onSearch?: (query: string) => void;
   activeModuleId?: string;
+  /**
+   * Ticket F-073 — navigation UNIQUE par la barre latérale : avec ce
+   * handler, un clic sur un module appelle `onModuleSelect(id)` sans
+   * rechargement (navigation SPA décidée par l'app), exactement comme la
+   * cloche avec `onTaskInboxClick`. Sans handler, le lien `href` garde son
+   * comportement natif (rétrocompatible).
+   */
+  onModuleSelect?: (moduleId: string) => void;
+  /** Ticket F-073 — titre optionnel affiché dans la barre du haut (jamais
+   * dérivé automatiquement du module actif : le libellé figurerait deux
+   * fois dans la page). */
+  title?: string;
   children?: ReactNode;
 }
 
@@ -129,16 +142,33 @@ function isModuleVisible(module: AppModule, userRoles: string[]): boolean {
 }
 
 /**
- * Ticket F-053 (refonte visuelle) — dégradé de la bande de marque
- * (sidebar toujours, header HOME-only), remplace l'aplat `brandColors.navy`
- * seul. `#071527` : nuance plus profonde, choisie sur la maquette validée
- * — inline ici plutôt qu'ajoutée à `brandColors` (tokens/colors.ts, qui
- * documente explicitement « aucune nuance dérivée inventée sans besoin
- * démontré ») : implémentation propre à CE composant, pas une nouvelle
- * couleur de marque partagée. Exporté pour que `AppShell.test.tsx` compare
- * la MÊME valeur, jamais une chaîne dupliquée qui pourrait diverger.
+ * Ticket F-053 — dégradé de la bande de marque. Ticket F-073 : porté par
+ * TOUTE la barre latérale (pleine hauteur), sur les 4 apps. Exporté pour
+ * les tests et pour les rares surfaces de marque hors AppShell (bandeau
+ * CONTROL, écran de connexion, carte programme HOME).
  */
-export const BRAND_GRADIENT = `linear-gradient(155deg, ${brandColors.navy} 0%, #071527 100%)`;
+export const BRAND_GRADIENT = `linear-gradient(180deg, ${brandColors.navy} 0%, #071527 100%)`;
+
+/** Ticket F-073 — or translucide de l'entrée active (≈ 18 % d'opacité). */
+const ACTIVE_ITEM_BACKGROUND = 'rgba(196, 154, 44, 0.18)';
+const SIDEBAR_TEXT = '#D5DCE8';
+const SIDEBAR_TEXT_MUTED = 'rgba(213, 220, 232, 0.62)';
+
+const chipStyle = {
+  border: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '6px',
+  minHeight: '40px',
+  padding: '0 12px',
+  borderRadius: '12px',
+  background: semanticColors.neutral.subtle,
+  color: semanticColors.neutral.text,
+  font: 'inherit',
+  fontSize: '14px',
+  fontWeight: 600,
+  cursor: 'pointer',
+} as const;
 
 export function AppShell({
   density,
@@ -160,23 +190,19 @@ export function AppShell({
   onProgramChange,
   onSearch,
   activeModuleId,
+  onModuleSelect,
+  title,
   children,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
-  // Ticket F-050 — dette responsive de F-039 (recherche/CTA coupés à
-  // 375px) : en dessous du seuil mobile, la sidebar reste TOUJOURS le
-  // rail compact existant (56px, icônes seules — déjà implémenté, testé,
-  // accessible), quel que soit l'état interne `collapsed`. `collapsed`
-  // continue de piloter le rendu desktop normalement (le bouton
-  // replier/déplier, lui, est masqué en mobile — rien à basculer, voir
-  // plus bas). `gridTemplateColumns` ci-dessous reste un style INLINE,
-  // comme avant ce ticket — jamais un `!important` CSS pour contourner un
-  // style inline existant.
+  // Ticket F-050 — sous le seuil mobile, la barre latérale reste le rail
+  // compact (icônes seules), quel que soit l'état `collapsed`.
   const isMobile = useIsMobile();
   const effectiveCollapsed = collapsed || isMobile;
   const { theme, setTheme } = useTheme();
   const tokens = densityTokens[density];
   const visibleModules = modules.filter((module) => isModuleVisible(module, userRoles));
+  const headerTitle = title;
 
   return (
     <div
@@ -184,34 +210,44 @@ export function AppShell({
       data-density={density}
       style={{
         display: 'grid',
-        // Ticket F-070 — `minmax(0, 1fr)` : un `1fr` seul vaut `minmax(auto,
-        // 1fr)`, la colonne s'élargissait au contenu le plus large (barre de
-        // 11 onglets d'apps/web) et poussait la barre du haut hors de l'écran.
-        gridTemplateColumns: effectiveCollapsed ? '56px minmax(0, 1fr)' : '220px minmax(0, 1fr)',
+        // Ticket F-070 — `minmax(0, 1fr)` : jamais un élargissement au
+        // contenu le plus large. Ticket F-073 : barre latérale plus large
+        // (264px) pour des libellés entiers, rail de 64px.
+        gridTemplateColumns: effectiveCollapsed ? '64px minmax(0, 1fr)' : '264px minmax(0, 1fr)',
         gridTemplateRows: 'auto 1fr',
         minHeight: '100vh',
         fontSize: tokens.fontSize,
       }}
     >
+      {/* Ticket F-073 (direction « Confiance premium », révision de la
+          doctrine 17.3/F-048 validée par l'utilisateur) : la barre latérale
+          ENTIÈRE est navy, pleine hauteur, sur les 4 apps et dans les deux
+          thèmes — c'est le repère d'identité unique de KEYA. */}
       <aside
         aria-label="Navigation des modules"
-        style={{ gridRow: '1 / span 2', borderRight: `1px solid ${semanticColors.neutral.border}` }}
+        data-testid="app-shell-sidebar"
+        style={{
+          gridRow: '1 / span 2',
+          background: BRAND_GRADIENT,
+          color: SIDEBAR_TEXT,
+          position: 'sticky',
+          top: 0,
+          height: '100vh',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: spacing.md,
+          paddingBottom: spacing.lg,
+        }}
       >
-        {/* Ticket F-048 — révision LIMITÉE et PRÉCISE de la doctrine 17.3 :
-            TOUJOURS rendu, sur les 4 apps, indépendamment de `brand`
-            (contrairement au bandeau `<header>` de F-039 ci-dessous, qui
-            reste HOME-only et intouché). `data-testid` DISTINCT de
-            `brand-mark` (bandeau) — les deux zones ne doivent jamais être
-            confondues dans les tests. */}
         <div
           data-testid="sidebar-brand-block"
           style={{
-            background: BRAND_GRADIENT,
             color: '#FFFFFF',
             display: 'flex',
             flexDirection: 'column',
             gap: '2px',
-            padding: effectiveCollapsed ? `${spacing.md} ${spacing.sm}` : `${spacing.md} ${spacing.lg}`,
+            padding: effectiveCollapsed ? '20px 8px 8px' : '24px 20px 8px',
           }}
         >
           <div
@@ -219,91 +255,62 @@ export function AppShell({
               display: 'flex',
               alignItems: 'center',
               justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
-              gap: spacing.sm,
+              gap: '12px',
             }}
           >
-            {/* Ticket F-053 — badge dégradé (au lieu du texte "K+" brut) :
-                repère de marque avec un peu de relief, même esprit que la
-                maquette validée. `boxShadow` volontairement `--keya-shadow-sm`
-                (pas `-md`/`-lg`) : un petit badge de 28px n'a pas besoin
-                d'une ombre portée large, qui paraîtrait disproportionnée. */}
             <span
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: '28px',
-                height: '28px',
-                borderRadius: '8px',
-                background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: brandColors.gold,
                 color: brandColors.navy,
-                fontWeight: 700,
-                fontSize: '0.85em',
+                fontWeight: 600,
+                fontSize: '15px',
                 fontFamily: typography.headingFontFamily,
-                boxShadow: 'var(--keya-shadow-sm)',
                 flexShrink: 0,
               }}
             >
               K+
             </span>
-            {!effectiveCollapsed && <span style={{ fontWeight: 700 }}>KEYIMMO AFRIC</span>}
+            {!effectiveCollapsed && (
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <span style={{ fontFamily: typography.headingFontFamily, fontSize: '18px', fontWeight: 600, lineHeight: 1.2 }}>
+                  KEYIMMO AFRIC
+                </span>
+                {appLabel && (
+                  <span style={{ fontSize: '12px', color: SIDEBAR_TEXT_MUTED, fontWeight: 500 }}>{appLabel}</span>
+                )}
+              </span>
+            )}
           </div>
-          {!effectiveCollapsed && appLabel && (
-            <span style={{ fontSize: '0.85em', color: 'rgba(255, 255, 255, 0.72)' }}>{appLabel}</span>
-          )}
         </div>
-        {/* Ticket F-050 — rien à basculer en dessous du seuil mobile (le
-            rail y est permanent, voir `effectiveCollapsed` ci-dessus) :
-            jamais un contrôle visible sans effet. */}
-        {!isMobile && (
-          <button
-            type="button"
-            onClick={() => setCollapsed((current) => !current)}
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? 'Déplier la navigation' : 'Replier la navigation'}
-            style={{
-              width: '100%',
-              padding: tokens.paddingBlock,
-              border: 'none',
-              background: 'transparent',
-              display: 'flex',
-              justifyContent: 'center',
-              color: semanticColors.neutral.textMuted,
-            }}
-          >
-            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
-          </button>
-        )}
-        <nav>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+
+        <nav style={{ padding: effectiveCollapsed ? '0 8px' : '0 12px' }}>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {visibleModules.map((module, index) => {
               const isActive = module.id === activeModuleId;
-              // Ticket F-051 — en-tête de groupe rendu UNE FOIS, seulement à
-              // la transition vers un `group` différent du module précédent
-              // (jamais pour un groupe qui se poursuit) ; jamais en mode
-              // replié (rail trop étroit pour un texte de section).
+              // Ticket F-051 — en-tête de groupe rendu une fois, à la
+              // transition vers un `group` différent ; jamais en mode replié.
               const previousGroup = index > 0 ? visibleModules[index - 1].group : undefined;
               const showGroupHeader = Boolean(module.group) && module.group !== previousGroup && !effectiveCollapsed;
+              const badge = module.badge && module.badge > 0 ? module.badge : undefined;
               return (
                 <Fragment key={module.id}>
-                  {/* Ticket F-051 — PAS aria-hidden : ce texte sert de
-                      repère de section à TOUS les utilisateurs, retirer un
-                      groupe de l'arbre d'accessibilité priverait
-                      spécifiquement les lecteurs d'écran du regroupement
-                      que ce ticket introduit pour tout le monde. */}
+                  {/* Ticket F-051 — PAS aria-hidden : repère de section pour
+                      tous, lecteurs d'écran compris. */}
                   {showGroupHeader && (
                     <li
                       style={{
-                        padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
-                        paddingTop: '12px',
-                        paddingBottom: '4px',
-                        // Ticket F-072 — 0.75em d'un corps « dense » à 13px
-                        // (≈ 10px) était illisible : taille fixe 11px.
+                        padding: '16px 12px 6px',
                         fontSize: '11px',
                         fontWeight: 700,
                         textTransform: 'uppercase',
-                        letterSpacing: '0.04em',
-                        color: semanticColors.neutral.textMuted,
+                        letterSpacing: '0.1em',
+                        color: SIDEBAR_TEXT_MUTED,
                       }}
                     >
                       {module.group}
@@ -313,45 +320,55 @@ export function AppShell({
                     <a
                       href={module.href}
                       aria-current={isActive ? 'page' : undefined}
+                      aria-label={effectiveCollapsed ? module.label : undefined}
+                      title={effectiveCollapsed ? module.label : undefined}
                       className="keya-nav-link"
+                      onClick={onModuleSelect && ((event) => {
+                        event.preventDefault();
+                        onModuleSelect(module.id);
+                      })}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
-                        gap: tokens.gap,
-                        // Ticket F-072 (retour utilisateur : « le thème ne permet
-                        // pas une bonne visibilité des menus ») — entrées plus
-                        // hautes et jamais sous 14px, même en densité « dense ».
-                        padding: `8px ${tokens.paddingInline}`,
-                        fontSize: '14px',
-                        // Ticket 023 (polish visuel) — `aria-current` était déjà
-                        // posé correctement (accessibilité), mais rien ne
-                        // distinguait visuellement le module actif des autres :
-                        // seul un lecteur d'écran pouvait "voir" la page
-                        // courante. Bordure + poids de police, pas la couleur
-                        // seule (accessibilité — ne jamais distinguer par la
-                        // seule couleur, principe déjà respecté ailleurs dans
-                        // ce projet, voir CLAUDE.md ticket 014).
-                        // Ticket F-048 — SEULE la couleur de cette bordure
-                        // change (`brandColors.gold`, doctrine 17.3 révisée
-                        // de façon limitée) : fond/couleur de texte
-                        // ci-dessous restent EXACTEMENT ceux d'avant ce
-                        // ticket, décision confirmée explicitement.
-                        borderLeft: isActive
-                          ? `3px solid ${brandColors.gold}`
-                          : '3px solid transparent',
-                        // Ticket F-072 — texte principal (et non plus « atténué »)
-                        // pour toutes les entrées ; l'entrée active se distingue
-                        // par sa bordure or et sa graisse (fond inchangé,
-                        // décision D du ticket F-048 respectée).
+                        gap: '12px',
+                        minHeight: '44px',
+                        padding: effectiveCollapsed ? '0' : '0 12px',
+                        borderRadius: '12px',
+                        fontSize: '15px',
+                        // Ticket F-073 — entrée active : fond or translucide,
+                        // texte blanc en gras ET repère or à gauche (jamais la
+                        // couleur seule, principe d'accessibilité du projet).
+                        borderLeft: isActive ? `3px solid ${brandColors.gold}` : '3px solid transparent',
                         fontWeight: isActive ? 700 : 500,
-                        background: isActive ? semanticColors.neutral.background : 'transparent',
-                        color: semanticColors.neutral.text,
+                        background: isActive ? ACTIVE_ITEM_BACKGROUND : 'transparent',
+                        color: isActive ? '#FFFFFF' : SIDEBAR_TEXT,
+                        position: 'relative',
                       }}
                     >
-                      {module.icon && <Icon name={module.icon} size={18} />}
-                      {!effectiveCollapsed && module.label}
+                      {module.icon && <Icon name={module.icon} size={20} />}
+                      {!effectiveCollapsed && <span style={{ flexGrow: 1, minWidth: 0 }}>{module.label}</span>}
                       {effectiveCollapsed && !module.icon && module.label.slice(0, 1)}
+                      {badge !== undefined && (
+                        <span
+                          data-testid={`module-badge-${module.id}`}
+                          aria-label={`${badge} en attente`}
+                          style={{
+                            ...(effectiveCollapsed ? { position: 'absolute', top: '4px', right: '4px' } : {}),
+                            minWidth: '22px',
+                            padding: '0 7px',
+                            borderRadius: '999px',
+                            background: brandColors.gold,
+                            color: brandColors.navy,
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            lineHeight: '22px',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {badge}
+                        </span>
+                      )}
                     </a>
                   </li>
                 </Fragment>
@@ -359,68 +376,68 @@ export function AppShell({
             })}
           </ul>
         </nav>
+
+        {/* Ticket F-050 — rien à basculer sous le seuil mobile. */}
+        {!isMobile && (
+          <button
+            type="button"
+            onClick={() => setCollapsed((current) => !current)}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? 'Déplier la navigation' : 'Replier la navigation'}
+            style={{
+              marginTop: 'auto',
+              alignSelf: effectiveCollapsed ? 'center' : 'flex-start',
+              marginInline: effectiveCollapsed ? 0 : '16px',
+              width: '36px',
+              height: '36px',
+              border: 'none',
+              borderRadius: '10px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: SIDEBAR_TEXT,
+            }}
+          >
+            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
+          </button>
+        )}
       </aside>
 
       <header
         data-testid="app-shell-header"
         style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
           display: 'flex',
           alignItems: 'center',
-          gap: tokens.gap,
-          padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
+          gap: '10px',
+          minHeight: '64px',
+          padding: isMobile ? '10px 16px' : '10px 40px',
+          // Ticket F-039 — `brand` (HOME) : filet or sous la barre.
           borderBottom: brand ? `2px solid ${brandColors.gold}` : `1px solid ${semanticColors.neutral.border}`,
-          // Ticket F-055 — "neutral.surface" explicite (au lieu de
-          // `undefined`, transparent) + ombre : depuis que le canevas de
-          // page ("body") porte "neutral.background" (teinté, voir
-          // GlobalStyles.tsx), un topbar transparent laissait voir cette
-          // teinte au lieu de se détacher — sans présence, à plat.
-          background: brand ? BRAND_GRADIENT : semanticColors.neutral.surface,
-          color: brand ? '#FFFFFF' : undefined,
-          boxShadow: 'var(--keya-shadow-sm)',
+          background: semanticColors.neutral.surface,
         }}
       >
-        {brand && (
-          // Ticket F-039 — aucun asset logo K+toit n'existe dans ce projet
-          // (vérifié : recherche exhaustive de fichiers image, un seul
-          // résultat trouvé, `apps/control-pwa/public/icon.svg`, un icône
-          // générique sans lien avec KEYIMMO AFRIC) — repère de marque
-          // textuel plutôt que de référencer un fichier qui n'existe pas.
+        {headerTitle && (
           <span
-            data-testid="brand-mark"
+            data-testid="app-shell-title"
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: spacing.sm, fontWeight: 700, whiteSpace: 'nowrap',
+              fontFamily: typography.headingFontFamily,
+              fontSize: '20px',
+              fontWeight: 600,
+              color: semanticColors.neutral.heading,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              minWidth: 0,
             }}
           >
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '26px',
-                height: '26px',
-                borderRadius: '7px',
-                background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
-                color: brandColors.navy,
-                fontFamily: typography.headingFontFamily,
-                fontSize: '0.8em',
-                flexShrink: 0,
-              }}
-            >
-              K+
-            </span>
-            <span>KEYIMMO AFRIC</span>
+            {headerTitle}
           </span>
         )}
-        {/* Ticket F-051 — audit UX : ce champ était rendu INCONDITIONNELLEMENT
-            sur les 4 apps alors qu'aucune (HOME/BUILD/apps-web) ne fournit
-            jamais `onSearch` (vérifié par grep sur tout le monorepo) —
-            affordance de recherche 100% décorative, jamais fonctionnelle,
-            chaque écran ayant sa PROPRE recherche dans le corps de page
-            (Devis/Programmes/Back-office/Tous les lots). Conditionné à la
-            présence de `onSearch`, même convention que
-            `organizationOptions.length > 0` ci-dessous — reste disponible
-            pour une future app qui aurait un VRAI besoin de recherche
-            globale dans le chrome. */}
+        {/* Ticket F-051 — recherche seulement si l'app la fournit. */}
         {onSearch && (
           <form
             role="search"
@@ -434,11 +451,15 @@ export function AppShell({
           </form>
         )}
 
+        <span style={{ marginLeft: 'auto' }} />
+
         {organizationOptions.length > 0 && (
           <select
             aria-label="Organisation active"
+            className="keya-select"
             value={activeOrganizationId}
             onChange={(event) => onOrganizationChange?.(event.target.value)}
+            style={{ ...chipStyle, border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface, maxWidth: '260px' }}
           >
             {organizationOptions.map((option) => (
               <option key={option.id} value={option.id}>{option.label}</option>
@@ -449,8 +470,10 @@ export function AppShell({
         {programOptions.length > 0 && (
           <select
             aria-label="Programme actif"
+            className="keya-select"
             value={activeProgramId}
             onChange={(event) => onProgramChange?.(event.target.value)}
+            style={{ ...chipStyle, border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface, maxWidth: '260px' }}
           >
             {programOptions.map((option) => (
               <option key={option.id} value={option.id}>{option.label}</option>
@@ -458,9 +481,6 @@ export function AppShell({
           </select>
         )}
 
-        {/* Sans cloche, un espaceur garde le reste de la barre calé à droite
-            (c'est la cloche qui porte `marginLeft: 'auto'`). */}
-        {!showTaskInbox && <span style={{ marginLeft: 'auto' }} />}
         {showTaskInbox && (
           <a
             href="/tasks"
@@ -469,88 +489,64 @@ export function AppShell({
               onTaskInboxClick();
             })}
             aria-label={`Task Inbox — ${taskInboxCount} en attente`}
-            style={{
-              marginLeft: 'auto',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              // Ticket F-055 — chip discret (fond + rayon), jamais posé
-              // directement sur le fond de topbar déjà uni (`neutral.surface`)
-              // : seul repère de clic sur ce bouton avant ce ticket, en plus
-              // de l'icône elle-même. Fond/couleur SEULEMENT hors `brand`
-              // (topbar HOME dégradé navy) : sur fond navy, un chip clair et
-              // du texte gris `textMuted` deviendraient illisibles — l'en-tête
-              // `brand` garde son héritage `color: '#FFFFFF'` existant.
-              padding: '6px 8px',
-              borderRadius: '8px',
-              background: brand ? 'transparent' : semanticColors.neutral.background,
-              color: brand ? undefined : semanticColors.neutral.textMuted,
-            }}
+            style={chipStyle}
           >
-            {/* Ticket F-045 — remplace l'emoji 🔔 (seul emoji du projet, jamais
-                une icône) par l'icône trait maison, même famille que le reste. */}
             <Icon name="bell" size={18} />
-            <span data-testid="task-inbox-count">{taskInboxCount}</span>
+            <span
+              data-testid="task-inbox-count"
+              style={taskInboxCount > 0 ? {
+                minWidth: '20px',
+                padding: '0 6px',
+                borderRadius: '999px',
+                background: semanticColors.accent.solid,
+                color: semanticColors.accent.onSolid,
+                fontSize: '12px',
+                fontWeight: 800,
+                lineHeight: '20px',
+                textAlign: 'center',
+              } : undefined}
+            >
+              {taskInboxCount}
+            </span>
           </a>
         )}
 
         {user && (
-          <span aria-label={`Connecté comme ${user.name}`}>
+          <span
+            aria-label={`Connecté comme ${user.name}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: semanticColors.primary.background,
+              color: semanticColors.primary.text,
+              fontWeight: 700,
+            }}
+          >
             {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} width={28} height={28} style={{ borderRadius: '50%' }} />
+              <img src={user.avatarUrl} alt={user.name} width={36} height={36} style={{ borderRadius: '50%' }} />
             ) : (
               <span aria-hidden="true">{user.name.slice(0, 1).toUpperCase()}</span>
             )}
           </span>
         )}
 
-        {/* Ticket F-051 — mode sombre : bascule binaire simple (clair/sombre
-            explicite), pas un menu tri-état — un clic depuis "system"
-            passe TOUJOURS en sombre explicite, indépendamment de la
-            préférence OS réelle (simplification assumée, voir useTheme.ts
-            pour le contrat complet). `aria-pressed` reflète l'état
-            RÉSOLU actuel (sombre = pressé), jamais "system" comme un
-            troisième état visuel — un bouton à bascule n'a que deux
-            états perceptibles. */}
+        {/* Ticket F-051 — bascule binaire clair/sombre. */}
         <button
           type="button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           aria-pressed={theme === 'dark'}
           aria-label={theme === 'dark' ? 'Désactiver le mode sombre' : 'Activer le mode sombre'}
-          style={{
-            border: 'none',
-            // Ticket F-055 — même chip discret que le lien Task Inbox
-            // ci-dessus, pour une paire d'actions cohérente dans le topbar.
-            background: brand ? 'transparent' : semanticColors.neutral.background,
-            display: 'inline-flex',
-            alignItems: 'center',
-            padding: '6px',
-            borderRadius: '8px',
-            // Ticket F-072 — gris « atténué » sur le bandeau navy : icône
-            // quasi invisible en thème clair.
-            color: brand ? 'rgba(255, 255, 255, 0.9)' : semanticColors.neutral.textMuted,
-          }}
+          style={{ ...chipStyle, padding: '0 10px' }}
         >
           <Icon name="moon" size={18} />
         </button>
 
         {onLogout && (
-          <button
-            type="button"
-            onClick={onLogout}
-            style={{
-              border: 'none',
-              background: brand ? 'transparent' : semanticColors.neutral.background,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 8px',
-              borderRadius: '8px',
-              color: brand ? '#FFFFFF' : semanticColors.neutral.textMuted,
-              font: 'inherit',
-              cursor: 'pointer',
-            }}
-          >
+          <button type="button" onClick={onLogout} style={chipStyle}>
             <Icon name="log-out" size={18} />
             {!isMobile && 'Se déconnecter'}
             {isMobile && <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Se déconnecter</span>}
@@ -558,10 +554,20 @@ export function AppShell({
         )}
       </header>
 
-      <main style={{ padding: tokens.paddingInline }}>
+      <main style={{ padding: isMobile ? '16px' : '32px 40px 48px', minWidth: 0 }}>
         {breadcrumbs.length > 0 && (
           <nav aria-label="Fil d'Ariane">
-            <ol style={{ display: 'flex', gap: tokens.gap, listStyle: 'none', padding: 0, margin: `0 0 ${tokens.gap} 0` }}>
+            <ol
+              style={{
+                display: 'flex',
+                gap: tokens.gap,
+                listStyle: 'none',
+                padding: 0,
+                margin: '0 0 16px 0',
+                fontSize: '14px',
+                color: semanticColors.neutral.textMuted,
+              }}
+            >
               {breadcrumbs.map((crumb, index) => {
                 const isLast = index === breadcrumbs.length - 1;
                 return (

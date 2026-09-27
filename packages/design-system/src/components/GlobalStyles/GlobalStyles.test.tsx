@@ -97,18 +97,40 @@ describe('GlobalStyles — responsive header AppShell (ticket F-050)', () => {
 });
 
 describe('GlobalStyles — mode sombre, source unique des deux palettes (ticket F-051)', () => {
-  it(':root pose les variables claires, IDENTIQUES aux anciens hex de semanticColors (aucun changement visuel par défaut)', () => {
+  it(':root pose la palette claire « Confiance premium » (ticket F-073 : ivoire, encre, navy, or)', () => {
     const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
     const rootBlock = css.match(/:root\s*\{[^}]*\}/)![0];
 
-    expect(rootBlock).toContain('--keya-neutral-border: #E5E7EB');
-    expect(rootBlock).toContain('--keya-neutral-background: #F9FAFB');
+    expect(rootBlock).toContain('--keya-neutral-border: #E4DCCB');
+    expect(rootBlock).toContain('--keya-neutral-background: #F7F3EA');
     expect(rootBlock).toContain('--keya-neutral-surface: #FFFFFF');
-    expect(rootBlock).toContain('--keya-neutral-text: #111827');
-    expect(rootBlock).toContain('--keya-neutral-text-muted: #4B5563');
+    expect(rootBlock).toContain('--keya-neutral-text: #16202E');
+    expect(rootBlock).toContain('--keya-neutral-text-muted: #5B6472');
+    expect(rootBlock).toContain('--keya-neutral-heading: #0B1D3A');
+    expect(rootBlock).toContain('--keya-primary-background: #0B1D3A');
+    expect(rootBlock).toContain('--keya-accent-solid: #C49A2C');
+    expect(rootBlock).toContain('--keya-accent-text: #8A6A12');
     expect(rootBlock).toContain('--keya-alert-background: #FFFBEB');
     expect(rootBlock).toContain('--keya-danger-background: #FEF2F2');
-    expect(rootBlock).toContain('--keya-progress-fill: #34D399');
+    expect(rootBlock).toContain('--keya-progress-fill: #2F7D5B');
+  });
+
+  it('ticket F-073 : chaque token semanticColors référencé a bien sa variable dans les 3 blocs de thème', async () => {
+    const { semanticColors } = await import('../../tokens/colors');
+    const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
+    const blocks = [
+      css.match(/:root\s*\{[^}]*\}/)![0],
+      css.match(/:root:not\(\[data-theme="light"\]\)\s*\{[^}]*\}/)![0],
+      css.match(/:root\[data-theme="dark"\]\s*\{[^}]*\}/)![0],
+    ];
+    const variables = Object.values(semanticColors)
+      .flatMap((group) => Object.values(group) as string[])
+      .map((value) => value.match(/var\((--keya-[\w-]+)\)/)![1]);
+    for (const variable of variables) {
+      for (const block of blocks) {
+        expect(block).toContain(`${variable}:`);
+      }
+    }
   });
 
   it('@media (prefers-color-scheme: dark) redéfinit les mêmes variables, exclu si data-theme="light" explicite', () => {
@@ -119,9 +141,9 @@ describe('GlobalStyles — mode sombre, source unique des deux palettes (ticket 
     // Valeurs sombres réellement DIFFÉRENTES des valeurs claires — sinon
     // le mode sombre n'existerait que de nom.
     const darkBlock = css.match(/:root:not\(\[data-theme="light"\]\)\s*\{[^}]*\}/)![0];
-    expect(darkBlock).toContain('--keya-neutral-background: #0F172A');
-    expect(darkBlock).toContain('--keya-neutral-text: #F1F5F9');
-    expect(darkBlock).not.toContain('#111827');
+    expect(darkBlock).toContain('--keya-neutral-background: #0A1628');
+    expect(darkBlock).toContain('--keya-neutral-text: #F3F1EC');
+    expect(darkBlock).not.toContain('#16202E');
   });
 
   it('[data-theme="dark"] pose les MÊMES valeurs sombres — override manuel gagne indépendamment de prefers-color-scheme', () => {
@@ -143,11 +165,18 @@ describe('GlobalStyles — mode sombre, source unique des deux palettes (ticket 
     expect(css).not.toContain('rgba(17, 24, 39, 0.12)');
   });
 
-  it('brandColors (navy/or) n\'est référencé nulle part dans les variables de thème — identité fixe, hors périmètre', () => {
+  /*
+   * Ticket F-073 — révision de la doctrine F-051 : la direction « Confiance
+   * premium » (validée par l'utilisateur) fait du navy et de l'or des rôles
+   * SÉMANTIQUES thémés (action principale, accent), déclarés ici. Ce qui
+   * reste interdit : la palette de marque en TEXTE courant (neutral.text)
+   * ou en fond de page — le corps reste en encre sur ivoire.
+   */
+  it('ticket F-073 : navy/or vivent dans des rôles dédiés (primary/accent/heading), jamais en texte ou fond neutre', () => {
     const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
-    const rootBlock = css.match(/:root\s*\{[\s\S]*?\n  \}/)![0];
+    const rootBlock = css.match(/:root\s*\{[^}]*\}/)![0];
 
-    expect(rootBlock).not.toContain('#0B1D3A');
-    expect(rootBlock).not.toContain('#C49A2C');
+    expect(rootBlock).not.toMatch(/--keya-neutral-(text|background|surface):\s*#(0B1D3A|C49A2C)/);
+    expect(rootBlock).toMatch(/--keya-accent-solid:\s*#C49A2C/);
   });
 });
