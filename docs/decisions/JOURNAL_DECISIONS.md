@@ -24,14 +24,15 @@ remplacée n'est jamais effacée : elle est marquée « REMPLACÉE PAR » avec l
 | PO-2026-09-27-11 | V01–V12 — direction visuelle | **Pas de nouvelle refonte.** Identité actuelle conservée (bleu nuit, doré, titres à empattements). À l'étape 3, application des règles du prompt de design (interdits, marquage démo, statuts, niveaux de confiance, montants, états), sa palette étant remplacée par les couleurs actuelles dans `docs/design/DESIGN_SYSTEM.md`. Le doré est réservé à la marque et à l'action principale. | Product Owner | Toutes les apps (étape 3). |
 | PO-2026-09-27-12 | Tests en échec | Corriger le code, pas le test. Si un test est jugé faux, l'expliquer au PO **avant** de le modifier. | Product Owner | Méthode de travail. |
 | PO-2026-09-27-13 | Rôle de KEYIMMO et partenaires | **KEYIMMO AFRIC lance, orchestre et gère chaque programme** ; il recrute les partenaires autour du projet. Le terme « promoteur » disparaît de la plateforme (un promoteur qui consulte KEYIMMO n'est pas un rôle) ; « constructeur » est conservé. Deux parcours partenaires distincts : candidature spontanée du partenaire (onboarding) et création de compte par KEYIMMO. Mise en œuvre à planifier (libellés, parcours sponsor, propriété des programmes par KEYIMMO — changement structurel soumis à ADR). | Product Owner | Modèle, textes, parcours partenaires. |
+| PO-2026-09-27-14 | Métiers partenaires et parcours | Partenaires recrutés : **constructeurs, bureaux de contrôle, artisans**. Déroulé validé : découverte → candidature → examen par KEYIMMO → activation → annuaire → affectation à un programme lancé par KEYIMMO. Plans architecturaux produits en interne ou esquisses proposées par une IA, présentés comme **indicatifs** (les plans de permis relèvent d'un architecte habilité — règle locale à vérifier). | Product Owner | Lot « Écosystème partenaires ». |
+| PO-2026-09-27-15 | Environnements | Principe accepté : trois environnements strictement séparés, **DÉMO** (données fictives), **PILOTE** (partenaires réels, aucun flux financier), **PRODUCTION** (Projet 1). Voir `docs/adr/0004-trois-environnements-demo-pilote-production.md` ; modalités et conditions d'ouverture à valider. | Product Owner | Architecture, déploiement, parcours partenaires. |
 
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
 | Sujet | Question au PO |
 |---|---|
-| Candidature partenaire (PO-13) | A : parcours démontré avec données fictives marquées (recommandé) ; B : vraies candidatures hors démo (Projet 1, CDC §3.1/§10). |
+| Candidature partenaire (PO-13) | Démontrée en DÉMO avec données fictives marquées ; candidatures réelles en PILOTE (ADR 0004). À confirmer. |
 | Examen des candidatures | Gestionnaire (proposé), administrateur à l'activation du compte, ou rôle « Partenariats » dédié. |
-| Métiers partenaires | Constructeur et bureau de contrôle ; d'autres (architecte / bureau d'études, fournisseurs) ? |
 | Planification | Libellés et parcours sponsor à l'étape 2 ; lot « Écosystème partenaires » (propriété des programmes, ADR, onboarding) ensuite. |
 
 ## Faits établis à l'étape 0 de l'audit (27 septembre 2026)
