@@ -424,7 +424,7 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
           >
             K+
           </span>
-          <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '18px' }}>KEYA</span>
+          <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '18px' }}>KEYIMMO AFRIC</span>
         </div>
 
         <div style={{ position: 'relative' }}>
@@ -436,7 +436,7 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
             Visible Trust
           </div>
           {/* Ticket F-053 — <p>, pas <h1> : un seul vrai titre de page
-              (« Connexion à KEYA », dans le formulaire ci-dessous) reste
+              (« Connexion à KEYIMMO AFRIC », dans le formulaire ci-dessous) reste
               nécessaire pour une structure de landmarks correcte, un
               second <h1> décoratif induirait les lecteurs d'écran en
               erreur sur la hiérarchie réelle de la page. */}
@@ -448,12 +448,12 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
             La confiance visible, à chaque étape du chantier.
           </p>
           <p style={{ marginTop: '16px', color: 'rgba(255,255,255,0.65)', maxWidth: '340px', lineHeight: 1.6 }}>
-            Chaque preuve, chaque validation — tracées et vérifiables, du premier coup de pelle à la remise des clés.
+            Démonstration : chaque déclaration, pièce et avis est horodaté et conservé, sur des données fictives.
           </p>
         </div>
 
         <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', position: 'relative' }}>
-          Plateforme réservée aux organisations partenaires KEYA.
+          Accès sur invitation — comptes de démonstration fictifs.
         </div>
       </div>
 
@@ -466,7 +466,7 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
           aria-label="Connexion"
           style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '340px' }}
         >
-          <h1 style={{ marginBottom: '4px' }}>Connexion à KEYA</h1>
+          <h1 style={{ marginBottom: '4px' }}>Connexion à KEYIMMO AFRIC</h1>
 
           {error && <AlertBanner title={error} />}
 

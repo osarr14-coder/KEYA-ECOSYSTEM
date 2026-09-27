@@ -5,6 +5,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.demo import demo_scope
 from apps.backoffice.permissions import IsAdminKeyimmo, IsAdminKeyimmoOrGestionnaireADV
 from apps.core.viewsets import OrganizationScopedMixin
 from apps.messaging.mixins import MessageThreadMixin
@@ -45,6 +46,10 @@ class ProgramViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
     queryset = Program.objects.all()
     serializer_class = ProgramSerializer
+
+    def get_queryset(self):
+        # Audit UI R1 (D01) : seule l'instance de démonstration active est listée.
+        return super().get_queryset().filter(demo_scope(''))
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -128,6 +133,10 @@ class AssetViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
     queryset = Asset.objects.all()
     serializer_class = AssetSerializer
 
+    def get_queryset(self):
+        # Audit UI R1 (D01) : seule l'instance de démonstration active est listée.
+        return super().get_queryset().filter(demo_scope('program__'))
+
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update'):
             # Ticket B-046 — préparer le scénario métier (programme/bien/
@@ -200,6 +209,10 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
 
     queryset = Lot.objects.all()
     serializer_class = LotSerializer
+
+    def get_queryset(self):
+        # Audit UI R1 (D01) : seule l'instance de démonstration active est listée.
+        return super().get_queryset().filter(demo_scope('asset__program__'))
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update'):

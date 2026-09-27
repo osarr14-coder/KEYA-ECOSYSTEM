@@ -68,7 +68,7 @@ class TestAdvValidation:
         assert 'reservation_to_validate' not in _sources(adv)
         calls = _client_calls(client, reservation_id)
         assert [(call['kind'], call['amount']) for call in calls] == [('frais', '100000.00')]
-        assert calls[0]['payment_reference'].startswith('KEYA-')
+        assert calls[0]['payment_reference'].startswith('KEYIMMO-')
         assert calls[0]['payment_instructions']['simulation'] is True
         assert calls[0]['notice'] is None
         assert _sources(client) == ['payment_call_to_pay']

@@ -100,7 +100,7 @@ describe('MilestonesView — jalons côté constructeur (ticket F-069)', () => {
     ]);
 
     expect(await screen.findByTestId('milestone-status-fondations')).toHaveTextContent('En attente de contrôle');
-    expect(screen.getByText('Le bureau de contrôle est missionné.')).toBeInTheDocument();
+    expect(screen.getByText('Un contrôleur est affecté à ce jalon.')).toBeInTheDocument();
     expect(screen.getByTestId('milestone-status-gros_oeuvre')).toHaveTextContent('Accepté techniquement');
   });
 });

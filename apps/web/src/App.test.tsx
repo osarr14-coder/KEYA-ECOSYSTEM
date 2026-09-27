@@ -657,12 +657,14 @@ describe('App — pages publiques (ticket F-079)', () => {
     ],
   };
 
-  it('sans session, `/` affiche la page d’accueil publique : bandeau démonstration, programmes, chantiers, simulateur', async () => {
+  it('sans session, `/` affiche la page d’accueil publique : programmes, chantiers, simulateur', async () => {
     const getPublicOffer = vi.fn().mockResolvedValue([PROGRAM]);
     renderApp({ getPublicOffer, getPublicWorksites: vi.fn().mockResolvedValue([WORKSITE]) }, vi.fn(), '/');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Achetez votre logement en toute confiance' })).toBeInTheDocument();
-    expect(screen.getByTestId('demo-ribbon')).toHaveTextContent('DÉMONSTRATION');
+    // Audit UI R1 : titre décrivant la démonstration (J02) ; le marquage démo
+    // est désormais le bandeau commun à tous les écrans, monté à la racine
+    // de chaque app (M01, voir demoMarkingGovernance.test.ts).
+    expect(screen.getByRole('heading', { level: 1, name: 'Suivre un achat immobilier neuf, du versement au chantier' })).toBeInTheDocument();
     const program = await screen.findByTestId('public-program');
     expect(program).toHaveTextContent('Résidence Démonstration Abidjan');
     expect(program).toHaveTextContent('1 lot disponible');
@@ -699,7 +701,7 @@ describe('App — pages publiques (ticket F-079)', () => {
       window.history.replaceState(null, '', '/');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Achetez votre logement en toute confiance' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Suivre un achat immobilier neuf, du versement au chantier' })).toBeInTheDocument();
   });
 
   it('inscription d’un acquéreur : compte client créé, connexion, redirection vers HOME', async () => {

@@ -1,6 +1,8 @@
 import { useId } from 'react';
 
-import { Icon, type IconName, semanticColors, typography } from '@keya/design-system';
+import {
+  CONTROLLER_DESIGNATION, Icon, type IconName, semanticColors, typography,
+} from '@keya/design-system';
 
 /**
  * Triangle de Confiance — référence visuelle : diapositive « Le Triangle de
@@ -18,8 +20,7 @@ import { Icon, type IconName, semanticColors, typography } from '@keya/design-sy
  * accepté techniquement).
  */
 
-export const CONTROLLER_DESIGNATION =
-  'Le contrôleur est désigné indépendamment du constructeur ; les modalités de désignation et de rémunération seront définies pour le Projet 1.';
+export { CONTROLLER_DESIGNATION };
 
 export const TRUST_TRIANGLE_NOTE = 'Démonstration : programme fictif, flux simulés, aucun fonds réel.';
 

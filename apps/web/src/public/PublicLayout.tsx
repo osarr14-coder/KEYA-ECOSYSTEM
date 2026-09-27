@@ -7,9 +7,9 @@ import {
 import type { PublicPath } from './usePublicPath';
 
 /**
- * Ticket F-079 — gabarit des pages publiques (accueil, connexion,
- * inscription) : bandeau « démonstration » toujours visible (données
- * fictives, CDC §3.1), barre du haut, pied de page. Direction « Confiance
+ * Ticket F-079 — gabarit des pages publiques (accueil, connexion) : barre
+ * du haut, pied de page. Le bandeau de démonstration est désormais commun à
+ * tous les écrans (`DemoBanner`, monté à la racine de l'app — audit M01). Direction « Confiance
  * premium » (F-073) : ivoire, navy, or.
  */
 
@@ -47,7 +47,7 @@ export function BrandMark({ light = false }: { light?: boolean }) {
 
 const NAV_ANCHORS: [string, string][] = [
   ['#programmes', 'Programmes'],
-  ['#garanties', 'Garanties'],
+  ['#fonctionnement', 'Comment ça marche'],
   ['#chantiers', 'Chantiers'],
   ['#simulateur', 'Simulateur'],
   ['#faq', 'Questions'],
@@ -59,19 +59,9 @@ export function PublicLayout({
   const isMobile = useIsMobile();
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: semanticColors.neutral.background }}>
-      <div
-        role="note"
-        data-testid="demo-ribbon"
-        style={{
-          background: brandColors.navy, color: '#E2C47A', textAlign: 'center', fontSize: '13px', fontWeight: 700,
-          letterSpacing: '0.04em', padding: '6px 12px',
-        }}
-      >
-        DÉMONSTRATION — programmes, prix et paiements fictifs, aucun fonds réel.
-      </div>
       <header
         style={{
-          position: 'sticky', top: 0, zIndex: 20, background: semanticColors.neutral.surface,
+          position: 'sticky', top: 'var(--keya-demo-banner-height, 0px)', zIndex: 20, background: semanticColors.neutral.surface,
           borderBottom: `1px solid ${semanticColors.neutral.border}`,
         }}
       >
@@ -119,8 +109,8 @@ export function PublicLayout({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '420px' }}>
             <BrandMark light />
             <span style={{ fontSize: '14px' }}>
-              Programmes immobiliers suivis de la réservation à la livraison : paiements sur le compte du programme,
-              contrôle indépendant de chaque étape.
+              Démonstration d’un parcours d’acquisition : versements sur le compte du programme (simulé) et examen de
+              chaque jalon par un contrôleur.
             </span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px' }}>

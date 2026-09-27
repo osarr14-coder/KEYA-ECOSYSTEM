@@ -84,3 +84,10 @@ export type { SpacingTokens } from './tokens/spacing';
 export { typography } from './tokens/typography';
 
 export { MOBILE_BREAKPOINT_PX } from './tokens/breakpoints';
+
+export {
+  BRAND_NAME, CONTROLLER_DESIGNATION, DEMO_MARKING, SIMULATION_MARKING,
+} from './copy/demoCopy';
+
+export { DemoBanner, fetchDemoInstance, resetDemoInstanceCache } from './components/DemoBanner/DemoBanner';
+export type { DemoBannerProps, DemoInstanceInfo } from './components/DemoBanner/DemoBanner';

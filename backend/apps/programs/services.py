@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import ProtectedError
 
+from apps.core.demo import active_demo_instance
 from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
 from apps.sales import services as sales_services
@@ -114,7 +115,11 @@ def create_program(*, admin_organization_id, target_organization_id, name):
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)
         try:
-            program = Program.objects.create(organization_id=target_organization_id, name=name)
+            # Audit UI R1 (D01) : un programme créé pendant la démonstration
+            # appartient à l'instance active (aucune si hors démonstration).
+            program = Program.objects.create(
+                organization_id=target_organization_id, name=name, demo_instance=active_demo_instance(),
+            )
         finally:
             set_rls_context(organization_id=admin_organization_id)
     return program

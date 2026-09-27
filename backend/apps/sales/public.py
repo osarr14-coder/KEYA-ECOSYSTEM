@@ -29,6 +29,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import transaction
 
+from apps.core.demo import demo_scope
 from apps.core.rls import set_rls_context
 from apps.evidence.models import WorkDeclaration
 from apps.inspections import services as inspections_services
@@ -56,7 +57,7 @@ def public_offer():
         for organization in Organization.objects.all():
             set_rls_context(organization_id=organization.id)
             lots = (
-                Lot.objects.filter(sale_price__isnull=False)
+                Lot.objects.filter(demo_scope('asset__program__'), sale_price__isnull=False)
                 .select_related('asset__program')
                 .order_by('asset__program__name', 'name')
             )
@@ -107,7 +108,8 @@ def public_worksites():
             lot_ids = set(WorkDeclaration.objects.values_list('milestone__lot_id', flat=True))
             if not lot_ids:
                 continue
-            for lot in Lot.objects.filter(id__in=lot_ids).select_related('asset__program').order_by('name'):
+            lots = Lot.objects.filter(demo_scope('asset__program__'), id__in=lot_ids)
+            for lot in lots.select_related('asset__program').order_by('name'):
                 milestones = []
                 for milestone in lot.milestones.order_by('order'):
                     milestone.lot = lot

@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { GlobalStyles, consumeLogoutRequest } from '@keya/design-system';
+import { DemoBanner, GlobalStyles, consumeLogoutRequest } from '@keya/design-system';
 
 import { ApiClientProvider } from './api/ApiClientContext';
 import { createApiClient } from './api/client';
@@ -19,8 +19,10 @@ import { receiveIncomingSession } from './auth/receiveIncomingSession';
 consumeLogoutRequest();
 receiveIncomingSession();
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
 const apiClient = createApiClient({
-  baseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000',
+  baseUrl: API_BASE_URL,
   getAccessToken: () => localStorage.getItem('keya_access_token'),
   onUnauthorized: forceLogout,
 });
@@ -28,6 +30,8 @@ const apiClient = createApiClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <GlobalStyles />
+    {/* Audit UI R1 (M01/M02) : marquage démo permanent sur tous les écrans. */}
+    <DemoBanner apiBaseUrl={API_BASE_URL} />
     <ApiClientProvider client={apiClient}>
       <App />
     </ApiClientProvider>

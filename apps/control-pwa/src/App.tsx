@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  AlertBanner, BRAND_GRADIENT, Icon, brandColors, logoutToLoginScreen, typography, useOnlineStatus,
+  AlertBanner, BRAND_NAME, BRAND_GRADIENT, Icon, brandColors, logoutToLoginScreen, typography, useOnlineStatus,
 } from '@keya/design-system';
 
 import { getAllDrafts, saveMissions } from './db/repository';
@@ -69,11 +69,12 @@ function BrandBar() {
       >
         K+
       </span>
-      <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '17px', color: '#FFFFFF' }}>
-        KEYA
+      {/* Audit UI R1 (M05) : « KEYIMMO AFRIC » dans toutes les interfaces. */}
+      <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '16px', color: '#FFFFFF' }}>
+        {BRAND_NAME}
       </span>
-      <span style={{ fontSize: '11px', color: brandColors.gold, fontWeight: 600, letterSpacing: '0.05em' }}>
-        CONTROL
+      <span style={{ fontSize: '12px', color: brandColors.gold, fontWeight: 600 }}>
+        Contrôle
       </span>
       <LogoutButton />
     </div>

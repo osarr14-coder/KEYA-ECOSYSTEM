@@ -58,6 +58,8 @@ const FORBIDDEN_COMPONENT_DIRS = [
   // `fillColor` (F-046) — générique, aucun littéral "brandColors" dans son
   // code source, la couleur est fournie par l'appelant (voir ProgressBar.tsx).
   'Card', 'Icon', 'TabBar',
+  // Audit UI R1 (M01/M04) — le marquage démo n'est jamais aux couleurs de marque.
+  'DemoBanner',
   // Ticket F-073 — nouveaux composants partagés.
   'Pill', 'PageHeader', 'Field', 'GlobalStyles',
   // Tickets F-074, F-075.

@@ -25,7 +25,7 @@ function reservation(overrides: Partial<Reservation> = {}): Reservation {
 }
 
 const INSTRUCTIONS = {
-  beneficiary: 'KEYIMMO AFRIC — séquestre (FICTIF)', bank: 'Banque de démonstration', iban: 'CI00 DEMO', simulation: true,
+  beneficiary: 'Compte du programme (simulé) — KEYIMMO AFRIC démonstration', bank: 'Banque de démonstration', iban: 'CI00 DEMO', simulation: true,
 };
 
 function call(overrides: Partial<ClientPaymentCall> = {}): ClientPaymentCall {

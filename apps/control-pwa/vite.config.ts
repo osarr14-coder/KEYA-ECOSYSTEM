@@ -15,8 +15,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'KEYA CONTROL',
-        short_name: 'CONTROL',
+        name: 'KEYIMMO AFRIC — Contrôle',
+        short_name: 'Contrôle',
         description: 'Inspections de chantier en mobilité, hors ligne (ticket 010)',
         theme_color: '#1F2937',
         background_color: '#FFFFFF',

@@ -84,6 +84,9 @@ MIDDLEWARE = [
     # l'organisation active du membership et pose la session var Postgres
     # utilisée par les policies RLS. Voir apps/core/middleware.py.
     'apps.core.middleware.OrganizationScopeMiddleware',
+    # Audit UI R1 (T13) : environnement et instance de démonstration sur
+    # chaque réponse d'API.
+    'apps.core.demo.DemoMarkingMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -226,6 +229,8 @@ WEB_APP_URL = config('WEB_APP_URL', default='')
 # HOME/BUILD échouait, dès l'instant où l'App Switcher (ticket 019) avait
 # résolu une organisation.
 CORS_ALLOW_HEADERS = list(default_headers) + ['x-organization-id']
+# Audit UI R1 (T13) : marquage de démonstration lisible par les apps.
+CORS_EXPOSE_HEADERS = ['X-Demo-Instance', 'X-Environment']
 
 # ── Celery (ticket 004 : traitement asynchrone média) ──────────────────────
 # Broker Redis réel depuis l'ADR 0001 (docs/adr/0001-celery-eager-mode.md) :

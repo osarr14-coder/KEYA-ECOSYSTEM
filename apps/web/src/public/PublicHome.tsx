@@ -9,7 +9,7 @@ import type { PublicProgram, PublicWorksite } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { FacadeIllustration } from './illustrations/FacadeIllustration';
 import { LotPlanA1 } from './illustrations/LotPlanA1';
-import { TrustTriangle } from './illustrations/TrustTriangle';
+import { CONTROLLER_DESIGNATION, TrustTriangle } from './illustrations/TrustTriangle';
 import { paymentBreakdown } from './paymentBreakdown';
 import { CONTAINER_STYLE } from './PublicLayout';
 import type { PublicPath } from './usePublicPath';
@@ -58,59 +58,64 @@ function Section({
   );
 }
 
-const GUARANTEES: { icon: IconName; title: string; text: string }[] = [
+/**
+ * Audit UI R1 (J01–J03) : le mécanisme DÉMONTRÉ, décrit sans promesse —
+ * aucun « séquestre », « protégé », « sécurisé », « garantie » ; formule
+ * neutre du PO pour le contrôleur (PO-2026-09-27-01).
+ */
+const MECHANISMS: { icon: IconName; title: string; text: string }[] = [
   {
     icon: 'wallet',
-    title: 'Versements sur le compte du programme',
-    text: 'Vos paiements sont versés sur le compte séquestre du programme, jamais sur celui de KEYIMMO. Chaque appel porte sa propre référence.',
+    title: 'Versements sur le compte du programme (simulé)',
+    text: 'Chaque versement est enregistré sur un compte propre au programme, distinct de celui de KEYIMMO AFRIC. Chaque appel de fonds porte sa propre référence.',
   },
   {
-    icon: 'shield-check',
-    title: 'Un contrôle indépendant à chaque étape',
-    text: 'Un bureau de contrôle indépendant, missionné par KEYIMMO, vérifie chaque étape du chantier. Le promoteur ne choisit jamais son contrôleur.',
+    icon: 'clipboard-check',
+    title: 'Un contrôleur examine chaque jalon',
+    text: `Il examine les pièces déposées par le constructeur avant toute acceptation technique. ${CONTROLLER_DESIGNATION}`,
   },
   {
     icon: 'check-circle',
-    title: 'Aucun paiement sans preuve',
-    text: 'Le promoteur n’est payé qu’après acceptation technique de l’étape, pièces à l’appui. Une réserve bloque tout décaissement jusqu’à sa levée.',
+    title: 'Décaissement après acceptation technique',
+    text: 'La plateforme refuse tout décaissement au constructeur tant que le jalon n’est pas accepté techniquement ; une réserve ouverte le bloque aussi.',
   },
 ];
 
 const STEPS: { title: string; text: string }[] = [
   {
     title: 'Choisissez et réservez',
-    text: 'Réservez un lot en ligne : il est bloqué pour vous pendant que votre conseiller KEYIMMO valide votre dossier.',
+    text: 'Réservez un lot depuis votre espace : il est bloqué pour vous le temps d’enregistrer les frais de réservation.',
   },
   {
     title: 'Signez et versez',
-    text: 'Réglez les frais de réservation par virement, signez votre contrat, puis le complément du premier versement.',
+    text: 'Réglez les frais de réservation par virement (simulé), signez votre contrat (signature simulée), puis le complément du premier versement.',
   },
   {
     title: 'Suivez votre chantier',
-    text: 'Suivez chaque étape depuis votre espace, où que vous soyez. Les paliers suivants ne sont appelés qu’après acceptation technique.',
+    text: 'Suivez chaque jalon depuis votre espace : déclaration du constructeur, examen du contrôleur, réserves et levées.',
   },
 ];
 
 const FAQ: { q: string; r: string }[] = [
   {
-    q: 'Comment mon argent est-il protégé ?',
-    r: 'Vos versements vont sur le compte du programme, jamais sur celui de KEYIMMO. Le promoteur n’est payé qu’étape par étape, après acceptation technique par un bureau de contrôle indépendant. Sur cette démonstration, tous les flux sont simulés.',
+    q: 'Comment fonctionnent les versements ?',
+    r: 'Dans cette démonstration, vos versements sont enregistrés sur le compte du programme (simulé), distinct de celui de KEYIMMO AFRIC. Le constructeur n’est payé que jalon par jalon, après acceptation technique par le contrôleur. Tous les flux sont simulés : aucun fonds réel.',
   },
   {
     q: 'Comment se passe la réservation ?',
-    r: 'Vous réservez un lot depuis votre espace acquéreur : il est bloqué pour vous le temps que votre conseiller valide votre dossier. Vous recevez alors l’appel des frais de réservation et les instructions de virement ; KEYIMMO confirme votre virement à réception.',
+    r: 'Vous réservez un lot depuis votre espace acquéreur : il est bloqué pour vous. Vous recevez l’appel des frais de réservation et des instructions de virement fictives ; Finance enregistre l’encaissement simulé à réception.',
   },
   {
     q: 'Combien dois-je verser, et quand ?',
-    r: 'Les frais de réservation, puis le complément du premier versement à la signature, puis des paliers liés à l’avancement réel du chantier. Le simulateur ci-dessus vous donne l’échéancier indicatif pour chaque lot.',
+    r: 'Les frais de réservation, puis le complément du premier versement à la signature, puis les versements suivants de l’échéancier du programme. Le simulateur ci-dessus en donne une estimation indicative, sur des montants fictifs.',
   },
   {
     q: 'Puis-je suivre le chantier à distance ?',
     r: 'Oui : votre espace montre les étapes de votre acquisition, l’avancement du chantier jalon par jalon et chacun de vos appels de fonds.',
   },
   {
-    q: 'Que se passe-t-il si une étape n’est pas conforme ?',
-    r: 'Le contrôleur ouvre une réserve. Tant qu’elle n’est pas levée par un nouveau contrôle, aucun paiement de cette étape n’est débloqué au promoteur.',
+    q: 'Que se passe-t-il si un jalon n’est pas conforme ?',
+    r: 'Le contrôleur ouvre une réserve. Tant que le contrôleur ne l’a pas levée après un nouvel examen, aucun décaissement de ce jalon n’est possible.',
   },
 ];
 
@@ -129,14 +134,15 @@ function Hero({ navigate }: { navigate: (path: PublicPath) => void }) {
       >
         <div>
           <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#E2C47A' }}>
-            Immobilier neuf sécurisé · Abidjan
+            Démonstration · Abidjan · données fictives
           </span>
           <h1 style={{ margin: '16px 0 18px', color: '#FFFFFF', fontSize: 'clamp(36px, 5vw, 58px)', lineHeight: 1.08 }}>
-            Achetez votre logement en toute confiance
+            Suivre un achat immobilier neuf, du versement au chantier
           </h1>
           <p style={{ margin: '0 0 32px', fontSize: '18px', color: 'rgba(255, 255, 255, 0.82)', maxWidth: '540px' }}>
-            Des programmes neufs suivis de la réservation à la livraison : vos versements sont protégés, le chantier est
-            contrôlé par un bureau indépendant, et aucun paiement n’est débloqué sans preuve.
+            Cette démonstration déroule le parcours d’un acquéreur sur un programme fictif : chaque versement est enregistré sur
+            le compte du programme (simulé), chaque jalon est examiné par un contrôleur, et aucun décaissement n’est possible
+            sans acceptation technique.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
             <a href="#programmes" className="keya-btn" style={heroButton(true)}>Voir les programmes</a>
@@ -154,13 +160,13 @@ function Hero({ navigate }: { navigate: (path: PublicPath) => void }) {
           </p>
         </div>
         <ul
-          aria-label="Nos garanties"
+          aria-label="Le mécanisme démontré"
           style={{
             listStyle: 'none', margin: 0, padding: '28px', borderRadius: '24px', background: 'rgba(255, 255, 255, 0.06)',
             border: '1px solid rgba(226, 196, 122, 0.3)', display: 'flex', flexDirection: 'column', gap: '22px',
           }}
         >
-          {GUARANTEES.map((item) => (
+          {MECHANISMS.map((item) => (
             <li key={item.title} style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
               <span
                 aria-hidden="true"
@@ -377,8 +383,8 @@ function Simulator({ programs }: { programs: PublicProgram[] }) {
           </label>
         )}
         <p style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-          Échéancier indicatif calculé avec le barème légal du programme. Les appels réels sont émis par KEYIMMO ; chaque palier
-          de travaux n’est appelé qu’après acceptation technique de l’étape.
+          Échéancier indicatif, calculé avec le barème de démonstration du programme (fictif, non validé juridiquement).
+          Aucun appel de fonds n’est émis depuis ce simulateur.
         </p>
       </div>
       <div
@@ -434,8 +440,8 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
       <Section
         id="programmes"
         eyebrow="Nos programmes"
-        title="Des logements neufs, un prix figé à la réservation"
-        subtitle="Le prix du lot est figé dès votre réservation. Les lots réservés disparaissent de la liste en temps réel."
+        title="Programmes de démonstration"
+        subtitle="Programmes, biens et prix fictifs. Un bien réservé n’apparaît plus comme disponible."
       >
         <div
           style={{
@@ -454,7 +460,7 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         </div>
       </Section>
 
-      <Section id="etapes" eyebrow="Comment ça marche" title="Trois étapes, un seul interlocuteur" tinted>
+      <Section id="etapes" eyebrow="Le parcours" title="Le parcours acquéreur en trois étapes" tinted>
         <ol
           style={{
             listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '24px',
@@ -480,37 +486,12 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
       </Section>
 
       <Section
-        id="garanties"
-        eyebrow="Nos garanties"
-        title="Votre argent ne part qu’avec la preuve des travaux"
-        subtitle="Les mécanismes ci-dessous sont appliqués par la plateforme elle-même, à chaque paiement — pas seulement promis."
+        id="fonctionnement"
+        eyebrow="Comment ça marche"
+        title="Trois rôles distincts"
+        subtitle="Ce que la démonstration applique, sur des données fictives : qui encaisse, qui examine, qui décaisse."
       >
-        <div style={{ marginBottom: '48px' }}>
-          <TrustTriangle />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '24px' }}>
-          {GUARANTEES.map((item) => (
-            <article
-              key={item.title}
-              style={{
-                borderRadius: '24px', padding: '26px', background: semanticColors.neutral.surface,
-                border: `1px solid ${semanticColors.neutral.border}`, display: 'flex', flexDirection: 'column', gap: '12px',
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: '52px', height: '52px', borderRadius: '14px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  background: semanticColors.accent.soft, color: semanticColors.accent.text,
-                }}
-              >
-                <Icon name={item.icon} size={26} />
-              </span>
-              <h3 style={{ margin: 0, fontSize: '20px' }}>{item.title}</h3>
-              <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{item.text}</p>
-            </article>
-          ))}
-        </div>
+        <TrustTriangle />
       </Section>
 
       <Section
@@ -543,7 +524,7 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         id="simulateur"
         eyebrow="Simulateur"
         title="Combien verser, et quand ?"
-        subtitle="Choisissez un lot ou saisissez un prix : l’échéancier suit le barème légal du programme."
+        subtitle="Choisissez un lot ou saisissez un prix : l’échéancier suit le barème de démonstration du programme."
       >
         {offerState.status === 'success' && <Simulator programs={programs} />}
       </Section>

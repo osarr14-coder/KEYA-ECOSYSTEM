@@ -15,6 +15,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from apps.core.demo import demo_scope
 from apps.audit import services as audit
 from apps.core.rls import set_rls_context
 from apps.evidence.models import Evidence, WorkDeclaration
@@ -126,6 +127,7 @@ def list_published_lots(*, caller_organization_id):
             _expire_overdue_in_current_organization(organization_id, now)
             results.extend(
                 Lot.objects.filter(
+                    demo_scope('asset__program__'),
                     commercial_status=LotCommercialStatus.DISPONIBLE, sale_price__isnull=False,
                 ).select_related('organization', 'asset__program').order_by('asset__program__name', 'name'),
             )
@@ -253,7 +255,9 @@ def list_reservations_as_admin(*, caller_organization_id, status=None):
     try:
         for organization_id in organization_ids:
             set_rls_context(organization_id=organization_id)
-            queryset = Reservation.objects.filter(organization_id=organization_id).select_related(
+            queryset = Reservation.objects.filter(
+                demo_scope('lot__asset__program__'), organization_id=organization_id,
+            ).select_related(
                 'lot', 'lot__asset', 'lot__asset__program', 'organization', 'client', 'cancelled_by',
             )
             for reservation in queryset:
@@ -1426,7 +1430,7 @@ def list_program_accounts(*, caller_organization_id):
     try:
         for organization_id in organization_ids:
             set_rls_context(organization_id=organization_id)
-            programs = Program.objects.filter(organization_id=organization_id).select_related('organization')
+            programs = Program.objects.filter(demo_scope(), organization_id=organization_id).select_related('organization')
             for program in programs:
                 has_activity = (
                     Reservation.objects.filter(lot__asset__program=program).exists()
@@ -1483,8 +1487,9 @@ def get_program_account(*, caller_organization_id, target_organization_id, progr
 # Coordonnées bancaires FICTIVES affichées au client (démonstration) : aucun
 # compte réel, aucun fonds réel (CDC §3.1).
 DEMO_BANK_INSTRUCTIONS = {
-    'beneficiary': 'KEYIMMO AFRIC — compte de séquestre du programme (FICTIF)',
-    'bank': 'Banque de démonstration (FICTIVE)',
+    # Audit UI R1 (J01) : aucun terme « séquestre » — compte du programme simulé.
+    'beneficiary': 'Compte du programme (simulé) — KEYIMMO AFRIC démonstration',
+    'bank': 'Banque de démonstration (fictive)',
     'iban': 'CI00 DEMO 0000 0000 0000 0000 000',
 }
 
@@ -1496,7 +1501,8 @@ class PaymentNoticeError(Exception):
 
 def payment_reference(call):
     """Référence à indiquer sur le virement, propre à chaque appel."""
-    return f'KEYA-{call.id.hex[:8].upper()}'
+    # Audit UI R1 (M05) : « KEYIMMO AFRIC » partout dans l'interface.
+    return f'KEYIMMO-{call.id.hex[:8].upper()}'
 
 
 def declare_payment(*, client, caller_organization_id, payment_call_id, client_reference, paid_on):
@@ -1565,7 +1571,9 @@ def list_payment_notices(*, caller_organization_id, status=PaymentNoticeStatus.D
     try:
         for organization_id in organization_ids:
             set_rls_context(organization_id=organization_id)
-            queryset = PaymentNotice.objects.filter(organization_id=organization_id).select_related(*_NOTICE_RELATIONS)
+            queryset = PaymentNotice.objects.filter(
+                demo_scope('reservation__lot__asset__program__'), organization_id=organization_id,
+            ).select_related(*_NOTICE_RELATIONS)
             if status:
                 queryset = queryset.filter(status=status)
             notices.extend(queryset)

@@ -68,8 +68,8 @@ describe('ClientPaymentCallsPanel — appels de fonds du client (ticket F-068)',
 
 describe('ClientPaymentCallsPanel — paiement par le client (ticket F-071)', () => {
   const INSTRUCTIONS = {
-    beneficiary: 'KEYIMMO AFRIC — compte de séquestre du programme (FICTIF)',
-    bank: 'Banque de démonstration (FICTIVE)', iban: 'CI00 DEMO', simulation: true,
+    beneficiary: 'Compte du programme (simulé) — KEYIMMO AFRIC démonstration',
+    bank: 'Banque de démonstration (fictive)', iban: 'CI00 DEMO', simulation: true,
   };
 
   it('affiche les instructions de virement et déclare le virement du client', async () => {

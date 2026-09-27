@@ -195,7 +195,7 @@ function ReservationDossier({
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-        <KeyFigure label="Prix figé" value={formatAmount(reservation.price_amount, reservation.currency)} />
+        <KeyFigure label="Prix à la réservation (fictif)" value={formatAmount(reservation.price_amount, reservation.currency)} />
         <KeyFigure label="Organisation" textual value={reservation.organization.name} />
         {reservation.status === 'held' && (
           <KeyFigure
@@ -393,7 +393,7 @@ export function ReservationsView({
               <tr>
                 <th>Client</th>
                 <th>Lot</th>
-                <th style={{ textAlign: 'right' }}>Prix figé</th>
+                <th style={{ textAlign: 'right' }}>Prix à la réservation</th>
                 <th>État</th>
                 <th aria-label="Actions" />
               </tr>

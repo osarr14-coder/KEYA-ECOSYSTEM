@@ -4,6 +4,7 @@ from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import include, path
 
 from apps.accounts.views import MeView
+from apps.core.views import DemoInstanceView
 
 
 def backend_root(request):
@@ -13,7 +14,7 @@ def backend_root(request):
     if settings.WEB_APP_URL:
         return HttpResponseRedirect(settings.WEB_APP_URL)
     return JsonResponse({
-        'service': 'API KEYA ECOSYSTEM',
+        'service': 'API KEYIMMO AFRIC (démonstration)',
         'detail': "Ceci est l'API. Ouvrez l'application web pour vous connecter.",
     })
 
@@ -23,6 +24,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.accounts.urls')),
     path('api/me/', MeView.as_view(), name='me'),
+    path('api/public/demo-instance/', DemoInstanceView.as_view(), name='public-demo-instance'),
     path('api/', include('apps.programs.urls')),
     path('api/', include('apps.evidence.urls')),
     path('api/', include('apps.inspections.urls')),

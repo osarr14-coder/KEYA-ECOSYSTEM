@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, PageHeader, Pill, type PillTone, Select, Stepper, type StepperStep,
+  AlertBanner, ApiErrorBanner, Button, CONTROLLER_DESIGNATION, Card, PageHeader, Pill, type PillTone, Select, Stepper, type StepperStep,
   semanticColors,
 } from '@keya/design-system';
 
@@ -234,8 +234,8 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
         <>
           <p style={{ margin: 0 }}>
             {milestone.control_scheduled
-              ? 'Le bureau de contrôle est missionné.'
-              : 'En attente de l’affectation d’un contrôleur par KEYIMMO.'}
+              ? 'Un contrôleur est affecté à ce jalon.'
+              : 'En attente de l’affectation d’un contrôleur.'}
           </p>
           <FileAction label={`Pièce pour ${milestone.label}`} submitLabel="Ajouter une pièce" onSubmit={addEvidence} />
         </>
@@ -259,8 +259,9 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
       )}
       {error && <AlertBanner title={error} />}
       <p style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-        Le bureau de contrôle est missionné par KEYIMMO. Seul le contrôleur lève une réserve ; ajouter une pièce après
-        l&apos;avis relance une revue.
+        {CONTROLLER_DESIGNATION}
+        {' '}
+        Seul le contrôleur lève une réserve ; ajouter une pièce après l&apos;avis relance une revue.
       </p>
     </section>
   );

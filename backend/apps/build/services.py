@@ -17,6 +17,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count, Max
 from django.utils import timezone
 
+from apps.core.demo import demo_scope
 from apps.evidence.models import Evidence, WorkDeclaration
 from apps.inspections.models import Inspection, Reserve
 from apps.inspections.services import OPEN_RESERVE_STATUSES
@@ -132,7 +133,7 @@ def get_exceptions(organization):
     nombre de requêtes indépendamment du nombre de lots de l'organisation.
     """
     lots = list(
-        Lot.objects.filter(organization=organization)
+        Lot.objects.filter(demo_scope('asset__program__'), organization=organization)
         .select_related('asset', 'asset__program')
         .order_by('name'),
     )
@@ -267,7 +268,7 @@ def build_lot_rows(organization):
     est ce qui détermine la vitesse perçue à cette échelle.
     """
     lots = list(
-        Lot.objects.filter(organization=organization)
+        Lot.objects.filter(demo_scope('asset__program__'), organization=organization)
         .select_related('asset', 'asset__program', 'assigned_organization')
         .order_by('name'),
     )

@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 
+from apps.core.demo import demo_scope
 from apps.core.rls import set_rls_context
 from apps.evidence.models import Evidence, WorkDeclaration
 from apps.organizations.models import Membership, Organization
@@ -486,7 +487,9 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
     jamais dans la requête initiale.
     """
     missions = list(
-        InspectionMission.objects.filter(assigned_inspector=inspector).order_by('-created_at')
+        InspectionMission.objects.filter(
+            demo_scope('work_declaration__milestone__lot__asset__program__'), assigned_inspector=inspector,
+        ).order_by('-created_at')
     )
 
     rows = []
@@ -646,7 +649,7 @@ def list_controls_to_assign(*, caller_organization_id):
             )
             from apps.programs.models import Milestone
 
-            for milestone in Milestone.objects.filter(id__in=milestone_ids).select_related(
+            for milestone in Milestone.objects.filter(demo_scope('lot__asset__program__'), id__in=milestone_ids).select_related(
                 'lot', 'lot__asset', 'lot__asset__program', 'lot__organization',
             ):
                 state = milestone_control_state(milestone)

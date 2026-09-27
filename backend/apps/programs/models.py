@@ -13,6 +13,12 @@ class Program(models.Model):
     )
     name = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Audit UI R1 (D01) : instance de démonstration du programme (CDC §3.1).
+    # Posée par le jeu initial et à la création pendant la démonstration ;
+    # `None` hors démonstration (tests, bases sans scénario).
+    demo_instance = models.ForeignKey(
+        'ecosystem_core.DemoInstance', null=True, blank=True, on_delete=models.PROTECT, related_name='programs',
+    )
 
     class Meta:
         db_table = 'programs_program'

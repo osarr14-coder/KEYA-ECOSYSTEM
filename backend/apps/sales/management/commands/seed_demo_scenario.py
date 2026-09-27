@@ -21,6 +21,7 @@ commande), deux clients, un constructeur, un bureau de contrôle, les
 comptes gestionnaire, Finance et administrateur. Toute évolution du jeu
 change `DATASET_VERSION` (jamais une modification silencieuse).
 """
+import uuid
 from decimal import Decimal
 
 from decouple import config
@@ -28,7 +29,10 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 
+from apps.core.demo import active_demo_instance
+from apps.core.models import DemoInstance
 from apps.core.rls import set_rls_context
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 from apps.programs.models import (
@@ -110,12 +114,15 @@ class Command(BaseCommand):
                     membership.save(update_fields=['role'])
                 self.stdout.write(f'  {email} — {role_code}')
 
+            instance = self._ensure_demo_instance()
             promoter = organizations[PROMOTER_ORG]
             set_rls_context(organization_id=promoter.id)
-            if Program.objects.filter(organization=promoter, name=PROGRAM_NAME).exists():
-                self.stdout.write(f'Programme « {PROGRAM_NAME} » déjà présent : laissé tel quel.')
+            if Program.objects.filter(organization=promoter, name=PROGRAM_NAME, demo_instance=instance).exists():
+                self.stdout.write(
+                    f'Programme « {PROGRAM_NAME} » déjà présent dans {instance.code} : laissé tel quel.',
+                )
             else:
-                program = Program.objects.create(organization=promoter, name=PROGRAM_NAME)
+                program = Program.objects.create(organization=promoter, name=PROGRAM_NAME, demo_instance=instance)
                 asset = Asset.objects.create(
                     organization=promoter, program=program, name='Bâtiment A', location='Cocody, Abidjan',
                 )
@@ -136,6 +143,20 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f'Scénario de démonstration {DATASET_VERSION} prêt : {len(ACCOUNTS)} comptes (mot de passe : DEMO_PASSWORD).'
         ))
+
+    def _ensure_demo_instance(self):
+        """Audit UI R1 (D01) : instance ACTIVE de la démonstration, créée
+        si aucune n'existe. Une instance existante est réutilisée telle
+        quelle — une nouvelle instance ne naît que d'une réinitialisation
+        (archivage de la précédente)."""
+        instance = active_demo_instance()
+        if instance is None:
+            code = f'DEMO-{COUNTRY_CODE}-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:4].upper()}'
+            instance = DemoInstance.objects.create(code=code, dataset_version=DATASET_VERSION)
+            self.stdout.write(f'Instance de démonstration {instance.code} créée ({DATASET_VERSION}).')
+        else:
+            self.stdout.write(f'Instance de démonstration active : {instance.code}.')
+        return instance
 
     @staticmethod
     @transaction.atomic

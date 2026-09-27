@@ -215,7 +215,7 @@ export function AppShell({
         // (264px) pour des libellés entiers, rail de 64px.
         gridTemplateColumns: effectiveCollapsed ? '64px minmax(0, 1fr)' : '264px minmax(0, 1fr)',
         gridTemplateRows: 'auto 1fr',
-        minHeight: '100vh',
+        minHeight: 'calc(100vh - var(--keya-demo-banner-height, 0px))',
         fontSize: tokens.fontSize,
       }}
     >
@@ -231,8 +231,9 @@ export function AppShell({
           background: BRAND_GRADIENT,
           color: SIDEBAR_TEXT,
           position: 'sticky',
-          top: 0,
-          height: '100vh',
+          // Audit UI R1 (M01) : sous le bandeau de démonstration permanent.
+          top: 'var(--keya-demo-banner-height, 0px)',
+          height: 'calc(100vh - var(--keya-demo-banner-height, 0px))',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -408,7 +409,7 @@ export function AppShell({
         data-testid="app-shell-header"
         style={{
           position: 'sticky',
-          top: 0,
+          top: 'var(--keya-demo-banner-height, 0px)',
           zIndex: 10,
           display: 'flex',
           alignItems: 'center',

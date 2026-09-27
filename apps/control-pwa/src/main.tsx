@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { GlobalStyles } from '@keya/design-system';
+import { DemoBanner, GlobalStyles } from '@keya/design-system';
 
 import { App } from './App';
 import { receiveIncomingSession } from './auth/receiveIncomingSession';
@@ -14,9 +14,13 @@ import { receiveIncomingSession } from './auth/receiveIncomingSession';
 // qui reste utilisable pour un test manuel direct contre le backend.
 receiveIncomingSession();
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <GlobalStyles />
+    {/* Audit UI R1 (M01/M02) : marquage démo permanent sur tous les écrans. */}
+    <DemoBanner apiBaseUrl={API_BASE_URL} />
     <App />
   </StrictMode>,
 );

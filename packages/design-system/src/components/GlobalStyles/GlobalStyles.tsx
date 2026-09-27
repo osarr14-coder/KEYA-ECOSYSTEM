@@ -162,6 +162,13 @@ ${LIGHT_COLOR_DECLARATIONS}
 const GLOBAL_CSS = `
   ${ROOT_COLOR_VARIABLES}
 
+  /* Audit UI R1 (M01) — hauteur du bandeau de démonstration permanent
+     (\`DemoBanner\`) : les éléments collants des apps se placent dessous. */
+  :root { --keya-demo-banner-height: 28px; }
+  @media (max-width: ${MOBILE_BREAKPOINT_PX}px) {
+    :root { --keya-demo-banner-height: 36px; }
+  }
+
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
