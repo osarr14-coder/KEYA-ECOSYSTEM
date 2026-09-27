@@ -77,3 +77,18 @@ describe('PaymentNoticesView — virements déclarés (ticket F-071)', () => {
     expect(screen.queryByRole('button', { name: 'Confirmer la réception' })).not.toBeInTheDocument();
   });
 });
+
+describe('PaymentNoticesView — chiffres clés (ticket F-078)', () => {
+  it('compte les virements à confirmer et totalise leur montant', async () => {
+    renderView(true, {
+      listPaymentNotices: vi.fn().mockResolvedValue([
+        notice(),
+        notice({ id: 'notice-2', amount: '2900000.00', client_reference: 'VIR-002' }),
+        notice({ id: 'notice-3', status: 'confirmed', status_label: 'Confirmé' }),
+      ]),
+    });
+
+    expect(await screen.findByTestId('kf-to-confirm-value')).toHaveTextContent('2');
+    expect(screen.getByTestId('kf-to-confirm-amount-value').textContent!.replace(/\s/g, ' ')).toBe('3 000 000 XOF');
+  });
+});

@@ -80,3 +80,22 @@ describe('ControlsView — contrôles à affecter (ticket F-069)', () => {
     expect(await screen.findByText('Aucune déclaration en attente de contrôle.')).toBeInTheDocument();
   });
 });
+
+describe('ControlsView — chiffres clés (ticket F-078)', () => {
+  it('distingue les contrôles à missionner, les missions en cours et les réserves', async () => {
+    renderView([
+      control(),
+      control({
+        work_declaration_id: 'declaration-2',
+        pending_mission: {
+          id: 'mission-1', inspector_email: 'inspecteur.demo@keya.test', assigned_at: '2026-09-28T10:00:00Z',
+        } as ControlToAssign['pending_mission'],
+      }),
+      control({ work_declaration_id: 'declaration-3', status: 'under_reserve', status_label: 'Sous réserve' }),
+    ]);
+
+    expect(await screen.findByTestId('kf-to-assign-value')).toHaveTextContent('2');
+    expect(screen.getByTestId('kf-in-progress-value')).toHaveTextContent('1');
+    expect(screen.getByTestId('kf-under-reserve-value')).toHaveTextContent('1');
+  });
+});

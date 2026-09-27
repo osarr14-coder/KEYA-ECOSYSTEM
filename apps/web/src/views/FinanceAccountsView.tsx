@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Input, semanticColors,
+  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -24,7 +24,20 @@ import { SIMULATION_NOTICE, formatAmount, today } from './FinancialFilePanel';
 export const NO_CONFIRMATION_REASON = 'Confirmation bénéficiaire non reçue';
 
 const blockStyle = {
-  border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px', marginTop: '8px',
+  border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '16px', padding: '16px 18px', marginTop: '10px',
+  display: 'flex', flexDirection: 'column', gap: '8px',
+} as const;
+
+// Ticket F-078 (direction « Confiance premium ») — états en pastilles.
+const DISBURSEMENT_TONE: Record<Disbursement['status'], PillTone> = {
+  draft: 'neutral',
+  eligible: 'accent',
+  executed_sim: 'primary',
+  cancelled: 'danger',
+};
+
+const labelStyle = {
+  display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px', fontWeight: 600,
 } as const;
 
 function useAction() {
@@ -47,21 +60,18 @@ function useAction() {
 }
 
 function BalanceBlock({ balance }: { balance: AccountBalance }) {
-  const rows: [string, string][] = [
-    ['Encaissements rapprochés', balance.received],
-    ['Sorties exécutées', balance.executed],
-    ['Réservé (demandes éligibles)', balance.reserved],
-    ['Disponible', balance.available],
+  const rows: [string, string, 'neutral' | 'accent' | 'success'][] = [
+    ['Encaissements rapprochés', balance.received, 'neutral'],
+    ['Sorties exécutées', balance.executed, 'neutral'],
+    ['Réservé (demandes éligibles)', balance.reserved, 'accent'],
+    ['Disponible', balance.available, 'success'],
   ];
   return (
-    <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 16px', margin: 0 }}>
-      {rows.map(([label, value]) => (
-        <div key={label} style={{ display: 'contents' }}>
-          <dt>{label}</dt>
-          <dd style={{ margin: 0 }} data-testid={`balance-${label}`}>{formatAmount(value, balance.currency)}</dd>
-        </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+      {rows.map(([label, value, tone]) => (
+        <KeyFigure key={label} label={label} value={formatAmount(value, balance.currency)} tone={tone} data-testid={`balance-${label}`} />
       ))}
-    </dl>
+    </div>
   );
 }
 
@@ -139,7 +149,19 @@ function MilestonesTable({
             <td>{milestone.label}</td>
             <td>{milestone.beneficiary_organization.name}</td>
             <td data-testid={`milestone-conditions-${milestone.code}`}>
-              {milestone.disbursable ? 'Réunies (jalon accepté, aucune réserve, pièces présentes)' : milestone.blockers.join(' ; ')}
+              {milestone.disbursable ? (
+                <span style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                  <Pill tone="success">Réunies</Pill>
+                  <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>
+                    (jalon accepté, aucune réserve, pièces présentes)
+                  </span>
+                </span>
+              ) : (
+                <span style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                  <Pill tone="neutral">Bloqué</Pill>
+                  <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{milestone.blockers.join(' ; ')}</span>
+                </span>
+              )}
             </td>
             {canAct && (
               <td>
@@ -180,12 +202,16 @@ function DisbursementBlock({
         <strong>{`${disbursement.lot.name} — ${disbursement.milestone.label}`}</strong>
         {` · ${formatAmount(disbursement.amount, disbursement.currency)} vers ${disbursement.beneficiary_organization.name}`}
       </p>
-      <p style={{ margin: '4px 0 0' }}>
+      <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         {'Demande : '}
-        <span data-testid="disbursement-status">{disbursement.status_label}</span>
+        <Pill tone={DISBURSEMENT_TONE[disbursement.status]} data-testid="disbursement-status">{disbursement.status_label}</Pill>
         {' · Preuve : '}
-        <span data-testid="disbursement-flow">{disbursement.flow_status_label}</span>
-        {disbursement.bank_reference && ` · référence ${disbursement.bank_reference} du ${disbursement.executed_on}`}
+        <Pill tone={disbursement.flow_status === 'reconciled_sim' ? 'success' : 'neutral'} data-testid="disbursement-flow">
+          {disbursement.flow_status_label}
+        </Pill>
+        {disbursement.bank_reference && (
+          <span style={{ color: semanticColors.neutral.textMuted }}>{` · référence ${disbursement.bank_reference} du ${disbursement.executed_on}`}</span>
+        )}
       </p>
       {disbursement.beneficiary_confirmation && (
         <p style={{ margin: '4px 0 0' }} data-testid="disbursement-confirmation">
@@ -227,15 +253,15 @@ function DisbursementBlock({
               }}
               style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}
             >
-              <label>
+              <label style={labelStyle}>
                 Référence bancaire simulée
-                <Input aria-label="Référence de sortie" value={reference} onChange={(event) => setReference(event.target.value)} required style={{ marginTop: '4px', width: '180px' }} />
+                <Input aria-label="Référence de sortie" value={reference} onChange={(event) => setReference(event.target.value)} required style={{ width: '200px' }} />
               </label>
-              <label>
+              <label style={labelStyle}>
                 Exécuté le
-                <Input aria-label="Date d'exécution" type="date" value={executedOn} onChange={(event) => setExecutedOn(event.target.value)} required style={{ marginTop: '4px' }} />
+                <Input aria-label="Date d'exécution" type="date" value={executedOn} onChange={(event) => setExecutedOn(event.target.value)} required />
               </label>
-              <Button type="submit" disabled={pending || reference.trim() === ''}>Exécuter (simulé)</Button>
+              <Button type="submit" variant="accent" disabled={pending || reference.trim() === ''}>Exécuter (simulé)</Button>
             </form>
           )}
           {isOpen && (
@@ -247,9 +273,9 @@ function DisbursementBlock({
               }}
               style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}
             >
-              <label>
+              <label style={labelStyle}>
                 Motif
-                <Input aria-label="Motif d'annulation du décaissement" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} style={{ marginTop: '4px', width: '200px' }} />
+                <Input aria-label="Motif d'annulation du décaissement" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} style={{ width: '220px' }} />
               </label>
               <Button type="submit" variant="secondary" disabled={pending || cancelReason.trim() === ''}>Annuler la demande</Button>
             </form>
@@ -257,6 +283,7 @@ function DisbursementBlock({
           {awaitingReconciliation && disbursement.flow_status === 'beneficiary_confirmed_sim' && (
             <Button
               type="button"
+              variant="accent"
               disabled={pending}
               onClick={() => act(() => api.reconcileDisbursement(disbursement.id, organizationId), 'Rapprochement refusé.')}
             >
@@ -299,16 +326,21 @@ function ProgramAccountPanel({ summary, canAct }: { summary: ProgramAccountSumma
 
   return (
     <Card title={`Compte — ${account.program.name}`} icon="wallet">
-      <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em' }}>{SIMULATION_NOTICE}</p>
+      <p style={{
+        margin: '0 0 14px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: semanticColors.accent.text,
+      }}
+      >
+        {SIMULATION_NOTICE}
+      </p>
       <BalanceBlock balance={account.balance} />
-      <h4 style={{ margin: '16px 0 4px' }}>Jalons</h4>
+      <h4 style={{ margin: '24px 0 8px' }}>Jalons</h4>
       <MilestonesTable
         milestones={account.milestones}
         organizationId={organizationId}
         canAct={canAct}
         onChanged={state.refetch}
       />
-      <h4 style={{ margin: '16px 0 4px' }}>Décaissements</h4>
+      <h4 style={{ margin: '24px 0 4px' }}>Décaissements</h4>
       {account.disbursements.length === 0 && <p style={{ margin: 0 }}>Aucun décaissement.</p>}
       {account.disbursements.map((disbursement) => (
         <DisbursementBlock
@@ -336,7 +368,11 @@ export function FinanceAccountsView({ canAct }: { canAct: boolean }) {
 
   return (
     <section aria-label="Comptes et décaissements">
-      <h2>Comptes des programmes et décaissements</h2>
+      <PageHeader
+        eyebrow="Finance"
+        title="Comptes & décaissements"
+        subtitle="Solde simulé de chaque programme, jalons décaissables après acceptation technique, et suivi des sorties jusqu’au rapprochement."
+      />
       {state.data.length === 0 && <p>Aucun programme avec une réservation ou un décaissement.</p>}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
         {state.data.map((account) => (
