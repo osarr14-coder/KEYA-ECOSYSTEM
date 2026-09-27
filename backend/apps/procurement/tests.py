@@ -809,6 +809,7 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # Ticket B-049 (n'importe quel identifiant : 404 attendu, jamais
             # une fuite) :
             ('my-contracts', [own_lot.id], {}),
+            ('my-payment-calls', [own_lot.id], {}),
         ]
         for name, args, _kwargs in requests:
             response = own_client.get(reverse(name, args=args))
@@ -974,6 +975,11 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # réservation seul ; `contract-admin-*` : admin/ADV.
             'contract-admin-list-create', 'contract-admin-update', 'contract-admin-transition',
             'my-contracts', 'my-contract-sign',
+            # Ticket B-050 — ajout conscient : appels de fonds. Lecture équipe
+            # KEYIMMO, émission admin/ADV ; `my-payment-calls` (GET) ne rend
+            # que les appels du client lui-même (404 sinon) — ajouté au
+            # balayage ci-dessus.
+            'payment-call-team', 'my-payment-calls',
         }
         assert actual == expected
 

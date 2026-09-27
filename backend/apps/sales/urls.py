@@ -9,9 +9,11 @@ from .views import (
     CatalogLotListView,
     MyContractListView,
     MyContractSignView,
+    MyPaymentCallListView,
     MyReservationCancelView,
     MyReservationListView,
     ReservationCreateView,
+    TeamPaymentCallView,
 )
 
 urlpatterns = [
@@ -42,4 +44,13 @@ urlpatterns = [
         MyContractListView.as_view(), name='my-contracts',
     ),
     path('me/contracts/<uuid:contract_id>/sign/', MyContractSignView.as_view(), name='my-contract-sign'),
+    # Ticket B-050 — appels de fonds.
+    path(
+        'reservations/<uuid:reservation_id>/payment-calls/admin/',
+        TeamPaymentCallView.as_view(), name='payment-call-team',
+    ),
+    path(
+        'me/reservations/<uuid:reservation_id>/payment-calls/',
+        MyPaymentCallListView.as_view(), name='my-payment-calls',
+    ),
 ]

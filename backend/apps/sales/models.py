@@ -150,3 +150,72 @@ class ContractVersion(models.Model):
 
     def __str__(self):
         return f'Contrat v{self.version} — {self.reservation} ({self.status})'
+
+
+class PaymentCallKind(models.TextChoices):
+    """Ticket B-050 — nature d'un appel de fonds (CDC V3 §5 : « nature
+    frais/premier versement/versement suivant »)."""
+
+    FRAIS = 'frais', 'Frais de réservation'
+    PREMIER_VERSEMENT = 'premier_versement', 'Complément du premier versement'
+    VERSEMENT = 'versement', 'Versement de palier'
+
+
+class PaymentCall(models.Model):
+    """Appel de fonds émis au client d'une réservation (ticket B-050, CDC
+    V3 §5/§8.1). Montant CALCULÉ par le serveur (prix figé de la
+    réservation, barème légal), jamais saisi.
+
+    Append-only (migration 0006, trigger) : un appel émis n'est jamais
+    modifié ni supprimé — CDC §1, « les événements critiques sont ajoutés,
+    jamais réécrits ». Son état « soldé » est DÉRIVÉ des affectations
+    d'encaissements (B-051), jamais stocké ici.
+
+    Le barème utilisé (`legal_template`) et le plafond du palier sont figés
+    sur l'appel : CDC §1, « la version [des paramètres pays] est rattachée
+    aux opérations concernées ».
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name='payment_calls',
+    )
+    reservation = models.ForeignKey(Reservation, on_delete=models.PROTECT, related_name='payment_calls')
+    client = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payment_calls',
+    )
+    kind = models.CharField(max_length=20, choices=PaymentCallKind.choices)
+    legal_template = models.ForeignKey(
+        'pricing.LegalPaymentTierTemplate', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='payment_calls',
+    )
+    tier_code = models.CharField(max_length=50, blank=True)
+    tier_label = models.CharField(max_length=100, blank=True)
+    cumulative_cap_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    currency = models.CharField(max_length=3, default=DEFAULT_CURRENCY)
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='issued_payment_calls',
+    )
+    issued_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'sales_payment_call'
+        constraints = [
+            # Frais et premier versement : une fois par réservation.
+            models.UniqueConstraint(
+                fields=['reservation', 'kind'],
+                condition=Q(kind__in=['frais', 'premier_versement']),
+                name='sales_payment_call_once_per_kind',
+            ),
+            # Chaque palier VEFA : une fois par réservation.
+            models.UniqueConstraint(
+                fields=['reservation', 'tier_code'],
+                condition=Q(kind='versement'),
+                name='sales_payment_call_once_per_tier',
+            ),
+            models.CheckConstraint(check=Q(amount__gt=0), name='sales_payment_call_amount_positive'),
+        ]
+
+    def __str__(self):
+        return f'Appel {self.get_kind_display()} {self.amount} {self.currency} — {self.reservation}'

@@ -3,7 +3,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.backoffice.permissions import IsAdminKeyimmoOrGestionnaireADV
+from apps.backoffice.permissions import IsAdminKeyimmoOrGestionnaireADV, IsKeyimmoTeam
 
 from . import services
 from .models import ReservationStatus
@@ -12,9 +12,13 @@ from .serializers import (
     AdminCancelSerializer,
     AdminReservationSerializer,
     CatalogLotSerializer,
+    ClientPaymentCallSerializer,
     ContractContentSerializer,
     ContractTransitionSerializer,
     ContractVersionSerializer,
+    PaymentCallCandidateSerializer,
+    PaymentCallIssueSerializer,
+    PaymentCallSerializer,
     ReservationRequestSerializer,
     ReservationSerializer,
 )
@@ -268,3 +272,67 @@ class MyContractSignView(APIView):
         if contract is None:
             raise NotFound()
         return Response(ContractVersionSerializer(contract).data)
+
+
+# ─── Appels de fonds — ticket B-050 ────────────────────────────────────────
+
+
+class TeamPaymentCallView(APIView):
+    """`GET/POST /api/reservations/{id}/payment-calls/admin/?organization_id=`.
+    Lecture : équipe KEYIMMO (admin, ADV, Finance). Émission : admin et ADV
+    seulement (CDC §8.1 : « le gestionnaire émet un appel ») — Finance
+    enregistre les mouvements, jamais les appels."""
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+        return [permissions.IsAuthenticated(), IsKeyimmoTeam()]
+
+    def get(self, request, reservation_id):
+        result = services.list_payment_calls_as_team(
+            caller_organization_id=_caller_organization_id(request),
+            target_organization_id=_target_organization_id(request),
+            reservation_id=reservation_id,
+        )
+        if result is None:
+            raise NotFound()
+        return Response({
+            'calls': PaymentCallSerializer(result['calls'], many=True).data,
+            'candidates': PaymentCallCandidateSerializer(result['candidates'], many=True).data,
+            'blocking_reason': result['blocking_reason'],
+        })
+
+    def post(self, request, reservation_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = PaymentCallIssueSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            call = services.issue_payment_call(
+                actor=request.user,
+                caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id,
+                reservation_id=reservation_id,
+                kind=serializer.validated_data['kind'],
+                tier_code=serializer.validated_data['tier_code'],
+            )
+        except services.PaymentCallError as exc:
+            return _conflict(exc)
+        if call is None:
+            raise NotFound()
+        return Response(PaymentCallSerializer(call).data, status=201)
+
+
+class MyPaymentCallListView(APIView):
+    """`GET /api/me/reservations/{id}/payment-calls/` — les appels de SA
+    réservation ; 404 pour celle d'un autre client."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, reservation_id):
+        calls = services.list_client_payment_calls(
+            client=request.user, caller_organization_id=_caller_organization_id(request),
+            reservation_id=reservation_id,
+        )
+        if calls is None:
+            raise NotFound()
+        return Response(ClientPaymentCallSerializer(calls, many=True).data)

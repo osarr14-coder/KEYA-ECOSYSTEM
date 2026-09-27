@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import DEFAULT_CURRENCY, ContractVersion, Reservation
+from .models import DEFAULT_CURRENCY, ContractVersion, PaymentCall, PaymentCallKind, Reservation
 
 
 def _organization(organization):
@@ -116,3 +116,53 @@ class ContractContentSerializer(serializers.Serializer):
 
 class ContractTransitionSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=['submit', 'back_to_draft', 'approve'])
+
+
+class PaymentCallSerializer(serializers.ModelSerializer):
+    """Ticket B-050 — un appel de fonds émis. Montant en chaîne (format
+    `DecimalField`), jamais recalculé côté frontend."""
+
+    kind_label = serializers.CharField(source='get_kind_display', read_only=True)
+    issued_by = serializers.EmailField(source='issued_by.email', read_only=True)
+    reservation = serializers.UUIDField(source='reservation_id', read_only=True)
+
+    class Meta:
+        model = PaymentCall
+        fields = [
+            'id', 'reservation', 'kind', 'kind_label', 'tier_code', 'tier_label', 'cumulative_cap_percent',
+            'amount', 'currency', 'issued_by', 'issued_at',
+        ]
+        read_only_fields = fields
+
+
+class ClientPaymentCallSerializer(PaymentCallSerializer):
+    """Côté client : jamais l'identité du membre KEYIMMO qui a émis."""
+
+    class Meta(PaymentCallSerializer.Meta):
+        fields = [field for field in PaymentCallSerializer.Meta.fields if field != 'issued_by']
+        read_only_fields = fields
+
+
+class PaymentCallCandidateSerializer(serializers.Serializer):
+    """Prochain appel de chaque nature, calculé par le serveur, avec la
+    raison s'il n'est pas émissible."""
+
+    kind = serializers.CharField()
+    kind_label = serializers.SerializerMethodField()
+    tier_code = serializers.CharField(allow_blank=True)
+    tier_label = serializers.CharField(allow_blank=True)
+    cumulative_cap_percent = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2)
+    available = serializers.SerializerMethodField()
+    reason = serializers.CharField(allow_null=True)
+
+    def get_kind_label(self, candidate):
+        return PaymentCallKind(candidate['kind']).label
+
+    def get_available(self, candidate):
+        return candidate['reason'] is None
+
+
+class PaymentCallIssueSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=PaymentCallKind.choices)
+    tier_code = serializers.CharField(required=False, allow_blank=True, default='')

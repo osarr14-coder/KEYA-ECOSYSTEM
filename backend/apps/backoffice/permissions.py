@@ -4,6 +4,7 @@ from apps.organizations.models import Membership
 
 ADMIN_KEYIMMO_ROLE_CODE = 'admin_keyimmo'
 GESTIONNAIRE_ADV_ROLE_CODE = 'gestionnaire_adv'
+FINANCE_ROLE_CODE = 'finance'
 
 
 class IsAdminKeyimmo(BasePermission):
@@ -62,3 +63,38 @@ class IsAdminKeyimmoOrGestionnaireADV(BasePermission):
             user=request.user,
             role__code__in=[ADMIN_KEYIMMO_ROLE_CODE, GESTIONNAIRE_ADV_ROLE_CODE],
         ).exists()
+
+
+def _has_any_role(user, role_codes):
+    if not user.is_authenticated:
+        return False
+    return Membership.objects.filter(user=user, role__code__in=role_codes).exists()
+
+
+class IsFinance(BasePermission):
+    """Ticket B-050 (rôle reporté de B-046) — opérateur de SIMULATION des
+    flux financiers (CDC V3 §4), jamais une banque partenaire : enregistre
+    encaissements et décaissements simulés, les affecte et les rapproche.
+    `admin_keyimmo` ne cumule volontairement PAS ce pouvoir (CDC §4 : « les
+    comptes démontrant des fonctions incompatibles sont distincts ») — même
+    sémantique transverse que les autres rôles de l'équipe KEYIMMO."""
+
+    message = 'Réservé aux membres du rôle finance.'
+
+    def has_permission(self, request, view):
+        return _has_any_role(request.user, [FINANCE_ROLE_CODE])
+
+
+class IsKeyimmoTeam(BasePermission):
+    """Ticket B-050 — lecture commune de l'équipe KEYIMMO (admin, ADV,
+    Finance) sur les objets de vente : chacun doit voir les appels de fonds
+    pour faire son propre travail, sans pour autant pouvoir faire celui des
+    autres (les écritures gardent leur permission dédiée)."""
+
+    message = "Réservé à l'équipe KEYIMMO (admin_keyimmo, gestionnaire_adv, finance)."
+
+    def has_permission(self, request, view):
+        return _has_any_role(
+            request.user, [ADMIN_KEYIMMO_ROLE_CODE, GESTIONNAIRE_ADV_ROLE_CODE, FINANCE_ROLE_CODE],
+        )
+

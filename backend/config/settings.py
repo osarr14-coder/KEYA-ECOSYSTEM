@@ -60,6 +60,12 @@ INSTALLED_APPS = [
 # juridique »). Exposée au client via `Reservation.held_until`.
 RESERVATION_HOLD_HOURS = config('RESERVATION_HOLD_HOURS', default=24, cast=int)
 
+# Ticket B-050 — frais de réservation du scénario (CDC V3 §9.1 : « frais
+# 100 000 XOF inclus dans un premier versement de 3 000 000 XOF »). Donnée de
+# présentation, sans portée commerciale ni réglementaire. Le premier
+# versement, lui, vient du barème légal actif (plafond du premier palier).
+RESERVATION_FEE_AMOUNT = config('RESERVATION_FEE_AMOUNT', default='100000')
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     # Déploiement (Render, voir DEPLOY_RENDER.md) : sert STATIC_ROOT

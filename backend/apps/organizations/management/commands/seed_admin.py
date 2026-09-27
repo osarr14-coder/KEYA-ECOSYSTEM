@@ -2,8 +2,8 @@
 vierge : aucune fixture/seed n'existait avant cette commande (vérifié :
 aucun Role n'est créé par une migration, seul CountryPack Sénégal l'est,
 voir apps/organizations/migrations/0003_seed_senegal_country_pack.py).
-Sans elle, un déploiement neuf n'a ni les 6 rôles (client/sponsor/
-constructeur/inspecteur/admin_keyimmo/gestionnaire_adv — codes/labels
+Sans elle, un déploiement neuf n'a ni les 7 rôles (client/sponsor/
+constructeur/inspecteur/admin_keyimmo/gestionnaire_adv/finance — codes/labels
 repris tels quels des appels Role.objects.get_or_create déjà dispersés
 dans les tests de ce projet, jamais inventés), ni aucun utilisateur pour
 se connecter.
@@ -30,12 +30,15 @@ ROLES = [
     # remplacement — voir apps.backoffice.permissions.
     # IsAdminKeyimmoOrGestionnaireADV.
     ('gestionnaire_adv', 'Gestionnaire ADV'),
+    # Ticket B-050 — opérateur de simulation des flux financiers (CDC §4),
+    # reporté de B-046 jusqu'à l'existence d'objets financiers à protéger.
+    ('finance', 'Finance (démo)'),
 ]
 
 
 class Command(BaseCommand):
     help = (
-        "Amorce un déploiement vierge : les 6 rôles du MVP, une organisation "
+        "Amorce un déploiement vierge : les 7 rôles du MVP, une organisation "
         "de démonstration, et un utilisateur admin_keyimmo pour s'y connecter "
         "(ADMIN_EMAIL/ADMIN_PASSWORD, variables d'environnement)."
     )

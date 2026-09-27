@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 
 from apps.core.rls import set_rls_context
 from apps.evidence.models import Evidence, WorkDeclaration
@@ -285,6 +286,38 @@ OPEN_RESERVE_STATUSES = {'ouverte', 'correction_proposee', 'nouvelle_inspection'
 
 def is_reserve_open(reserve):
     return get_reserve_status(reserve) in OPEN_RESERVE_STATUSES
+
+
+def is_milestone_technically_accepted(milestone):
+    """Ticket B-050 — « jalon techniquement accepté dans sa version
+    courante » (CDC V3 §8.2), condition des appels de fonds par palier VEFA
+    (B-050) et des décaissements (B-052). Vrai si et seulement si :
+
+    1. la dernière inspection de la dernière déclaration du jalon (sur la
+       déclaration elle-même ou l'une de ses pièces) est `conforme` — une
+       réserve levée se termine précisément par une inspection conforme ;
+    2. aucune réserve ouverte par une inspection de cette déclaration n'est
+       encore ouverte ;
+    3. aucune pièce n'a été ajoutée à la déclaration APRÈS cette inspection
+       (CDC T07 : une pièce remplacée après acceptation la rend caduque,
+       une nouvelle revue est nécessaire).
+
+    Un jalon déclaré n'est pas un jalon accepté (CDC §1) ; une acceptation
+    technique n'est ni une validation juridique ni une décision bancaire.
+    Doit être appelé sous le contexte RLS de l'organisation du lot.
+    """
+    declaration = WorkDeclaration.objects.filter(milestone=milestone).order_by('-created_at').first()
+    if declaration is None:
+        return False
+    inspections = Inspection.objects.filter(
+        Q(work_declaration=declaration) | Q(evidence__work_declaration=declaration),
+    )
+    latest = inspections.order_by('-created_at').first()
+    if latest is None or latest.outcome != InspectionOutcome.CONFORME:
+        return False
+    if any(is_reserve_open(reserve) for reserve in Reserve.objects.filter(opened_by_inspection__in=inspections)):
+        return False
+    return not Evidence.objects.filter(work_declaration=declaration, created_at__gt=latest.created_at).exists()
 
 
 class NotAnInspectorError(Exception):

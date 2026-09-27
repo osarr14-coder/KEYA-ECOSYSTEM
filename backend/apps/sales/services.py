@@ -8,6 +8,7 @@ transition écrit son `AuditEvent` dans la même transaction.
 """
 
 from datetime import timedelta
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -15,7 +16,9 @@ from django.utils import timezone
 
 from apps.audit import services as audit
 from apps.core.rls import set_rls_context
+from apps.inspections.services import is_milestone_technically_accepted
 from apps.organizations.models import Organization
+from apps.pricing.services import get_active_legal_payment_tier_template
 from apps.programs.models import Lot, LotCommercialStatus
 
 from .models import (
@@ -24,6 +27,8 @@ from .models import (
     IN_PROGRESS_CONTRACT_STATUSES,
     ContractStatus,
     ContractVersion,
+    PaymentCall,
+    PaymentCallKind,
     Reservation,
     ReservationStatus,
 )
@@ -515,5 +520,174 @@ def sign_contract_as_client(*, client, caller_organization_id, contract_id):
             obj=contract, payload={'version': contract.version, 'simulation': True},
         )
         return contract
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+# ─── Appels de fonds — ticket B-050 (CDC V3 §5/§8.1/§9.1) ─────────────────
+
+_WHOLE_UNITS = Decimal('1')  # XOF : montants entiers (CDC §5).
+
+
+class PaymentCallError(Exception):
+    """Appel non émissible dans l'état courant — le message dit pourquoi.
+    Réponse 409."""
+
+
+def _amount(value):
+    return Decimal(value).quantize(_WHOLE_UNITS, rounding=ROUND_HALF_UP)
+
+
+def _tier_steps(reservation):
+    template = get_active_legal_payment_tier_template(reservation.organization.country_pack_id)
+    if template is None:
+        return None, []
+    return template, list(template.steps.order_by('order'))
+
+
+def compute_payment_call_candidates(reservation):
+    """Le PROCHAIN appel de chaque nature, avec son montant et, s'il n'est
+    pas émissible, la raison. Sous contexte RLS de l'organisation du lot.
+
+    - frais : `RESERVATION_FEE_AMOUNT`, réservation `held` ;
+    - complément du premier versement : plafond du premier palier × prix −
+      frais (jamais déduits deux fois, CDC §9.1), réservation `reserved` ;
+    - versement : seul le palier SUIVANT dans l'ordre, pour plafond cumulé ×
+      prix − total déjà appelé, réservation `committed` ET jalon de même code
+      techniquement accepté (garantie VEFA : aucun appel au-delà de
+      l'avancement réel du chantier).
+    """
+    calls = list(reservation.payment_calls.all())
+    called_kinds = {call.kind for call in calls}
+    called_tiers = {call.tier_code for call in calls if call.kind == PaymentCallKind.VERSEMENT}
+    called_total = sum((call.amount for call in calls), Decimal('0'))
+    price = reservation.price_amount
+    fee = _amount(settings.RESERVATION_FEE_AMOUNT)
+    template, steps = _tier_steps(reservation)
+    candidates = []
+
+    if PaymentCallKind.FRAIS not in called_kinds:
+        candidates.append({
+            'kind': PaymentCallKind.FRAIS, 'tier_code': '', 'tier_label': '', 'cumulative_cap_percent': None,
+            'amount': fee,
+            'reason': None if reservation.status == ReservationStatus.HELD
+            else 'Les frais ne s\'appellent que sur une réservation bloquée.',
+        })
+
+    if template is None:
+        return template, candidates, 'Aucun barème légal de paiement actif pour ce Country Pack.'
+
+    first, following = steps[0], steps[1:]
+    if PaymentCallKind.PREMIER_VERSEMENT not in called_kinds:
+        candidates.append({
+            'kind': PaymentCallKind.PREMIER_VERSEMENT, 'tier_code': first.code, 'tier_label': first.label,
+            'cumulative_cap_percent': first.cumulative_cap_percent,
+            'amount': _amount(price * first.cumulative_cap_percent / 100) - fee,
+            'reason': None if reservation.status == ReservationStatus.RESERVED
+            else 'Le complément du premier versement s\'appelle une fois les frais encaissés (réservation « Réservée »).',
+        })
+        return template, candidates, None
+
+    next_step = next((step for step in following if step.code not in called_tiers), None)
+    if next_step is not None:
+        amount = _amount(price * next_step.cumulative_cap_percent / 100) - called_total
+        if next_step.order == steps[-1].order:
+            amount = price - called_total  # dernier palier : solde exact, aucun reliquat d'arrondi
+        milestone = reservation.lot.milestones.filter(code=next_step.code).first()
+        if reservation.status != ReservationStatus.COMMITTED:
+            reason = 'Les versements de palier ne s\'appellent qu\'après concrétisation de la réservation.'
+        elif milestone is None:
+            reason = f'Aucun jalon « {next_step.code} » sur ce lot : ce palier ne peut pas être débloqué.'
+        elif not is_milestone_technically_accepted(milestone):
+            reason = f'Le jalon « {milestone.label} » n\'est pas encore techniquement accepté.'
+        else:
+            reason = None
+        candidates.append({
+            'kind': PaymentCallKind.VERSEMENT, 'tier_code': next_step.code, 'tier_label': next_step.label,
+            'cumulative_cap_percent': next_step.cumulative_cap_percent, 'amount': amount, 'reason': reason,
+        })
+    return template, candidates, None
+
+
+def _team_reservation(reservation_id, *, lock=False):
+    queryset = Reservation.objects.select_related('lot', 'organization', 'client')
+    if lock:
+        queryset = queryset.select_for_update(of=('self',))
+    reservation = queryset.filter(id=reservation_id).first()
+    if reservation is not None:
+        _expire_if_overdue(reservation, timezone.now())
+    return reservation
+
+
+def list_payment_calls_as_team(*, caller_organization_id, target_organization_id, reservation_id):
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        reservation = _team_reservation(reservation_id)
+        if reservation is None:
+            return None
+        _template, candidates, blocking_reason = compute_payment_call_candidates(reservation)
+        calls = list(reservation.payment_calls.select_related('issued_by').order_by('issued_at'))
+        return {'calls': calls, 'candidates': candidates, 'blocking_reason': blocking_reason}
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def issue_payment_call(*, actor, caller_organization_id, target_organization_id, reservation_id, kind, tier_code=''):
+    """Émet l'appel candidat correspondant. Verrou de ligne sur la
+    réservation : deux émissions simultanées sont sérialisées ; l'index
+    unique reste le filet en base."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        reservation = _team_reservation(reservation_id, lock=True)
+        if reservation is None:
+            return None
+        template, candidates, blocking_reason = compute_payment_call_candidates(reservation)
+        candidate = next(
+            (c for c in candidates if c['kind'] == kind and (kind != PaymentCallKind.VERSEMENT or c['tier_code'] == tier_code)),
+            None,
+        )
+        if candidate is None:
+            raise PaymentCallError(blocking_reason or 'Cet appel a déjà été émis ou n\'est pas le prochain à émettre.')
+        if candidate['reason']:
+            raise PaymentCallError(candidate['reason'])
+        try:
+            with transaction.atomic():
+                call = PaymentCall.objects.create(
+                    organization_id=reservation.organization_id,
+                    reservation=reservation,
+                    client_id=reservation.client_id,
+                    kind=kind,
+                    legal_template=template if kind != PaymentCallKind.FRAIS else None,
+                    tier_code=candidate['tier_code'],
+                    tier_label=candidate['tier_label'],
+                    cumulative_cap_percent=candidate['cumulative_cap_percent'],
+                    amount=candidate['amount'],
+                    currency=reservation.currency,
+                    issued_by=actor,
+                )
+        except IntegrityError:
+            raise PaymentCallError('Cet appel vient déjà d\'être émis.')
+        audit.record(
+            organization_id=reservation.organization_id, actor=actor, action='payment_call.issued', obj=call,
+            payload={
+                'reservation_id': str(reservation.id), 'kind': kind, 'tier_code': call.tier_code,
+                'amount': str(call.amount), 'currency': call.currency,
+                'legal_template_id': str(template.id) if call.legal_template_id else None,
+            },
+        )
+        return call
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def list_client_payment_calls(*, client, caller_organization_id, reservation_id):
+    organization_ids = _client_reservation_organization_ids(client, reservation_id)
+    if not organization_ids:
+        return None
+    try:
+        set_rls_context(organization_id=organization_ids.pop())
+        return list(
+            PaymentCall.objects.filter(reservation_id=reservation_id, client=client).order_by('issued_at'),
+        )
     finally:
         set_rls_context(organization_id=caller_organization_id)

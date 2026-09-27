@@ -585,3 +585,187 @@ class TestContractSignatureRules:
     def test_an_ordinary_client_cannot_use_the_admin_contract_routes(self):
         client, _user, _adv, _adv_user, promoter, reservation_id = _reservation_with()
         assert client.get(_contracts_url(reservation_id, promoter)).status_code == 403
+
+
+# ─── Appels de fonds — ticket B-050 ────────────────────────────────────────
+
+from apps.evidence.services import create_evidence, create_work_declaration  # noqa: E402
+from apps.inspections.services import create_inspection, is_milestone_technically_accepted  # noqa: E402
+from apps.programs.models import Milestone  # noqa: E402
+
+from .models import PaymentCall  # noqa: E402
+
+
+def _calls_url(reservation_id, promoter):
+    return reverse('payment-call-team', args=[reservation_id]) + f'?organization_id={promoter.id}'
+
+
+def _issue(api, reservation_id, promoter, kind, tier_code=''):
+    return api.post(_calls_url(reservation_id, promoter), {'kind': kind, 'tier_code': tier_code}, format='json')
+
+
+def _set_reservation_status(promoter, reservation_id, status):
+    """Simule l'état que les encaissements (B-051) produiront."""
+    set_rls_context(organization_id=promoter.id)
+    Reservation.objects.filter(id=reservation_id).update(status=status)
+
+
+def _finance_scenario(seed_tiers=True):
+    client, client_user, _org = _register()
+    adv, _adv_user, _adv_org = _register('gestionnaire_adv')
+    _admin_client, admin_user, _admin_org = _register('admin_keyimmo')
+    _lot_admin, promoter, lot = _published_lot()
+    reservation_id = _reserve(client, promoter, lot).data['id']
+    if seed_tiers:
+        call_command('seed_demo_payment_tiers', admin_email=admin_user.email)
+    return client, client_user, adv, promoter, lot, reservation_id
+
+
+def _accept_milestone(promoter, lot_id, code, outcome='conforme'):
+    _inspector_client, inspector, inspector_org = _register('inspecteur')
+    set_rls_context(organization_id=promoter.id)
+    milestone = Milestone.objects.get(lot_id=lot_id, code=code)
+    declaration = create_work_declaration(organization=promoter, milestone=milestone, declared_by=inspector)
+    create_inspection(
+        inspector=inspector, inspector_organization=inspector_org, target_organization_id=promoter.id,
+        work_declaration_id=declaration.id, outcome=outcome,
+    )
+    set_rls_context(organization_id=promoter.id)
+    return milestone, declaration, inspector
+
+
+@pytest.mark.django_db
+class TestPaymentCallsScenario:
+    """CDC V3 §9.1 — prix 30 000 000 XOF, frais 100 000 inclus dans un
+    premier versement de 3 000 000 : complément 2 900 000, jamais 3 000 000."""
+
+    def test_fee_then_complement_never_deducting_the_fee_twice(self):
+        _client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
+
+        fee = _issue(adv, reservation_id, promoter, 'frais')
+        assert fee.status_code == 201, fee.data
+        assert fee.data['amount'] == '100000.00'
+        assert _issue(adv, reservation_id, promoter, 'frais').status_code == 409
+
+        blocked = _issue(adv, reservation_id, promoter, 'premier_versement')
+        assert blocked.status_code == 409
+        assert 'frais encaissés' in blocked.data['detail']
+
+        _set_reservation_status(promoter, reservation_id, 'reserved')
+        complement = _issue(adv, reservation_id, promoter, 'premier_versement')
+        assert complement.status_code == 201
+        assert complement.data['amount'] == '2900000.00'
+
+        set_rls_context(organization_id=promoter.id)
+        assert AuditEvent.objects.filter(action='payment_call.issued', object_id=complement.data['id']).exists()
+
+    def test_the_listing_explains_why_each_next_call_is_not_yet_issuable(self):
+        _client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
+
+        data = adv.get(_calls_url(reservation_id, promoter)).data
+
+        by_kind = {candidate['kind']: candidate for candidate in data['candidates']}
+        assert by_kind['frais']['available'] is True
+        assert by_kind['premier_versement']['available'] is False
+        assert by_kind['premier_versement']['amount'] == '2900000.00'
+
+    def test_without_an_active_legal_scale_only_the_fee_can_be_called(self):
+        _client, _user, adv, promoter, _lot, reservation_id = _finance_scenario(seed_tiers=False)
+
+        data = adv.get(_calls_url(reservation_id, promoter)).data
+
+        assert [candidate['kind'] for candidate in data['candidates']] == ['frais']
+        assert 'Aucun barème' in data['blocking_reason']
+
+
+@pytest.mark.django_db
+class TestVefaTierCallsFollowConstruction:
+    """Garantie VEFA : aucun appel au-delà de l'avancement réel du chantier."""
+
+    def _committed(self):
+        client, user, adv, promoter, lot, reservation_id = _finance_scenario()
+        _issue(adv, reservation_id, promoter, 'frais')
+        _set_reservation_status(promoter, reservation_id, 'reserved')
+        _issue(adv, reservation_id, promoter, 'premier_versement')
+        _set_reservation_status(promoter, reservation_id, 'committed')
+        return client, adv, promoter, lot, reservation_id
+
+    def test_a_tier_is_refused_until_its_milestone_is_technically_accepted(self):
+        _client, adv, promoter, lot, reservation_id = self._committed()
+
+        refused = _issue(adv, reservation_id, promoter, 'versement', 'fondations')
+        assert refused.status_code == 409
+        assert "n'est pas encore techniquement accepté" in refused.data['detail']
+
+        _accept_milestone(promoter, lot['id'], 'fondations')
+        accepted = _issue(adv, reservation_id, promoter, 'versement', 'fondations')
+        assert accepted.status_code == 201, accepted.data
+        # 35 % de 30 000 000 − 3 000 000 déjà appelés.
+        assert accepted.data['amount'] == '7500000.00'
+        assert accepted.data['cumulative_cap_percent'] == '35.00'
+
+    def test_only_the_next_tier_in_order_can_be_called(self):
+        _client, adv, promoter, lot, reservation_id = self._committed()
+        _accept_milestone(promoter, lot['id'], 'gros_oeuvre')
+
+        assert _issue(adv, reservation_id, promoter, 'versement', 'gros_oeuvre').status_code == 409
+
+    def test_an_inspection_with_a_reserve_does_not_accept_the_milestone(self):
+        _client, _adv, promoter, lot, _reservation_id = self._committed()
+        milestone, _declaration, _inspector = _accept_milestone(promoter, lot['id'], 'fondations', outcome='avec_reserve')
+        assert is_milestone_technically_accepted(milestone) is False
+
+    def test_a_document_added_after_acceptance_makes_it_stale_T07(self):
+        _client, _adv, promoter, lot, _reservation_id = self._committed()
+        milestone, declaration, inspector = _accept_milestone(promoter, lot['id'], 'fondations')
+        assert is_milestone_technically_accepted(milestone) is True
+
+        create_evidence(organization=promoter, work_declaration=declaration, documents=[], added_by=inspector)
+
+        assert is_milestone_technically_accepted(milestone) is False
+
+
+@pytest.mark.django_db
+class TestPaymentCallPermissions:
+    def test_finance_reads_but_never_issues_calls(self):
+        _client, _user, _adv, promoter, _lot, reservation_id = _finance_scenario()
+        finance, _finance_user, _org = _register('finance')
+
+        assert finance.get(_calls_url(reservation_id, promoter)).status_code == 200
+        assert _issue(finance, reservation_id, promoter, 'frais').status_code == 403
+
+    def test_the_client_sees_his_calls_without_the_issuer_identity(self):
+        client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
+        _issue(adv, reservation_id, promoter, 'frais')
+
+        rows = client.get(reverse('my-payment-calls', args=[reservation_id])).data
+
+        assert [(row['kind'], row['amount']) for row in rows] == [('frais', '100000.00')]
+        assert 'issued_by' not in rows[0]
+
+    def test_another_client_and_a_constructeur_see_nothing(self):
+        _client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
+        _issue(adv, reservation_id, promoter, 'frais')
+        intruder, _intruder_user, _org = _register()
+        constructeur, _c_user, _c_org = _register('constructeur')
+
+        assert intruder.get(reverse('my-payment-calls', args=[reservation_id])).status_code == 404
+        assert constructeur.get(_calls_url(reservation_id, promoter)).status_code == 403
+
+
+@pytest.mark.django_db
+class TestPaymentCallIsAppendOnly:
+    def test_an_issued_call_is_never_rewritten(self):
+        _client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
+        call_id = _issue(adv, reservation_id, promoter, 'frais').data['id']
+        set_rls_context(organization_id=promoter.id)
+
+        with connection.cursor() as cursor:
+            cursor.execute('UPDATE sales_payment_call SET amount = 1 WHERE id = %s', [call_id])
+            assert cursor.rowcount == 0
+            cursor.execute(
+                "SELECT tgname FROM pg_trigger WHERE tgrelid = 'sales_payment_call'::regclass AND NOT tgisinternal",
+            )
+            assert {row[0] for row in cursor.fetchall()} == {'sales_payment_call_no_update', 'sales_payment_call_no_delete'}
+
+        assert PaymentCall.objects.get(id=call_id).amount == Decimal('100000.00')
