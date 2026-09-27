@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Icon, Input, KeyFigure, PageHeader, Pill, type PillTone, Select, semanticColors,
+  ApiErrorBanner, Button, Card, Icon, Input, KeyFigure, PageHeader, Pill, type PillTone, Select, semanticColors, formatServerDateTime,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -39,11 +39,9 @@ const STATUS_OPTIONS: { value: ReservationStatus | ''; label: string }[] = [
 ];
 
 // Même fuseau que HOME (ticket F-066) : scénario en Côte d'Ivoire.
+// Audit UI R1 (F06) : format de date unique, fuseau indiqué.
 function formatDateTime(iso: string) {
-  const formatted = new Date(iso).toLocaleString('fr-FR', {
-    dateStyle: 'long', timeStyle: 'short', timeZone: 'Africa/Abidjan',
-  });
-  return `${formatted} (heure d'Abidjan, GMT)`;
+  return formatServerDateTime(iso);
 }
 
 function formatAmount(value: string, currency: string) {
@@ -112,7 +110,7 @@ function ValidateButton({ reservation, onValidated }: { reservation: AdminReserv
       await api.validateReservation(reservation.id, reservation.organization.id);
       onValidated();
     } catch (caught) {
-      setError(formatDrfFieldErrors(caught, 'Validation refusée.'));
+      setError(formatDrfFieldErrors(caught, 'Appel des frais refusé.'));
       setPending(false);
     }
   }
@@ -120,7 +118,7 @@ function ValidateButton({ reservation, onValidated }: { reservation: AdminReserv
   return (
     <div>
       <Button type="button" variant="accent" onClick={() => { void validate(); }} disabled={pending}>
-        {pending ? 'Validation…' : 'Valider la réservation et appeler les frais'}
+        {pending ? 'Envoi…' : 'Dossier examiné : appeler les frais de réservation'}
       </Button>
       {error && <p role="alert" style={{ margin: '4px 0 0' }}>{error}</p>}
     </div>
@@ -153,12 +151,13 @@ export function reservationTone(status: ReservationStatus): PillTone {
  * inchangés : seules leur mise en page et la hiérarchie évoluent.
  */
 function ReservationDossier({
-  reservation, onChanged, onBack, permissions,
+  reservation, onChanged, onBack, permissions, mode,
 }: {
   reservation: AdminReservation;
   onChanged: () => void;
   onBack: () => void;
   permissions: SalesPermissions;
+  mode: ReservationsMode;
 }) {
   const needsValidation = reservation.status === 'held' && !reservation.validated_at;
   return (
@@ -166,7 +165,7 @@ function ReservationDossier({
       <div>
         <Button type="button" variant="secondary" onClick={onBack}>
           <Icon name="chevron-left" size={16} />
-          Dossiers clients
+          {mode === 'finance' ? 'Appels et encaissements' : 'Dossiers clients'}
         </Button>
       </div>
 
@@ -205,15 +204,17 @@ function ReservationDossier({
             tone="accent"
           />
         )}
+        {/* Audit UI R1 (J07) : le gestionnaire EXAMINE le dossier puis
+            appelle les frais ; KEYIMMO ne « valide » rien. */}
         <KeyFigure
-          label="Validation ADV"
+          label="Examen du dossier"
           textual
           tone={reservation.validated_at ? 'success' : needsValidation ? 'accent' : 'neutral'}
           value={(
             <span data-testid="reservation-validation">
               {reservation.validated_at
-                ? `Validée${reservation.validated_by ? ` par ${reservation.validated_by}` : ''} le ${formatDateTime(reservation.validated_at)}`
-                : 'En attente de validation'}
+                ? `Examiné${reservation.validated_by ? ` par ${reservation.validated_by}` : ''} le ${formatDateTime(reservation.validated_at)}`
+                : 'Examen en attente'}
             </span>
           )}
         />
@@ -247,12 +248,12 @@ function ReservationDossier({
             Prochaine action
           </span>
           <h3 style={{ margin: 0, fontSize: '22px' }}>
-            {needsValidation ? 'Valider le dossier et appeler les frais de réservation' : 'Suivre le paiement des frais de réservation'}
+            {needsValidation ? 'Examiner le dossier et appeler les frais de réservation' : 'Suivre le paiement des frais de réservation'}
           </h3>
           <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
             {needsValidation
-              ? 'La validation émet l’appel des frais : le client est notifié et reçoit ses instructions de virement.'
-              : 'Le client a reçu l’appel des frais ; Finance confirmera son virement à réception.'}
+              ? 'Une fois le dossier examiné, l’appel des frais part au client avec ses instructions de virement (simulé).'
+              : 'Le client a reçu l’appel des frais. Finance enregistre l’encaissement simulé quand il figure au relevé fictif.'}
           </p>
           {needsValidation && <ValidateButton reservation={reservation} onValidated={onChanged} />}
           <CancelForm reservation={reservation} onCancelled={onChanged} />
@@ -302,7 +303,7 @@ function ReservationRow({ reservation, onOpen }: { reservation: AdminReservation
       <td>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <Pill tone={reservationTone(reservation.status)}>{reservation.status_label}</Pill>
-          {reservation.status === 'held' && !reservation.validated_at && <Pill tone="alert">À valider</Pill>}
+          {reservation.status === 'held' && !reservation.validated_at && <Pill tone="alert">À examiner</Pill>}
         </div>
       </td>
       <td style={{ textAlign: 'right' }}>
@@ -316,13 +317,20 @@ function ReservationRow({ reservation, onOpen }: { reservation: AdminReservation
 
 const DEFAULT_PERMISSIONS: SalesPermissions = { canManageSales: true, canRecordMovements: false };
 
+/**
+ * Audit UI R1 (R03, PO-2026-09-27-10) — `finance` : vue en LECTURE SEULE
+ * « Appels et encaissements » (identité fictive, appels, encaissements,
+ * affectations), sans gestion des dossiers, réservations ou contrats.
+ */
+export type ReservationsMode = 'sales' | 'finance';
+
 export function ReservationsView({
-  permissions = DEFAULT_PERMISSIONS, openReservationId,
-}: { permissions?: SalesPermissions; openReservationId?: string | null }) {
+  permissions = DEFAULT_PERMISSIONS, openReservationId, mode = 'sales',
+}: { permissions?: SalesPermissions; openReservationId?: string | null; mode?: ReservationsMode }) {
   const api = useApiClient();
   // Ticket F-075 — ouvert depuis « À faire » sur un dossier précis : tous
   // statuts confondus, le dossier peut ne plus être « bloqué ».
-  const [statusFilter, setStatusFilter] = useState<ReservationStatus | ''>(openReservationId ? '' : 'held');
+  const [statusFilter, setStatusFilter] = useState<ReservationStatus | ''>(openReservationId || mode === 'finance' ? '' : 'held');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(openReservationId ?? null);
   const state = useApiResource(() => api.listReservations(statusFilter || undefined), [statusFilter]);
@@ -343,17 +351,26 @@ export function ReservationsView({
         onChanged={state.refetch}
         onBack={() => setSelectedId(null)}
         permissions={permissions}
+        mode={mode}
       />
     );
   }
 
   return (
     <section aria-label="Réservations" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <PageHeader
-        eyebrow="Ventes"
-        title="Dossiers clients"
-        subtitle="Chaque réservation est un dossier : validation, contrat, appels de fonds et encaissements."
-      />
+      {mode === 'finance' ? (
+        <PageHeader
+          eyebrow="Finance · lecture seule"
+          title="Appels et encaissements"
+          subtitle="Par dossier : appels de fonds, encaissements simulés et leurs affectations. Les encaissements s’enregistrent depuis « Virements déclarés »."
+        />
+      ) : (
+        <PageHeader
+          eyebrow="Ventes"
+          title="Dossiers clients"
+          subtitle="Chaque réservation est un dossier : examen, contrat, appels de fonds et encaissements."
+        />
+      )}
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
           Statut

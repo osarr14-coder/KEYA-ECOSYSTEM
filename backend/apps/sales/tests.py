@@ -1442,7 +1442,9 @@ class TestDisbursementPermissionsAndImmutability:
         milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
         disbursement = _prepare(s, milestone).data
 
-        assert _account(s, api=s['adv']).status_code == 200
+        # PO-2026-09-27-16 : comptes réservés à Finance (le gestionnaire ne les lit plus).
+        assert _account(s, api=s['finance']).status_code == 200
+        assert _account(s, api=s['adv']).status_code == 403
         for api in (s['adv'], s['constructeur']):
             assert api.post(
                 reverse('finance-disbursement-create') + _q(s['promoter']),

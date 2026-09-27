@@ -56,3 +56,35 @@ describe('Page publique — textes (audit J01–J04)', () => {
     expect(screen.getAllByText((_, el) => el?.textContent?.trim() === CONTROLLER_DESIGNATION).length).toBeGreaterThan(0);
   });
 });
+
+describe('Page publique — registre de démonstration (audit J05, PO-2026-09-27-13)', () => {
+  it('J05 : aucun registre commercial (« nos programmes », « avancement réel », « achetez »)', async () => {
+    const { container } = renderPublicHome();
+    await waitFor(() => expect(screen.getByText('Aucun programme publié pour le moment.')).toBeInTheDocument());
+    expect(container.textContent).not.toMatch(/nos programmes|nos chantiers|avancement réel|achetez|déjà acquéreur/i);
+    expect(container.textContent).toMatch(/programme fictif/);
+  });
+
+  it('PO-13 : jamais « promoteur » ; le programme est lancé par KEYIMMO AFRIC, le constructeur est nommé', async () => {
+    const api = createMockApiClient({
+      getPublicOffer: vi.fn(() => Promise.resolve([{
+        id: 'p1', name: 'Résidence Démonstration Abidjan', constructeur: 'Constructeur Démonstration Abidjan', locations: ['Cocody'],
+        currency: 'XOF', total_lots: 1, available_lots: 1, price_from: '30000000.00',
+        lots: [{ id: 'lot-1', name: 'Lot A1', asset: 'Bâtiment A', surface: '82.00', price: '30000000.00' }],
+        payment_schedule: {
+          reservation_fee: '100000',
+          steps: [{ code: 'reservation', label: 'Premier versement (réservation)', cumulative_cap_percent: '10.00' }],
+        },
+      }])),
+      getPublicWorksites: vi.fn(() => Promise.resolve([])),
+    });
+    const { container } = render(withApiClient(api, (
+      <PublicLayout path="/" navigate={vi.fn()}>
+        <PublicHome navigate={vi.fn()} />
+      </PublicLayout>
+    )));
+    await waitFor(() => expect(container.textContent).toMatch(/Constructeur : Constructeur Démonstration Abidjan/));
+    expect(container.textContent).toMatch(/Programme lancé par KEYIMMO AFRIC/);
+    expect(container.textContent).not.toMatch(/promoteur/i);
+  });
+});

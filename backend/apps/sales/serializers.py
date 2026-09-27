@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from .models import (
@@ -49,12 +51,14 @@ class ReservationSerializer(serializers.ModelSerializer):
     lot = serializers.SerializerMethodField()
     program = serializers.SerializerMethodField()
     organization = serializers.SerializerMethodField()
+    payment_schedule = serializers.SerializerMethodField()
 
     class Meta:
         model = Reservation
         fields = [
             'id', 'status', 'status_label', 'held_until', 'price_amount', 'currency',
             'lot', 'program', 'organization', 'cancellation_reason', 'validated_at', 'created_at', 'updated_at',
+            'payment_schedule',
         ]
         read_only_fields = fields
 
@@ -67,6 +71,27 @@ class ReservationSerializer(serializers.ModelSerializer):
 
     def get_organization(self, reservation):
         return _organization(reservation.organization)
+
+    def get_payment_schedule(self, reservation):
+        # Audit UI R1 (C03, C04, C06) — échéancier fictif du contrat.
+        from .services import payment_schedule
+
+        schedule = payment_schedule(reservation)
+        if schedule is None:
+            return None
+        return {
+            'version': schedule['version'],
+            'country_pack': schedule['country_pack'],
+            'first_payment_amount': str(schedule['first_payment_amount']),
+            'rows': [
+                {
+                    'code': row['code'], 'label': row['label'], 'amount': str(row['amount']),
+                    'fee_included': str(row['fee_included']) if row['fee_included'] is not None else None,
+                    'cumulative_cap_percent': str(row['cumulative_cap_percent']), 'condition': row['condition'],
+                }
+                for row in schedule['rows']
+            ],
+        }
 
 
 class AdminReservationSerializer(ReservationSerializer):
@@ -383,8 +408,12 @@ class PaymentNoticeDeclareSerializer(serializers.Serializer):
 
 
 class PaymentNoticeConfirmSerializer(serializers.Serializer):
-    bank_reference = serializers.CharField(max_length=64, required=False, allow_blank=True, default='')
+    # Audit UI R1 (F02) : référence du relevé bancaire simulé, obligatoire et
+    # distincte de la référence indiquée par le client ; montant reçu (par
+    # défaut, le montant signalé) — un écart reste visible (T12).
+    bank_reference = serializers.CharField(max_length=64)
     received_on = serializers.DateField(required=False, allow_null=True, default=None)
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2, required=False, allow_null=True, default=None)
 
 
 class PaymentNoticeRejectSerializer(serializers.Serializer):
@@ -412,6 +441,7 @@ class PaymentNoticeSerializer(serializers.Serializer):
     processed_at = serializers.DateTimeField(allow_null=True)
     rejection_reason = serializers.CharField()
     simulation = serializers.SerializerMethodField()
+    receipt = serializers.SerializerMethodField()
 
     def get_organization(self, notice):
         return _organization(notice.organization)
@@ -442,3 +472,35 @@ class PaymentNoticeSerializer(serializers.Serializer):
 
     def get_simulation(self, notice):
         return True
+
+    def get_receipt(self, notice):
+        """Audit UI R1 (F01, F02) — l'encaissement simulé qui fait foi :
+        justificatif fictif (référence bancaire, date, montant), état CDC
+        §8.3, affectations et montant non affecté. Relations préchargées sous
+        le contexte RLS du lot."""
+        receipt = notice.receipt
+        if receipt is None:
+            return None
+        allocations = list(receipt.allocations.all())
+        allocated = sum((allocation.amount for allocation in allocations), Decimal('0'))
+        return {
+            'id': str(receipt.id),
+            'bank_reference': receipt.bank_reference,
+            'amount': _money(receipt.amount),
+            'currency': receipt.currency,
+            'received_on': receipt.received_on.isoformat(),
+            'status': receipt.status,
+            'status_label': receipt.get_status_display(),
+            'recorded_by': receipt.recorded_by.email,
+            'recorded_at': receipt.recorded_at.isoformat(),
+            'reconciled_at': receipt.reconciled_at.isoformat() if receipt.reconciled_at else None,
+            'allocations': [
+                {
+                    'id': str(allocation.id),
+                    'payment_call': allocation.payment_call.get_kind_display(),
+                    'amount': _money(allocation.amount),
+                }
+                for allocation in allocations
+            ],
+            'unallocated_amount': _money(receipt.amount - allocated),
+        }

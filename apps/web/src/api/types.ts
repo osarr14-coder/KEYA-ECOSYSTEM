@@ -584,6 +584,19 @@ export interface AccountMilestone {
 export interface ProgramAccount extends ProgramAccountSummary {
   milestones: AccountMilestone[];
   disbursements: Disbursement[];
+  /** Audit UI R1 (F03) — encaissements rapprochés qui composent « reçus ». */
+  receipts?: AccountReceipt[];
+}
+
+export interface AccountReceipt {
+  id: string;
+  bank_reference: string;
+  amount: string;
+  currency: string;
+  received_on: string;
+  status_label: string;
+  lot: string;
+  client: string;
 }
 
 // ─── Ticket F-069 — contrôles à affecter (backend B-054) ────────────────────
@@ -633,13 +646,32 @@ export interface PaymentNotice {
   processed_at: string | null;
   rejection_reason: string;
   simulation: boolean;
+  /** Audit UI R1 (F01, F02) — encaissement simulé qui fait foi, une fois
+   * le signalement traité par Finance. */
+  receipt: PaymentNoticeReceipt | null;
+}
+
+export interface PaymentNoticeReceipt {
+  id: string;
+  bank_reference: string;
+  amount: string;
+  currency: string;
+  received_on: string;
+  status: 'bank_executed_sim' | 'reconciled_sim';
+  status_label: string;
+  recorded_by: string;
+  recorded_at: string;
+  reconciled_at: string | null;
+  allocations: { id: string; payment_call: string; amount: string }[];
+  unallocated_amount: string;
 }
 
 /** Ticket F-079 (backend B-057) — vitrine publique anonyme. */
 export interface PublicProgram {
   id: string;
   name: string;
-  promoter: string;
+  /** PO-2026-09-27-13 : constructeur affecté (jamais « promoteur »). */
+  constructeur: string;
   locations: string[];
   currency: string;
   lots: { id: string; name: string; asset: string; surface: string | null; price: string }[];

@@ -183,7 +183,11 @@ export function TodayView({
   const display = (value: number | undefined) => (value === undefined ? '—' : value);
 
   function openIfAvailable(target: NavigationTarget | null) {
-    return target && availableTabs.includes(target.tab) ? () => onNavigate(target) : undefined;
+    // Audit UI R1 (R03) : Finance ouvre un dossier dans sa vue en lecture
+    // seule « Appels et encaissements », jamais dans « Dossiers clients ».
+    const resolved = target && target.tab === 'reservations' && !availableTabs.includes('reservations')
+      ? { ...target, tab: 'receipts' } : target;
+    return resolved && availableTabs.includes(resolved.tab) ? () => onNavigate(resolved) : undefined;
   }
 
   return (
@@ -200,7 +204,7 @@ export function TodayView({
         <KeyFigure label="Actions en attente" value={display(pending)} tone={pending ? 'accent' : 'neutral'} data-testid="kf-pending" />
         {showSales && (
           <KeyFigure
-            label="Réservations à valider"
+            label="Dossiers à examiner"
             value={display(toValidate)}
             tone={toValidate ? 'accent' : 'neutral'}
             onClick={availableTabs.includes('reservations') ? () => onNavigate({ tab: 'reservations' }) : undefined}
@@ -209,7 +213,7 @@ export function TodayView({
         )}
         {showPaymentNotices && (
           <KeyFigure
-            label="Virements à confirmer"
+            label="Virements signalés à traiter"
             value={display(notices)}
             tone={notices ? 'accent' : 'neutral'}
             onClick={() => onNavigate({ tab: 'payment-notices' })}

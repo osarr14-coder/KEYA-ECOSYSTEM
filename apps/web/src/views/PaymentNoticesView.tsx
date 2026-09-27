@@ -1,14 +1,15 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, Select, semanticColors, typography,
+  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, Select, semanticColors, typography, SimulatedMark,
+  formatCalendarDate, formatServerDateTime,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
-import type { PaymentNotice } from '../api/types';
+import type { PaymentNotice, PaymentNoticeReceipt } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
-import { SIMULATION_NOTICE, formatAmount } from './FinancialFilePanel';
+import { formatAmount } from './FinancialFilePanel';
 
 /**
  * Ticket F-071 (backend B-056) — virements déclarés par les clients.
@@ -19,7 +20,16 @@ import { SIMULATION_NOTICE, formatAmount } from './FinancialFilePanel';
  *
  * Ticket F-078 (direction « Confiance premium ») — en-tête, chiffres clés,
  * montant en grand, état en pastille, confirmation en bouton or.
+ *
+ * Audit UI R1 (F01, F02, F06 ; PO-2026-09-27-05) — le signalement du client
+ * n'est qu'un avis. Finance enregistre l'encaissement simulé à partir du
+ * relevé fictif : référence bancaire simulée distincte de celle du client,
+ * montant et date reçus. Une fois traité, l'écran montre le justificatif
+ * fictif, l'état CDC §8.3 (« Rapproché (simulé) »), les affectations et le
+ * montant non affecté. Dates au format unique, fuseau indiqué.
  */
+
+const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const NOTICE_TONE: Record<PaymentNotice['status'], PillTone> = {
   declared: 'accent',
@@ -31,14 +41,16 @@ const fieldLabel = {
   display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px', fontWeight: 600,
 } as const;
 
+// Audit UI R1 (F06) : format de date unique, fuseau indiqué.
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Africa/Abidjan' });
+  return formatServerDateTime(iso);
 }
 
 function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () => void }) {
   const api = useApiClient();
   const [bankReference, setBankReference] = useState('');
   const [receivedOn, setReceivedOn] = useState(notice.paid_on);
+  const [amount, setAmount] = useState(String(Number(notice.amount)));
   const [reason, setReason] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,8 +70,8 @@ function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () =
   function confirm(event: FormEvent) {
     event.preventDefault();
     void run(() => api.confirmPaymentNotice(notice.id, notice.organization.id, {
-      bank_reference: bankReference.trim(), received_on: receivedOn,
-    }), 'Confirmation refusée.');
+      bank_reference: bankReference.trim(), received_on: receivedOn, amount: amount.trim(),
+    }), 'Encaissement refusé.');
   }
 
   function reject(event: FormEvent) {
@@ -76,16 +88,28 @@ function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () =
     >
       <form
         onSubmit={confirm}
-        aria-label={`Confirmer le virement ${notice.client_reference}`}
+        aria-label={`Enregistrer l'encaissement du virement ${notice.client_reference}`}
         style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}
       >
         <label style={{ ...fieldLabel, flex: '1 1 200px', maxWidth: '280px' }}>
-          Référence sur le relevé (si différente)
+          Référence bancaire simulée (relevé)
           <Input
-            aria-label="Référence sur le relevé"
-            placeholder={notice.client_reference}
+            aria-label="Référence bancaire simulée"
+            placeholder="ex. SIM-ENC-0003"
             value={bankReference}
             onChange={(event) => setBankReference(event.target.value)}
+            required
+            style={{ fontFamily: MONO }}
+          />
+        </label>
+        <label style={{ ...fieldLabel, flex: '0 1 160px' }}>
+          Montant reçu
+          <Input
+            aria-label="Montant reçu"
+            inputMode="numeric"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            required
           />
         </label>
         <label style={fieldLabel}>
@@ -97,7 +121,9 @@ function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () =
             onChange={(event) => setReceivedOn(event.target.value)}
           />
         </label>
-        <Button type="submit" variant="accent" disabled={pending}>Confirmer la réception</Button>
+        <Button type="submit" variant="accent" disabled={pending || bankReference.trim() === '' || amount.trim() === ''}>
+          Enregistrer l’encaissement
+        </Button>
       </form>
       <form
         onSubmit={reject}
@@ -105,18 +131,63 @@ function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () =
         style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}
       >
         <label style={{ ...fieldLabel, flex: '1 1 260px', maxWidth: '420px' }}>
-          Motif du rejet
+          Motif (virement introuvable au relevé)
           <Input
             aria-label="Motif du rejet"
-            placeholder="Virement introuvable sur le relevé"
+            placeholder="Aucun virement correspondant au relevé du jour"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
           />
         </label>
-        <Button type="submit" variant="secondary" disabled={pending || reason.trim() === ''}>Rejeter</Button>
+        <Button type="submit" variant="secondary" disabled={pending || reason.trim() === ''}>Introuvable au relevé</Button>
       </form>
       {error && <p role="alert" style={{ margin: 0 }}>{error}</p>}
     </div>
+  );
+}
+
+/** Justificatif bancaire FICTIF de l'encaissement : ce qui fait foi. */
+function ReceiptProof({ receipt }: { receipt: PaymentNoticeReceipt }) {
+  const unallocated = Number(receipt.unallocated_amount);
+  return (
+    <section
+      aria-label={`Justificatif bancaire fictif ${receipt.bank_reference}`}
+      data-testid="receipt-proof"
+      style={{
+        display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px', padding: '14px 16px',
+        border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', background: semanticColors.neutral.subtle,
+      }}
+    >
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <strong>Justificatif bancaire fictif</strong>
+        <Pill tone={receipt.status === 'reconciled_sim' ? 'success' : 'primary'} data-testid="receipt-status">{receipt.status_label}</Pill>
+        <SimulatedMark detail="Encaissement" />
+      </div>
+      <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '6px 20px', margin: 0 }}>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Référence bancaire simulée</dt>
+        <dd style={{ margin: 0, fontFamily: MONO }} data-testid="receipt-bank-reference">{receipt.bank_reference}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Montant reçu</dt>
+        <dd style={{ margin: 0 }}>{formatAmount(receipt.amount, receipt.currency)}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Reçu le</dt>
+        <dd style={{ margin: 0 }}>{formatCalendarDate(receipt.received_on)}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Enregistré par</dt>
+        <dd style={{ margin: 0 }}>{`${receipt.recorded_by}, le ${formatServerDateTime(receipt.recorded_at)}`}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Affectations</dt>
+        <dd style={{ margin: 0 }}>
+          {receipt.allocations.length === 0 ? 'Aucune' : (
+            <ul style={{ margin: 0, paddingLeft: '18px' }}>
+              {receipt.allocations.map((allocation) => (
+                <li key={allocation.id}>{`${formatAmount(allocation.amount, receipt.currency)} → ${allocation.payment_call}`}</li>
+              ))}
+            </ul>
+          )}
+        </dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Non affecté</dt>
+        <dd style={{ margin: 0, fontWeight: unallocated > 0 ? 700 : 400 }} data-testid="receipt-unallocated">
+          {formatAmount(receipt.unallocated_amount, receipt.currency)}
+        </dd>
+      </dl>
+    </section>
   );
 }
 
@@ -134,20 +205,20 @@ function NoticeCard({ notice, canAct, onDone }: { notice: PaymentNotice; canAct:
         <span style={{ fontFamily: typography.headingFontFamily, fontSize: '30px', fontWeight: 600, color: semanticColors.neutral.heading }}>
           {formatAmount(notice.amount, notice.currency)}
         </span>
-        <span style={{ color: semanticColors.neutral.textMuted }}>{`déclaré pour : ${callLabel}`}</span>
+        <span style={{ color: semanticColors.neutral.textMuted }}>{`signalé pour : ${callLabel}`}</span>
       </div>
       <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '6px 20px', margin: 0 }}>
         <dt style={{ color: semanticColors.neutral.textMuted }}>Client</dt>
         <dd style={{ margin: 0 }}>{notice.client.full_name ? `${notice.client.full_name} (${notice.client.email})` : notice.client.email}</dd>
         <dt style={{ color: semanticColors.neutral.textMuted }}>Appel</dt>
         <dd style={{ margin: 0 }}>{`${callLabel} — ${formatAmount(notice.payment_call.amount)}`}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Montant déclaré</dt>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Montant signalé</dt>
         <dd style={{ margin: 0 }}>{formatAmount(notice.amount, notice.currency)}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Référence du client</dt>
-        <dd style={{ margin: 0 }}>{notice.client_reference}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Virement du</dt>
-        <dd style={{ margin: 0 }}>{notice.paid_on}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Déclaré le</dt>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Référence indiquée par le client</dt>
+        <dd style={{ margin: 0, fontFamily: MONO }}>{notice.client_reference}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Virement du (selon le client)</dt>
+        <dd style={{ margin: 0 }}>{formatCalendarDate(notice.paid_on)}</dd>
+        <dt style={{ color: semanticColors.neutral.textMuted }}>Signalé le</dt>
         <dd style={{ margin: 0 }}>{formatDate(notice.created_at)}</dd>
         <dt style={{ color: semanticColors.neutral.textMuted }}>Réservation</dt>
         <dd style={{ margin: 0 }}>{notice.reservation.status_label}</dd>
@@ -158,6 +229,7 @@ function NoticeCard({ notice, canAct, onDone }: { notice: PaymentNotice; canAct:
           </>
         )}
       </dl>
+      {notice.receipt && <ReceiptProof receipt={notice.receipt} />}
       {canAct && notice.status === 'declared' && <NoticeActions notice={notice} onDone={onDone} />}
     </Card>
   );
@@ -174,11 +246,11 @@ export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
   return (
     <section aria-label="Virements déclarés">
       <PageHeader
-        eyebrow="Ventes · Finance"
+        eyebrow="Finance"
         title="Virements déclarés"
         subtitle={canAct
-          ? 'Vérifiez chaque virement sur le relevé, puis confirmez-le ou rejetez-le avec un motif. La réservation avance d’elle-même.'
-          : 'Déclarations des clients, confirmées ou rejetées par Finance.'}
+          ? 'Un signalement du client n’est pas un encaissement. Cherchez le virement sur le relevé fictif, puis enregistrez l’encaissement (référence bancaire simulée, montant, date) ou indiquez qu’il est introuvable.'
+          : 'Signalements des clients et encaissements enregistrés par Finance.'}
         actions={(
           <label style={fieldLabel}>
             Afficher
@@ -188,22 +260,17 @@ export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
               onChange={(event) => setFilter(event.target.value as 'declared' | 'all')}
               style={{ width: '220px' }}
             >
-              <option value="declared">À confirmer</option>
+              <option value="declared">À traiter</option>
               <option value="all">Tous</option>
             </Select>
           </label>
         )}
       />
-      <p style={{
-        margin: '0 0 16px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: semanticColors.accent.text,
-      }}
-      >
-        {SIMULATION_NOTICE}
-      </p>
+      <SimulatedMark detail="Virements et encaissements" style={{ margin: '0 0 16px' }} />
       {state.status === 'success' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-          <KeyFigure label="À confirmer" value={toConfirm.length} tone={toConfirm.length ? 'accent' : 'neutral'} data-testid="kf-to-confirm" />
-          <KeyFigure label="Montant à vérifier" value={formatAmount(String(toConfirmTotal))} data-testid="kf-to-confirm-amount" />
+          <KeyFigure label="Signalements à traiter" value={toConfirm.length} tone={toConfirm.length ? 'accent' : 'neutral'} data-testid="kf-to-confirm" />
+          <KeyFigure label="Montant signalé, non encaissé" value={formatAmount(String(toConfirmTotal))} data-testid="kf-to-confirm-amount" />
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -211,7 +278,7 @@ export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
         {state.status === 'error' && (
           <ApiErrorBanner error={state.error} title="Impossible de charger les virements." onRetry={state.refetch} />
         )}
-        {state.status === 'success' && notices.length === 0 && <p>Aucun virement à confirmer.</p>}
+        {state.status === 'success' && notices.length === 0 && <p>Aucun signalement à traiter.</p>}
         {notices.map((notice) => (
           <NoticeCard key={`${notice.id}-${notice.status}`} notice={notice} canAct={canAct} onDone={state.refetch} />
         ))}

@@ -561,12 +561,37 @@ def _create_mission_row(*, assigned_by, target_organization_id, work_declaration
             "L'utilisateur assigné ne détient le rôle inspecteur dans aucune organisation.",
         )
 
+    # Audit UI R1 (D03) : jamais deux missions en attente sur la même
+    # déclaration — une nouvelle mission (recontrôle) n'est possible qu'après
+    # un avis rendu sur la précédente.
+    pending = _pending_mission_for(work_declaration)
+    if pending is not None:
+        raise ValidationError(
+            f"Une mission est déjà en attente pour cette déclaration (affectée à {pending.assigned_inspector.email}) : "
+            "attendez l'avis du contrôleur avant d'en affecter une autre."
+        )
+
     return InspectionMission.objects.create(
         organization=target_organization,
         work_declaration=work_declaration,
         assigned_inspector=assigned_inspector,
         assigned_by=assigned_by,
     )
+
+
+def _pending_mission_for(work_declaration):
+    """La mission encore sans avis de cette déclaration (aucune inspection
+    postérieure à son affectation), `None` sinon. Sous contexte RLS de
+    l'organisation cible."""
+    latest = InspectionMission.objects.filter(work_declaration=work_declaration).select_related(
+        'assigned_inspector',
+    ).order_by('-created_at').first()
+    if latest is None:
+        return None
+    answered = Inspection.objects.filter(
+        work_declaration=work_declaration, created_at__gt=latest.created_at,
+    ).exists()
+    return None if answered else latest
 
 
 def _find_open_reserve_for_lot(lot):
@@ -679,8 +704,19 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
             mission_reserve = (
                 open_reserve if open_reserve and open_reserve.created_at <= mission.created_at else None
             )
+            # Audit UI R1 (K05, D03) : résultat de l'avis rendu pour CETTE
+            # mission (la première inspection postérieure à son affectation)
+            # et réserves ouvertes / levées ; date d'affectation pour
+            # distinguer deux missions du même jalon.
+            answer = Inspection.objects.filter(
+                work_declaration_id=mission.work_declaration_id, inspector=inspector,
+                created_at__gt=mission.created_at,
+            ).order_by('created_at').first() if completed else None
+            outcome = _mission_outcome(answer) if answer else None
             rows.append({
                 'id': str(mission.id),
+                'assigned_at': mission.created_at.isoformat(),
+                'outcome': outcome,
                 'lot_name': lot.name,
                 'asset_name': lot.asset.name,
                 'program_name': lot.asset.program.name,
@@ -704,6 +740,21 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
         finally:
             set_rls_context(organization_id=caller_organization_id)
     return rows
+
+
+def _mission_outcome(inspection):
+    """Audit UI R1 (K05) — résultat d'un avis : conforme ou non, réserves
+    ouvertes par cet avis, décisions de levée ou de maintien."""
+    decisions = inspection.reserve_decisions or []
+    return {
+        'inspection_id': str(inspection.id),
+        'outcome': inspection.outcome,
+        'outcome_label': inspection.get_outcome_display(),
+        'recorded_at': inspection.created_at.isoformat(),
+        'reserves_opened': inspection.opened_reserves.count(),
+        'reserves_lifted': sum(1 for decision in decisions if decision.get('decision') == 'levee'),
+        'reserves_maintained': sum(1 for decision in decisions if decision.get('decision') == 'maintenue'),
+    }
 
 
 # ─── État de contrôle d'un jalon — ticket B-054 (CDC V3 §7.1) ───────────────

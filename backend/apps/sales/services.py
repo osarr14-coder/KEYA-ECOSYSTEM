@@ -654,6 +654,45 @@ def compute_payment_call_candidates(reservation):
     return template, candidates, None
 
 
+def payment_schedule(reservation):
+    """Audit UI R1 (C03, C04, C06) — échéancier FICTIF du contrat, tiré du
+    barème actif du Country Pack (valeurs de démonstration, non validées
+    juridiquement) : premier versement frais inclus (CDC §9.1, jamais déduits
+    deux fois), puis un palier par jalon, avec la condition réellement
+    appliquée par `compute_payment_call_candidates`. Aucune date : le barème
+    est indexé sur les jalons, pas sur un calendrier daté.
+
+    Renvoie `None` sans barème actif."""
+    template, steps = _tier_steps(reservation)
+    if template is None or not steps:
+        return None
+    price = reservation.price_amount
+    fee = _amount(settings.RESERVATION_FEE_AMOUNT)
+    rows, previous = [], Decimal('0')
+    for index, step in enumerate(steps):
+        cumulative = _amount(price) if index == len(steps) - 1 else _amount(price * step.cumulative_cap_percent / 100)
+        amount = cumulative - previous
+        previous = cumulative
+        if index == 0:
+            rows.append({
+                'code': step.code, 'label': 'Premier versement', 'amount': amount, 'fee_included': fee,
+                'cumulative_cap_percent': step.cumulative_cap_percent,
+                'condition': 'Frais de réservation inclus, puis complément après encaissement des frais.',
+            })
+            continue
+        rows.append({
+            'code': step.code, 'label': f'Palier « {step.label} »', 'amount': amount, 'fee_included': None,
+            'cumulative_cap_percent': step.cumulative_cap_percent,
+            'condition': f'Appelé après acceptation technique du jalon « {step.label} ».',
+        })
+    return {
+        'version': template.version,
+        'country_pack': reservation.organization.country_pack.code if reservation.organization.country_pack_id else '',
+        'first_payment_amount': rows[0]['amount'],
+        'rows': rows,
+    }
+
+
 def _team_reservation(reservation_id, *, lock=False):
     queryset = Reservation.objects.select_related('lot', 'organization', 'client')
     if lock:
@@ -1474,9 +1513,17 @@ def get_program_account(*, caller_organization_id, target_organization_id, progr
                     'blockers': milestone_disbursement_blockers(milestone),
                     'open_disbursement': open_by_milestone.get(milestone.id),
                 })
+        # Audit UI R1 (F03) : chaque montant du solde se décompose jusqu'à ses
+        # mouvements — ici les encaissements rapprochés qui forment « reçus ».
+        receipts = list(
+            CustomerReceipt.objects.filter(
+                organization_id=program.organization_id, status=FlowStatus.RECONCILED_SIM,
+                reservation__lot__asset__program=program,
+            ).select_related('reservation__lot', 'client').order_by('received_on', 'recorded_at'),
+        )
         return {
             'program': program, 'balance': account_balance(program),
-            'milestones': milestones, 'disbursements': disbursements,
+            'milestones': milestones, 'disbursements': disbursements, 'receipts': receipts,
         }
     finally:
         set_rls_context(organization_id=caller_organization_id)
@@ -1559,8 +1606,11 @@ def declare_payment(*, client, caller_organization_id, payment_call_id, client_r
 
 _NOTICE_RELATIONS = (
     'organization', 'reservation', 'reservation__lot', 'reservation__lot__asset__program', 'reservation__client',
-    'payment_call', 'client', 'processed_by', 'receipt',
+    'payment_call', 'client', 'processed_by', 'receipt', 'receipt__recorded_by',
 )
+# Audit UI R1 (F02) : affectations de l'encaissement, lues sous le contexte
+# RLS du lot (jamais depuis celui de Finance, qui les masquerait).
+_NOTICE_PREFETCH = ('receipt__allocations__payment_call',)
 
 
 def list_payment_notices(*, caller_organization_id, status=PaymentNoticeStatus.DECLARED):
@@ -1573,7 +1623,7 @@ def list_payment_notices(*, caller_organization_id, status=PaymentNoticeStatus.D
             set_rls_context(organization_id=organization_id)
             queryset = PaymentNotice.objects.filter(
                 demo_scope('reservation__lot__asset__program__'), organization_id=organization_id,
-            ).select_related(*_NOTICE_RELATIONS)
+            ).select_related(*_NOTICE_RELATIONS).prefetch_related(*_NOTICE_PREFETCH)
             if status:
                 queryset = queryset.filter(status=status)
             notices.extend(queryset)
@@ -1583,11 +1633,14 @@ def list_payment_notices(*, caller_organization_id, status=PaymentNoticeStatus.D
 
 
 def _load_notice(notice_id):
-    return PaymentNotice.objects.select_related(*_NOTICE_RELATIONS).get(id=notice_id)
+    notice = PaymentNotice.objects.select_related(*_NOTICE_RELATIONS).prefetch_related(*_NOTICE_PREFETCH).get(id=notice_id)
+    if notice.receipt_id:
+        list(notice.receipt.allocations.all())  # évalué sous le contexte RLS du lot
+    return notice
 
 
 def confirm_payment_notice(*, finance, caller_organization_id, target_organization_id, notice_id,
-                           bank_reference='', received_on=None):
+                           bank_reference='', received_on=None, amount=None):
     """Finance constate le virement sur le relevé (simulé) : encaissement
     créé à partir de l'avis, affecté à l'appel, rapproché — les transitions
     de réservation suivent automatiquement (B-051). L'ADV et le client sont
@@ -1601,12 +1654,22 @@ def confirm_payment_notice(*, finance, caller_organization_id, target_organizati
             return None
         if notice.status != PaymentNoticeStatus.DECLARED:
             raise PaymentNoticeError(f'Avis déjà traité ({notice.get_status_display().lower()}).')
-        reference = (bank_reference or '').strip() or notice.client_reference
+        # Audit UI R1 (F02, PO-2026-09-27-05) : la référence est celle du
+        # relevé bancaire simulé, jamais celle que le client a indiquée ; le
+        # signalement ne vaut pas preuve.
+        reference = (bank_reference or '').strip()
+        if not reference:
+            raise PaymentNoticeError('La référence bancaire simulée (relevé) est obligatoire.')
+        if reference == notice.client_reference.strip():
+            raise PaymentNoticeError(
+                'La référence bancaire simulée doit être celle du relevé, distincte de la référence indiquée par le client.'
+            )
+        received = notice.amount if amount is None else amount
         try:
             receipt, _created = record_receipt(
                 finance=finance, caller_organization_id=target_organization_id,
                 target_organization_id=target_organization_id, reservation_id=notice.reservation_id,
-                bank_reference=reference, amount=notice.amount, received_on=received_on or notice.paid_on,
+                bank_reference=reference, amount=received, received_on=received_on or notice.paid_on,
             )
             call = PaymentCall.objects.get(id=notice.payment_call_id)
             to_allocate = min(unallocated_amount(receipt), call.amount - allocated_amount(call))
@@ -1631,7 +1694,7 @@ def confirm_payment_notice(*, finance, caller_organization_id, target_organizati
         notice.save(update_fields=['status', 'processed_by', 'processed_at', 'receipt'])
         audit.record(
             organization_id=notice.organization_id, actor=finance, action='payment_notice.confirmed', obj=notice,
-            payload={'receipt_id': str(receipt.id), 'bank_reference': reference, 'amount': str(notice.amount)},
+            payload={'receipt_id': str(receipt.id), 'bank_reference': reference, 'amount': str(receipt.amount)},
         )
         notice = _load_notice(notice.id)
         notifications.payment_confirmed(

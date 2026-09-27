@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, BRAND_GRADIENT, Button, PageHeader, Pill, semanticColors, typography,
+  AlertBanner, ApiErrorBanner, BRAND_GRADIENT, Button, PageHeader, Pill, semanticColors, typography, SimulatedMark,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -19,7 +19,6 @@ import { useApiResource } from '../api/useApiResource';
  * montant en grand, bouton or) ; les paiements confirmés restent listés.
  */
 
-const SIMULATION_NOTICE = 'SIMULÉ — AUCUN FONDS RÉEL · DÉMONSTRATION — DONNÉES FICTIVES';
 
 function formatAmount(value: string, currency: string) {
   return `${Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${currency}`;
@@ -102,9 +101,7 @@ export function DisbursementsView() {
         title="Paiements reçus"
         subtitle="Versés par KEYIMMO après acceptation technique de chaque jalon. Confirmez leur réception."
       />
-      <p style={{ margin: '0 0 16px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: semanticColors.accent.text }}>
-        {SIMULATION_NOTICE}
-      </p>
+      <SimulatedMark detail="Décaissements" style={{ margin: '0 0 16px' }} />
 
       {state.status === 'loading' && <p>Chargement…</p>}
       {state.status === 'error' && (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, KeyFigure, PageHeader, Pill, Select, semanticColors,
+  ApiErrorBanner, Button, Card, KeyFigure, PageHeader, Pill, Select, semanticColors, formatServerDateTime,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -20,8 +20,9 @@ import { useApiResource } from '../api/useApiResource';
  * état en pastille, « Missionner » en bouton or.
  */
 
+// Audit UI R1 (F06) : format de date unique, fuseau indiqué.
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Africa/Abidjan' });
+  return formatServerDateTime(iso);
 }
 
 function ControlCard({

@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from apps.backoffice.permissions import IsAdminKeyimmo, IsAdminKeyimmoOrGestionnaireADV
 from apps.evidence.permissions import IsConstructeur
 from apps.programs import services as programs_services
+from apps.core.deferred import DeferredModuleEnabled
 
 from . import services
 from .models import Devis
@@ -34,7 +35,7 @@ class DevisCreateView(APIView):
     `apps.backoffice.views.CreateMissionView` (ticket 012).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def post(self, request):
         serializer = DevisCreateSerializer(data=request.data)
@@ -74,7 +75,7 @@ class DevisLockView(APIView):
     nécessaire pour la bascule RLS, ne peut pas être dérivé après coup.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def post(self, request, devis_id):
         target_organization_id = request.data.get('organization')
@@ -105,7 +106,7 @@ class DevisAdminListView(APIView):
     même conséquence assumée que `DevisCreateView`.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request, lot_id):
         target_organization_id = request.query_params.get('organization_id')
@@ -131,7 +132,7 @@ class MyCandidaturesListView(APIView):
     ticket 006).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsConstructeur]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsConstructeur]
 
     def get(self, request):
         devis_list = Devis.objects.filter(
@@ -149,7 +150,7 @@ class MyCandidaturesDetailView(APIView):
     que ce soit.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsConstructeur]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsConstructeur]
 
     def get(self, request, devis_id):
         devis = Devis.objects.filter(
@@ -178,7 +179,7 @@ class DevisAjustementView(APIView):
     de conception, point C).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def post(self, request, devis_id):
         serializer = DevisAjustementCreateSerializer(data=request.data)
@@ -230,7 +231,7 @@ class AdminLotSearchView(APIView):
     coût assumé au pire cas.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request):
         query = request.query_params.get('q', '').strip()
@@ -253,7 +254,7 @@ class AdminLotEligibleForLedgerSearchView(APIView):
     mécanisme de recherche que B-028 (`_search_lots_by_name_as_admin`).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request):
         query = request.query_params.get('q', '').strip()
@@ -274,7 +275,7 @@ class LotLedgerCreateView(APIView):
     pour cette ressource (immuable, voir la migration RLS dédiée).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def post(self, request):
         serializer = LotLedgerCreateSerializer(data=request.data)
@@ -315,7 +316,7 @@ class LotLedgerDetailView(APIView):
     `ProgramCostCurrentView`, jamais une 404 pour une absence légitime).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request, lot_id):
         target_organization_id = request.query_params.get('organization_id')
@@ -347,7 +348,7 @@ class LotLedgerMarginView(APIView):
     tant que le grand-livre lui-même n'existe pas.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request, lot_id):
         target_organization_id = request.query_params.get('organization_id')
@@ -374,7 +375,7 @@ class LotBcChargeListView(APIView):
     charge est un état normal, pas une erreur.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request, lot_id):
         target_organization_id = request.query_params.get('organization_id')

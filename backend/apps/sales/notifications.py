@@ -65,7 +65,8 @@ def _program(reservation):
 
 def reservation_requested(reservation, *, actor):
     label = (
-        f'Réservation à valider — {_program(reservation).name} / {reservation.lot.name} — '
+        # Audit UI R1 (J07) : le gestionnaire examine le dossier.
+        f'Dossier à examiner — {_program(reservation).name} / {reservation.lot.name} — '
         f'{_who(reservation.client)}'
     )
     for member in _sales_team(restore_user_id=actor.id):
@@ -92,7 +93,8 @@ def payment_call_issued(call):
 def payment_declared(notice, *, actor):
     reservation = notice.reservation
     label = (
-        f'Virement déclaré à confirmer — {_xof(notice.amount)}, réf. {notice.client_reference} — '
+        # Audit UI R1 (PO-2026-09-27-05) : un signalement, à rapprocher du relevé.
+        f'Virement signalé à traiter — {_xof(notice.amount)}, réf. client {notice.client_reference} — '
         f'{reservation.lot.name} ({_who(reservation.client)})'
     )
     for member in users_with_role(FINANCE_ROLE_CODE, restore_user_id=actor.id):
@@ -110,7 +112,7 @@ def payment_confirmed(notice, *, call_settled, actor):
     if call_settled:
         close_tasks(subject=call, source=PAYMENT_CALL_TO_PAY)
     label = (
-        f'Paiement reçu — {_call_label(call)} : {_xof(notice.amount)} — {reservation.lot.name} '
+        f'Encaissement enregistré et rapproché (simulé) — {_call_label(call)} : {_xof(notice.receipt.amount)} — {reservation.lot.name} '
         f'({_who(reservation.client)}) — réservation : {reservation.get_status_display()}'
     )
     recipients = _sales_team(restore_user_id=actor.id) + [reservation.client]
@@ -129,7 +131,7 @@ def payment_rejected(notice):
         subject=notice, organization_id=notice.organization_id, assignee=reservation.client,
         source=PAYMENT_NOTICE_REJECTED, program=_program(reservation), priority=TaskPriority.HIGH,
         label=(
-            f'Virement non reçu — {_call_label(notice.payment_call)} : {notice.rejection_reason}. '
-            'Vérifiez votre virement puis déclarez-le à nouveau.'
+            f'Virement introuvable au relevé (simulé) — {_call_label(notice.payment_call)} : {notice.rejection_reason}. '
+            'Vérifiez votre virement puis signalez-le à nouveau.'
         ),
     )

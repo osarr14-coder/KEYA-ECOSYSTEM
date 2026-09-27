@@ -322,9 +322,14 @@ class Allocation(models.Model):
 
 
 class PaymentNoticeStatus(models.TextChoices):
-    DECLARED = 'declared', 'Déclaré — en attente de confirmation'
-    CONFIRMED = 'confirmed', 'Confirmé par Finance'
-    REJECTED = 'rejected', 'Rejeté par Finance'
+    """Audit UI R1 (F01, PO-2026-09-27-05) : le signalement du client n'est
+    qu'un avis ; « confirmé » évoquait la confirmation bénéficiaire (CDC
+    §8.3). Traité, il renvoie à l'encaissement simulé, dont l'état fait foi
+    (« Rapproché (simulé) »)."""
+
+    DECLARED = 'declared', 'Signalé par le client — non encaissé'
+    CONFIRMED = 'confirmed', 'Traité — encaissement enregistré'
+    REJECTED = 'rejected', 'Introuvable au relevé (simulé)'
 
 
 class PaymentNotice(models.Model):

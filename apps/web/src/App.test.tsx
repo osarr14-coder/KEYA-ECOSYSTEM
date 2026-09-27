@@ -15,6 +15,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   // Ticket F-031 : l'onglet actif est désormais dérivé du pathname — jamais
   // laisser un test qui navigue (ci-dessous) contaminer le pathname d'un
   // test suivant dans ce même fichier (jsdom partage `window` par fichier).
@@ -293,6 +294,9 @@ describe(
       'ticket 027 : un second onglet "Devis / Appels d\'offres" bascule vers l\'écran devis, '
       + 'jamais affiché par défaut',
       async () => {
+        // Audit UI R1 (R04) : module différé, masqué par défaut ; ce test
+        // exerce son code avec le réglage activé.
+        vi.stubEnv('VITE_DEFERRED_MODULES_ENABLED', 'true');
         const getMe = vi.fn().mockResolvedValue({
           id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
           memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
@@ -335,6 +339,9 @@ describe(
     });
 
     it('charger directement /tarifs affiche l\'écran Tarifs actif, jamais « À faire » par défaut', async () => {
+      // Audit UI R1 (R04) : module différé, masqué par défaut ; ce test
+      // exerce son code avec le réglage activé.
+      vi.stubEnv('VITE_DEFERRED_MODULES_ENABLED', 'true');
       window.history.replaceState(null, '', '/tarifs');
       renderAuthenticated({ getMe: getMeAdmin() });
 
@@ -344,6 +351,9 @@ describe(
     });
 
     it('changer d\'écran via la barre latérale met à jour l\'URL (pushState), sans recharger la page (F-075)', async () => {
+      // Audit UI R1 (R04) : module différé, masqué par défaut ; ce test
+      // exerce son code avec le réglage activé.
+      vi.stubEnv('VITE_DEFERRED_MODULES_ENABLED', 'true');
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
@@ -358,8 +368,8 @@ describe(
       renderAuthenticated({ getMe: getMeAdmin() });
 
       await screen.findByTestId('app-shell');
-      fireEvent.click(screen.getByRole('link', { name: 'Paliers légaux' }));
-      await screen.findByRole('heading', { name: /paliers légaux/i });
+      fireEvent.click(screen.getByRole('link', { name: 'Paliers (Country Pack, démo)' }));
+      await screen.findByRole('heading', { name: /Country Pack.*non validé juridiquement/ });
 
       act(() => {
         window.history.replaceState(null, '', '/');
@@ -392,6 +402,9 @@ describe(
 
     // Ticket F-058 — pendant admin de ProgramRequestView.tsx (apps/home).
     it('changer d\'onglet vers Demandes de programme affiche ProgramRequestsView et met à jour l\'URL', async () => {
+      // Audit UI R1 (R04) : module différé, masqué par défaut ; ce test
+      // exerce son code avec le réglage activé.
+      vi.stubEnv('VITE_DEFERRED_MODULES_ENABLED', 'true');
       renderAuthenticated({ getMe: getMeAdv() });
 
       await screen.findByTestId('app-shell');
@@ -410,11 +423,21 @@ describe(
       const entries = Array.from(sidebar.querySelectorAll('li')).map((item) => item.textContent);
       expect(entries).toEqual([
         'À faire',
-        'Ventes', 'Dossiers clients', 'Virements déclarés', 'Lots — prix & statut',
-        'Finance', 'Comptes & décaissements',
+        // PO-2026-09-27-16 : comptes et virements réservés à Finance ;
+        // R04 : « Demandes de programme » masquée (module différé).
+        'Ventes', 'Dossiers clients', 'Lots — prix & statut',
         'Chantier', 'Contrôles à affecter',
-        'Programmes', 'Programmes', 'Demandes de programme',
+        'Programmes', 'Programmes',
       ]);
+    });
+
+    it('audit R04 : les modules différés réapparaissent seulement si le réglage est activé', async () => {
+      vi.stubEnv('VITE_DEFERRED_MODULES_ENABLED', 'true');
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      expect(screen.getByRole('link', { name: "Devis / Appels d'offres" })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Tarifs' })).toBeInTheDocument();
     });
 
     it('audit R02 : la barre latérale de l’administrateur ne contient aucun écran métier', async () => {
@@ -424,7 +447,8 @@ describe(
       const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
       const entries = Array.from(sidebar.querySelectorAll('li')).map((item) => item.textContent);
       expect(entries).toEqual([
-        'Administration', 'Utilisateurs', 'Journal', "Devis / Appels d'offres", 'Tarifs', 'Paliers légaux',
+        // R04 : Devis / Appels d'offres et Tarifs masqués ; J06 : libellé des paliers.
+        'Administration', 'Utilisateurs', 'Journal', 'Paliers (Country Pack, démo)',
       ]);
     });
   },
@@ -585,8 +609,10 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
     const labels = Array.from(sidebar.querySelectorAll('a')).map((link) => link.textContent);
     expect(labels).toEqual([
       // Audit UI R1 (R02) : l'affectation des contrôles passe au gestionnaire.
-      'À faire', 'Dossiers clients', 'Virements déclarés', 'Lots — prix & statut', 'Comptes & décaissements',
-      'Contrôles à affecter', 'Programmes', 'Demandes de programme',
+      // PO-2026-09-27-16 et R03 : comptes et virements à Finance ; R04 :
+      // « Demandes de programme » masquée.
+      'À faire', 'Dossiers clients', 'Lots — prix & statut',
+      'Contrôles à affecter', 'Programmes',
     ]);
     expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
   });
@@ -633,7 +659,7 @@ describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
     ],
   };
 
-  it('entre dans apps/web et ne voit que À faire, Dossiers clients, Virements déclarés et Comptes', async () => {
+  it('entre dans apps/web : À faire, virements, appels et encaissements (lecture seule), comptes — R03, PO-16', async () => {
     localStorage.setItem('keya_access_token', 'stored-finance-token');
     const getMyInboxTasks = vi.fn().mockResolvedValue([]);
     const api = createMockApiClient({
@@ -646,7 +672,8 @@ describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
     await screen.findByTestId('app-shell');
     const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
     const labels = Array.from(sidebar.querySelectorAll('a')).map((link) => link.textContent);
-    expect(labels).toEqual(['À faire', 'Dossiers clients', 'Virements déclarés', 'Comptes & décaissements']);
+    expect(labels).toEqual(['À faire', 'Virements déclarés', 'Appels et encaissements', 'Comptes & décaissements']);
+    expect(screen.queryByRole('link', { name: 'Dossiers clients' })).not.toBeInTheDocument();
     expect(getMyInboxTasks).toHaveBeenCalledWith({ status: 'pending' });
   });
 
@@ -662,7 +689,7 @@ describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
 
 describe('App — pages publiques (ticket F-079)', () => {
   const PROGRAM = {
-    id: 'program-1', name: 'Résidence Démonstration Abidjan', promoter: 'Promoteur Démonstration', locations: ['Cocody'],
+    id: 'program-1', name: 'Résidence Démonstration Abidjan', constructeur: 'Constructeur Démonstration', locations: ['Cocody'],
     currency: 'XOF', total_lots: 2, available_lots: 1, price_from: '30000000.00',
     lots: [{ id: 'lot-1', name: 'Lot A1', asset: 'Bâtiment A', surface: '82.00', price: '30000000.00' }],
     payment_schedule: {
@@ -752,7 +779,7 @@ describe('App — pages publiques (ticket F-079)', () => {
 describe('App — pages publiques : ordre des programmes (ticket F-079)', () => {
   it('les programmes avec des lots disponibles passent avant les programmes complets', async () => {
     const base = {
-      promoter: 'P', locations: [], currency: 'XOF', total_lots: 1, price_from: '10000000.00',
+      constructeur: 'C', locations: [], currency: 'XOF', total_lots: 1, price_from: '10000000.00',
       payment_schedule: { reservation_fee: '100000', steps: [] },
     };
     renderApp({

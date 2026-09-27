@@ -26,6 +26,7 @@ remplacée n'est jamais effacée : elle est marquée « REMPLACÉE PAR » avec l
 | PO-2026-09-27-13 | Rôle de KEYIMMO et partenaires | **KEYIMMO AFRIC lance, orchestre et gère chaque programme** ; il recrute les partenaires autour du projet. Le terme « promoteur » disparaît de la plateforme (un promoteur qui consulte KEYIMMO n'est pas un rôle) ; « constructeur » est conservé. Deux parcours partenaires distincts : candidature spontanée du partenaire (onboarding) et création de compte par KEYIMMO. Mise en œuvre à planifier (libellés, parcours sponsor, propriété des programmes par KEYIMMO — changement structurel soumis à ADR). | Product Owner | Modèle, textes, parcours partenaires. |
 | PO-2026-09-27-14 | Métiers partenaires et parcours | Partenaires recrutés : **constructeurs, bureaux de contrôle, artisans**. Déroulé validé : découverte → candidature → examen par KEYIMMO → activation → annuaire → affectation à un programme lancé par KEYIMMO. Plans architecturaux produits en interne ou esquisses proposées par une IA, présentés comme **indicatifs** (les plans de permis relèvent d'un architecte habilité — règle locale à vérifier). | Product Owner | Lot « Écosystème partenaires ». |
 | PO-2026-09-27-15 | Environnements | Principe accepté : trois environnements strictement séparés, **DÉMO** (données fictives), **PILOTE** (partenaires réels, aucun flux financier), **PRODUCTION** (Projet 1). Voir `docs/adr/0004-trois-environnements-demo-pilote-production.md` ; modalités et conditions d'ouverture à valider. | Product Owner | Architecture, déploiement, parcours partenaires. |
+| PO-2026-09-27-16 | Comptes & décaissements | **Réservé à Finance** (CDC §4, séparation des fonctions) : le gestionnaire (ADV) ne voit plus les comptes des programmes. Appliqué côté serveur (`IsFinance` sur les routes des comptes) et dans le menu. Précise PO-2026-09-27-10. | Product Owner | Back-office, API (permissions). |
 
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
@@ -33,7 +34,8 @@ remplacée n'est jamais effacée : elle est marquée « REMPLACÉE PAR » avec l
 |---|---|
 | Candidature partenaire (PO-13) | Démontrée en DÉMO avec données fictives marquées ; candidatures réelles en PILOTE (ADR 0004). À confirmer. |
 | Examen des candidatures | Gestionnaire (proposé), administrateur à l'activation du compte, ou rôle « Partenariats » dédié. |
-| Planification | Libellés et parcours sponsor à l'étape 2 ; lot « Écosystème partenaires » (propriété des programmes, ADR, onboarding) ensuite. |
+| Planification | Libellés traités à l'étape 2 (« promoteur » retiré, « constructeur » conservé). Parcours sponsor « Programme sur mesure » masqué avec les modules différés (R04, réglage `KEYA_DEFERRED_MODULES_ENABLED`) en attendant le lot « Écosystème partenaires » (propriété des programmes, ADR, onboarding). |
+| Encaissement sans signalement | Depuis R03, Finance enregistre les encaissements à partir des virements signalés par les clients ; la vue par dossier est en lecture seule. Un encaissement reçu sans signalement reste possible par l'API mais plus depuis l'écran. À confirmer. |
 
 ## Faits établis à l'étape 0 de l'audit (27 septembre 2026)
 

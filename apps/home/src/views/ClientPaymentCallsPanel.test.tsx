@@ -52,8 +52,8 @@ describe('ClientPaymentCallsPanel — appels de fonds du client (ticket F-068)',
 
     const rows = await screen.findAllByTestId('payment-call');
     expect(api.getMyPaymentCalls).toHaveBeenCalledWith('reservation-1');
-    expect(rows[0]).toHaveTextContent(/Frais de réservation : 100\s000 XOF · Couvert/);
-    expect(rows[1]).toHaveTextContent(/Premier versement : 2\s900\s000 XOF · Partiellement couvert \(1\s000\s000 XOF reçus\)/);
+    expect(rows[0]).toHaveTextContent(/Frais de réservation : 100\s000 XOF · Encaissé et rapproché \(simulé\)/);
+    expect(rows[1]).toHaveTextContent(/Premier versement : 2\s900\s000 XOF · Partiellement encaissé \(simulé\) \(1\s000\s000 XOF encaissés\)/);
   });
 
   it("n'affiche rien tant qu'aucun appel n'est émis", async () => {
@@ -93,11 +93,11 @@ describe('ClientPaymentCallsPanel — paiement par le client (ticket F-071)', ()
     expect(await screen.findByTestId('payment-reference')).toHaveTextContent('KEYA-1A2B3C4D');
     fireEvent.change(screen.getByLabelText('Référence de mon virement'), { target: { value: 'VIR-001' } });
     fireEvent.change(screen.getByLabelText('Date du virement'), { target: { value: '2026-09-28' } });
-    fireEvent.click(screen.getByRole('button', { name: "J'ai effectué le virement" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Signaler mon virement' }));
 
     await waitFor(() => expect(declarePayment).toHaveBeenCalledWith('call-1', { client_reference: 'VIR-001', paid_on: '2026-09-28' }));
-    expect(await screen.findByTestId('payment-notice')).toHaveTextContent('en attente de confirmation par KEYIMMO');
-    expect(screen.queryByRole('button', { name: "J'ai effectué le virement" })).not.toBeInTheDocument();
+    expect(await screen.findByTestId('payment-notice')).toHaveTextContent('Ce signalement ne vaut pas encaissement'); // PO-2026-09-27-05
+    expect(screen.queryByRole('button', { name: 'Signaler mon virement' })).not.toBeInTheDocument();
   });
 
   it('un virement rejeté affiche le motif et permet de déclarer à nouveau', async () => {
@@ -113,6 +113,6 @@ describe('ClientPaymentCallsPanel — paiement par le client (ticket F-071)', ()
     render(withApiClient(api, <ClientPaymentCallsPanel reservationId="reservation-1" />));
 
     expect(await screen.findByTestId('payment-notice')).toHaveTextContent('Virement introuvable');
-    expect(screen.getByRole('button', { name: "J'ai effectué le virement" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Signaler mon virement' })).toBeInTheDocument();
   });
 });

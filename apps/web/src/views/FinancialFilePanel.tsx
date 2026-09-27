@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Input, Pill, Select, semanticColors,
+  ApiErrorBanner, Button, Input, Pill, Select, semanticColors, SimulatedMark,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -20,7 +20,6 @@ import { useApiResource } from '../api/useApiResource';
  * déclenche. Tous les montants viennent du serveur, jamais recalculés.
  */
 
-export const SIMULATION_NOTICE = 'SIMULÉ — AUCUN FONDS RÉEL · DÉMONSTRATION — DONNÉES FICTIVES';
 
 const ACTIVE_STATUSES: AdminReservation['status'][] = ['held', 'reserved', 'committed'];
 
@@ -246,12 +245,7 @@ export function FinancialFilePanel({
 
   return (
     <section aria-label={`Dossier financier — ${reservation.lot.name}`}>
-      <p style={{
-        margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: semanticColors.accent.text,
-      }}
-      >
-        {SIMULATION_NOTICE}
-      </p>
+      <SimulatedMark detail="Encaissements et rapprochements" />
 
       <h4 style={{ margin: '16px 0 4px' }}>Appels de fonds</h4>
       {file.calls.length === 0 && <p style={{ margin: 0 }}>Aucun appel émis.</p>}

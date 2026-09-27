@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.backoffice.permissions import IsAdminKeyimmo
+from apps.core.deferred import DeferredModuleEnabled
 
 from . import services
 from .serializers import (
@@ -24,7 +25,7 @@ class PricingConfigCreateView(APIView):
     `apps/pricing/tests.py::TestPricingConfigNoMutationEndpointExists`).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def post(self, request):
         serializer = PricingConfigCreateSerializer(data=request.data)
@@ -57,7 +58,7 @@ class PricingConfigCurrentView(APIView):
     enregistrement par canal, `None` si aucun n'existe encore).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request):
         country_pack_id = request.query_params.get('country_pack_id')
@@ -78,7 +79,7 @@ class PricingConfigHistoryView(APIView):
     taux » d'un changement se lit en comparant deux entrées consécutives.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsAdminKeyimmo]
 
     def get(self, request):
         country_pack_id = request.query_params.get('country_pack_id')

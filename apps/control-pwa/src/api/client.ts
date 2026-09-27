@@ -200,6 +200,11 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
       id: string; lot_name: string; asset_name: string; program_name: string; milestone_label: string;
       organization_id: string; work_declaration_id: string; completed: boolean;
       reserve_id: string | null; reserve_latest_event_id: string | null; follow_up?: boolean;
+      assigned_at?: string;
+      outcome?: {
+        outcome: 'conforme' | 'avec_reserve'; outcome_label: string; recorded_at: string;
+        reserves_opened: number; reserves_lifted: number; reserves_maintained: number;
+      } | null;
     }>;
     return data.map((row) => ({
       id: row.id,
@@ -213,6 +218,15 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
       reserveId: row.reserve_id,
       reserveLatestEventId: row.reserve_latest_event_id,
       followUp: row.follow_up ?? false,
+      assignedAt: row.assigned_at,
+      outcome: row.outcome ? {
+        outcome: row.outcome.outcome,
+        outcomeLabel: row.outcome.outcome_label,
+        recordedAt: row.outcome.recorded_at,
+        reservesOpened: row.outcome.reserves_opened,
+        reservesLifted: row.outcome.reserves_lifted,
+        reservesMaintained: row.outcome.reserves_maintained,
+      } : null,
     }));
   }
 

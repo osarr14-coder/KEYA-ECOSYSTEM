@@ -84,6 +84,20 @@ export interface Mission {
    * jalon (recontrôle). Reste vrai une fois la réserve levée, contrairement à
    * `reserveId`. Optionnel : absent d'un cache écrit avant ce ticket. */
   followUp?: boolean;
+  /** Audit UI R1 (D03) : date d'affectation, pour distinguer deux missions
+   * d'un même jalon. Optionnel : absent d'un cache plus ancien. */
+  assignedAt?: string;
+  /** Audit UI R1 (K05) : résultat de l'avis rendu pour cette mission. */
+  outcome?: MissionOutcome | null;
+}
+
+export interface MissionOutcome {
+  outcome: 'conforme' | 'avec_reserve';
+  outcomeLabel: string;
+  recordedAt: string;
+  reservesOpened: number;
+  reservesLifted: number;
+  reservesMaintained: number;
 }
 
 /**

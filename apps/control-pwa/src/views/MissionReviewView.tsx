@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 
 import {
-  AlertBanner, Button, Icon, Pill, semanticColors,
+  AlertBanner, Button, Icon, Pill, semanticColors, formatServerDateTime,
 } from '@keya/design-system';
 
 import type {
@@ -23,10 +23,10 @@ import type {
  * reflète seulement pour guider la saisie.
  */
 
-const DATE_FORMAT: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Abidjan' };
 
+// Audit UI R1 (F06) : format de date unique, fuseau indiqué.
 function formatServerDate(value: string) {
-  return `${new Date(value).toLocaleString('fr-FR', DATE_FORMAT)} (GMT, Abidjan)`;
+  return formatServerDateTime(value);
 }
 
 const sectionStyle = {

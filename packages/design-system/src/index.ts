@@ -90,4 +90,9 @@ export {
 } from './copy/demoCopy';
 
 export { DemoBanner, fetchDemoInstance, resetDemoInstanceCache } from './components/DemoBanner/DemoBanner';
+export { SimulatedMark } from './components/SimulatedMark/SimulatedMark';
+export {
+  DISPLAY_TIME_ZONE, TIME_ZONE_SUFFIX, formatCalendarDate, formatServerDateTime,
+} from './format/dates';
+export type { SimulatedMarkProps } from './components/SimulatedMark/SimulatedMark';
 export type { DemoBannerProps, DemoInstanceInfo } from './components/DemoBanner/DemoBanner';

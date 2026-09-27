@@ -13,6 +13,9 @@ from .tests import _accept_milestone, _age_hold, _published_lot, _register, _res
 from .views import PublicOfferView, PublicWorksitesView
 
 
+# PO-2026-09-27-13 : l'offre publique nomme le constructeur (champ « constructeur », plus « promoter »).
+
+
 def lot_price(promoter, lot):
     from apps.programs.models import Lot
     set_rls_context(organization_id=promoter.id)
@@ -36,7 +39,7 @@ class TestPublicOffer:
         _admin_b, _promoter_b, unpriced = _published_lot(price=None, name='Lot sans prix')
         call_command('seed_demo_payment_tiers', admin_email=_register('admin_keyimmo')[1].email)
 
-        entries = [entry for entry in _anonymous().get(reverse('public-offer')).data if entry['promoter'] == promoter.name]
+        entries = [entry for entry in _anonymous().get(reverse('public-offer')).data if entry['constructeur'] == promoter.name]
 
         assert len(entries) == 1
         entry = entries[0]
@@ -64,7 +67,7 @@ class TestPublicOffer:
         assert lot['id'] not in payload
         assert client_user.email not in payload
         # Le programme reste affiché, « complet » (0 lot disponible sur 1).
-        entry = next(entry for entry in data if entry['promoter'] == promoter.name)
+        entry = next(entry for entry in data if entry['constructeur'] == promoter.name)
         assert entry['available_lots'] == 0
         assert entry['total_lots'] == 1
         assert entry['lots'] == []

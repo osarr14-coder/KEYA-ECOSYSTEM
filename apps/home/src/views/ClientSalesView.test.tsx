@@ -53,7 +53,7 @@ describe('formatage (ticket F-066)', () => {
   });
 
   it('date avec son fuseau explicite (CDC §5)', () => {
-    expect(formatDateTime('2026-09-28T14:30:00Z')).toBe("28 septembre 2026 à 14:30 (heure d'Abidjan, GMT)");
+    expect(formatDateTime('2026-09-28T14:30:00Z')).toBe('28 sept. 2026, 14:30 (GMT, Abidjan)'); // Audit UI R1 (F06)
   });
 });
 
@@ -97,9 +97,9 @@ describe('ClientSalesView — catalogue et réservation (ticket F-066)', () => {
     renderView({ getMyReservations: vi.fn().mockResolvedValue([reservation()]) });
 
     const row = await screen.findByTestId('reservation');
-    expect(row).toHaveTextContent("jusqu'au 28 septembre 2026 à 14:30 (heure d'Abidjan, GMT)");
+    expect(row).toHaveTextContent("jusqu'au 28 sept. 2026, 14:30 (GMT, Abidjan)");
     // Ticket F-071 — tant que l'ADV n'a pas validé, le client sait qu'il attend.
-    expect(row).toHaveTextContent('en attente de validation par votre conseiller KEYIMMO');
+    expect(row).toHaveTextContent('Votre conseiller examine votre dossier'); // Audit UI R1 (J07)
   });
 
   it('ticket F-071 — une réservation validée invite à régler les frais puis à déclarer le virement', async () => {
@@ -108,7 +108,7 @@ describe('ClientSalesView — catalogue et réservation (ticket F-066)', () => {
     });
 
     const row = await screen.findByTestId('reservation');
-    expect(row).toHaveTextContent('Réservation validée par KEYIMMO. Réglez les frais de réservation');
+    expect(row).toHaveTextContent('Réglez les frais de réservation, puis signalez votre virement'); // J07, PO-05
   });
 
   it('une réservation expirée explique la libération du bien, sans bouton d\'annulation', async () => {

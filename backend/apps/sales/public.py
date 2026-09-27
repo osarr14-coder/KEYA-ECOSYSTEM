@@ -68,7 +68,8 @@ def public_offer():
                     entry = programs[program.id] = {
                         'id': str(program.id),
                         'name': program.name,
-                        'promoter': organization.name,
+                        # PO-2026-09-27-13 : constructeur affecté, jamais « promoteur ».
+                        'constructeur': organization.name,
                         'locations': [],
                         'currency': DEFAULT_CURRENCY,
                         'lots': [],

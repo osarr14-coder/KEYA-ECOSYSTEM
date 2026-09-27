@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, semanticColors,
+  ApiErrorBanner, Button, semanticColors, SimulatedMark, formatServerDateTime, DEMO_MARKING,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -18,7 +18,6 @@ import { useApiResource } from '../api/useApiResource';
  * passe par une nouvelle version, pré-remplie avec la précédente.
  */
 
-const SIMULATION_NOTICE = 'SIMULÉ — SANS VALEUR OPÉRATIONNELLE · DÉMONSTRATION — DONNÉES FICTIVES';
 
 const ACTIVE_RESERVATION_STATUSES: AdminReservation['status'][] = ['held', 'reserved', 'committed'];
 
@@ -32,8 +31,9 @@ const textareaStyle = {
   marginTop: '4px',
 } as const;
 
+// Audit UI R1 (F06) : format de date unique, fuseau indiqué.
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Africa/Abidjan' });
+  return formatServerDateTime(iso);
 }
 
 function ContentForm({
@@ -107,7 +107,7 @@ function VersionBlock({
         border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px', marginTop: '8px',
       }}
     >
-      <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em' }}>{SIMULATION_NOTICE}</p>
+      <SimulatedMark detail={`Signature du contrat · ${DEMO_MARKING}`} />
       <p style={{ margin: '6px 0' }}>
         <strong>Version {contract.version}</strong>
         {' · '}

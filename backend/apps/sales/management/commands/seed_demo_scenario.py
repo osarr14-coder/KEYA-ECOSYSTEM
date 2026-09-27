@@ -51,7 +51,10 @@ MILESTONE_TEMPLATE_VERSION = 1
 MILESTONE_STEPS = [('fondations', 'Fondations'), ('elevation', 'Élévation')]
 
 KEYIMMO_ORG = 'KEYIMMO AFRIC (démo)'
-PROMOTER_ORG = 'Promoteur-constructeur Démonstration Abidjan'
+# PO-2026-09-27-13 : le terme « promoteur » disparaît de la plateforme ;
+# KEYIMMO AFRIC lance le programme, le partenaire affecté est un constructeur.
+PROMOTER_ORG = 'Constructeur Démonstration Abidjan'
+LEGACY_PROMOTER_ORG_NAMES = ('Promoteur-constructeur Démonstration Abidjan',)
 CONTROL_ORG = 'Bureau de contrôle Démonstration'
 PROGRAM_NAME = 'Résidence Démonstration Abidjan'
 
@@ -89,6 +92,10 @@ class Command(BaseCommand):
         self.stdout.write(f'Jeu initial {DATASET_VERSION} (Country Pack {COUNTRY_CODE}).')
 
         with transaction.atomic():
+            # Base créée avant PO-2026-09-27-13 : l'organisation est renommée,
+            # jamais dupliquée.
+            if not Organization.objects.filter(name=PROMOTER_ORG).exists():
+                Organization.objects.filter(name__in=LEGACY_PROMOTER_ORG_NAMES).update(name=PROMOTER_ORG)
             organizations = {
                 name: Organization.objects.get_or_create(name=name, defaults={'country_pack': country_pack})[0]
                 for name in (KEYIMMO_ORG, PROMOTER_ORG, CONTROL_ORG)

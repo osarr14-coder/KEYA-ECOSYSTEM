@@ -1,9 +1,11 @@
 /**
  * Formats d'affichage partagés par le parcours client (F-066, F-074).
- * CDC V3 §5 : « l'interface indique son fuseau ». Scénario en Côte
- * d'Ivoire : heure d'Abidjan (GMT, sans heure d'été).
+ * Audit UI R1 (F06) : un seul format de date pour toutes les apps, fuseau
+ * indiqué — délégué au design system.
  */
-export const DISPLAY_TIME_ZONE = 'Africa/Abidjan';
+import { DISPLAY_TIME_ZONE, formatCalendarDate, formatServerDateTime } from '@keya/design-system';
+
+export { DISPLAY_TIME_ZONE };
 
 export function formatAmount(value: string, currency: string) {
   const amount = Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
@@ -11,12 +13,9 @@ export function formatAmount(value: string, currency: string) {
 }
 
 export function formatDateTime(iso: string) {
-  const formatted = new Date(iso).toLocaleString('fr-FR', {
-    dateStyle: 'long', timeStyle: 'short', timeZone: DISPLAY_TIME_ZONE,
-  });
-  return `${formatted} (heure d'Abidjan, GMT)`;
+  return formatServerDateTime(iso);
 }
 
 export function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: DISPLAY_TIME_ZONE });
+  return formatCalendarDate(iso);
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  AlertBanner, Button, Icon, Pill, semanticColors,
+  AlertBanner, Button, Icon, Pill, semanticColors, formatServerDateTime,
 } from '@keya/design-system';
 
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
@@ -69,8 +69,26 @@ function MissionSummary({ mission }: { mission: Mission }) {
         <strong style={{ fontSize: '16px' }}>{mission.lotName}</strong> — {mission.assetName}
       </div>
       <div>{mission.programName} · {mission.milestoneLabel}</div>
+      {/* Audit UI R1 (D03) : identifiant et date d'affectation — deux
+          missions d'un même jalon ne sont jamais indiscernables. */}
+      <div data-testid="mission-identity" style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>
+        {`Mission #${mission.id.slice(0, 8)}${mission.assignedAt ? ` · affectée le ${formatServerDateTime(mission.assignedAt)}` : ''}`}
+      </div>
     </>
   );
+}
+
+/** Audit UI R1 (K05) — résultat de l'avis rendu : conforme ou non, et
+ * réserves ouvertes, levées ou maintenues par cet avis. */
+export function outcomeSummary(outcome: NonNullable<Mission['outcome']>): string {
+  const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? 's' : ''}`;
+  const parts = [outcome.outcome === 'conforme' ? 'Conforme' : 'Non conforme'];
+  if (outcome.reservesOpened) parts.push(`${plural(outcome.reservesOpened, 'réserve')} ouverte${outcome.reservesOpened > 1 ? 's' : ''}`);
+  if (outcome.reservesLifted) parts.push(`${plural(outcome.reservesLifted, 'réserve')} levée${outcome.reservesLifted > 1 ? 's' : ''}`);
+  if (outcome.reservesMaintained) {
+    parts.push(`${plural(outcome.reservesMaintained, 'réserve')} maintenue${outcome.reservesMaintained > 1 ? 's' : ''}`);
+  }
+  return parts.join(' · ');
 }
 
 type LoadState = 'loading' | 'error' | 'ready';
@@ -240,8 +258,15 @@ export function MissionsListView({ onSelectMission, loadMissions }: MissionsList
                 <MissionSummary mission={mission} />
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   <MissionTypeIndicator mission={mission} />
-                  <Pill tone="success">Avis rendu</Pill>
+                  {mission.outcome ? (
+                    <Pill tone={mission.outcome.outcome === 'conforme' ? 'success' : 'alert'} data-testid="mission-outcome">
+                      {`Avis rendu : ${outcomeSummary(mission.outcome)}`}
+                    </Pill>
+                  ) : <Pill tone="success">Avis rendu</Pill>}
                 </div>
+                {mission.outcome && (
+                  <div style={{ fontSize: '13px' }}>{`Avis enregistré le ${formatServerDateTime(mission.outcome.recordedAt)}`}</div>
+                )}
               </li>
             ))}
           </ul>

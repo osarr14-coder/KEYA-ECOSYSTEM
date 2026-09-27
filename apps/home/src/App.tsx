@@ -12,6 +12,7 @@ import { MyActionsView } from './views/MyActionsView';
 import { OverviewView } from './views/OverviewView';
 import { ClientSalesView } from './views/ClientSalesView';
 import { ProgramRequestView } from './views/ProgramRequestView';
+import { deferredModulesEnabled } from './config';
 
 // Réutilise AppShell tel quel (ticket 007) — aucune redéfinition. Le module
 // professionnel FINANCE reste masqué tant que `userRoles` (dérivé de `/me`,
@@ -167,7 +168,7 @@ export function App() {
 
   const lots = lotsState.status === 'success' ? lotsState.data : [];
   const currentLotId = selectedLotId ?? lots[0]?.id ?? null;
-  const isSponsor = userRoles.includes('sponsor');
+  const isSponsor = userRoles.includes('sponsor') && deferredModulesEnabled();
   const isClient = userRoles.includes('client');
   const lotsReady = meState.status === 'success' && lotsState.status === 'success';
 

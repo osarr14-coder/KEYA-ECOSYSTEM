@@ -1,12 +1,13 @@
 import { type FormEvent, type ReactNode, useState } from 'react';
 
 import {
-  Button, Icon, Input, Pill, type PillTone, semanticColors,
+  Button, Input, Pill, type PillTone, semanticColors, SimulatedMark,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
 import type { ClientPaymentCall } from '../api/types';
+import { formatDate } from '../format';
 
 /**
  * Ticket F-068 — appels de fonds du client (backend B-050/B-051, CDC V3
@@ -18,6 +19,11 @@ import type { ClientPaymentCall } from '../api/types';
  * virement ». Sa déclaration n'est pas une preuve : l'appel n'est « couvert »
  * qu'une fois le virement confirmé par Finance (KEYIMMO).
  *
+ * Audit UI R1 (PO-2026-09-27-05, C07) : la déclaration du client est un
+ * simple SIGNALEMENT ; seul l'encaissement simulé enregistré et rapproché
+ * par Finance fait foi. Libellés : « Virement signalé — non encaissé »,
+ * « Encaissé et rapproché (simulé) ».
+ *
  * Ticket F-074 (direction « Confiance premium ») — composants
  * PRÉSENTATIONNELS : les appels sont chargés une seule fois par le parcours
  * d'acquisition (`AcquisitionJourney`), qui en dérive aussi les étapes et la
@@ -25,10 +31,12 @@ import type { ClientPaymentCall } from '../api/types';
  */
 
 export const SETTLEMENT_LABELS: Record<NonNullable<ClientPaymentCall['settlement']>, string> = {
-  to_pay: 'À payer',
-  partial: 'Partiellement couvert',
-  settled: 'Couvert',
+  to_pay: 'À régler',
+  partial: 'Partiellement encaissé (simulé)',
+  settled: 'Encaissé et rapproché (simulé)',
 };
+
+export const SIGNALLED_LABEL = 'Virement signalé — non encaissé';
 
 export function settlementTone(call: ClientPaymentCall): PillTone {
   if (call.settlement === 'settled') return 'success';
@@ -38,7 +46,7 @@ export function settlementTone(call: ClientPaymentCall): PillTone {
 }
 
 export function settlementText(call: ClientPaymentCall) {
-  if (call.settlement !== 'settled' && call.notice?.status === 'declared') return 'En vérification';
+  if (call.settlement !== 'settled' && call.notice?.status === 'declared') return SIGNALLED_LABEL;
   return call.settlement ? SETTLEMENT_LABELS[call.settlement] : '—';
 }
 
@@ -86,7 +94,7 @@ function DeclareForm({ call, onDeclared }: { call: ClientPaymentCall; onDeclared
       await api.declarePayment(call.id, { client_reference: reference.trim(), paid_on: paidOn });
       onDeclared();
     } catch (caught) {
-      setError(errorDetail(caught, 'La déclaration a échoué. Réessayez.'));
+      setError(errorDetail(caught, 'Le signalement a échoué. Réessayez.'));
       setSubmitting(false);
     }
   }
@@ -94,7 +102,7 @@ function DeclareForm({ call, onDeclared }: { call: ClientPaymentCall; onDeclared
   return (
     <form
       onSubmit={(event) => { void handleSubmit(event); }}
-      aria-label={`Déclarer mon virement — ${call.kind_label}`}
+      aria-label={`Signaler mon virement — ${call.kind_label}`}
       style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}
     >
       <label style={{ ...fieldLabelStyle, flex: '1 1 200px' }}>
@@ -118,7 +126,7 @@ function DeclareForm({ call, onDeclared }: { call: ClientPaymentCall; onDeclared
         />
       </label>
       <Button type="submit" variant="accent" disabled={submitting || reference.trim() === ''}>
-        {submitting ? 'Envoi…' : "J'ai effectué le virement"}
+        {submitting ? 'Envoi…' : 'Signaler mon virement'}
       </Button>
       {error && <p role="alert" style={{ width: '100%', margin: 0 }}>{error}</p>}
     </form>
@@ -155,27 +163,26 @@ export function CallRow({ call, onChanged }: { call: ClientPaymentCall; onChange
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         <strong>{callLabel(call)}</strong>
         <span>{` : ${formatCallAmount(call.amount, call.currency)} · `}</span>
-        <Pill tone={settlementTone(call)} data-testid="payment-call-settlement">
-          {call.settlement ? SETTLEMENT_LABELS[call.settlement] : '—'}
-        </Pill>
-        {call.settlement === 'partial' && <span>{` (${formatCallAmount(call.settled_amount, call.currency)} reçus)`}</span>}
+        <Pill tone={settlementTone(call)} data-testid="payment-call-settlement">{settlementText(call)}</Pill>
+        {call.settlement === 'partial' && <span>{` (${formatCallAmount(call.settled_amount, call.currency)} encaissés)`}</span>}
       </div>
 
       {awaitingConfirmation && notice && (
         <p style={{ margin: 0 }} data-testid="payment-notice">
-          {`Virement déclaré le ${notice.paid_on} (réf. ${notice.client_reference}) — en attente de confirmation par KEYIMMO.`}
+          {`Virement signalé le ${formatDate(notice.paid_on)} (réf. ${notice.client_reference}). `
+            + 'Ce signalement ne vaut pas encaissement : Finance l’enregistre quand le virement figure au relevé (simulé).'}
         </p>
       )}
       {notice?.status === 'rejected' && !settled && (
         <p role="status" style={{ margin: 0, color: semanticColors.danger.text }} data-testid="payment-notice">
-          {`Virement non reçu par KEYIMMO : ${notice.rejection_reason}. Vérifiez votre virement puis déclarez-le à nouveau.`}
+          {`Virement introuvable au relevé (simulé) : ${notice.rejection_reason}. Vérifiez votre virement puis signalez-le à nouveau.`}
         </p>
       )}
 
       {canDeclare(call) && call.payment_instructions && (
         <>
           <dl
-            aria-label="Virement à effectuer (simulation — aucun fonds réel)"
+            aria-label="Virement à effectuer (simulé)"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -202,14 +209,9 @@ export function CallRow({ call, onChanged }: { call: ClientPaymentCall; onChange
             </InstructionField>
           </dl>
           <DeclareForm call={call} onDeclared={onChanged} />
-          <p
-            style={{
-              margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: semanticColors.neutral.textMuted,
-            }}
-          >
-            <Icon name="shield-check" size={18} color={semanticColors.progress.fill} />
-            Simulation — aucun fonds réel. Votre déclaration est vérifiée par KEYIMMO sur le relevé bancaire avant d&apos;être
-            comptabilisée.
+          <SimulatedMark detail="Virement" />
+          <p style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
+            Votre signalement est un simple avis : seul l’encaissement enregistré et rapproché par Finance fait foi.
           </p>
         </>
       )}

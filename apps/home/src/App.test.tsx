@@ -386,7 +386,23 @@ describe('App — sponsor sans bien (ticket F-057, programme sur mesure)', () =>
     ],
   };
 
+  // Audit UI R1 (R04, PO-2026-09-27-13) : module différé, masqué par défaut ;
+  // ces tests exercent son code avec le réglage activé.
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('audit R04 : par défaut, aucun écran « Programme sur mesure », même pour un sponsor', async () => {
+    renderApp({
+      getMe: async () => SPONSOR_ME,
+      getMyProgramRequests: async () => [],
+    });
+
+    await screen.findByTestId('app-shell');
+    expect(screen.queryByRole('link', { name: 'Programme sur mesure' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Soumettre une demande de programme' })).not.toBeInTheDocument();
+  });
+
   it("un sponsor sans bien voit directement l'écran de demande, jamais le message générique", async () => {
+    vi.stubEnv('VITE_DEFERRED_MODULES_ENABLED', 'true');
     renderApp({
       getMe: async () => SPONSOR_ME,
       getMyLots: async () => [],
@@ -414,6 +430,7 @@ describe('App — sponsor sans bien (ticket F-057, programme sur mesure)', () =>
   });
 
   it('un sponsor qui possède déjà un bien voit un onglet supplémentaire « Programme sur mesure »', async () => {
+    vi.stubEnv('VITE_DEFERRED_MODULES_ENABLED', 'true');
     renderApp({
       getMe: async () => SPONSOR_ME,
       getMyProgramRequests: async () => [],

@@ -105,7 +105,7 @@ function CatalogLotCard({ lot, onReserved }: { lot: CatalogLot; onReserved: () =
         <span style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', fontWeight: 600, color: semanticColors.neutral.heading }}>
           {formatAmount(lot.sale_price, lot.currency)}
         </span>
-        <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>Programme porté par {lot.organization.name}</span>
+        <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{`Programme lancé par KEYIMMO AFRIC · constructeur : ${lot.organization.name}`}</span>
         <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
           <Button type="button" onClick={() => { void reserve(); }} disabled={submitting} style={{ width: '100%' }}>
             {submitting ? 'Réservation…' : 'Réserver ce bien'}
@@ -138,7 +138,7 @@ export function ClientSalesView() {
         title="Mon acquisition"
         subtitle={active.length > 0
           ? 'Suivez chaque étape de votre achat : une seule action vous est demandée à la fois.'
-          : 'Choisissez un bien disponible : il est bloqué pour vous pendant la validation de votre dossier.'}
+          : 'Choisissez un bien disponible : il est bloqué pour vous pendant l’examen de votre dossier.'}
       />
 
       {reservationsState.status === 'loading' && <p>Chargement…</p>}

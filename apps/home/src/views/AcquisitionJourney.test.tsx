@@ -57,30 +57,62 @@ function contract(overrides: Partial<ContractVersion> = {}): ContractVersion {
 
 const states = (steps: ReturnType<typeof acquisitionSteps>) => steps.map((step) => step.state);
 
-describe('acquisitionSteps — les 6 étapes dérivées des états serveur (ticket F-074)', () => {
-  it('réservation bloquée non validée : étape 2 (validation KEYIMMO) en cours', () => {
-    expect(states(acquisitionSteps(reservation(), []))).toEqual(['done', 'current', 'upcoming', 'upcoming', 'upcoming', 'upcoming']);
+const SCHEDULE = {
+  version: 1,
+  country_pack: 'CI',
+  first_payment_amount: '3000000',
+  rows: [
+    {
+      code: 'reservation', label: 'Premier versement', amount: '3000000', fee_included: '100000', cumulative_cap_percent: '10.00',
+      condition: 'Frais de réservation inclus, puis complément après encaissement des frais.',
+    },
+    {
+      code: 'fondations', label: 'Palier « Fondations »', amount: '12000000', fee_included: null, cumulative_cap_percent: '50.00',
+      condition: 'Appelé après acceptation technique du jalon « Fondations ».',
+    },
+  ],
+};
+
+// Audit UI R1 — C05 (PO-2026-09-27-02) : plus d'étape « Validation KEYIMMO » ;
+// C03 : frais inclus dans le premier versement ; C01 : étape contrat fidèle
+// à l'état réel du contrat. Remplace les 6 étapes du ticket F-074.
+describe('acquisitionSteps — étapes dérivées des états serveur (audit UI R1, C01/C03/C05)', () => {
+  it('aucune étape « Validation KEYIMMO » : réservation, premier versement, contrat, chantier', () => {
+    expect(acquisitionSteps(reservation(), []).map((step) => step.label))
+      .toEqual(['Réservation', 'Premier versement', 'Préparation du contrat', 'Suivi du chantier']);
   });
 
-  it('réservation validée : étape 3 (frais) en cours', () => {
-    expect(states(acquisitionSteps(reservation({ validated_at: '2026-09-27T15:00:00Z' }), [])))
-      .toEqual(['done', 'done', 'current', 'upcoming', 'upcoming', 'upcoming']);
+  it('bloquée : le premier versement est en cours, frais inclus, avec le reste à couvrir', () => {
+    const steps = acquisitionSteps(reservation({ payment_schedule: SCHEDULE }), [], [call()]);
+    expect(states(steps)).toEqual(['done', 'current', 'upcoming', 'upcoming']);
+    expect(steps[1].caption!.replace(/\s/g, ' ')).toBe('0 XOF / 3 000 000 XOF — reste 3 000 000 XOF (frais inclus)');
   });
 
-  it('réservée (frais encaissés) et contrat signé : étape 5 (premier versement) en cours', () => {
-    const steps = acquisitionSteps(reservation({ status: 'reserved' }), [contract({ status: 'signed_simulated' })]);
-    expect(states(steps)).toEqual(['done', 'done', 'done', 'done', 'current', 'upcoming']);
+  it('frais encaissés, contrat en brouillon : « Préparation du contrat » en cours, jamais « Signature »', () => {
+    const steps = acquisitionSteps(
+      reservation({ status: 'reserved', payment_schedule: SCHEDULE }),
+      [contract({ status: 'draft' })],
+      [call({ settlement: 'settled', settled_amount: '100000.00' })],
+    );
+    expect(steps[2]).toMatchObject({ label: 'Préparation du contrat', state: 'current' });
+    expect(steps[1].caption!.replace(/\s/g, ' ')).toBe('100 000 XOF / 3 000 000 XOF — reste 2 900 000 XOF (frais inclus)');
+  });
+
+  it('contrat approuvé : l’étape devient « Signature du contrat (simulée) »', () => {
+    expect(acquisitionSteps(reservation({ status: 'reserved' }), [contract()])[2].label).toBe('Signature du contrat (simulée)');
   });
 
   it('acquisition concrétisée : seul le suivi du chantier reste, en cours', () => {
-    expect(states(acquisitionSteps(reservation({ status: 'committed' }), [])))
-      .toEqual(['done', 'done', 'done', 'done', 'done', 'current']);
+    expect(states(acquisitionSteps(reservation({ status: 'committed' }), [contract({ status: 'signed_simulated' })])))
+      .toEqual(['done', 'done', 'done', 'current']);
   });
 });
 
-describe('nextAction — une seule action attendue du client (ticket F-074)', () => {
-  it('non validée, aucun appel : attendre la validation du dossier', () => {
-    expect(nextAction(reservation(), [], [])).toEqual({ kind: 'wait', title: 'Validation de votre dossier' });
+describe('nextAction — une seule action attendue du client (ticket F-074, audit C02)', () => {
+  it('dossier en examen, aucun appel : aucune action du client, et ce qui va se passer', () => {
+    expect(nextAction(reservation(), [], [])).toEqual({
+      kind: 'wait', next: 'Votre conseiller examine votre dossier, puis vous enverra l’appel des frais de réservation.',
+    });
   });
 
   it('un appel émis et non couvert : payer cet appel', () => {
@@ -88,7 +120,7 @@ describe('nextAction — une seule action attendue du client (ticket F-074)', ()
     expect(nextAction(reservation({ validated_at: 'x' }), [frais], [])).toEqual({ kind: 'pay', call: frais });
   });
 
-  it('virement déclaré : en vérification, jamais une seconde demande de paiement', () => {
+  it('virement signalé : en attente d’encaissement, jamais une seconde demande de paiement', () => {
     const declared = call({
       notice: {
         id: 'n1', status: 'declared', status_label: 'Déclaré', amount: '100000.00', client_reference: 'VIR-1', paid_on: '2026-09-28', rejection_reason: '',
@@ -103,9 +135,9 @@ describe('nextAction — une seule action attendue du client (ticket F-074)', ()
       .toEqual({ kind: 'sign', contract: approved });
   });
 
-  it('appels tous couverts, contrat pas encore rédigé : préparation du contrat', () => {
+  it('contrat en préparation : ce n’est pas une action du client (C02)', () => {
     expect(nextAction(reservation({ status: 'reserved' }), [call({ settlement: 'settled', settled_amount: '100000.00' })], []))
-      .toEqual({ kind: 'wait', title: 'Préparation de votre contrat' });
+      .toEqual({ kind: 'wait', next: 'Votre conseiller prépare votre contrat. Vous serez prévenu pour le signer (signature simulée).' });
   });
 });
 
@@ -116,23 +148,35 @@ describe('AcquisitionJourney — rendu du parcours (ticket F-074)', () => {
       getMyContracts: vi.fn().mockResolvedValue([]),
     });
     render(withApiClient(api, (
-      <AcquisitionJourney reservation={reservation({ validated_at: '2026-09-27T15:00:00Z' })} onChanged={() => {}} />
+      <AcquisitionJourney reservation={reservation({ validated_at: '2026-09-27T15:00:00Z', payment_schedule: SCHEDULE })} onChanged={() => {}} />
     )));
 
     const hero = screen.getByRole('region', { name: 'Mon bien' });
     expect(hero).toHaveTextContent('Résidence Démonstration Abidjan');
     expect(hero.textContent!.replace(/\s/g, ' ')).toContain('30 000 000 XOF');
-    expect(screen.getByTestId('step-fees')).toHaveAttribute('aria-current', 'step');
+    expect(hero).toHaveTextContent('Constructeur : Promoteur Démonstration');
+    expect(within(hero).getByTestId('simulated-mark')).toHaveTextContent('SIMULÉ — SANS VALEUR OPÉRATIONNELLE');
+    expect(screen.getByTestId('step-first-payment')).toHaveAttribute('aria-current', 'step');
 
     const next = await screen.findByTestId('next-action');
     expect(next).toHaveAttribute('data-kind', 'pay');
     expect(next).toHaveTextContent('Régler : Frais de réservation');
     expect(within(next).getByTestId('payment-reference')).toHaveTextContent('KEYA-1A2B3C4D');
-    expect(within(next).getByRole('button', { name: "J'ai effectué le virement" })).toBeInTheDocument();
+    expect(within(next).getByRole('button', { name: 'Signaler mon virement' })).toBeInTheDocument();
 
+    // C04 : repère principal = premier versement ; prix total secondaire.
     const summary = screen.getByRole('region', { name: 'Suivi financier' });
-    expect(within(summary).getByTestId('summary-call')).toHaveTextContent('À payer');
+    expect(within(summary).getByTestId('summary-call')).toHaveTextContent('À régler');
     expect(within(summary).getByTestId('settled-total').textContent!.replace(/\s/g, ' ')).toBe('0 XOF');
+    expect(within(summary).getByTestId('first-payment-remaining').textContent!.replace(/\s/g, ' '))
+      .toBe('Reste 3 000 000 XOF (frais de réservation inclus)');
+    expect(summary.textContent!.replace(/\s/g, ' ')).toContain('Prix total du bien (fictif)30 000 000 XOF');
+
+    // C06 : échéancier contractuel fictif, montant et condition de chaque appel.
+    const schedule = screen.getByRole('region', { name: 'Échéancier du contrat' });
+    expect(within(schedule).getAllByTestId('schedule-row')).toHaveLength(2);
+    expect(schedule).toHaveTextContent('Appelé après acceptation technique du jalon « Fondations ».');
+    expect(schedule).toHaveTextContent('non validées juridiquement');
   });
 
   it('un appel partiellement couvert compte dans le total réglé', async () => {

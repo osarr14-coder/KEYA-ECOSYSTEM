@@ -214,6 +214,9 @@ SIMPLE_JWT = {
 # (CDC §10). `POST /api/auth/register/` répond 404 tant que ce réglage est
 # faux — il ne l'est que dans settings_test.py (fabrique de comptes de test).
 PUBLIC_REGISTRATION_ENABLED = config('PUBLIC_REGISTRATION_ENABLED', default=False, cast=bool)
+# Audit UI R1 (R04, PO-2026-09-27-03) : Devis / Appels d'offres, Demandes de
+# programme et Tarifs (CDC §3, différé) masqués — voir apps/core/deferred.py.
+KEYA_DEFERRED_MODULES_ENABLED = config('KEYA_DEFERRED_MODULES_ENABLED', default=False, cast=bool)
 
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 

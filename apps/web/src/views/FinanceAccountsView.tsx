@@ -1,16 +1,16 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, semanticColors,
+  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, semanticColors, SimulatedMark, formatCalendarDate,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
 import type {
-  AccountBalance, AccountMilestone, Disbursement, ProgramAccountSummary,
+  AccountMilestone, Disbursement, ProgramAccount, ProgramAccountSummary,
 } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
-import { SIMULATION_NOTICE, formatAmount, today } from './FinancialFilePanel';
+import { formatAmount, today } from './FinancialFilePanel';
 
 /**
  * Ticket F-068 — comptes simulés des programmes et décaissements vers le
@@ -59,18 +59,81 @@ function useAction() {
   return { pending, error, run };
 }
 
-function BalanceBlock({ balance }: { balance: AccountBalance }) {
-  const rows: [string, string, 'neutral' | 'accent' | 'success'][] = [
-    ['Encaissements rapprochés', balance.received, 'neutral'],
-    ['Sorties exécutées', balance.executed, 'neutral'],
-    ['Réservé (demandes éligibles)', balance.reserved, 'accent'],
-    ['Disponible', balance.available, 'success'],
+type BalancePart = 'received' | 'executed' | 'reserved' | 'available';
+
+/**
+ * Audit UI R1 (F03, CDC §1 et §9.3) — chaque montant du solde se décompose
+ * jusqu'à ses mouvements : un clic ouvre la liste des encaissements ou des
+ * décaissements qui le forment ; « Disponible » montre son calcul.
+ */
+function BalanceBlock({ account }: { account: ProgramAccount }) {
+  const { balance } = account;
+  const [open, setOpen] = useState<BalancePart | null>(null);
+  const rows: [BalancePart, string, string, 'neutral' | 'accent' | 'success'][] = [
+    ['received', 'Encaissements rapprochés', balance.received, 'neutral'],
+    ['executed', 'Sorties exécutées', balance.executed, 'neutral'],
+    ['reserved', 'Réservé (demandes éligibles)', balance.reserved, 'accent'],
+    ['available', 'Disponible', balance.available, 'success'],
   ];
+  const receipts = account.receipts ?? [];
+  const executed = account.disbursements.filter((disbursement) => disbursement.status === 'executed_sim');
+  const reserved = account.disbursements.filter((disbursement) => disbursement.status === 'eligible');
+  const movement = (key: string, label: string, detail: string, amount: string) => (
+    <li key={key} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', padding: '8px 0', borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
+      <span style={{ flex: '1 1 260px' }}>
+        <strong>{label}</strong>
+        <span style={{ display: 'block', fontSize: '13px', color: semanticColors.neutral.textMuted }}>{detail}</span>
+      </span>
+      <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAmount(amount, balance.currency)}</span>
+    </li>
+  );
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-      {rows.map(([label, value, tone]) => (
-        <KeyFigure key={label} label={label} value={formatAmount(value, balance.currency)} tone={tone} data-testid={`balance-${label}`} />
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+        {rows.map(([part, label, value, tone]) => (
+          <KeyFigure
+            key={part}
+            label={label}
+            value={formatAmount(value, balance.currency)}
+            tone={tone}
+            hint={open === part ? 'Masquer le détail' : 'Voir le détail'}
+            onClick={() => setOpen(open === part ? null : part)}
+            data-testid={`balance-${label}`}
+          />
+        ))}
+      </div>
+      {open && (
+        <section aria-label="Détail du montant" data-testid="balance-detail" style={{ border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px 16px' }}>
+          {open === 'received' && (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {receipts.length === 0 && <li>Aucun encaissement rapproché.</li>}
+              {receipts.map((receipt) => movement(
+                receipt.id, receipt.bank_reference,
+                `${receipt.client} · ${receipt.lot} · reçu le ${formatCalendarDate(receipt.received_on)} · ${receipt.status_label}`,
+                receipt.amount,
+              ))}
+            </ul>
+          )}
+          {(open === 'executed' || open === 'reserved') && (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {(open === 'executed' ? executed : reserved).length === 0 && <li>Aucun décaissement dans cet état.</li>}
+              {(open === 'executed' ? executed : reserved).map((disbursement) => movement(
+                disbursement.id, `${disbursement.lot.name} — ${disbursement.milestone.label}`,
+                [disbursement.beneficiary_organization.name, disbursement.status_label, disbursement.flow_status_label,
+                  disbursement.bank_reference].filter(Boolean).join(' · '),
+                disbursement.amount,
+              ))}
+            </ul>
+          )}
+          {open === 'available' && (
+            <p style={{ margin: 0 }} data-testid="balance-formula">
+              {`Disponible = encaissements rapprochés ${formatAmount(balance.received, balance.currency)} − sorties exécutées `
+                + `${formatAmount(balance.executed, balance.currency)} − réservé ${formatAmount(balance.reserved, balance.currency)} `
+                + `= ${formatAmount(balance.available, balance.currency)}`}
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -326,13 +389,8 @@ function ProgramAccountPanel({ summary, canAct }: { summary: ProgramAccountSumma
 
   return (
     <Card title={`Compte — ${account.program.name}`} icon="wallet">
-      <p style={{
-        margin: '0 0 14px', fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: semanticColors.accent.text,
-      }}
-      >
-        {SIMULATION_NOTICE}
-      </p>
-      <BalanceBlock balance={account.balance} />
+      <SimulatedMark detail="Compte du programme et décaissements" style={{ margin: '0 0 14px' }} />
+      <BalanceBlock account={account} />
       <h4 style={{ margin: '24px 0 8px' }}>Jalons</h4>
       <MilestonesTable
         milestones={account.milestones}

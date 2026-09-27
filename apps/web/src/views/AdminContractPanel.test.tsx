@@ -103,7 +103,7 @@ describe('AdminContractPanel — contrat fictif côté équipe KEYIMMO (ticket F
 
     const version = await screen.findByRole('article', { name: 'Version 1' });
     expect(version).toHaveTextContent('SIMULÉ — SANS VALEUR OPÉRATIONNELLE');
-    expect(version).toHaveTextContent('signée par le client (simulation) le 27 septembre 2026 à 12:00');
+    expect(version).toHaveTextContent('signée par le client (simulation) le 27 sept. 2026, 12:00 (GMT, Abidjan)'); // Audit UI R1 (F06)
     // Repliée derrière un bouton explicite, jamais ouverte d'office.
     expect(screen.queryByRole('form', { name: 'Nouvelle version (v2)' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Corriger : créer une nouvelle version' }));

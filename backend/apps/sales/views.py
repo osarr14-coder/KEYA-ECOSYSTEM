@@ -494,9 +494,10 @@ def _receipt_payload(receipt):
 
 class ProgramAccountListView(APIView):
     """`GET /api/finance/accounts/` — comptes simulés des programmes (solde
-    détaillé). Lecture équipe KEYIMMO."""
+    détaillé). Finance seule (PO-2026-09-27-16 : séparation des fonctions,
+    CDC §4 — le gestionnaire ne consulte pas les comptes du programme)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsKeyimmoTeam]
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
 
     def get(self, request):
         accounts = services.list_program_accounts(caller_organization_id=_caller_organization_id(request))
@@ -513,9 +514,10 @@ class ProgramAccountListView(APIView):
 
 class ProgramAccountView(APIView):
     """`GET /api/finance/programs/{id}/account/?organization_id=` — solde,
-    jalons (éligibilité technique, prestataire affecté), décaissements."""
+    jalons (éligibilité technique, prestataire affecté), décaissements.
+    Finance seule (PO-2026-09-27-16)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsKeyimmoTeam]
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
 
     def get(self, request, program_id):
         account = services.get_program_account(
@@ -542,6 +544,16 @@ class ProgramAccountView(APIView):
                 for row in account['milestones']
             ],
             'disbursements': DisbursementSerializer(account['disbursements'], many=True).data,
+            # Audit UI R1 (F03) : mouvements qui composent « encaissements rapprochés ».
+            'receipts': [
+                {
+                    'id': str(receipt.id), 'bank_reference': receipt.bank_reference,
+                    'amount': str(receipt.amount), 'currency': receipt.currency,
+                    'received_on': receipt.received_on.isoformat(), 'status_label': receipt.get_status_display(),
+                    'lot': receipt.reservation.lot.name, 'client': receipt.client.full_name or receipt.client.email,
+                }
+                for receipt in account['receipts']
+            ],
         })
 
 

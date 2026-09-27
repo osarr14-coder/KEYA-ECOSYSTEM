@@ -8,7 +8,7 @@ import { createEmptyDraft, saveDraft } from '../db/repository';
 import { clearIndexedDB } from '../testUtils/clearIndexedDB';
 import { FIXTURE_MISSIONS, seedFixtureMissions } from '../testUtils/missionFixtures';
 import { MISSIONS_UPDATED_EVENT } from '../sync/syncEngine';
-import { MissionsListView } from './MissionsListView';
+import { MissionsListView, outcomeSummary } from './MissionsListView';
 
 beforeEach(async () => {
   await clearIndexedDB();
@@ -211,5 +211,40 @@ describe('MissionsListView — missions terminées et recontrôles (ticket F-077
 
     expect(await screen.findByTestId('no-pending-missions')).toBeInTheDocument();
     expect(screen.getAllByTestId('completed-mission')).toHaveLength(1);
+  });
+});
+
+describe('MissionsListView — résultat de l’avis et identité de la mission (audit UI R1, K05/D03)', () => {
+  it('K05 : une mission terminée affiche le résultat et ses réserves, pas seulement « Avis rendu »', async () => {
+    await seedFixtureMissions([{
+      ...FIXTURE_MISSIONS[0],
+      completed: true,
+      assignedAt: '2026-09-27T19:37:00Z',
+      outcome: {
+        outcome: 'avec_reserve', outcomeLabel: 'Avec réserve', recordedAt: '2026-09-27T20:05:00Z',
+        reservesOpened: 2, reservesLifted: 0, reservesMaintained: 0,
+      },
+    }]);
+    render(<MissionsListView onSelectMission={() => {}} />);
+
+    expect(await screen.findByTestId('mission-outcome')).toHaveTextContent('Avis rendu : Non conforme · 2 réserves ouvertes');
+    expect(screen.getByText('Avis enregistré le 27 sept. 2026, 20:05 (GMT, Abidjan)')).toBeInTheDocument();
+  });
+
+  it('D03 : chaque mission porte son identifiant et sa date d’affectation', async () => {
+    await seedFixtureMissions([{ ...FIXTURE_MISSIONS[0], assignedAt: '2026-09-27T19:37:00Z' }]);
+    render(<MissionsListView onSelectMission={() => {}} />);
+
+    const identities = await screen.findAllByTestId('mission-identity');
+    expect(identities[0]).toHaveTextContent(`Mission #${FIXTURE_MISSIONS[0].id.slice(0, 8)} · affectée le 27 sept. 2026, 19:37 (GMT, Abidjan)`);
+  });
+
+  it('outcomeSummary : conforme avec levées et maintiens, accords au pluriel', () => {
+    expect(outcomeSummary({
+      outcome: 'conforme', outcomeLabel: 'Conforme', recordedAt: '', reservesOpened: 0, reservesLifted: 1, reservesMaintained: 0,
+    })).toBe('Conforme · 1 réserve levée');
+    expect(outcomeSummary({
+      outcome: 'avec_reserve', outcomeLabel: 'Avec réserve', recordedAt: '', reservesOpened: 0, reservesLifted: 2, reservesMaintained: 1,
+    })).toBe('Non conforme · 2 réserves levées · 1 réserve maintenue');
   });
 });

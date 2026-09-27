@@ -76,3 +76,6 @@ REST_FRAMEWORK = {
 # unitaires. Fermée partout ailleurs (settings.py) ; un test vérifie la
 # fermeture (apps/sales/test_audit_ui_r1.py).
 PUBLIC_REGISTRATION_ENABLED = True
+# Les tests existants des modules différés (R04) continuent d'exercer leur
+# code ; le masquage est testé explicitement (test_audit_ui_r1.py).
+KEYA_DEFERRED_MODULES_ENABLED = True

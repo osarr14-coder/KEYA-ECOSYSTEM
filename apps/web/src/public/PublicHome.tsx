@@ -149,13 +149,13 @@ function Hero({ navigate }: { navigate: (path: PublicPath) => void }) {
             <a href="#simulateur" className="keya-btn" style={heroButton(false)}>Simuler mes paiements</a>
           </div>
           <p style={{ margin: '24px 0 0', fontSize: '15px', color: 'rgba(255, 255, 255, 0.7)' }}>
-            Déjà acquéreur ?{' '}
+            Vous avez reçu un compte de démonstration ?{' '}
             <a
               href="/connexion"
               onClick={(event) => { event.preventDefault(); navigate('/connexion'); }}
               style={{ color: '#E2C47A', fontWeight: 700 }}
             >
-              Accéder à mon espace
+              Se connecter
             </a>
           </p>
         </div>
@@ -233,7 +233,7 @@ function ProgramCard({ program, navigate }: { program: PublicProgram; navigate: 
         </div>
         <h3 style={{ margin: 0, fontSize: '24px' }}>{program.name}</h3>
         <span style={{ color: semanticColors.neutral.textMuted }}>
-          {[program.locations.join(', '), `Promoteur : ${program.promoter}`].filter(Boolean).join(' · ')}
+          {[program.locations.join(', '), 'Programme lancé par KEYIMMO AFRIC', `Constructeur : ${program.constructeur}`].filter(Boolean).join(' · ')}
         </span>
         <span style={{ fontSize: '15px' }}>
           {soldOut ? 'Prix constatés à partir de ' : 'À partir de '}
@@ -435,7 +435,7 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
 
       <Section
         id="programmes"
-        eyebrow="Nos programmes"
+        eyebrow="Programmes"
         title="Programmes de démonstration"
         subtitle="Programmes, biens et prix fictifs. Un bien réservé n’apparaît plus comme disponible."
       >
@@ -494,7 +494,7 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         id="chantiers"
         eyebrow={worksites.length > 0 ? `${worksites.length} chantier${worksites.length > 1 ? 's' : ''} en cours` : 'Chantiers'}
         title="Des chantiers suivis, jalon par jalon"
-        subtitle="L’avancement réel de nos chantiers, sans aucune donnée client : chaque étape est déclarée, documentée puis contrôlée."
+        subtitle="L’avancement des chantiers du programme fictif, sans aucune donnée client : chaque étape est déclarée, documentée puis contrôlée."
         tinted
       >
         {worksitesState.status === 'success' && worksites.length === 0 && <p>Aucun chantier démarré pour le moment.</p>}

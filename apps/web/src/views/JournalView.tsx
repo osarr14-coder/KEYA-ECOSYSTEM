@@ -1,4 +1,4 @@
-import { ApiErrorBanner, PageHeader, semanticColors } from '@keya/design-system';
+import { ApiErrorBanner, PageHeader, semanticColors, formatServerDateTime} from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { useApiResource } from '../api/useApiResource';
@@ -8,8 +8,9 @@ import { useApiResource } from '../api/useApiResource';
  * pour l'administrateur de la démonstration : aucune action proposée, le
  * serveur n'expose d'ailleurs aucune écriture.
  */
+// Audit UI R1 (F06) : format de date unique, fuseau indiqué.
 function formatDate(value: string) {
-  return new Date(value).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Abidjan' });
+  return formatServerDateTime(value);
 }
 
 export function JournalView() {

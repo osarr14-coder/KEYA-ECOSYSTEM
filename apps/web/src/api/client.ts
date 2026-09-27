@@ -667,7 +667,7 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     confirmPaymentNotice: (
       noticeId: string,
       organizationId: string,
-      payload: { bank_reference?: string; received_on?: string | null } = {},
+      payload: { bank_reference: string; received_on?: string | null; amount?: string | null },
     ) => request<PaymentNotice>(
       `/api/finance/payment-notices/${noticeId}/confirm/${toQueryString({ organization_id: organizationId })}`,
       { method: 'POST', json: payload },

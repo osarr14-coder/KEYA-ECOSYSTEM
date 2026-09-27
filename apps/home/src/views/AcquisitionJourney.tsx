@@ -1,15 +1,17 @@
 import { useState } from 'react';
 
 import {
-  ApiErrorBanner, BRAND_GRADIENT, Button, Card, Icon, Pill, type PillTone, ProgressBar, Stepper, type StepperStep,
-  brandColors, semanticColors, typography,
+  ApiErrorBanner, BRAND_GRADIENT, Button, Card, Icon, Pill, type PillTone, ProgressBar, SimulatedMark, Stepper,
+  type StepperStep, semanticColors, typography,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
-import type { ClientPaymentCall, ContractVersion, Reservation } from '../api/types';
+import type {
+  ClientPaymentCall, ContractVersion, PaymentSchedule, Reservation,
+} from '../api/types';
 import { useApiResource } from '../api/useApiResource';
-import { formatAmount, formatDate, formatDateTime } from '../format';
+import { formatAmount, formatDateTime } from '../format';
 import { ContractVersions } from './ClientContractPanel';
 import {
   CallRow, callLabel, canDeclare, formatCallAmount, settlementText, settlementTone,
@@ -24,20 +26,22 @@ import {
  * forme, il ne les recalcule jamais.
  */
 
-/** Message d'état de la réservation (repris de F-066/F-071). */
+/** Message d'état de la réservation (repris de F-066/F-071). Audit UI R1
+ * (J07, PO-2026-09-27-05) : KEYIMMO examine le dossier, jamais ne le
+ * « valide » ; un virement signalé n'est pas un encaissement. */
 export function reservationMessage(reservation: Reservation) {
   switch (reservation.status) {
     case 'held':
       return reservation.validated_at
-        ? `Réservation validée par KEYIMMO. Réglez les frais de réservation ci-dessous avant le ${formatDateTime(reservation.held_until)}, `
-          + 'puis déclarez votre virement : KEYIMMO le confirmera à réception.'
+        ? `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. Réglez les frais de réservation, `
+          + 'puis signalez votre virement : il sera pris en compte une fois encaissé et rapproché (simulé).'
         : `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. `
-          + 'Votre demande est en attente de validation par votre conseiller KEYIMMO, qui vous enverra ensuite l’appel des frais de réservation.';
+          + 'Votre conseiller examine votre dossier, puis vous envoie l’appel des frais de réservation.';
     case 'reserved':
-      return 'Frais de réservation encaissés : le bien vous est réservé. '
-        + 'Prochaine étape : signature du contrat et complément du premier versement.';
+      return 'Frais de réservation encaissés et rapprochés (simulé) : le bien vous est réservé. '
+        + 'Suite : signature du contrat et complément du premier versement.';
     case 'committed':
-      return 'Acquisition concrétisée (simulation) : contrat signé et premier versement couvert.';
+      return 'Acquisition concrétisée (simulée) : contrat signé et premier versement couvert.';
     case 'expired':
       return 'Le délai de blocage est écoulé sans versement : le bien a été libéré.';
     case 'cancelled':
@@ -59,52 +63,97 @@ export function reservationTone(reservation: Reservation): PillTone {
   }
 }
 
-const PAID_STATUSES: Reservation['status'][] = ['reserved', 'committed'];
+const FIRST_PAYMENT_KINDS: ClientPaymentCall['kind'][] = ['frais', 'premier_versement'];
 
-/** Les 6 étapes de l'achat, dérivées des états fournis par le serveur. */
-export function acquisitionSteps(reservation: Reservation, contracts: ContractVersion[]): StepperStep[] {
-  const validated = Boolean(reservation.validated_at) || PAID_STATUSES.includes(reservation.status);
-  const feesPaid = PAID_STATUSES.includes(reservation.status);
-  const signed = reservation.status === 'committed' || contracts.some((contract) => contract.status === 'signed_simulated');
+function latestContract(contracts: ContractVersion[]) {
+  return [...contracts].sort((a, b) => b.version - a.version)[0];
+}
+
+/** Audit UI R1 (C03, C04) — le premier versement, frais inclus : encaissé
+ * (rapproché) sur le total fixé par l'échéancier du contrat. */
+export function firstPaymentProgress(reservation: Reservation, calls: ClientPaymentCall[]) {
+  const total = reservation.payment_schedule ? Number(reservation.payment_schedule.first_payment_amount) : null;
+  const received = calls
+    .filter((call) => FIRST_PAYMENT_KINDS.includes(call.kind))
+    .reduce((sum, call) => sum + settledValue(call), 0);
+  return { total, received, remaining: total === null ? null : Math.max(0, total - received) };
+}
+
+/** Libellé de l'étape contrat selon l'état réel (audit C01, CDC §6.2). */
+export function contractStepLabel(contracts: ContractVersion[]) {
+  const latest = latestContract(contracts);
+  if (latest?.status === 'signed_simulated') return 'Contrat signé (simulé)';
+  if (latest?.status === 'approved') return 'Signature du contrat (simulée)';
+  return 'Préparation du contrat';
+}
+
+/**
+ * Étapes de l'achat, dérivées des états fournis par le serveur. Audit UI R1 :
+ * sans étape « Validation KEYIMMO » (C05, PO-2026-09-27-02), frais inclus
+ * dans le premier versement (C03), étape contrat fidèle à son état (C01).
+ * Premier versement et contrat avancent en parallèle : chacun porte son
+ * propre état.
+ */
+export function acquisitionSteps(
+  reservation: Reservation, contracts: ContractVersion[], calls: ClientPaymentCall[] = [],
+): StepperStep[] {
   const committed = reservation.status === 'committed';
-  const done = [true, validated, feesPaid, signed, committed, false];
-  const labels: [string, string][] = [
-    ['reservation', 'Réservation'],
-    ['validation', 'Validation KEYIMMO'],
-    ['fees', 'Frais de réservation'],
-    ['contract', 'Signature du contrat'],
-    ['first-payment', 'Premier versement'],
-    ['works', 'Suivi du chantier'],
+  const latest = latestContract(contracts);
+  const signed = committed || latest?.status === 'signed_simulated';
+  const { total, received, remaining } = firstPaymentProgress(reservation, calls);
+  const firstPaid = committed || (total !== null && remaining === 0);
+  const firstStarted = calls.some((call) => FIRST_PAYMENT_KINDS.includes(call.kind));
+  const currency = reservation.currency;
+  const firstCaption = total === null
+    ? 'Frais de réservation inclus'
+    : `${formatAmount(String(received), currency)} / ${formatAmount(String(total), currency)}`
+      + (remaining ? ` — reste ${formatAmount(String(remaining), currency)} (frais inclus)` : ' (frais inclus)');
+  return [
+    { id: 'reservation', label: 'Réservation', state: 'done' },
+    {
+      id: 'first-payment', label: 'Premier versement', caption: firstCaption,
+      state: firstPaid ? 'done' : firstStarted || reservation.status === 'held' ? 'current' : 'upcoming',
+    },
+    {
+      id: 'contract', label: contractStepLabel(contracts),
+      state: signed ? 'done' : latest || reservation.status === 'reserved' ? 'current' : 'upcoming',
+    },
+    { id: 'works', label: 'Suivi du chantier', state: committed ? 'current' : 'upcoming' },
   ];
-  const currentIndex = done.findIndex((isDone) => !isDone);
-  return labels.map(([id, label], index) => ({
-    id,
-    label,
-    state: done[index] ? 'done' : index === currentIndex ? 'current' : 'upcoming',
-  }));
 }
 
 export type NextAction =
   | { kind: 'pay'; call: ClientPaymentCall }
   | { kind: 'sign'; contract: ContractVersion }
   | { kind: 'verifying'; call: ClientPaymentCall }
-  | { kind: 'wait'; title: string };
+  | { kind: 'wait'; next: string };
 
 /** L'UNIQUE action attendue du client, par ordre de priorité métier :
  * signer un contrat approuvé, payer un appel émis, sinon patienter. */
 export function nextAction(reservation: Reservation, calls: ClientPaymentCall[], contracts: ContractVersion[]): NextAction {
-  const latest = [...contracts].sort((a, b) => b.version - a.version)[0];
+  const latest = latestContract(contracts);
   if (latest?.status === 'approved') return { kind: 'sign', contract: latest };
   const open = calls.filter((call) => call.settlement !== 'settled');
   const payable = open.find((call) => canDeclare(call) && call.payment_instructions);
   if (payable) return { kind: 'pay', call: payable };
   const verifying = open.find((call) => call.notice?.status === 'declared');
   if (verifying) return { kind: 'verifying', call: verifying };
-  if (reservation.status === 'held' && !reservation.validated_at) return { kind: 'wait', title: 'Validation de votre dossier' };
-  if (reservation.status === 'held') return { kind: 'wait', title: 'Appel des frais de réservation' };
-  if (reservation.status === 'committed') return { kind: 'wait', title: 'Suivi de votre chantier' };
-  if (contracts.length === 0) return { kind: 'wait', title: 'Préparation de votre contrat' };
-  return { kind: 'wait', title: 'Prochain appel de fonds' };
+  // Audit UI R1 (C02) : rien à faire pour le client → on le dit, puis ce
+  // qui va se passer ensuite (jamais une action qui ne lui revient pas).
+  if (reservation.status === 'held' && !reservation.validated_at) {
+    return { kind: 'wait', next: 'Votre conseiller examine votre dossier, puis vous enverra l’appel des frais de réservation.' };
+  }
+  if (reservation.status === 'held') return { kind: 'wait', next: 'L’appel des frais de réservation va vous être envoyé.' };
+  if (reservation.status === 'committed') {
+    return {
+      kind: 'wait',
+      next: 'Suivi du chantier : chaque palier suivant vous sera appelé après acceptation technique du jalon correspondant.',
+    };
+  }
+  if (!latest || latest.status === 'draft' || latest.status === 'review') {
+    return { kind: 'wait', next: 'Votre conseiller prépare votre contrat. Vous serez prévenu pour le signer (signature simulée).' };
+  }
+  return { kind: 'wait', next: 'Le complément du premier versement va vous être appelé.' };
 }
 
 function settledValue(call: ClientPaymentCall) {
@@ -123,7 +172,7 @@ function PropertyHero({ reservation }: { reservation: Reservation }) {
   const facts = [
     reservation.lot.name,
     reservation.lot.surface ? `${Number(reservation.lot.surface).toLocaleString('fr-FR')} m²` : null,
-    reservation.organization.name,
+    `Constructeur : ${reservation.organization.name}`,
   ].filter(Boolean);
   return (
     <section
@@ -165,13 +214,7 @@ function PropertyHero({ reservation }: { reservation: Reservation }) {
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
           <Pill tone={reservationTone(reservation)} data-testid="reservation-status">{reservation.status_label}</Pill>
-          <span
-            style={{
-              padding: '3px 12px', borderRadius: '999px', border: '1px solid rgba(226, 196, 122, 0.5)', color: '#E2C47A', fontSize: '13px', fontWeight: 600,
-            }}
-          >
-            Simulation — aucun fonds réel
-          </span>
+          <SimulatedMark detail="Paiements et signature" />
         </div>
       </div>
     </section>
@@ -189,10 +232,10 @@ function NextActionCard({
   } else if (action.kind === 'sign') {
     title = `Signer votre contrat (version ${action.contract.version})`;
   } else if (action.kind === 'verifying') {
-    title = 'Virement en cours de vérification';
+    title = 'Virement signalé : en attente d’encaissement (simulé)';
     amount = action.call;
   } else {
-    title = action.title;
+    title = 'Aucune action de votre part pour le moment';
   }
 
   return (
@@ -217,6 +260,7 @@ function NextActionCard({
             Votre prochaine action
           </span>
           <h3 style={{ margin: 0, fontSize: '24px' }}>{title}</h3>
+          {action.kind === 'wait' && <p style={{ margin: 0, fontWeight: 600 }} data-testid="next-step">{action.next}</p>}
           <p style={{ margin: 0, color: semanticColors.neutral.text }}>{reservationMessage(reservation)}</p>
         </div>
         {amount && (
@@ -240,22 +284,35 @@ function NextActionCard({
   );
 }
 
+/**
+ * Audit UI R1 (C04, C07) — repère principal : le premier versement (frais
+ * inclus), pas le prix total, qui reste une information secondaire. Seul
+ * l'encaissé et rapproché compte : un virement signalé n'y figure pas.
+ */
 function FinancialSummary({ reservation, calls }: { reservation: Reservation; calls: ClientPaymentCall[] }) {
-  const price = Number(reservation.price_amount);
-  const settled = calls.reduce((sum, call) => sum + settledValue(call), 0);
-  const percentage = price > 0 ? Math.min(100, Math.round((settled / price) * 100)) : 0;
+  const { total, received, remaining } = firstPaymentProgress(reservation, calls);
+  const percentage = total ? Math.min(100, Math.round((received / total) * 100)) : 0;
   return (
     <Card title="Suivi financier" aria-label="Suivi financier">
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-        <span style={{ color: semanticColors.neutral.textMuted }}>Réglé</span>
-        <span data-testid="settled-total" style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', fontWeight: 600, color: semanticColors.neutral.heading }}>
-          {formatAmount(String(settled), reservation.currency)}
-        </span>
-        <span style={{ color: semanticColors.neutral.textMuted, fontSize: '14px' }}>
-          {`/ ${formatAmount(reservation.price_amount, reservation.currency)}`}
-        </span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
+        <span style={{ color: semanticColors.neutral.textMuted, fontSize: '14px' }}>Premier versement — encaissé et rapproché (simulé)</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+          <span data-testid="settled-total" style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+            {formatAmount(String(received), reservation.currency)}
+          </span>
+          {total !== null && (
+            <span style={{ color: semanticColors.neutral.textMuted, fontSize: '14px' }}>
+              {`/ ${formatAmount(String(total), reservation.currency)}`}
+            </span>
+          )}
+        </div>
+        {remaining !== null && remaining > 0 && (
+          <span data-testid="first-payment-remaining" style={{ fontSize: '14px' }}>
+            {`Reste ${formatAmount(String(remaining), reservation.currency)} (frais de réservation inclus)`}
+          </span>
+        )}
       </div>
-      <ProgressBar percentage={percentage} width="100%" fillColor={brandColors.gold} aria-label="Part du prix réglée" />
+      {total !== null && <ProgressBar percentage={percentage} width="100%" aria-label="Part du premier versement encaissée" />}
       <ul style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {calls.map((call) => (
           <li
@@ -269,10 +326,36 @@ function FinancialSummary({ reservation, calls }: { reservation: Reservation; ca
           </li>
         ))}
         <li style={{ display: 'flex', gap: '8px', color: semanticColors.neutral.textMuted, fontSize: '14px' }}>
-          <span style={{ flex: 1 }}>Paliers de travaux</span>
-          <span>selon l&apos;avancement du chantier</span>
+          <span style={{ flex: 1 }}>Prix total du bien (fictif)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAmount(reservation.price_amount, reservation.currency)}</span>
         </li>
       </ul>
+    </Card>
+  );
+}
+
+/** Audit UI R1 (C06) — échéancier contractuel fictif : montant et
+ * condition réelle de chaque appel (barème du Country Pack, sans date). */
+export function PaymentScheduleCard({ schedule, currency }: { schedule: PaymentSchedule; currency: string }) {
+  return (
+    <Card title="Échéancier du contrat (fictif)" aria-label="Échéancier du contrat">
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {schedule.rows.map((row) => (
+          <li key={row.code} data-testid="schedule-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingBottom: '12px', borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'baseline' }}>
+              <span style={{ flex: '1 1 140px', fontWeight: 600 }}>{row.label}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAmount(row.amount, currency)}</span>
+            </div>
+            <span style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>
+              {row.fee_included ? `Dont frais de réservation : ${formatAmount(row.fee_included, currency)}. ${row.condition}` : row.condition}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p style={{ margin: '12px 0 0', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
+        {`Barème Country Pack ${schedule.country_pack}, version ${schedule.version} — valeurs de démonstration, non validées juridiquement. `}
+        Les paliers suivent l’avancement technique : aucune date n’est fixée.
+      </p>
     </Card>
   );
 }
@@ -293,7 +376,7 @@ function AdvisorCard() {
         <div>
           <div style={{ fontWeight: 700 }}>Gestionnaire ADV</div>
           <div style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-            Valide votre dossier, prépare votre contrat et vous notifie à chaque étape.
+            Examine votre dossier, prépare votre contrat et vous prévient à chaque étape.
           </div>
         </div>
       </div>
@@ -365,7 +448,7 @@ export function AcquisitionJourney({ reservation, onChanged }: { reservation: Re
       <PropertyHero reservation={reservation} />
 
       <Card aria-label="Étapes de mon acquisition">
-        <Stepper steps={acquisitionSteps(reservation, contracts)} aria-label="Étapes de mon acquisition" />
+        <Stepper steps={acquisitionSteps(reservation, contracts, calls)} aria-label="Étapes de mon acquisition" />
       </Card>
 
       {callsState.status === 'error' && (
@@ -388,10 +471,13 @@ export function AcquisitionJourney({ reservation, onChanged }: { reservation: Re
         </div>
         <aside style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <FinancialSummary reservation={reservation} calls={calls} />
+          {reservation.payment_schedule && (
+            <PaymentScheduleCard schedule={reservation.payment_schedule} currency={reservation.currency} />
+          )}
           <AdvisorCard />
           {reservation.status === 'held' && <CancelReservation reservation={reservation} onChanged={onChanged} />}
           <p style={{ margin: 0, fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-            {`Réservation du ${formatDate(reservation.created_at)}`}
+            {`Réservation du ${formatDateTime(reservation.created_at)}`}
             {reservation.status === 'held' && ` · bien bloqué jusqu'au ${formatDateTime(reservation.held_until)}`}
           </p>
         </aside>

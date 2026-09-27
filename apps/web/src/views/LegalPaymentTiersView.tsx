@@ -377,8 +377,14 @@ export function LegalPaymentTiersView() {
   const [selectedCountryPack, setSelectedCountryPack] = useState<CountryPackSummary | null>(null);
 
   return (
-    <section aria-label="Paliers légaux de paiement">
-      <h2>Paliers légaux de paiement par pays</h2>
+    <section aria-label="Paliers de paiement du Country Pack">
+      {/* Audit UI R1 (J06) : valeurs fictives, aucune conformité légale revendiquée (A09). */}
+      <h2>
+        {`Paliers — Country Pack${selectedCountryPack ? ` ${selectedCountryPack.code}` : ''} (démo, non validé juridiquement)`}
+      </h2>
+      <p style={{ marginTop: 0 }}>
+        Paliers de paiement de démonstration, versionnés par pays. Valeurs fictives, sans couverture juridique.
+      </p>
 
       {selectedCountryPack ? (
         <div style={{ marginBottom: '16px' }}>

@@ -11,6 +11,7 @@ from apps.core.viewsets import OrganizationScopedMixin
 from apps.messaging.mixins import MessageThreadMixin
 from apps.organizations.models import Organization
 from apps.procurement.services import search_lots_for_commercial_as_admin
+from apps.core.deferred import DeferredModuleEnabled
 
 from . import services
 from .models import Asset, Lot, Program, ProgramRequest
@@ -463,8 +464,8 @@ class ProgramRequestListCreateView(APIView):
 
     def get_permissions(self):
         if self.request.method == 'GET':
-            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
-        return [permissions.IsAuthenticated()]
+            return [DeferredModuleEnabled(), permissions.IsAuthenticated(), IsGestionnaireADV()]
+        return [DeferredModuleEnabled(), permissions.IsAuthenticated()]
 
     def post(self, request):
         if request.organization is None:
@@ -496,7 +497,7 @@ class MyProgramRequestsView(generics.ListAPIView):
     besoin d'`OrganizationScopedMixin` (pensé pour un `ModelViewSet`
     complet, pas nécessaire ici)."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated]
     serializer_class = ProgramRequestSerializer
 
     def get_queryset(self):
@@ -514,7 +515,7 @@ class ProgramRequestDecisionView(APIView):
     `services.decide_program_request`.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]
+    permission_classes = [DeferredModuleEnabled, permissions.IsAuthenticated, IsGestionnaireADV]
 
     def post(self, request, request_id):
         organization_id = request.query_params.get('organization_id')

@@ -168,10 +168,30 @@ export interface Reservation {
   program: { id: string; name: string };
   organization: { id: string; name: string };
   cancellation_reason: string;
-  /** Ticket F-071 — validation du dossier par l'ADV (null : en attente). */
+  /** Ticket F-071 — examen du dossier par le gestionnaire, qui appelle alors
+   * les frais (null : en attente). Audit UI R1 (J07) : jamais une « validation ». */
   validated_at?: string | null;
   created_at: string;
   updated_at: string;
+  /** Audit UI R1 (C03, C04, C06) — échéancier fictif du contrat (barème du
+   * Country Pack), `null` sans barème actif. */
+  payment_schedule?: PaymentSchedule | null;
+}
+
+export interface PaymentScheduleRow {
+  code: string;
+  label: string;
+  amount: string;
+  fee_included: string | null;
+  cumulative_cap_percent: string;
+  condition: string;
+}
+
+export interface PaymentSchedule {
+  version: number;
+  country_pack: string;
+  first_payment_amount: string;
+  rows: PaymentScheduleRow[];
 }
 
 export type ContractStatus = 'draft' | 'review' | 'approved' | 'signed_simulated';

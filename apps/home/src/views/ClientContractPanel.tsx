@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, Button, Pill, semanticColors,
+  AlertBanner, Button, Pill, semanticColors, SimulatedMark, formatServerDateTime, DEMO_MARKING,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -23,12 +23,10 @@ import type { ContractVersion } from '../api/types';
  * l'étape « Signature du contrat ».
  */
 
-const SIMULATION_NOTICE = 'SIMULÉ — SANS VALEUR OPÉRATIONNELLE · DÉMONSTRATION — DONNÉES FICTIVES';
 
+// Audit UI R1 (F06) : format de date unique, fuseau indiqué.
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('fr-FR', {
-    dateStyle: 'long', timeStyle: 'short', timeZone: 'Africa/Abidjan',
-  });
+  return formatServerDateTime(iso);
 }
 
 function errorDetail(caught: unknown, fallback: string) {
@@ -68,13 +66,7 @@ function ContractVersionBlock({ contract, onSigned }: { contract: ContractVersio
         gap: '10px',
       }}
     >
-      <p
-        style={{
-          margin: 0, fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', color: semanticColors.accent.text,
-        }}
-      >
-        {SIMULATION_NOTICE}
-      </p>
+      <SimulatedMark detail={`Signature du contrat · ${DEMO_MARKING}`} />
       <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         <strong>Version {contract.version}</strong>
         <Pill tone={contract.status === 'signed_simulated' ? 'success' : 'accent'} data-testid="contract-status">

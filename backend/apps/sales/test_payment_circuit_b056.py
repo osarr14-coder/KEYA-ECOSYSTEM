@@ -125,7 +125,8 @@ class TestPaymentNoticeCircuit:
         notice = next(row for row in pending if row['id'] == declared.data['id'])
         assert notice['client_reference'] == 'VIR-CLIENT-001'
 
-        confirmed = _notice_action(finance, notice['id'], promoter, 'confirm')
+        # Audit UI R1 (F02) : référence du relevé bancaire simulé, obligatoire.
+        confirmed = _notice_action(finance, notice['id'], promoter, 'confirm', {'bank_reference': 'SIM-ENC-0001'})
 
         assert confirmed.status_code == 200, confirmed.data
         assert confirmed.data['status'] == 'confirmed'
@@ -155,7 +156,7 @@ class TestPaymentNoticeCircuit:
         assert _client_calls(client, reservation_id)[0]['notice']['rejection_reason'] == 'Virement introuvable sur le relevé'
         assert 'payment_notice_rejected' in _sources(client)
         assert _declare(client, fee_call['id'], reference='VIR-CLIENT-002').status_code == 201
-        assert _notice_action(finance, notice_id, promoter, 'confirm').status_code == 409
+        assert _notice_action(finance, notice_id, promoter, 'confirm', {'bank_reference': 'SIM-ENC-0001'}).status_code == 409
 
     def test_a_declared_payment_suspends_the_hold_expiry(self):
         client, _u, _adv, _finance, promoter, reservation_id, fee_call = self._validated()

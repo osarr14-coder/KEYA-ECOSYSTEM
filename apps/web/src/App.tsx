@@ -12,6 +12,7 @@ import {
   ADMIN_KEYIMMO_ROLE, FINANCE_ROLE, GESTIONNAIRE_ADV_ROLE, deriveAllRoleCodes, hasBackofficeAccess,
 } from './auth/adminAccess';
 import { onlyFragmentChanges } from './auth/redirectTarget';
+import { deferredModulesEnabled } from './config';
 import type { TabRoute } from './navigation/tabRouting';
 import { useUrlSyncedTab } from './navigation/useUrlSyncedTab';
 import { BackofficeView } from './views/BackofficeView';
@@ -35,7 +36,7 @@ import { type PublicPath, usePublicPath } from './public/usePublicPath';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
-  | 'program-requests' | 'controls' | 'payment-notices' | 'todo' | 'journal';
+  | 'program-requests' | 'controls' | 'payment-notices' | 'todo' | 'journal' | 'receipts';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -71,9 +72,12 @@ type AuthenticatedTabId =
 // `IsAdminKeyimmo`), qui restent la vraie garde.
 const ADMIN_ONLY = [ADMIN_KEYIMMO_ROLE];
 const ADV_ONLY = [GESTIONNAIRE_ADV_ROLE];
-// Ticket F-068 — Finance : réservations (dossiers financiers) et comptes
-// des programmes. Même périmètre que `IsKeyimmoTeam` côté backend.
+// Ticket F-068 — écran d'arrivée commun du gestionnaire et de Finance.
 const KEYIMMO_TEAM = [GESTIONNAIRE_ADV_ROLE, FINANCE_ROLE];
+// Audit UI R1 — Finance seule : virements signalés, appels et encaissements
+// par dossier en lecture seule (R03, PO-2026-09-27-10), comptes et
+// décaissements (PO-2026-09-27-16). Serveur : `IsFinance`.
+const FINANCE_ONLY = [FINANCE_ROLE];
 
 /*
  * Ticket F-075 (direction « Confiance premium ») — navigation UNIQUE par la
@@ -84,6 +88,8 @@ const KEYIMMO_TEAM = [GESTIONNAIRE_ADV_ROLE, FINANCE_ROLE];
  */
 const TAB_DEFINITIONS: {
   id: AuthenticatedTabId; label: string; path: string; icon: IconName; group?: string; roles: string[];
+  /** Audit UI R1 (R04) — module différé, masqué sauf réglage explicite. */
+  deferred?: boolean;
 }[] = [
   // Ticket F-075 — reprend l'ancien écran « Tâches » (F-061/F-063).
   {
@@ -92,12 +98,16 @@ const TAB_DEFINITIONS: {
   // Ticket F-067 — cycle de réservation (backend B-048), présenté en
   // dossiers clients (F-075).
   {
-    id: 'reservations', label: 'Dossiers clients', path: '/reservations', icon: 'clipboard-check', group: 'Ventes', roles: KEYIMMO_TEAM,
+    id: 'reservations', label: 'Dossiers clients', path: '/reservations', icon: 'clipboard-check', group: 'Ventes', roles: ADV_ONLY,
   },
   // Ticket F-071 — virements déclarés par les clients, confirmés par
   // Finance (backend B-056).
   {
-    id: 'payment-notices', label: 'Virements déclarés', path: '/virements', icon: 'wallet', group: 'Ventes', roles: KEYIMMO_TEAM,
+    id: 'payment-notices', label: 'Virements déclarés', path: '/virements', icon: 'wallet', group: 'Finance', roles: FINANCE_ONLY,
+  },
+  // Audit UI R1 (R03, PO-2026-09-27-10) — vue Finance en lecture seule.
+  {
+    id: 'receipts', label: 'Appels et encaissements', path: '/encaissements', icon: 'clipboard-check', group: 'Finance', roles: FINANCE_ONLY,
   },
   // Ticket F-064 — prix et statut commercial des lots existants.
   {
@@ -105,7 +115,7 @@ const TAB_DEFINITIONS: {
   },
   // Ticket F-068 — comptes simulés et décaissements (backend B-052).
   {
-    id: 'finance', label: 'Comptes & décaissements', path: '/finance', icon: 'wallet', group: 'Finance', roles: KEYIMMO_TEAM,
+    id: 'finance', label: 'Comptes & décaissements', path: '/finance', icon: 'wallet', group: 'Finance', roles: FINANCE_ONLY,
   },
   // Ticket F-069 — affectation des contrôles de chantier (backend B-054),
   // admin seul comme `POST /api/backoffice/missions/` (ticket 012).
@@ -117,7 +127,7 @@ const TAB_DEFINITIONS: {
     id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building', group: 'Programmes', roles: ADV_ONLY,
   },
   {
-    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', group: 'Programmes', roles: ADV_ONLY,
+    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', group: 'Programmes', roles: ADV_ONLY, deferred: true,
   },
   {
     id: 'backoffice', label: 'Utilisateurs', path: '/back-office', icon: 'shield-check', group: 'Administration', roles: ADMIN_ONLY,
@@ -126,24 +136,31 @@ const TAB_DEFINITIONS: {
     id: 'journal', label: 'Journal', path: '/journal', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY,
   },
   {
-    id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY,
+    id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY, deferred: true,
   },
   {
-    id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet', group: 'Administration', roles: ADMIN_ONLY,
+    id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet', group: 'Administration', roles: ADMIN_ONLY, deferred: true,
   },
   {
-    id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale', group: 'Administration', roles: ADMIN_ONLY,
+    // Audit UI R1 (J06) : aucune conformité légale suggérée.
+    id: 'legal-tiers', label: 'Paliers (Country Pack, démo)', path: '/paliers-legaux', icon: 'scale', group: 'Administration', roles: ADMIN_ONLY,
   },
 ];
 
-const MODULES: AppModule[] = TAB_DEFINITIONS.map(({
-  id, label, path, icon, group, roles,
-}) => ({
-  id, label, href: path, requiredRoles: roles, icon, group,
-}));
+function enabledTabs() {
+  return TAB_DEFINITIONS.filter((tab) => deferredModulesEnabled() || !tab.deferred);
+}
+
+function appModules(): AppModule[] {
+  return enabledTabs().map(({
+    id, label, path, icon, group, roles,
+  }) => ({
+    id, label, href: path, requiredRoles: roles, icon, group,
+  }));
+}
 
 function visibleTabDefinitions(userRoles: string[]) {
-  return TAB_DEFINITIONS.filter((tab) => tab.roles.some((role) => userRoles.includes(role)));
+  return enabledTabs().filter((tab) => tab.roles.some((role) => userRoles.includes(role)));
 }
 
 export interface AppProps {
@@ -281,7 +298,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   // « Paiement reçu », Finance « Virement déclaré à confirmer ».
   const taskInboxState = useApiResource(() => api.getMyInboxTasks({ status: 'pending' }), [activeTab]);
   const pendingCount = taskInboxState.status === 'success' ? taskInboxState.data.length : 0;
-  const modules: AppModule[] = MODULES.map((module) => (module.id === 'todo' ? { ...module, badge: pendingCount } : module));
+  const modules: AppModule[] = appModules().map((module) => (module.id === 'todo' ? { ...module, badge: pendingCount } : module));
 
   function navigate(target: NavigationTarget) {
     setDossier(target.reservationId ? { id: target.reservationId, nonce: Date.now() } : null);
@@ -321,7 +338,15 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
         <ReservationsView
           key={dossier ? `${dossier.id}-${dossier.nonce}` : 'list'}
           openReservationId={dossier?.id ?? null}
-          permissions={{ canManageSales: isAdv, canRecordMovements: isFinance }}
+          permissions={{ canManageSales: isAdv, canRecordMovements: false }}
+        />
+      )}
+      {activeTab === 'receipts' && (
+        <ReservationsView
+          key={dossier ? `${dossier.id}-${dossier.nonce}` : 'finance-list'}
+          openReservationId={dossier?.id ?? null}
+          mode="finance"
+          permissions={{ canManageSales: false, canRecordMovements: false }}
         />
       )}
       {activeTab === 'payment-notices' && <PaymentNoticesView canAct={isFinance} />}

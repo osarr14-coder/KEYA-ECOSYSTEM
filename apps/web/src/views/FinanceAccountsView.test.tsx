@@ -164,3 +164,36 @@ describe('FinanceAccountsView — comptes et décaissements (ticket F-068)', () 
     expect(screen.queryByRole('button', { name: "Contrôler l'éligibilité" })).not.toBeInTheDocument();
   });
 });
+
+describe('FinanceAccountsView — montants décomposables (audit UI R1, F03)', () => {
+  it('chaque montant ouvre la liste des mouvements qui le composent ; « Disponible » montre son calcul', async () => {
+    renderView(true, {
+      getProgramAccount: vi.fn().mockResolvedValue(account({
+        receipts: [
+          {
+            id: 'r1', bank_reference: 'SIM-ENC-0001', amount: '100000.00', currency: 'XOF', received_on: '2026-09-28',
+            status_label: 'Rapproché (simulé)', lot: 'Lot A2', client: 'Yao Kouassi',
+          },
+          {
+            id: 'r2', bank_reference: 'SIM-ENC-0002', amount: '2900000.00', currency: 'XOF', received_on: '2026-09-29',
+            status_label: 'Rapproché (simulé)', lot: 'Lot A2', client: 'Yao Kouassi',
+          },
+        ],
+        disbursements: [disbursement({ status: 'eligible', status_label: 'Éligible (montant réservé)' })],
+      })),
+    });
+
+    fireEvent.click(await screen.findByTestId('balance-Encaissements rapprochés'));
+    const detail = screen.getByTestId('balance-detail');
+    expect(detail).toHaveTextContent('SIM-ENC-0001');
+    expect(detail).toHaveTextContent('SIM-ENC-0002');
+    expect(detail).toHaveTextContent('reçu le 28 sept. 2026');
+
+    fireEvent.click(screen.getByTestId('balance-Réservé (demandes éligibles)'));
+    expect(screen.getByTestId('balance-detail')).toHaveTextContent('Lot A1 — Fondations');
+
+    fireEvent.click(screen.getByTestId('balance-Disponible'));
+    expect(screen.getByTestId('balance-formula').textContent!.replace(/\s/g, ' '))
+      .toBe('Disponible = encaissements rapprochés 3 000 000 XOF − sorties exécutées 0 XOF − réservé 0 XOF = 3 000 000 XOF');
+  });
+});

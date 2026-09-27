@@ -53,14 +53,14 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
     expect(api.listReservations).toHaveBeenCalledWith('held');
     expect(row).toHaveTextContent('Awa Koné');
     expect(row).toHaveTextContent('Lot A12');
-    expect(row).toHaveTextContent('À valider');
+    expect(row).toHaveTextContent('À examiner'); // Audit UI R1 (J07)
 
     await openDossier();
     expect(screen.getByRole('heading', { name: 'Awa Koné · Lot A12' })).toBeInTheDocument();
     const dossier = screen.getByRole('article', { name: 'Dossier — Awa Koné, Lot A12' });
     expect(dossier).toHaveTextContent('acquereur@example.com');
     expect(dossier.textContent!.replace(/\s/g, ' ')).toContain('30 000 000 XOF');
-    expect(dossier).toHaveTextContent("28 septembre 2026 à 14:30 (heure d'Abidjan, GMT)");
+    expect(dossier).toHaveTextContent('28 sept. 2026, 14:30 (GMT, Abidjan)'); // Audit UI R1 (F06)
   });
 
   it('ticket F-075 — la recherche filtre la liste (client, lot, programme) ; « Dossiers clients » revient à la liste', async () => {
@@ -143,11 +143,36 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
     renderView({ validateReservation, listReservations });
     await openDossier();
 
-    expect(await screen.findByTestId('reservation-validation')).toHaveTextContent('En attente de validation');
-    fireEvent.click(screen.getByRole('button', { name: 'Valider la réservation et appeler les frais' }));
+    expect(await screen.findByTestId('reservation-validation')).toHaveTextContent('Examen en attente'); // Audit UI R1 (J07)
+    fireEvent.click(screen.getByRole('button', { name: 'Dossier examiné : appeler les frais de réservation' }));
 
     await waitFor(() => expect(validateReservation).toHaveBeenCalledWith('reservation-1', 'org-promoteur'));
-    await waitFor(() => expect(screen.getByTestId('reservation-validation')).toHaveTextContent('Validée par adv.demo@keya.test'));
-    expect(screen.queryByRole('button', { name: 'Valider la réservation et appeler les frais' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('reservation-validation')).toHaveTextContent('Examiné par adv.demo@keya.test'));
+    expect(screen.queryByRole('button', { name: 'Dossier examiné : appeler les frais de réservation' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ReservationsView — vue Finance en lecture seule (audit UI R1, R03, PO-2026-09-27-10)', () => {
+  it('« Appels et encaissements » : aucune gestion du dossier, aucun contrat, aucun formulaire d’encaissement', async () => {
+    const listContracts = vi.fn().mockResolvedValue([]);
+    const api = createMockApiClient({
+      listReservations: vi.fn().mockResolvedValue([reservation()]),
+      listContracts,
+      getFinanceFile: vi.fn().mockResolvedValue({
+        reservation: { id: 'reservation-1', status: 'held', status_label: 'Bloquée' }, calls: [], receipts: [],
+      }),
+      getTeamPaymentCalls: vi.fn().mockResolvedValue({ calls: [], candidates: [], blocking_reason: null }),
+    });
+    render(withApiClient(api, (
+      <ReservationsView mode="finance" openReservationId="reservation-1" permissions={{ canManageSales: false, canRecordMovements: false }} />
+    )));
+
+    expect(await screen.findByRole('button', { name: /Appels et encaissements/ })).toBeInTheDocument();
+    await waitFor(() => expect(api.getFinanceFile).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Dossier examiné : appeler les frais de réservation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Prochaine action' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Contrat')).not.toBeInTheDocument();
+    expect(listContracts).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).not.toBeInTheDocument();
   });
 });

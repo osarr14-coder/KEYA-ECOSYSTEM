@@ -57,7 +57,7 @@ describe('ClientContractPanel — contrat fictif côté client (ticket F-066, pa
     expect(version).toHaveTextContent('SIMULÉ — SANS VALEUR OPÉRATIONNELLE');
     expect(version).toHaveTextContent('DÉMONSTRATION — DONNÉES FICTIVES');
     expect(version).toHaveTextContent('Prix : 30 000 000 XOF.');
-    expect(version).toHaveTextContent('approuvée le 27 septembre 2026 à 11:00');
+    expect(version).toHaveTextContent('approuvée le 27 sept. 2026, 11:00 (GMT, Abidjan)'); // Audit UI R1 (F06)
   });
 
   it('la signature exige une lecture reconnue, puis appelle le serveur et rafraîchit', async () => {
@@ -75,7 +75,8 @@ describe('ClientContractPanel — contrat fictif côté client (ticket F-066, pa
     fireEvent.click(button);
 
     await waitFor(() => expect(signContract).toHaveBeenCalledWith('contract-1'));
-    expect(await screen.findByText(/signée \(simulation\) le 27 septembre 2026 à 12:00/)).toBeInTheDocument();
+    // Audit UI R1 (F06) : format de date unique.
+    expect(await screen.findByText(/signée \(simulation\) le 27 sept\. 2026, 12:00 \(GMT, Abidjan\)/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Signer (simulation)' })).not.toBeInTheDocument();
   });
 
