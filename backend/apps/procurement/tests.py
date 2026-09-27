@@ -814,6 +814,8 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             ('beneficiary-disbursement-list', [], {}),
             # Ticket B-054 : jalons de SON propre lot.
             ('build-lot-milestones', [own_lot.id], {}),
+            # Ticket B-056 : SES propres tâches, toutes organisations.
+            ('my-task-inbox', [], {}),
         ]
         for name, args, _kwargs in requests:
             response = own_client.get(reverse(name, args=args))
@@ -1006,6 +1008,14 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # ajouté au balayage ci-dessus) ; contrôles à affecter et
             # contrôleurs, admin seul — états dérivés, aucun montant.
             'build-lot-milestones', 'backoffice-control-list', 'backoffice-inspector-list',
+            # Ticket B-056 — ajout conscient : validation du dossier (admin/
+            # ADV), avis de paiement du client (SES appels seulement, 404
+            # sinon), avis en lecture équipe KEYIMMO / confirmation et rejet
+            # Finance seul ; boîte de tâches transverse de l'utilisateur
+            # courant (`assignee = moi`, ajoutée au balayage ci-dessus).
+            'reservation-validate', 'my-payment-notice-create', 'finance-payment-notice-list',
+            'finance-payment-notice-confirm', 'finance-payment-notice-reject',
+            'my-task-inbox', 'my-task-inbox-complete',
         }
         assert actual == expected
 

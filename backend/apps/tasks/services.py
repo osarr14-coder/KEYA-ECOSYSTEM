@@ -345,6 +345,58 @@ def create_task_for_program_request_decided(program_request):
     return task
 
 
+# ─── Notifications génériques — ticket B-056 ────────────────────────────────
+
+
+def notify_user(*, subject, organization_id, assignee, source, label, task_type=TaskType.TASK,
+                program=None, priority=TaskPriority.NORMAL):
+    """Une tâche par destinataire pour un même sujet : la contrainte
+    `unique_task_per_subject_and_source` (ticket 017) vaut par (sujet,
+    source) — le destinataire est donc suffixé à la source. Idempotente
+    (même garantie de concurrence que les autres générateurs). À appeler
+    sous le contexte RLS de `organization_id` (policy mono-organisation)."""
+    lookup = {
+        'subject_type': ContentType.objects.get_for_model(subject),
+        'subject_id': subject.pk,
+        'source': f'{source}:{assignee.pk}',
+    }
+    defaults = {
+        'organization_id': organization_id, 'type': task_type, 'program': program,
+        'assignee': assignee, 'label': label[:255], 'priority': priority,
+    }
+    task, _created = _get_or_create_task(lookup, defaults)
+    return task
+
+
+def close_tasks(*, subject, source):
+    """Ferme les tâches encore en attente de CE sujet pour cette raison, tous
+    destinataires confondus (l'action attendue a été faite). Sous contexte
+    RLS de l'organisation du sujet."""
+    return Task.objects.filter(
+        subject_type=ContentType.objects.get_for_model(subject), subject_id=subject.pk,
+        source__startswith=f'{source}:', status=TaskStatus.PENDING,
+    ).update(status=TaskStatus.DONE, completed_at=timezone.now())
+
+
+def complete_my_task_across_organizations(*, user, caller_organization_id, target_organization_id, task_id):
+    """Ticket B-056 — variante de `complete_task_across_organizations`
+    ouverte à tout utilisateur, mais UNIQUEMENT pour SES propres tâches
+    (`assignee = user`) : aucun rôle privilégié ne la protège, la
+    vérification du destinataire est donc faite ici."""
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            task = Task.objects.filter(
+                id=task_id, organization_id=target_organization_id, assignee=user,
+            ).first()
+            if task is None:
+                raise ValidationError({'task': 'Tâche introuvable.'})
+            complete_task(task)
+        finally:
+            set_rls_context(organization_id=caller_organization_id)
+    return task
+
+
 def complete_task(task):
     """Marquer une Task traitée ne touche jamais à son sujet (le
     `TrustEvent`/`Reserve` qui l'a déclenchée) — c'est un fait sur LA TASK

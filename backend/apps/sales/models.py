@@ -68,6 +68,13 @@ class Reservation(models.Model):
         related_name='cancelled_reservations',
     )
     cancellation_reason = models.TextField(blank=True)
+    # Ticket B-056 — validation du dossier par l'ADV (décision utilisateur,
+    # écart assumé au CDC §6.1) : aucun appel de fonds avant elle.
+    validated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='validated_reservations',
+    )
+    validated_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -309,6 +316,67 @@ class Allocation(models.Model):
 
     def __str__(self):
         return f'Affectation {self.amount} → {self.payment_call_id}'
+
+
+# ─── Avis de paiement du client — ticket B-056 ──────────────────────────────
+
+
+class PaymentNoticeStatus(models.TextChoices):
+    DECLARED = 'declared', 'Déclaré — en attente de confirmation'
+    CONFIRMED = 'confirmed', 'Confirmé par Finance'
+    REJECTED = 'rejected', 'Rejeté par Finance'
+
+
+class PaymentNotice(models.Model):
+    """Déclaration du client : « j'ai effectué le virement » pour un appel
+    de fonds (ticket B-056). Une DÉCLARATION, jamais une preuve bancaire :
+    elle ne couvre aucun appel et ne fait avancer aucune réservation. Finance
+    la confirme (un `CustomerReceipt` est alors créé, affecté, rapproché) ou
+    la rejette avec motif.
+
+    Même policy RLS que `Reservation` (organisation du lot OU client) ;
+    montant, appel, client et référence immuables, statut en avant
+    seulement (trigger, migration 0012)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name='payment_notices',
+    )
+    reservation = models.ForeignKey(Reservation, on_delete=models.PROTECT, related_name='payment_notices')
+    payment_call = models.ForeignKey(PaymentCall, on_delete=models.PROTECT, related_name='payment_notices')
+    client = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payment_notices',
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    currency = models.CharField(max_length=3, default=DEFAULT_CURRENCY)
+    client_reference = models.CharField(max_length=64)
+    paid_on = models.DateField()
+    status = models.CharField(
+        max_length=20, choices=PaymentNoticeStatus.choices, default=PaymentNoticeStatus.DECLARED,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    processed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='processed_payment_notices',
+    )
+    processed_at = models.DateTimeField(null=True, blank=True)
+    receipt = models.ForeignKey(
+        CustomerReceipt, on_delete=models.PROTECT, null=True, blank=True, related_name='payment_notices',
+    )
+    rejection_reason = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'sales_payment_notice'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['payment_call'], condition=Q(status='declared'),
+                name='sales_one_pending_notice_per_call',
+            ),
+            models.CheckConstraint(check=Q(amount__gt=0), name='sales_payment_notice_amount_positive'),
+        ]
+
+    def __str__(self):
+        return f'Avis de paiement {self.client_reference} {self.amount} {self.currency}'
 
 
 # ─── Décaissements — ticket B-052 (CDC V3 §8.2/§8.3) ─────────────────────────

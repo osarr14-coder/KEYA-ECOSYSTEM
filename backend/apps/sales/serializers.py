@@ -1,6 +1,8 @@
 from rest_framework import serializers
 
-from .models import DEFAULT_CURRENCY, ContractVersion, CustomerReceipt, PaymentCall, PaymentCallKind, Reservation
+from .models import (
+    DEFAULT_CURRENCY, ContractVersion, CustomerReceipt, PaymentCall, PaymentCallKind, PaymentNotice, Reservation,
+)
 
 
 def _money(value):
@@ -52,7 +54,7 @@ class ReservationSerializer(serializers.ModelSerializer):
         model = Reservation
         fields = [
             'id', 'status', 'status_label', 'held_until', 'price_amount', 'currency',
-            'lot', 'program', 'organization', 'cancellation_reason', 'created_at', 'updated_at',
+            'lot', 'program', 'organization', 'cancellation_reason', 'validated_at', 'created_at', 'updated_at',
         ]
         read_only_fields = fields
 
@@ -72,8 +74,13 @@ class AdminReservationSerializer(ReservationSerializer):
     cancelled_by = serializers.SerializerMethodField()
 
     class Meta(ReservationSerializer.Meta):
-        fields = ReservationSerializer.Meta.fields + ['client', 'cancelled_by']
+        fields = ReservationSerializer.Meta.fields + ['client', 'cancelled_by', 'validated_by']
         read_only_fields = fields
+
+    validated_by = serializers.SerializerMethodField()
+
+    def get_validated_by(self, reservation):
+        return reservation.validated_by.email if reservation.validated_by_id else None
 
     def get_client(self, reservation):
         client = reservation.client
@@ -162,11 +169,40 @@ class PaymentCallSerializer(serializers.ModelSerializer):
 
 
 class ClientPaymentCallSerializer(PaymentCallSerializer):
-    """Côté client : jamais l'identité du membre KEYIMMO qui a émis."""
+    """Côté client : jamais l'identité du membre KEYIMMO qui a émis.
+
+    Ticket B-056 — instructions de virement (compte FICTIF, référence propre
+    à l'appel) et état de la dernière déclaration du client (`notice`)."""
+
+    payment_reference = serializers.SerializerMethodField()
+    payment_instructions = serializers.SerializerMethodField()
+    notice = serializers.SerializerMethodField()
 
     class Meta(PaymentCallSerializer.Meta):
-        fields = [field for field in PaymentCallSerializer.Meta.fields if field != 'issued_by']
+        fields = [field for field in PaymentCallSerializer.Meta.fields if field != 'issued_by'] + [
+            'payment_reference', 'payment_instructions', 'notice',
+        ]
         read_only_fields = fields
+
+    def get_payment_reference(self, call):
+        from .services import payment_reference
+
+        return payment_reference(call)
+
+    def get_payment_instructions(self, call):
+        from .services import DEMO_BANK_INSTRUCTIONS
+
+        return {**DEMO_BANK_INSTRUCTIONS, 'simulation': True}
+
+    def get_notice(self, call):
+        notice = getattr(call, 'latest_notice', None)
+        if notice is None:
+            return None
+        return {
+            'id': str(notice.id), 'status': notice.status, 'status_label': notice.get_status_display(),
+            'amount': _money(notice.amount), 'client_reference': notice.client_reference,
+            'paid_on': notice.paid_on.isoformat(), 'rejection_reason': notice.rejection_reason,
+        }
 
 
 class PaymentCallCandidateSerializer(serializers.Serializer):
@@ -336,3 +372,73 @@ class DisbursementExecuteSerializer(serializers.Serializer):
 
 class DisbursementReasonSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+# ─── Avis de paiement — ticket B-056 ───────────────────────────────────────
+
+
+class PaymentNoticeDeclareSerializer(serializers.Serializer):
+    client_reference = serializers.CharField(max_length=64)
+    paid_on = serializers.DateField()
+
+
+class PaymentNoticeConfirmSerializer(serializers.Serializer):
+    bank_reference = serializers.CharField(max_length=64, required=False, allow_blank=True, default='')
+    received_on = serializers.DateField(required=False, allow_null=True, default=None)
+
+
+class PaymentNoticeRejectSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=255)
+
+
+class PaymentNoticeSerializer(serializers.Serializer):
+    """Relations préchargées par le service (contexte RLS du lot)."""
+
+    id = serializers.UUIDField()
+    organization = serializers.SerializerMethodField()
+    program = serializers.SerializerMethodField()
+    lot = serializers.SerializerMethodField()
+    reservation = serializers.SerializerMethodField()
+    client = serializers.SerializerMethodField()
+    payment_call = serializers.SerializerMethodField()
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2)
+    currency = serializers.CharField()
+    client_reference = serializers.CharField()
+    paid_on = serializers.DateField()
+    status = serializers.CharField()
+    status_label = serializers.CharField(source='get_status_display')
+    created_at = serializers.DateTimeField()
+    processed_by = serializers.SerializerMethodField()
+    processed_at = serializers.DateTimeField(allow_null=True)
+    rejection_reason = serializers.CharField()
+    simulation = serializers.SerializerMethodField()
+
+    def get_organization(self, notice):
+        return _organization(notice.organization)
+
+    def get_program(self, notice):
+        program = notice.reservation.lot.asset.program
+        return {'id': str(program.id), 'name': program.name}
+
+    def get_lot(self, notice):
+        return {'id': str(notice.reservation.lot_id), 'name': notice.reservation.lot.name}
+
+    def get_reservation(self, notice):
+        reservation = notice.reservation
+        return {'id': str(reservation.id), 'status': reservation.status, 'status_label': reservation.get_status_display()}
+
+    def get_client(self, notice):
+        return {'id': str(notice.client_id), 'email': notice.client.email, 'full_name': notice.client.full_name}
+
+    def get_payment_call(self, notice):
+        call = notice.payment_call
+        return {
+            'id': str(call.id), 'kind': call.kind, 'kind_label': call.get_kind_display(),
+            'tier_label': call.tier_label, 'amount': _money(call.amount),
+        }
+
+    def get_processed_by(self, notice):
+        return notice.processed_by.email if notice.processed_by_id else None
+
+    def get_simulation(self, notice):
+        return True

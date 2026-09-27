@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Case, F, IntegerField, Value, When
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -187,4 +187,61 @@ class InspectorTaskCompleteView(APIView):
             )
         except DjangoValidationError as exc:
             raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
+        return Response(TaskSerializer(task).data)
+
+
+class MyInboxView(APIView):
+    """`GET /api/me/tasks/inbox/?status=` — ticket B-056 : toutes MES tâches,
+    toutes organisations (celles du circuit de vente vivent dans
+    l'organisation du lot, jamais dans celle du client ni de l'équipe
+    KEYIMMO). Même boucle que les boîtes admin/inspecteur ;
+    `assignee = request.user` seulement."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    # Mêmes filtres que `MyTasksView` (HOME les utilise déjà) : `type`,
+    # `status`, `program`, `ordering=priority` — appliqués en mémoire après
+    # la boucle transverse (volume d'une boîte personnelle).
+    _PRIORITY_ORDER = {TaskPriority.HIGH: 0, TaskPriority.NORMAL: 1, TaskPriority.LOW: 2}
+
+    def get(self, request):
+        params = request.query_params
+        tasks = services.list_my_tasks_across_organizations(
+            user=request.user,
+            caller_organization_id=request.organization.id if request.organization else None,
+            status=params.get('status'),
+        )
+        if params.get('type'):
+            tasks = [task for task in tasks if task.type == params['type']]
+        if params.get('program'):
+            tasks = [task for task in tasks if str(task.program_id) == params['program']]
+        tasks.sort(key=lambda task: task.created_at, reverse=True)
+        if params.get('ordering') == 'priority':
+            tasks.sort(key=lambda task: (
+                self._PRIORITY_ORDER.get(task.priority, 1),
+                task.due_date is None,
+                task.due_date or task.created_at,
+            ))
+        return Response(TaskSerializer(tasks, many=True).data)
+
+
+class MyInboxCompleteView(APIView):
+    """`POST /api/me/tasks/{id}/inbox-complete/?organization_id=` — ticket
+    B-056 : marque traitée UNE DE MES tâches (404 pour celle d'un autre)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, task_id):
+        organization_id = request.query_params.get('organization_id')
+        if not organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        try:
+            task = services.complete_my_task_across_organizations(
+                user=request.user,
+                caller_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=organization_id,
+                task_id=task_id,
+            )
+        except DjangoValidationError:
+            raise NotFound('Tâche introuvable.')
         return Response(TaskSerializer(task).data)

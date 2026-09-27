@@ -19,13 +19,18 @@ from .views import (
     MyContractListView,
     MyContractSignView,
     MyPaymentCallListView,
+    MyPaymentNoticeCreateView,
     MyReservationCancelView,
     MyReservationListView,
+    PaymentNoticeConfirmView,
+    PaymentNoticeListView,
+    PaymentNoticeRejectView,
     ProgramAccountListView,
     ProgramAccountView,
     ReceiptCreateView,
     ReceiptReconcileView,
     ReservationCreateView,
+    ReservationValidateView,
     TeamPaymentCallView,
 )
 
@@ -104,5 +109,23 @@ urlpatterns = [
     path(
         'build/disbursements/<uuid:disbursement_id>/confirm/',
         BeneficiaryDisbursementConfirmView.as_view(), name='beneficiary-disbursement-confirm',
+    ),
+    # Ticket B-056 — validation ADV, avis de paiement du client.
+    path(
+        'reservations/<uuid:reservation_id>/validate/',
+        ReservationValidateView.as_view(), name='reservation-validate',
+    ),
+    path(
+        'me/payment-calls/<uuid:payment_call_id>/notices/',
+        MyPaymentNoticeCreateView.as_view(), name='my-payment-notice-create',
+    ),
+    path('finance/payment-notices/', PaymentNoticeListView.as_view(), name='finance-payment-notice-list'),
+    path(
+        'finance/payment-notices/<uuid:notice_id>/confirm/',
+        PaymentNoticeConfirmView.as_view(), name='finance-payment-notice-confirm',
+    ),
+    path(
+        'finance/payment-notices/<uuid:notice_id>/reject/',
+        PaymentNoticeRejectView.as_view(), name='finance-payment-notice-reject',
     ),
 ]

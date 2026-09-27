@@ -26,6 +26,10 @@ from .serializers import (
     PaymentCallCandidateSerializer,
     PaymentCallIssueSerializer,
     PaymentCallSerializer,
+    PaymentNoticeConfirmSerializer,
+    PaymentNoticeDeclareSerializer,
+    PaymentNoticeRejectSerializer,
+    PaymentNoticeSerializer,
     ReceiptCreateSerializer,
     ReservationRequestSerializer,
     ReservationSerializer,
@@ -665,3 +669,109 @@ class BeneficiaryDisbursementConfirmView(APIView):
         if disbursement is None:
             raise NotFound()
         return Response(DisbursementSerializer(disbursement).data)
+
+
+# ─── Validation ADV, avis de paiement — ticket B-056 ───────────────────────
+
+
+class ReservationValidateView(APIView):
+    """`POST /api/reservations/{id}/validate/?organization_id=` — admin et
+    ADV : valide le dossier d'une réservation bloquée et émet l'appel
+    « Frais » ; 409 si déjà validée, expirée ou annulée."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+
+    def post(self, request, reservation_id):
+        try:
+            reservation = services.validate_reservation(
+                actor=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=_target_organization_id(request), reservation_id=reservation_id,
+            )
+        except (services.ReservationTransitionError, services.PaymentCallError) as exc:
+            return _conflict(exc)
+        if reservation is None:
+            raise NotFound()
+        return Response(AdminReservationSerializer(reservation).data)
+
+
+class MyPaymentNoticeCreateView(APIView):
+    """`POST /api/me/payment-calls/{id}/notices/` — le client déclare son
+    virement (référence, date). 201, 200 si rejouée à l'identique, 409 si un
+    autre avis attend déjà, 404 pour l'appel d'un autre client."""
+
+    permission_classes = [permissions.IsAuthenticated, IsClient]
+
+    def post(self, request, payment_call_id):
+        serializer = PaymentNoticeDeclareSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            notice, created = services.declare_payment(
+                client=request.user, caller_organization_id=_caller_organization_id(request),
+                payment_call_id=payment_call_id, **serializer.validated_data,
+            )
+        except services.PaymentNoticeError as exc:
+            return _conflict(exc)
+        if notice is None:
+            raise NotFound()
+        return Response({
+            'id': str(notice.id), 'status': notice.status, 'status_label': notice.get_status_display(),
+            'amount': f'{notice.amount:.2f}', 'client_reference': notice.client_reference,
+        }, status=201 if created else 200)
+
+
+class PaymentNoticeListView(APIView):
+    """`GET /api/finance/payment-notices/?status=declared` — équipe KEYIMMO
+    (défaut : avis en attente ; `status=all` pour tous)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsKeyimmoTeam]
+
+    def get(self, request):
+        status = request.query_params.get('status', 'declared')
+        notices = services.list_payment_notices(
+            caller_organization_id=_caller_organization_id(request), status=None if status == 'all' else status,
+        )
+        return Response(PaymentNoticeSerializer(notices, many=True).data)
+
+
+class PaymentNoticeConfirmView(APIView):
+    """`POST /api/finance/payment-notices/{id}/confirm/?organization_id=` —
+    Finance seul : encaissement créé, affecté, rapproché."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, notice_id):
+        serializer = PaymentNoticeConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            notice = services.confirm_payment_notice(
+                finance=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=_target_organization_id(request), notice_id=notice_id,
+                **serializer.validated_data,
+            )
+        except services.PaymentNoticeError as exc:
+            return _conflict(exc)
+        if notice is None:
+            raise NotFound()
+        return Response(PaymentNoticeSerializer(notice).data)
+
+
+class PaymentNoticeRejectView(APIView):
+    """`POST /api/finance/payment-notices/{id}/reject/?organization_id=` —
+    Finance seul, motif obligatoire."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, notice_id):
+        serializer = PaymentNoticeRejectSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            notice = services.reject_payment_notice(
+                finance=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=_target_organization_id(request), notice_id=notice_id,
+                reason=serializer.validated_data['reason'],
+            )
+        except services.PaymentNoticeError as exc:
+            return _conflict(exc)
+        if notice is None:
+            raise NotFound()
+        return Response(PaymentNoticeSerializer(notice).data)

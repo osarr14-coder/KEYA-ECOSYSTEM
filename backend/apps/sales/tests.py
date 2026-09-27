@@ -604,6 +604,19 @@ def _issue(api, reservation_id, promoter, kind, tier_code=''):
     return api.post(_calls_url(reservation_id, promoter), {'kind': kind, 'tier_code': tier_code}, format='json')
 
 
+def _validate(api, reservation_id, promoter):
+    """Ticket B-056 — l'ADV valide le dossier ; l'appel « Frais » est émis
+    dans la même transaction."""
+    return api.post(reverse('reservation-validate', args=[reservation_id]) + f'?organization_id={promoter.id}')
+
+
+def _fee_call(api, reservation_id, promoter):
+    response = _validate(api, reservation_id, promoter)
+    assert response.status_code == 200, response.data
+    calls = api.get(_calls_url(reservation_id, promoter)).data['calls']
+    return next(call for call in calls if call['kind'] == 'frais')
+
+
 def _set_reservation_status(promoter, reservation_id, status):
     """Simule l'état que les encaissements (B-051) produiront."""
     set_rls_context(organization_id=promoter.id)
@@ -642,9 +655,12 @@ class TestPaymentCallsScenario:
     def test_fee_then_complement_never_deducting_the_fee_twice(self):
         _client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
 
-        fee = _issue(adv, reservation_id, promoter, 'frais')
-        assert fee.status_code == 201, fee.data
-        assert fee.data['amount'] == '100000.00'
+        # Ticket B-056 — aucun appel avant la validation du dossier par l'ADV.
+        before = _issue(adv, reservation_id, promoter, 'frais')
+        assert before.status_code == 409
+        assert 'validée par l\'ADV' in before.data['detail']
+        fee = _fee_call(adv, reservation_id, promoter)
+        assert fee['amount'] == '100000.00'
         assert _issue(adv, reservation_id, promoter, 'frais').status_code == 409
 
         blocked = _issue(adv, reservation_id, promoter, 'premier_versement')
@@ -665,7 +681,8 @@ class TestPaymentCallsScenario:
         data = adv.get(_calls_url(reservation_id, promoter)).data
 
         by_kind = {candidate['kind']: candidate for candidate in data['candidates']}
-        assert by_kind['frais']['available'] is True
+        assert by_kind['frais']['available'] is False
+        assert 'validée' in by_kind['frais']['reason']
         assert by_kind['premier_versement']['available'] is False
         assert by_kind['premier_versement']['amount'] == '2900000.00'
 
@@ -684,7 +701,7 @@ class TestVefaTierCallsFollowConstruction:
 
     def _committed(self):
         client, user, adv, promoter, lot, reservation_id = _finance_scenario()
-        _issue(adv, reservation_id, promoter, 'frais')
+        _fee_call(adv, reservation_id, promoter)
         _set_reservation_status(promoter, reservation_id, 'reserved')
         _issue(adv, reservation_id, promoter, 'premier_versement')
         _set_reservation_status(promoter, reservation_id, 'committed')
@@ -733,10 +750,11 @@ class TestPaymentCallPermissions:
 
         assert finance.get(_calls_url(reservation_id, promoter)).status_code == 200
         assert _issue(finance, reservation_id, promoter, 'frais').status_code == 403
+        assert _validate(finance, reservation_id, promoter).status_code == 403
 
     def test_the_client_sees_his_calls_without_the_issuer_identity(self):
         client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
-        _issue(adv, reservation_id, promoter, 'frais')
+        _fee_call(adv, reservation_id, promoter)
 
         rows = client.get(reverse('my-payment-calls', args=[reservation_id])).data
 
@@ -745,7 +763,7 @@ class TestPaymentCallPermissions:
 
     def test_another_client_and_a_constructeur_see_nothing(self):
         _client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
-        _issue(adv, reservation_id, promoter, 'frais')
+        _fee_call(adv, reservation_id, promoter)
         intruder, _intruder_user, _org = _register()
         constructeur, _c_user, _c_org = _register('constructeur')
 
@@ -757,7 +775,7 @@ class TestPaymentCallPermissions:
 class TestPaymentCallIsAppendOnly:
     def test_an_issued_call_is_never_rewritten(self):
         _client, _user, adv, promoter, _lot, reservation_id = _finance_scenario()
-        call_id = _issue(adv, reservation_id, promoter, 'frais').data['id']
+        call_id = _fee_call(adv, reservation_id, promoter)['id']
         set_rls_context(organization_id=promoter.id)
 
         with connection.cursor() as cursor:
@@ -817,7 +835,7 @@ def _sign(client, adv, promoter, reservation_id):
 def _sales_scenario():
     client, client_user, adv, promoter, lot, reservation_id = _finance_scenario()
     finance, _finance_user, _org = _register('finance')
-    fee_call = _issue(adv, reservation_id, promoter, 'frais').data
+    fee_call = _fee_call(adv, reservation_id, promoter)
     return client, client_user, adv, finance, promoter, lot, reservation_id, fee_call
 
 

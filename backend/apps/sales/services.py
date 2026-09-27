@@ -23,6 +23,7 @@ from apps.organizations.models import Organization
 from apps.pricing.services import get_active_legal_payment_tier_template
 from apps.programs.models import Lot, LotClient, LotCommercialStatus, Milestone, Program
 
+from . import notifications
 from .models import (
     BLOCKING_STATUSES,
     DEFAULT_CURRENCY,
@@ -37,6 +38,8 @@ from .models import (
     FlowStatus,
     NO_CONFIRMATION_REASON,
     OPEN_DISBURSEMENT_STATUSES,
+    PaymentNotice,
+    PaymentNoticeStatus,
     PaymentCall,
     PaymentCallKind,
     Reservation,
@@ -83,6 +86,10 @@ def _expire_if_overdue(reservation, now):
     # bancaire simulé, l'expiration automatique est suspendue pour revue
     # Finance ; aucune libération ou restitution automatique ».
     if reservation.receipts.exists():
+        return False
+    # Ticket B-056 — un virement déclaré par le client suspend aussi
+    # l'expiration, le temps que Finance le confirme ou le rejette.
+    if reservation.payment_notices.filter(status=PaymentNoticeStatus.DECLARED).exists():
         return False
     reservation.status = ReservationStatus.EXPIRED
     reservation.save(update_fields=['status', 'updated_at'])
@@ -187,6 +194,8 @@ def request_reservation(*, client, caller_organization_id, lot_organization_id, 
                 'price_amount': str(reservation.price_amount), 'currency': reservation.currency,
             },
         )
+        # Ticket B-056 — l'ADV est prévenu qu'un dossier attend sa validation.
+        notifications.reservation_requested(reservation, actor=client)
         return reservation
     finally:
         set_rls_context(organization_id=caller_organization_id)
@@ -597,8 +606,13 @@ def compute_payment_call_candidates(reservation):
         candidates.append({
             'kind': PaymentCallKind.FRAIS, 'tier_code': '', 'tier_label': '', 'cumulative_cap_percent': None,
             'amount': fee,
-            'reason': None if reservation.status == ReservationStatus.HELD
-            else 'Les frais ne s\'appellent que sur une réservation bloquée.',
+            'reason': (
+                'Les frais ne s\'appellent que sur une réservation bloquée.'
+                if reservation.status != ReservationStatus.HELD
+                # Ticket B-056 — l'ADV valide le dossier avant tout appel.
+                else None if reservation.validated_at
+                else 'La réservation doit d\'abord être validée par l\'ADV.'
+            ),
         })
 
     if template is None:
@@ -702,7 +716,48 @@ def issue_payment_call(*, actor, caller_organization_id, target_organization_id,
                 'legal_template_id': str(template.id) if call.legal_template_id else None,
             },
         )
+        # Ticket B-056 — le client est prévenu qu'un appel l'attend.
+        notifications.payment_call_issued(call)
         return call
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def validate_reservation(*, actor, caller_organization_id, target_organization_id, reservation_id):
+    """Ticket B-056 — l'ADV (ou l'admin) valide le dossier d'une réservation
+    bloquée et émet, dans la même transaction, l'appel « Frais ». Le délai de
+    paiement est relancé à partir de la validation (le client dispose du
+    délai complet après l'appel). Écart assumé au CDC §6.1 (décision
+    utilisateur)."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        reservation = _team_reservation(reservation_id, lock=True)
+        if reservation is None:
+            return None
+        if reservation.status != ReservationStatus.HELD:
+            raise ReservationTransitionError(
+                f'Seule une réservation bloquée se valide (statut actuel : {reservation.get_status_display()}).'
+            )
+        if reservation.validated_at is not None:
+            raise ReservationTransitionError('Cette réservation est déjà validée.')
+        now = timezone.now()
+        reservation.validated_by = actor
+        reservation.validated_at = now
+        reservation.held_until = max(reservation.held_until, now + _hold_duration())
+        reservation.save(update_fields=['validated_by', 'validated_at', 'held_until', 'updated_at'])
+        audit.record(
+            organization_id=reservation.organization_id, actor=actor, action='reservation.validated',
+            obj=reservation, payload={'held_until': reservation.held_until.isoformat()},
+        )
+        notifications.reservation_validated(reservation)
+        issue_payment_call(
+            actor=actor, caller_organization_id=target_organization_id,
+            target_organization_id=target_organization_id, reservation_id=reservation.id,
+            kind=PaymentCallKind.FRAIS,
+        )
+        return Reservation.objects.select_related(
+            *_DISPLAY_RELATIONS, 'client', 'cancelled_by', 'validated_by',
+        ).get(id=reservation.id)
     finally:
         set_rls_context(organization_id=caller_organization_id)
 
@@ -713,9 +768,14 @@ def list_client_payment_calls(*, client, caller_organization_id, reservation_id)
         return None
     try:
         set_rls_context(organization_id=organization_ids.pop())
-        return _with_settlement(
+        calls = _with_settlement(
             PaymentCall.objects.filter(reservation_id=reservation_id, client=client).order_by('issued_at'),
         )
+        # Ticket B-056 — dernier avis de paiement de chaque appel (état de la
+        # déclaration du client), préchargé sous le contexte du lot.
+        for call in calls:
+            call.latest_notice = call.payment_notices.order_by('-created_at').first()
+        return calls
     finally:
         set_rls_context(organization_id=caller_organization_id)
 
@@ -1414,5 +1474,189 @@ def get_program_account(*, caller_organization_id, target_organization_id, progr
             'program': program, 'balance': account_balance(program),
             'milestones': milestones, 'disbursements': disbursements,
         }
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+# ─── Avis de paiement du client, confirmation Finance — ticket B-056 ─────────
+
+# Coordonnées bancaires FICTIVES affichées au client (démonstration) : aucun
+# compte réel, aucun fonds réel (CDC §3.1).
+DEMO_BANK_INSTRUCTIONS = {
+    'beneficiary': 'KEYIMMO AFRIC — compte de séquestre du programme (FICTIF)',
+    'bank': 'Banque de démonstration (FICTIVE)',
+    'iban': 'CI00 DEMO 0000 0000 0000 0000 000',
+}
+
+
+class PaymentNoticeError(Exception):
+    """Déclaration ou traitement d'un avis impossible dans l'état courant —
+    le message dit pourquoi. Réponse 409."""
+
+
+def payment_reference(call):
+    """Référence à indiquer sur le virement, propre à chaque appel."""
+    return f'KEYA-{call.id.hex[:8].upper()}'
+
+
+def declare_payment(*, client, caller_organization_id, payment_call_id, client_reference, paid_on):
+    """Le client déclare avoir viré le reste à couvrir d'un de SES appels.
+    Idempotent : la même déclaration rejouée renvoie l'avis existant
+    (`created=False`). Une déclaration n'est jamais une preuve bancaire."""
+    reference = (client_reference or '').strip()
+    if not reference:
+        raise PaymentNoticeError('La référence de votre virement est obligatoire.')
+    if paid_on is None:
+        raise PaymentNoticeError('La date du virement est obligatoire.')
+    # Branche `client_id` de la policy RLS, SANS jointure (voir
+    # `_client_reservation_organization_ids`).
+    found = PaymentCall.objects.filter(id=payment_call_id, client=client).values('organization_id').first()
+    if found is None:
+        return None, False
+    try:
+        set_rls_context(organization_id=found['organization_id'])
+        call = PaymentCall.objects.select_related(
+            'reservation', 'reservation__lot', 'reservation__lot__asset__program', 'reservation__client',
+        ).get(id=payment_call_id)
+        reservation = Reservation.objects.select_for_update(of=('self',)).get(id=call.reservation_id)
+        pending = call.payment_notices.filter(status=PaymentNoticeStatus.DECLARED).first()
+        if pending is not None:
+            if pending.client_reference == reference:
+                return pending, False
+            raise PaymentNoticeError(
+                'Un virement est déjà déclaré pour cet appel : il est en attente de confirmation par KEYIMMO.'
+            )
+        _expire_if_overdue(reservation, timezone.now())
+        if reservation.status not in BLOCKING_STATUSES:
+            raise PaymentNoticeError('Cette réservation est expirée ou annulée : aucun paiement ne peut y être déclaré.')
+        remaining = call.amount - allocated_amount(call)
+        if remaining <= 0:
+            raise PaymentNoticeError('Cet appel est déjà couvert.')
+        try:
+            with transaction.atomic():
+                notice = PaymentNotice.objects.create(
+                    organization_id=call.organization_id, reservation=call.reservation, payment_call=call,
+                    client=client, amount=remaining, currency=call.currency, client_reference=reference,
+                    paid_on=paid_on,
+                )
+        except IntegrityError:
+            raise PaymentNoticeError('Un virement vient déjà d\'être déclaré pour cet appel.')
+        audit.record(
+            organization_id=call.organization_id, actor=client, action='payment_notice.declared', obj=notice,
+            payload={'payment_call_id': str(call.id), 'amount': str(remaining), 'client_reference': reference},
+        )
+        notifications.payment_declared(notice, actor=client)
+        return notice, True
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+_NOTICE_RELATIONS = (
+    'organization', 'reservation', 'reservation__lot', 'reservation__lot__asset__program', 'reservation__client',
+    'payment_call', 'client', 'processed_by', 'receipt',
+)
+
+
+def list_payment_notices(*, caller_organization_id, status=PaymentNoticeStatus.DECLARED):
+    """Avis de paiement, toutes organisations — équipe KEYIMMO (boucle de
+    bascule RLS habituelle)."""
+    notices = []
+    organization_ids = list(Organization.objects.values_list('id', flat=True))
+    try:
+        for organization_id in organization_ids:
+            set_rls_context(organization_id=organization_id)
+            queryset = PaymentNotice.objects.filter(organization_id=organization_id).select_related(*_NOTICE_RELATIONS)
+            if status:
+                queryset = queryset.filter(status=status)
+            notices.extend(queryset)
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+    return sorted(notices, key=lambda notice: notice.created_at)
+
+
+def _load_notice(notice_id):
+    return PaymentNotice.objects.select_related(*_NOTICE_RELATIONS).get(id=notice_id)
+
+
+def confirm_payment_notice(*, finance, caller_organization_id, target_organization_id, notice_id,
+                           bank_reference='', received_on=None):
+    """Finance constate le virement sur le relevé (simulé) : encaissement
+    créé à partir de l'avis, affecté à l'appel, rapproché — les transitions
+    de réservation suivent automatiquement (B-051). L'ADV et le client sont
+    notifiés. Les fonctions B-051 réutilisées restaurent le contexte vers
+    l'organisation du lot (passée comme « appelant »), jamais vers celle de
+    Finance avant la fin."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        notice = PaymentNotice.objects.select_for_update(of=('self',)).filter(id=notice_id).first()
+        if notice is None:
+            return None
+        if notice.status != PaymentNoticeStatus.DECLARED:
+            raise PaymentNoticeError(f'Avis déjà traité ({notice.get_status_display().lower()}).')
+        reference = (bank_reference or '').strip() or notice.client_reference
+        try:
+            receipt, _created = record_receipt(
+                finance=finance, caller_organization_id=target_organization_id,
+                target_organization_id=target_organization_id, reservation_id=notice.reservation_id,
+                bank_reference=reference, amount=notice.amount, received_on=received_on or notice.paid_on,
+            )
+            call = PaymentCall.objects.get(id=notice.payment_call_id)
+            to_allocate = min(unallocated_amount(receipt), call.amount - allocated_amount(call))
+            if to_allocate > 0:
+                allocate_receipt(
+                    finance=finance, caller_organization_id=target_organization_id,
+                    target_organization_id=target_organization_id, receipt_id=receipt.id,
+                    payment_call_id=call.id, amount=to_allocate,
+                )
+            receipt.refresh_from_db()
+            if receipt.status == FlowStatus.BANK_EXECUTED_SIM:
+                reconcile_receipt(
+                    finance=finance, caller_organization_id=target_organization_id,
+                    target_organization_id=target_organization_id, receipt_id=receipt.id,
+                )
+        except ReceiptError as exc:
+            raise PaymentNoticeError(str(exc))
+        notice.status = PaymentNoticeStatus.CONFIRMED
+        notice.processed_by = finance
+        notice.processed_at = timezone.now()
+        notice.receipt = receipt
+        notice.save(update_fields=['status', 'processed_by', 'processed_at', 'receipt'])
+        audit.record(
+            organization_id=notice.organization_id, actor=finance, action='payment_notice.confirmed', obj=notice,
+            payload={'receipt_id': str(receipt.id), 'bank_reference': reference, 'amount': str(notice.amount)},
+        )
+        notice = _load_notice(notice.id)
+        notifications.payment_confirmed(
+            notice, call_settled=settled_amount(notice.payment_call) >= notice.payment_call.amount, actor=finance,
+        )
+        return notice
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def reject_payment_notice(*, finance, caller_organization_id, target_organization_id, notice_id, reason):
+    """Virement introuvable sur le relevé : avis rejeté avec motif, client
+    notifié ; il peut déclarer à nouveau."""
+    if not reason or not reason.strip():
+        raise PaymentNoticeError('Le motif du rejet est obligatoire.')
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        notice = PaymentNotice.objects.select_for_update(of=('self',)).filter(id=notice_id).first()
+        if notice is None:
+            return None
+        if notice.status != PaymentNoticeStatus.DECLARED:
+            raise PaymentNoticeError(f'Avis déjà traité ({notice.get_status_display().lower()}).')
+        notice.status = PaymentNoticeStatus.REJECTED
+        notice.processed_by = finance
+        notice.processed_at = timezone.now()
+        notice.rejection_reason = reason.strip()
+        notice.save(update_fields=['status', 'processed_by', 'processed_at', 'rejection_reason'])
+        audit.record(
+            organization_id=notice.organization_id, actor=finance, action='payment_notice.rejected', obj=notice,
+            justification=notice.rejection_reason,
+        )
+        notice = _load_notice(notice.id)
+        notifications.payment_rejected(notice)
+        return notice
     finally:
         set_rls_context(organization_id=caller_organization_id)
