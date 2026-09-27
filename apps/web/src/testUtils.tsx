@@ -62,9 +62,9 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     listProgramRequests: vi.fn(notMocked),
     decideProgramRequest: vi.fn(notMocked),
     // Ticket F-060/F-063 (compteur cloche AppShell, B-044 cross-org) :
-    getAdminTasks: vi.fn(notMocked),
+    getMyInboxTasks: vi.fn(notMocked),
     // Ticket F-062/F-063 (marquer une tâche traitée, B-044 cross-org) :
-    completeAdminTask: vi.fn(notMocked),
+    completeMyInboxTask: vi.fn(notMocked),
     // Ticket F-068 (appels de fonds, encaissements, décaissements — B-050/51/52) :
     getTeamPaymentCalls: vi.fn(notMocked),
     issuePaymentCall: vi.fn(notMocked),
@@ -79,6 +79,11 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     executeDisbursement: vi.fn(notMocked),
     cancelDisbursement: vi.fn(notMocked),
     reconcileDisbursement: vi.fn(notMocked),
+    // Ticket F-071 (validation ADV, virements déclarés, B-056) :
+    validateReservation: vi.fn(notMocked),
+    listPaymentNotices: vi.fn(notMocked),
+    confirmPaymentNotice: vi.fn(notMocked),
+    rejectPaymentNotice: vi.fn(notMocked),
     // Ticket F-069 (affectation des contrôles, B-054) :
     listControlsToAssign: vi.fn(notMocked),
     listInspectors: vi.fn(notMocked),

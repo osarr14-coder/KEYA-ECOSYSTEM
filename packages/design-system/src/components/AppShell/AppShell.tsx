@@ -295,9 +295,12 @@ export function AppShell({
                     <li
                       style={{
                         padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
+                        paddingTop: '12px',
                         paddingBottom: '4px',
-                        fontSize: '0.75em',
-                        fontWeight: 600,
+                        // Ticket F-072 — 0.75em d'un corps « dense » à 13px
+                        // (≈ 10px) était illisible : taille fixe 11px.
+                        fontSize: '11px',
+                        fontWeight: 700,
                         textTransform: 'uppercase',
                         letterSpacing: '0.04em',
                         color: semanticColors.neutral.textMuted,
@@ -310,13 +313,17 @@ export function AppShell({
                     <a
                       href={module.href}
                       aria-current={isActive ? 'page' : undefined}
+                      className="keya-nav-link"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
                         gap: tokens.gap,
-                        padding: `${tokens.paddingBlock} ${tokens.paddingInline}`,
-                        fontSize: tokens.fontSize,
+                        // Ticket F-072 (retour utilisateur : « le thème ne permet
+                        // pas une bonne visibilité des menus ») — entrées plus
+                        // hautes et jamais sous 14px, même en densité « dense ».
+                        padding: `8px ${tokens.paddingInline}`,
+                        fontSize: '14px',
                         // Ticket 023 (polish visuel) — `aria-current` était déjà
                         // posé correctement (accessibilité), mais rien ne
                         // distinguait visuellement le module actif des autres :
@@ -333,9 +340,13 @@ export function AppShell({
                         borderLeft: isActive
                           ? `3px solid ${brandColors.gold}`
                           : '3px solid transparent',
-                        fontWeight: isActive ? 600 : 400,
+                        // Ticket F-072 — texte principal (et non plus « atténué »)
+                        // pour toutes les entrées ; l'entrée active se distingue
+                        // par sa bordure or et sa graisse (fond inchangé,
+                        // décision D du ticket F-048 respectée).
+                        fontWeight: isActive ? 700 : 500,
                         background: isActive ? semanticColors.neutral.background : 'transparent',
-                        color: isActive ? semanticColors.neutral.text : semanticColors.neutral.textMuted,
+                        color: semanticColors.neutral.text,
                       }}
                     >
                       {module.icon && <Icon name={module.icon} size={18} />}
@@ -515,7 +526,9 @@ export function AppShell({
             alignItems: 'center',
             padding: '6px',
             borderRadius: '8px',
-            color: semanticColors.neutral.textMuted,
+            // Ticket F-072 — gris « atténué » sur le bandeau navy : icône
+            // quasi invisible en thème clair.
+            color: brand ? 'rgba(255, 255, 255, 0.9)' : semanticColors.neutral.textMuted,
           }}
         >
           <Icon name="moon" size={18} />

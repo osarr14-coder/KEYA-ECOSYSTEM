@@ -51,6 +51,7 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
             type="button"
             aria-current={isActive ? 'page' : undefined}
             onClick={() => onChange(tab.id)}
+            className="keya-tab"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -59,11 +60,15 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
               flexShrink: 0,
               whiteSpace: 'nowrap',
               border: 'none',
-              borderBottom: isActive ? `2px solid ${semanticColors.neutral.text}` : '2px solid transparent',
+              borderBottom: isActive ? `3px solid ${semanticColors.neutral.text}` : '3px solid transparent',
               background: 'transparent',
-              fontSize: 'inherit',
+              // Ticket F-072 — jamais sous 14px ; onglets inactifs en texte
+              // principal (le gris atténué était peu lisible), l'actif se
+              // distingue par sa bordure épaisse et sa graisse (jamais
+              // couleur de marque ici, gouvernance F-039).
+              fontSize: '14px',
               fontWeight: isActive ? 600 : 400,
-              color: isActive ? semanticColors.neutral.text : semanticColors.neutral.textMuted,
+              color: semanticColors.neutral.text,
             }}
           >
             {tab.icon && <Icon name={tab.icon} size={16} />}

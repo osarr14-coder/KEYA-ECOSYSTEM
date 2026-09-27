@@ -1,7 +1,7 @@
 import type {
   AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, ContractAction,
   ContractVersion, ControlToAssign, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
-  InspectorSummary, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
+  InspectorSummary, PaymentNotice, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
@@ -530,31 +530,22 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     ),
 
     /**
-     * `GET /api/tasks/admin-inbox/` (ticket B-044/F-063) — `apps/web` est
-     * réservée à `admin_keyimmo` (voir `hasAdminKeyimmoAccess`,
-     * `App.tsx`) : `GET /api/me/tasks/` ne suffit PAS ici, deux
-     * générateurs (`devis_ajustement_refuse`/`lot_ledger_margin_
-     * negative`, tickets 023/B-036) posent `organization` = celle du
-     * devis/grand-livre CIBLE, jamais celle de KEIMMO — invisibles via
-     * l'endpoint mono-organisation. Cette route boucle sur toutes les
-     * organisations côté backend (bascule RLS), remplace `getMyTasks`
-     * dans cette app UNIQUEMENT (apps/home/apps/build gardent `/api/me/
-     * tasks/` inchangé, leurs tâches ont déjà l'organisation du viewer).
+     * Ticket F-071 (backend B-056) — boîte PERSONNELLE transverse
+     * (`GET /api/me/tasks/inbox/`, `assignee = moi`, toutes organisations),
+     * pour tout le back-office : admin (remplace `/api/tasks/admin-inbox/`,
+     * même boucle côté serveur, tickets B-044/F-063), ADV (réservations à
+     * valider, paiements reçus) et Finance (virements déclarés à confirmer).
+     * Les tâches ont l'organisation de leur SUJET, jamais celle de KEYIMMO.
      */
-    getAdminTasks: (filters: { status?: string } = {}) => (
-      request<Task[]>(`/api/tasks/admin-inbox/${toQueryString({ status: filters.status })}`)
+    getMyInboxTasks: (filters: { status?: string } = {}) => (
+      request<Task[]>(`/api/me/tasks/inbox/${toQueryString({ status: filters.status })}`)
     ),
 
-    /**
-     * `POST /api/tasks/{id}/admin-complete/?organization_id=<id>`
-     * (ticket B-044/F-063) — même bascule RLS explicite que
-     * `decideProgramRequest` (organisation CIBLE fournie par
-     * l'appelant, `task.organization`, jamais l'organisation active de
-     * l'admin). Remplace `completeTask` dans cette app.
-     */
-    completeAdminTask: (taskId: string, organization: string) => (
+    /** `POST /api/me/tasks/{id}/inbox-complete/?organization_id=` — une de
+     * MES tâches seulement (404 sinon) ; `organization` = `task.organization`. */
+    completeMyInboxTask: (taskId: string, organization: string) => (
       request<Task>(
-        `/api/tasks/${taskId}/admin-complete/${toQueryString({ organization_id: organization })}`,
+        `/api/me/tasks/${taskId}/inbox-complete/${toQueryString({ organization_id: organization })}`,
         { method: 'POST' },
       )
     ),
@@ -638,6 +629,33 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     reconcileDisbursement: (disbursementId: string, organizationId: string, reason = '') => (
       request<Disbursement>(
         `/api/finance/disbursements/${disbursementId}/reconcile/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { reason } },
+      )
+    ),
+
+    // ─── Ticket F-071 — validation ADV, virements déclarés (backend B-056) ──
+    /** Valide le dossier d'une réservation bloquée et émet l'appel « Frais ». */
+    validateReservation: (reservationId: string, organizationId: string) => (
+      request<AdminReservation>(
+        `/api/reservations/${reservationId}/validate/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST' },
+      )
+    ),
+    /** Virements déclarés par les clients (défaut : en attente). */
+    listPaymentNotices: (status: 'declared' | 'all' = 'declared') => (
+      request<PaymentNotice[]>(`/api/finance/payment-notices/${toQueryString({ status })}`)
+    ),
+    confirmPaymentNotice: (
+      noticeId: string,
+      organizationId: string,
+      payload: { bank_reference?: string; received_on?: string | null } = {},
+    ) => request<PaymentNotice>(
+      `/api/finance/payment-notices/${noticeId}/confirm/${toQueryString({ organization_id: organizationId })}`,
+      { method: 'POST', json: payload },
+    ),
+    rejectPaymentNotice: (noticeId: string, organizationId: string, reason: string) => (
+      request<PaymentNotice>(
+        `/api/finance/payment-notices/${noticeId}/reject/${toQueryString({ organization_id: organizationId })}`,
         { method: 'POST', json: { reason } },
       )
     ),

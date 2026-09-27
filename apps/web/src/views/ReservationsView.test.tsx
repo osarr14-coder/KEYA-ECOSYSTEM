@@ -96,4 +96,19 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
     expect(screen.getByText('Doublon')).toBeInTheDocument();
     expect(screen.queryByLabelText("Motif d'annulation")).not.toBeInTheDocument();
   });
+
+  it('ticket F-071 — l’ADV valide la réservation (appel des frais émis), puis la liste se rafraîchit', async () => {
+    const validateReservation = vi.fn().mockResolvedValue(reservation({ validated_at: '2026-09-27T15:00:00Z' }));
+    const listReservations = vi.fn()
+      .mockResolvedValueOnce([reservation()])
+      .mockResolvedValue([reservation({ validated_at: '2026-09-27T15:00:00Z', validated_by: 'adv.demo@keya.test' })]);
+    renderView({ validateReservation, listReservations });
+
+    expect(await screen.findByTestId('reservation-validation')).toHaveTextContent('En attente de validation');
+    fireEvent.click(screen.getByRole('button', { name: 'Valider la réservation et appeler les frais' }));
+
+    await waitFor(() => expect(validateReservation).toHaveBeenCalledWith('reservation-1', 'org-promoteur'));
+    await waitFor(() => expect(screen.getByTestId('reservation-validation')).toHaveTextContent('Validée par adv.demo@keya.test'));
+    expect(screen.queryByRole('button', { name: 'Valider la réservation et appeler les frais' })).not.toBeInTheDocument();
+  });
 });

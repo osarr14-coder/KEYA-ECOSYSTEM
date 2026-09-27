@@ -18,14 +18,14 @@ import { useApiResource } from '../api/useApiResource';
  *
  * Ticket F-062 — bouton « Marquer comme traité ».
  *
- * Ticket F-063 (suite B-044) — `getAdminTasks`/`completeAdminTask`, PAS
+ * Ticket F-063 (suite B-044) — `getMyInboxTasks`/`completeMyInboxTask`, PAS
  * `getMyTasks`/`completeTask` : `apps/web` est réservée à `admin_keyimmo`
  * (voir `hasAdminKeyimmoAccess`, `App.tsx`), dont deux types de tâches
  * (`devis_ajustement_refuse`/`lot_ledger_margin_negative`, tickets
  * 023/B-036) ont pour organisation celle du devis/grand-livre CIBLE,
  * jamais celle de KEIMMO — invisibles ET non complétables via l'ancien
- * endpoint mono-organisation. `getAdminTasks` boucle sur toutes les
- * organisations côté backend (bascule RLS) ; `completeAdminTask`
+ * endpoint mono-organisation. `getMyInboxTasks` boucle sur toutes les
+ * organisations côté backend (bascule RLS) ; `completeMyInboxTask`
  * transmet `task.organization` pour la bascule ciblée.
  */
 function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }) {
@@ -37,7 +37,7 @@ function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }
     setCompleting(true);
     setError(null);
     try {
-      await api.completeAdminTask(task.id, task.organization);
+      await api.completeMyInboxTask(task.id, task.organization);
       onCompleted();
     } catch (caught) {
       const detail = caught instanceof ApiError ? caught.detail : undefined;
@@ -69,7 +69,7 @@ function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }
 
 export function TasksView() {
   const api = useApiClient();
-  const state = useApiResource(() => api.getAdminTasks({ status: 'pending' }), []);
+  const state = useApiResource(() => api.getMyInboxTasks({ status: 'pending' }), []);
 
   return (
     <section aria-label="Tâches">

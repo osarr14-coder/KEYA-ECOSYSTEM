@@ -200,7 +200,7 @@ export interface ProgramRequest {
  * `taskInboxCount` d'`AppShell`). `organization` (ticket B-044) :
  * `apps/web` est réservée à `admin_keyimmo` — TOUJOURS l'organisation
  * CIBLE d'une tâche (`devis_ajustement_refuse`/`lot_ledger_margin_
- * negative`, jamais celle de KEIMMO), transmise à `completeAdminTask`
+ * negative`, jamais celle de KEIMMO), transmise à `completeMyInboxTask`
  * (`api/client.ts`) pour la bascule RLS côté backend. */
 export interface Task {
   id: string;
@@ -408,6 +408,9 @@ export interface AdminReservation {
   client: { id: string; email: string; full_name: string };
   cancellation_reason: string;
   cancelled_by: string | null;
+  /** Ticket F-071 (backend B-056) — validation du dossier par l'ADV. */
+  validated_at?: string | null;
+  validated_by?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -594,4 +597,28 @@ export interface InspectorSummary {
   email: string;
   full_name: string;
   organizations: string[];
+}
+
+/** Ticket F-071 — miroir de `apps.sales.serializers.PaymentNoticeSerializer`
+ * (backend B-056) : déclaration de virement du client, confirmée ou rejetée
+ * par Finance. */
+export interface PaymentNotice {
+  id: string;
+  organization: { id: string; name: string };
+  program: { id: string; name: string };
+  lot: { id: string; name: string };
+  reservation: { id: string; status: ReservationStatus; status_label: string };
+  client: { id: string; email: string; full_name: string };
+  payment_call: { id: string; kind: PaymentCallKind; kind_label: string; tier_label: string; amount: string };
+  amount: string;
+  currency: string;
+  client_reference: string;
+  paid_on: string;
+  status: 'declared' | 'confirmed' | 'rejected';
+  status_label: string;
+  created_at: string;
+  processed_by: string | null;
+  processed_at: string | null;
+  rejection_reason: string;
+  simulation: boolean;
 }

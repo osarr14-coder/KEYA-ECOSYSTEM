@@ -82,7 +82,7 @@ describe('MyActionsView', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Marquer comme traité' }));
 
-    await waitFor(() => expect(completeTask).toHaveBeenCalledWith(PENDING_TASK.id));
+    await waitFor(() => expect(completeTask).toHaveBeenCalledWith(PENDING_TASK.id, undefined));
     await waitFor(() => expect(getMyTasks).toHaveBeenCalledTimes(2));
     expect(screen.queryByRole('button', { name: 'Marquer comme traité' })).not.toBeInTheDocument();
   });

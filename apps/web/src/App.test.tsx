@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 function renderApp(overrides: Parameters<typeof createMockApiClient>[0] = {}, redirect = vi.fn()) {
-  const api = createMockApiClient({ getAdminTasks: async () => [], ...overrides });
+  const api = createMockApiClient({ getMyInboxTasks: async () => [], ...overrides });
   render(withApiClient(api, <App redirect={redirect} />));
   return { api, redirect };
 }
@@ -165,7 +165,7 @@ describe(
 
     function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
       localStorage.setItem('keya_access_token', 'stored-admin-token');
-      const api = createMockApiClient({ getAdminTasks: async () => [], ...overrides });
+      const api = createMockApiClient({ getMyInboxTasks: async () => [], ...overrides });
       render(withApiClient(api, <App />));
       return { api };
     }
@@ -305,7 +305,7 @@ describe(
   () => {
     function renderAuthenticated(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
       localStorage.setItem('keya_access_token', 'stored-admin-token');
-      const api = createMockApiClient({ getAdminTasks: async () => [], ...overrides });
+      const api = createMockApiClient({ getMyInboxTasks: async () => [], ...overrides });
       render(withApiClient(api, <App />));
       return { api };
     }
@@ -434,7 +434,7 @@ describe('App — détection hors ligne (ticket F-033, vague 2)', () => {
         id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
         memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
       }),
-      getAdminTasks: async () => [],
+      getMyInboxTasks: async () => [],
     });
     render(withApiClient(api, <App />));
 
@@ -478,7 +478,7 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
 
   it('affiche le nombre de tâches en attente, jamais 0 par défaut', async () => {
     renderAuthenticated({
-      getAdminTasks: async () => [
+      getMyInboxTasks: async () => [
         {
           id: 'task-1', organization: 'org-target', type: 'alert' as const, subject_type: 'procurement.devis', subject_id: 'devis-1',
           program: null, assignee: 'admin-1', source: 'devis_ajustement_refuse', label: 'Ajustement refusé',
@@ -492,7 +492,7 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
   });
 
   it('affiche 0 en l\'absence de tâche en attente', async () => {
-    renderAuthenticated({ getAdminTasks: async () => [] });
+    renderAuthenticated({ getMyInboxTasks: async () => [] });
 
     expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
   });
@@ -506,7 +506,7 @@ describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
         id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
         memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
       }),
-      getAdminTasks: async () => [],
+      getMyInboxTasks: async () => [],
     });
     render(withApiClient(api, <App />));
     await screen.findByTestId('app-shell');
@@ -528,10 +528,10 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
 
   function renderAsAdv(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
     localStorage.setItem('keya_access_token', 'stored-adv-token');
-    const getAdminTasks = vi.fn().mockResolvedValue([]);
-    const api = createMockApiClient({ getMe: vi.fn().mockResolvedValue(ME_ADV), getAdminTasks, ...overrides });
+    const getMyInboxTasks = vi.fn().mockResolvedValue([]);
+    const api = createMockApiClient({ getMe: vi.fn().mockResolvedValue(ME_ADV), getMyInboxTasks, ...overrides });
     render(withApiClient(api, <App />));
-    return { api, getAdminTasks };
+    return { api, getMyInboxTasks };
   }
 
   it('entre dans apps/web et ne voit que Lots, Réservations (F-067), Comptes (F-068), Programmes et Demandes', async () => {
@@ -540,7 +540,8 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
     const tabBar = await screen.findByRole('navigation', { name: 'Sections back-office' });
     const tabLabels = Array.from(tabBar.querySelectorAll('button')).map((button) => button.textContent);
     expect(tabLabels).toEqual([
-      'Lots — prix & statut', 'Réservations', 'Comptes & décaissements', 'Programmes', 'Demandes de programme',
+      'Lots — prix & statut', 'Réservations', 'Virements déclarés', 'Comptes & décaissements', 'Programmes',
+      'Demandes de programme', 'Tâches',
     ]);
     expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
   });
@@ -561,12 +562,12 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
     expect(window.location.pathname).toBe('/lots');
   });
 
-  it('cloche masquée et boîte de tâches admin jamais appelée (403 pour l\'ADV)', async () => {
-    const { getAdminTasks } = renderAsAdv();
+  it('ticket F-071 — cloche visible : boîte personnelle transverse (réservations à valider, paiements reçus)', async () => {
+    const { getMyInboxTasks } = renderAsAdv();
 
     await screen.findByTestId('app-shell');
-    expect(screen.queryByRole('link', { name: /Task Inbox/ })).not.toBeInTheDocument();
-    expect(getAdminTasks).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: /Task Inbox/ })).toBeInTheDocument();
+    expect(getMyInboxTasks).toHaveBeenCalledWith({ status: 'pending' });
   });
 
   it('une connexion ADV redirige vers apps/web', async () => {
@@ -587,20 +588,20 @@ describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
     ],
   };
 
-  it('entre dans apps/web et ne voit que Réservations et Comptes & décaissements', async () => {
+  it('entre dans apps/web et ne voit que Réservations, Virements déclarés, Comptes et Tâches', async () => {
     localStorage.setItem('keya_access_token', 'stored-finance-token');
-    const getAdminTasks = vi.fn().mockResolvedValue([]);
+    const getMyInboxTasks = vi.fn().mockResolvedValue([]);
     const api = createMockApiClient({
       getMe: vi.fn().mockResolvedValue(ME_FINANCE),
-      getAdminTasks,
+      getMyInboxTasks,
       listReservations: vi.fn().mockResolvedValue([]),
     });
     render(withApiClient(api, <App />));
 
     const tabBar = await screen.findByRole('navigation', { name: 'Sections back-office' });
     const tabLabels = Array.from(tabBar.querySelectorAll('button')).map((button) => button.textContent);
-    expect(tabLabels).toEqual(['Réservations', 'Comptes & décaissements']);
-    expect(getAdminTasks).not.toHaveBeenCalled();
+    expect(tabLabels).toEqual(['Réservations', 'Virements déclarés', 'Comptes & décaissements', 'Tâches']);
+    expect(getMyInboxTasks).toHaveBeenCalledWith({ status: 'pending' });
   });
 
   it('une connexion Finance redirige vers apps/web', async () => {

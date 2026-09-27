@@ -135,10 +135,13 @@ Pour dérouler le scénario du CDC V3 (§9) sans intervention en base :
 | `constructeur.demo@keya.test` | constructeur | BUILD |
 | `inspecteur.demo@keya.test` | bureau de contrôle | CONTROL |
 
-Parcours conseillé (CDC §9.1) : `client1` réserve le Lot A1 dans HOME → `adv` rédige, soumet et
-approuve le contrat puis émet l'appel « Frais » (apps/web, Réservations) → `finance` enregistre
-l'encaissement de 100 000, l'affecte et le rapproche (la réservation passe « Réservée ») → `adv`
-émet le complément (2 900 000) → `finance` l'encaisse, `client1` signe le contrat (« Concrétisée »)
+Parcours conseillé (CDC §9.1, circuit de paiement B-056) : `client1` réserve le Lot A1 dans HOME
+→ `adv` reçoit « Réservation à valider » (cloche) et clique « Valider la réservation et appeler les
+frais » (apps/web, Réservations), puis rédige, soumet et approuve le contrat → `client1` voit les
+instructions de virement (compte FICTIF) et clique « J'ai effectué le virement » → `finance`
+confirme dans « Virements déclarés » (la réservation passe « Réservée », l'ADV et le client sont
+notifiés) → `adv` émet le complément (2 900 000) → `client1` le déclare, `finance` le confirme,
+`client1` signe le contrat (« Concrétisée »)
 → `constructeur` déclare « Fondations » et joint une pièce (BUILD, onglet Jalons) → `admin`
 missionne le contrôleur (apps/web, Contrôles à affecter) → `inspecteur` rend son avis (CONTROL) ;
 avec réserve : le constructeur propose une correction, l'admin missionne le recontrôle, avis

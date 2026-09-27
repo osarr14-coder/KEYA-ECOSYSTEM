@@ -98,7 +98,17 @@ describe('ClientSalesView — catalogue et réservation (ticket F-066)', () => {
 
     const row = await screen.findByTestId('reservation');
     expect(row).toHaveTextContent("jusqu'au 28 septembre 2026 à 14:30 (heure d'Abidjan, GMT)");
-    expect(row).toHaveTextContent('Prochaine étape');
+    // Ticket F-071 — tant que l'ADV n'a pas validé, le client sait qu'il attend.
+    expect(row).toHaveTextContent('en attente de validation par votre conseiller KEYIMMO');
+  });
+
+  it('ticket F-071 — une réservation validée invite à régler les frais puis à déclarer le virement', async () => {
+    renderView({
+      getMyReservations: vi.fn().mockResolvedValue([reservation({ validated_at: '2026-09-27T15:00:00Z' })]),
+    });
+
+    const row = await screen.findByTestId('reservation');
+    expect(row).toHaveTextContent('Réservation validée par KEYIMMO. Réglez les frais de réservation');
   });
 
   it('une réservation expirée explique la libération du bien, sans bouton d\'annulation', async () => {

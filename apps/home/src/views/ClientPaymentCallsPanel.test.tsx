@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ClientPaymentCall } from '../api/types';
@@ -46,5 +46,56 @@ describe('ClientPaymentCallsPanel — appels de fonds du client (ticket F-068)',
 
     await vi.waitFor(() => expect(getMyPaymentCalls).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('ClientPaymentCallsPanel — paiement par le client (ticket F-071)', () => {
+  const INSTRUCTIONS = {
+    beneficiary: 'KEYIMMO AFRIC — compte de séquestre du programme (FICTIF)',
+    bank: 'Banque de démonstration (FICTIVE)', iban: 'CI00 DEMO', simulation: true,
+  };
+
+  it('affiche les instructions de virement et déclare le virement du client', async () => {
+    const declarePayment = vi.fn().mockResolvedValue({});
+    const getMyPaymentCalls = vi.fn()
+      .mockResolvedValueOnce([call({
+        settled_amount: '0.00', settlement: 'to_pay', payment_reference: 'KEYA-1A2B3C4D',
+        payment_instructions: INSTRUCTIONS, notice: null,
+      })])
+      .mockResolvedValue([call({
+        settled_amount: '0.00', settlement: 'to_pay', payment_reference: 'KEYA-1A2B3C4D',
+        payment_instructions: INSTRUCTIONS,
+        notice: {
+          id: 'n-1', status: 'declared', status_label: 'Déclaré', amount: '100000.00',
+          client_reference: 'VIR-001', paid_on: '2026-09-28', rejection_reason: '',
+        },
+      })]);
+    const api = createMockApiClient({ getMyPaymentCalls, declarePayment });
+    render(withApiClient(api, <ClientPaymentCallsPanel reservationId="reservation-1" />));
+
+    expect(await screen.findByTestId('payment-reference')).toHaveTextContent('KEYA-1A2B3C4D');
+    fireEvent.change(screen.getByLabelText('Référence de mon virement'), { target: { value: 'VIR-001' } });
+    fireEvent.change(screen.getByLabelText('Date du virement'), { target: { value: '2026-09-28' } });
+    fireEvent.click(screen.getByRole('button', { name: "J'ai effectué le virement" }));
+
+    await waitFor(() => expect(declarePayment).toHaveBeenCalledWith('call-1', { client_reference: 'VIR-001', paid_on: '2026-09-28' }));
+    expect(await screen.findByTestId('payment-notice')).toHaveTextContent('en attente de confirmation par KEYIMMO');
+    expect(screen.queryByRole('button', { name: "J'ai effectué le virement" })).not.toBeInTheDocument();
+  });
+
+  it('un virement rejeté affiche le motif et permet de déclarer à nouveau', async () => {
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([call({
+        settled_amount: '0.00', settlement: 'to_pay', payment_reference: 'KEYA-1', payment_instructions: INSTRUCTIONS,
+        notice: {
+          id: 'n-1', status: 'rejected', status_label: 'Rejeté', amount: '100000.00',
+          client_reference: 'VIR-001', paid_on: '2026-09-28', rejection_reason: 'Virement introuvable',
+        },
+      })]),
+    });
+    render(withApiClient(api, <ClientPaymentCallsPanel reservationId="reservation-1" />));
+
+    expect(await screen.findByTestId('payment-notice')).toHaveTextContent('Virement introuvable');
+    expect(screen.getByRole('button', { name: "J'ai effectué le virement" })).toBeInTheDocument();
   });
 });

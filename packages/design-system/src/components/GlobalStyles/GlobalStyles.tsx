@@ -140,6 +140,13 @@ const GLOBAL_CSS = `
   button, input, select, textarea {
     font-family: inherit;
   }
+  /* Ticket F-072 — zones de texte multiligne (contrat, commentaires) : aucun
+     composant du design system ne les habille, elles restaient blanches en
+     mode sombre. Couleurs du thème courant. */
+  textarea {
+    background: ${semanticColors.neutral.surface};
+    color: ${semanticColors.neutral.text};
+  }
   button {
     cursor: pointer;
   }
@@ -159,6 +166,17 @@ const GLOBAL_CSS = `
    */
   .keya-btn:hover:not(:disabled) {
     opacity: 0.85;
+  }
+  /* Ticket F-072 — survol visible des entrées de navigation (barre latérale,
+     onglets) : sans lui, rien n'indiquait qu'une entrée est cliquable. */
+  .keya-nav-link:hover:not([aria-current="page"]),
+  .keya-tab:hover:not([aria-current="page"]) {
+    background: rgba(var(--keya-focus-ring-rgb), 0.07);
+  }
+  .keya-nav-link:focus-visible,
+  .keya-tab:focus-visible {
+    outline: 2px solid ${semanticColors.neutral.text};
+    outline-offset: -2px;
   }
   .keya-btn:focus-visible,
   .keya-input:focus-visible,

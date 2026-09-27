@@ -31,7 +31,7 @@ function ActionItem({ task, onCompleted }: { task: Task; onCompleted: () => void
     setCompleting(true);
     setError(null);
     try {
-      await api.completeTask(task.id);
+      await api.completeTask(task.id, task.organization);
       onCompleted();
     } catch {
       setError('Échec du marquage comme traité.');

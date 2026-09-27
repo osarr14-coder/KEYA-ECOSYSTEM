@@ -22,6 +22,7 @@ import { DevisView } from './views/DevisView';
 import { FinanceAccountsView } from './views/FinanceAccountsView';
 import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
 import { LotsCommercialView } from './views/LotsCommercialView';
+import { PaymentNoticesView } from './views/PaymentNoticesView';
 import { PricingView } from './views/PricingView';
 import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
@@ -30,7 +31,7 @@ import { TasksView } from './views/TasksView';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
-  | 'program-requests' | 'controls' | 'tasks';
+  | 'program-requests' | 'controls' | 'payment-notices' | 'tasks';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -99,6 +100,16 @@ const TAB_DEFINITIONS: {
     group: 'Ventes & tarification',
     roles: KEYIMMO_TEAM,
   },
+  // Ticket F-071 — virements déclarés par les clients, confirmés par
+  // Finance (backend B-056).
+  {
+    id: 'payment-notices',
+    label: 'Virements déclarés',
+    path: '/virements',
+    icon: 'wallet',
+    group: 'Ventes & tarification',
+    roles: KEYIMMO_TEAM,
+  },
   // Ticket F-068 — comptes simulés et décaissements (backend B-052).
   {
     id: 'finance',
@@ -128,7 +139,7 @@ const TAB_DEFINITIONS: {
   // comme "Programmes"/"Demandes de programme" : une tâche n'appartient à
   // aucun des groupes existants.
   {
-    id: 'tasks', label: 'Tâches', path: '/tasks', icon: 'bell', roles: ADMIN_ONLY,
+    id: 'tasks', label: 'Tâches', path: '/tasks', icon: 'bell', roles: KEYIMMO_TEAM,
   },
 ];
 
@@ -271,15 +282,15 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   const tabRoutes: TabRoute<AuthenticatedTabId>[] = visibleTabs.map(({ id, path }) => ({ id, path }));
   const [activeTab, setActiveTab] = useUrlSyncedTab(tabRoutes, visibleTabs[0].id);
   // Ticket F-060/F-063 — câble le compteur de la cloche AppShell.
-  // `getAdminTasks` (ticket B-044), pas `getMyTasks` : les tâches
+  // `getMyInboxTasks` (ticket B-044), pas `getMyTasks` : les tâches
   // `devis_ajustement_refuse`/`lot_ledger_margin_negative` ont
   // l'organisation CIBLE, jamais celle de KEIMMO — invisibles via
   // l'endpoint mono-organisation. Ticket F-065 : boîte réservée à
   // admin_keyimmo (403 pour l'ADV) — jamais appelée, cloche masquée.
-  const taskInboxState = useApiResource(
-    () => (isAdmin ? api.getAdminTasks({ status: 'pending' }) : Promise.resolve([])),
-    [isAdmin],
-  );
+  // Ticket F-071 (backend B-056) — boîte PERSONNELLE transverse pour toute
+  // l'équipe : l'ADV y reçoit « Réservation à valider » / « Paiement reçu »,
+  // Finance « Virement déclaré à confirmer ». Cloche visible pour tous.
+  const taskInboxState = useApiResource(() => api.getMyInboxTasks({ status: 'pending' }), []);
 
   return (
     <AppShell
@@ -300,7 +311,6 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       userRoles={userRoles}
       activeModuleId={activeTab}
       breadcrumbs={[{ label: tabs.find((tab) => tab.id === activeTab)!.label }]}
-      showTaskInbox={isAdmin}
       taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
       // Ticket F-061 — bascule vers le nouvel onglet « Tâches » (même
       // endpoint que le compteur ci-dessus), URL synchronisée comme
@@ -320,6 +330,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
           permissions={{ canManageSales: isAdmin || isAdv, canRecordMovements: isFinance }}
         />
       )}
+      {activeTab === 'payment-notices' && <PaymentNoticesView canAct={isFinance} />}
       {activeTab === 'finance' && <FinanceAccountsView canAct={isFinance} />}
       {activeTab === 'programs' && <ProgramsView />}
       {activeTab === 'program-requests' && <ProgramRequestsView />}

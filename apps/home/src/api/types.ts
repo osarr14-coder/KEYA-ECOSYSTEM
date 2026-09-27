@@ -103,6 +103,10 @@ export interface ProgramRequest {
 
 export interface Task {
   id: string;
+  /** Ticket F-071 — organisation de la tâche (celle du sujet : pour une
+   * tâche de vente, l'organisation du lot), nécessaire pour la marquer
+   * traitée depuis la boîte transverse. */
+  organization?: string;
   type: 'task' | 'notification' | 'alert' | 'exception';
   subject_type: string;
   subject_id: string;
@@ -164,6 +168,8 @@ export interface Reservation {
   program: { id: string; name: string };
   organization: { id: string; name: string };
   cancellation_reason: string;
+  /** Ticket F-071 — validation du dossier par l'ADV (null : en attente). */
+  validated_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -205,4 +211,17 @@ export interface ClientPaymentCall {
   issued_at: string;
   settled_amount: string | null;
   settlement: 'to_pay' | 'partial' | 'settled' | null;
+  /** Ticket F-071 (backend B-056) — référence à indiquer sur le virement et
+   * coordonnées bancaires FICTIVES ; dernière déclaration du client. */
+  payment_reference?: string;
+  payment_instructions?: { beneficiary: string; bank: string; iban: string; simulation: boolean };
+  notice?: {
+    id: string;
+    status: 'declared' | 'confirmed' | 'rejected';
+    status_label: string;
+    amount: string;
+    client_reference: string;
+    paid_on: string;
+    rejection_reason: string;
+  } | null;
 }

@@ -46,8 +46,13 @@ function errorDetail(caught: unknown, fallback: string) {
 function nextStep(reservation: Reservation) {
   switch (reservation.status) {
     case 'held':
-      return `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. `
-        + 'Prochaine étape : votre contrat, préparé par le gestionnaire, puis les frais de réservation.';
+      // Ticket F-071 (backend B-056) — le conseiller KEYIMMO (ADV) valide
+      // d'abord le dossier, puis le client règle les frais par virement.
+      return reservation.validated_at
+        ? `Réservation validée par KEYIMMO. Réglez les frais de réservation ci-dessous avant le ${formatDateTime(reservation.held_until)}, `
+          + 'puis déclarez votre virement : KEYIMMO le confirmera à réception.'
+        : `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. `
+          + 'Votre demande est en attente de validation par votre conseiller KEYIMMO, qui vous enverra ensuite l’appel des frais de réservation.';
     case 'reserved':
       return 'Frais de réservation encaissés : le bien vous est réservé. '
         + 'Prochaine étape : signature du contrat et complément du premier versement.';

@@ -111,7 +111,10 @@ export function createApiClient({
       if (filters.program) params.set('program', filters.program);
       if (filters.ordering) params.set('ordering', filters.ordering);
       const query = params.toString();
-      return request<Task[]>(`/api/me/tasks/${query ? `?${query}` : ''}`);
+      // Ticket F-071 — boîte TRANSVERSE (backend B-056) : les tâches du
+      // circuit de vente vivent dans l'organisation du lot, jamais dans
+      // celle du client ; mêmes filtres que `/api/me/tasks/`.
+      return request<Task[]>(`/api/me/tasks/inbox/${query ? `?${query}` : ''}`);
     },
     // Ticket F-057 — demande de programme sur mesure (rôle sponsor).
     getMyProgramRequests: () => request<ProgramRequest[]>('/api/programs/requests/mine/'),
@@ -123,7 +126,14 @@ export function createApiClient({
      * tâche traitée, jamais son sujet (`apps.tasks.services.
      * complete_task` ne touche que la `Task` elle-même).
      */
-    completeTask: (taskId: string) => request<Task>(`/api/tasks/${taskId}/complete/`, { method: 'POST' }),
+    completeTask: (taskId: string, organizationId?: string) => (
+      organizationId
+        ? request<Task>(
+          `/api/me/tasks/${taskId}/inbox-complete/?${new URLSearchParams({ organization_id: organizationId })}`,
+          { method: 'POST' },
+        )
+        : request<Task>(`/api/tasks/${taskId}/complete/`, { method: 'POST' })
+    ),
     // Ticket F-066 — catalogue et réservations (backend B-048).
     getCatalogLots: () => request<CatalogLot[]>('/api/catalog/lots/'),
     getMyReservations: () => request<Reservation[]>('/api/me/reservations/'),
@@ -143,6 +153,11 @@ export function createApiClient({
     // Ticket F-068 — appels de fonds du client (backend B-050/B-051).
     getMyPaymentCalls: (reservationId: string) => (
       request<ClientPaymentCall[]>(`/api/me/reservations/${reservationId}/payment-calls/`)
+    ),
+    /** Ticket F-071 — « J'ai effectué le virement » (backend B-056) : une
+     * déclaration, confirmée ensuite par Finance. */
+    declarePayment: (paymentCallId: string, payload: { client_reference: string; paid_on: string }) => (
+      request<unknown>(`/api/me/payment-calls/${paymentCallId}/notices/`, { method: 'POST', json: payload })
     ),
   };
 }

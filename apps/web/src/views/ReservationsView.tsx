@@ -96,6 +96,38 @@ function CancelForm({ reservation, onCancelled }: { reservation: AdminReservatio
   );
 }
 
+/**
+ * Ticket F-071 (backend B-056) — l'ADV (ou l'admin) valide le dossier ;
+ * l'appel « Frais » part au client dans la même opération. Refuser le
+ * dossier = l'annuler avec un motif (formulaire ci-dessous).
+ */
+function ValidateButton({ reservation, onValidated }: { reservation: AdminReservation; onValidated: () => void }) {
+  const api = useApiClient();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function validate() {
+    setPending(true);
+    setError(null);
+    try {
+      await api.validateReservation(reservation.id, reservation.organization.id);
+      onValidated();
+    } catch (caught) {
+      setError(formatDrfFieldErrors(caught, 'Validation refusée.'));
+      setPending(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: '8px' }}>
+      <Button type="button" onClick={() => { void validate(); }} disabled={pending}>
+        {pending ? 'Validation…' : 'Valider la réservation et appeler les frais'}
+      </Button>
+      {error && <p role="alert" style={{ margin: '4px 0 0' }}>{error}</p>}
+    </div>
+  );
+}
+
 function ReservationCard({
   reservation, onChanged, permissions,
 }: { reservation: AdminReservation; onChanged: () => void; permissions: SalesPermissions }) {
@@ -120,6 +152,12 @@ function ReservationCard({
             <dd style={{ margin: 0 }}>{formatDateTime(reservation.held_until)}</dd>
           </>
         )}
+        <dt>Validation ADV</dt>
+        <dd style={{ margin: 0 }} data-testid="reservation-validation">
+          {reservation.validated_at
+            ? `Validée${reservation.validated_by ? ` par ${reservation.validated_by}` : ''} le ${formatDateTime(reservation.validated_at)}`
+            : 'En attente de validation'}
+        </dd>
         {reservation.status === 'cancelled' && (
           <>
             <dt>Annulée par</dt>
@@ -129,6 +167,9 @@ function ReservationCard({
           </>
         )}
       </dl>
+      {permissions.canManageSales && reservation.status === 'held' && !reservation.validated_at && (
+        <ValidateButton reservation={reservation} onValidated={onChanged} />
+      )}
       {permissions.canManageSales && reservation.status === 'held' && (
         <CancelForm reservation={reservation} onCancelled={onChanged} />
       )}
