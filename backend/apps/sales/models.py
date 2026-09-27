@@ -5,7 +5,7 @@ from django.db import models
 from django.db.models import Q
 
 from apps.organizations.models import Organization
-from apps.programs.models import Lot
+from apps.programs.models import Lot, Milestone, Program
 
 
 class ReservationStatus(models.TextChoices):
@@ -309,3 +309,121 @@ class Allocation(models.Model):
 
     def __str__(self):
         return f'Affectation {self.amount} → {self.payment_call_id}'
+
+
+# ─── Décaissements — ticket B-052 (CDC V3 §8.2/§8.3) ─────────────────────────
+
+
+class DisbursementStatus(models.TextChoices):
+    """Statut de la DEMANDE (CDC §8.2) : `DRAFT → ELIGIBLE → EXECUTED_SIM`,
+    `CANCELLED` avant exécution ; `ELIGIBLE → DRAFT` si l'acceptation
+    technique devient caduque. `EXECUTED_SIM` et `CANCELLED` sont terminaux
+    (trigger, migration 0010)."""
+
+    DRAFT = 'draft', 'Brouillon'
+    ELIGIBLE = 'eligible', 'Éligible (montant réservé)'
+    EXECUTED_SIM = 'executed_sim', 'Exécuté (simulé)'
+    CANCELLED = 'cancelled', 'Annulé'
+
+
+OPEN_DISBURSEMENT_STATUSES = (DisbursementStatus.DRAFT, DisbursementStatus.ELIGIBLE)
+
+
+class DisbursementFlowStatus(models.TextChoices):
+    """Statut de PREUVE du mouvement (CDC §8.3), distinct du statut de la
+    demande : `PLANNED → BANK_EXECUTED_SIM → RECONCILED_SIM`, avec
+    `BENEFICIARY_CONFIRMED_SIM` possible entre les deux. La confirmation du
+    prestataire n'est pas une preuve bancaire."""
+
+    PLANNED = 'planned', 'Prévu'
+    BANK_EXECUTED_SIM = 'bank_executed_sim', 'Exécuté en banque (simulé)'
+    BENEFICIARY_CONFIRMED_SIM = 'beneficiary_confirmed_sim', 'Confirmé par le bénéficiaire (simulé)'
+    RECONCILED_SIM = 'reconciled_sim', 'Rapproché (simulé)'
+
+
+NO_CONFIRMATION_REASON = 'Confirmation bénéficiaire non reçue'
+
+
+class Disbursement(models.Model):
+    """Sortie SIMULÉE du compte du programme vers le prestataire affecté au
+    lot (ticket B-052, CDC V3 §5/§8.2). Le « compte » est le programme :
+    `organization` est celle du programme (scope RLS), `beneficiary_organization`
+    l'organisation constructrice, qui voit ses propres sorties.
+
+    Montant, devise, bénéficiaire, jalon et programme sont immuables dès la
+    préparation ; référence et date d'exécution une fois posées (trigger,
+    migration 0010). Aucune suppression."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name='disbursements',
+    )
+    program = models.ForeignKey(Program, on_delete=models.PROTECT, related_name='disbursements')
+    lot = models.ForeignKey(Lot, on_delete=models.PROTECT, related_name='disbursements')
+    milestone = models.ForeignKey(Milestone, on_delete=models.PROTECT, related_name='disbursements')
+    beneficiary_organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name='received_disbursements',
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    currency = models.CharField(max_length=3, default=DEFAULT_CURRENCY)
+    status = models.CharField(max_length=20, choices=DisbursementStatus.choices, default=DisbursementStatus.DRAFT)
+    flow_status = models.CharField(
+        max_length=30, choices=DisbursementFlowStatus.choices, default=DisbursementFlowStatus.PLANNED,
+    )
+    prepared_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='prepared_disbursements',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    eligible_at = models.DateTimeField(null=True, blank=True)
+    # Référence bancaire simulée : unique par compte (programme) dans le sens
+    # « sortie » — table distincte des encaissements (CDC §8.3).
+    bank_reference = models.CharField(max_length=64, null=True, blank=True)
+    executed_on = models.DateField(null=True, blank=True)
+    executed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='executed_disbursements',
+    )
+    executed_at = models.DateTimeField(null=True, blank=True)
+    beneficiary_confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='confirmed_disbursements',
+    )
+    beneficiary_confirmed_at = models.DateTimeField(null=True, blank=True)
+    reconciled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='reconciled_disbursements',
+    )
+    reconciled_at = models.DateTimeField(null=True, blank=True)
+    reconciliation_reason = models.CharField(max_length=255, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='cancelled_disbursements',
+    )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancel_reason = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'sales_disbursement'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['program', 'bank_reference'], name='sales_disbursement_unique_bank_reference',
+            ),
+            # Idempotence de la préparation : une seule demande ouverte par jalon.
+            models.UniqueConstraint(
+                fields=['milestone'], condition=Q(status__in=['draft', 'eligible']),
+                name='sales_disbursement_one_open_per_milestone',
+            ),
+            models.CheckConstraint(check=Q(amount__gt=0), name='sales_disbursement_amount_positive'),
+            models.CheckConstraint(
+                check=~Q(status='executed_sim') | (Q(bank_reference__isnull=False) & Q(executed_on__isnull=False)),
+                name='sales_disbursement_executed_has_bank_proof',
+            ),
+            models.CheckConstraint(
+                check=Q(status='executed_sim') | Q(flow_status='planned'),
+                name='sales_disbursement_flow_follows_execution',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Décaissement {self.amount} {self.currency} — {self.milestone_id}'

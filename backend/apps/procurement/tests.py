@@ -810,6 +810,8 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # une fuite) :
             ('my-contracts', [own_lot.id], {}),
             ('my-payment-calls', [own_lot.id], {}),
+            # Ticket B-052 : sorties exécutées vers SA propre organisation.
+            ('beneficiary-disbursement-list', [], {}),
         ]
         for name, args, _kwargs in requests:
             response = own_client.get(reverse(name, args=args))
@@ -985,6 +987,15 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # affectation, rapprochement : rôle finance seul. Jamais
             # accessibles au constructeur/sponsor.
             'finance-file', 'finance-receipt-create', 'finance-allocation-create', 'finance-receipt-reconcile',
+            # Ticket B-052 — ajout conscient : décaissements simulés. Comptes
+            # des programmes en lecture équipe KEYIMMO ; préparation,
+            # éligibilité, exécution, annulation, rapprochement : rôle
+            # finance seul. Le constructeur ne lit que les sorties EXÉCUTÉES
+            # vers sa propre organisation (ajouté au balayage ci-dessus) et
+            # confirme leur réception — jamais un montant de devis.
+            'finance-account-list', 'finance-program-account', 'finance-disbursement-create',
+            'finance-disbursement-eligibility', 'finance-disbursement-execute', 'finance-disbursement-cancel',
+            'finance-disbursement-reconcile', 'beneficiary-disbursement-list', 'beneficiary-disbursement-confirm',
         }
         assert actual == expected
 

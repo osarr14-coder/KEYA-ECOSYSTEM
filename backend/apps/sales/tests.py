@@ -994,3 +994,465 @@ class TestFinancePermissionsAndImmutability:
                 CustomerReceipt.objects.filter(id=receipt_id).update(amount=Decimal('1.00'))
 
         assert CustomerReceipt.objects.get(id=receipt_id).amount == Decimal('100000.00')
+
+
+# ─── Décaissements — ticket B-052 (CDC V3 §8.2/§8.3) ─────────────────────────
+
+from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
+
+from apps.evidence.services import create_document  # noqa: E402
+from conftest import ensure_senegal_milestone_template_seeded  # noqa: E402
+
+from .models import Disbursement, DisbursementStatus  # noqa: E402
+
+NO_CONFIRMATION = 'Confirmation bénéficiaire non reçue'
+
+
+def _add_evidence(promoter, declaration, author):
+    set_rls_context(organization_id=promoter.id)
+    document = create_document(
+        organization=promoter, owner=author,
+        uploaded_file=SimpleUploadedFile('pv.pdf', f'%PDF-1.4\n% piece {_next()}\n'.encode(), content_type='application/pdf'),
+        category='rapport_chantier', source='mobile_app_photo',
+    )
+    return create_evidence(organization=promoter, work_declaration=declaration, documents=[document], added_by=author)
+
+
+def _accept_with_evidence(promoter, lot_id, code, author, outcome='conforme'):
+    """Déclaration documentée puis inspectée — jalon décaissable si conforme."""
+    _inspector_client, inspector, inspector_org = _register('inspecteur')
+    set_rls_context(organization_id=promoter.id)
+    milestone = Milestone.objects.get(lot_id=lot_id, code=code)
+    declaration = create_work_declaration(organization=promoter, milestone=milestone, declared_by=author)
+    _add_evidence(promoter, declaration, author)
+    create_inspection(
+        inspector=inspector, inspector_organization=inspector_org, target_organization_id=promoter.id,
+        work_declaration_id=declaration.id, outcome=outcome,
+    )
+    set_rls_context(organization_id=promoter.id)
+    return milestone, declaration
+
+
+def _disbursement_scenario():
+    """CDC §9.1 : frais 100 000 + complément 2 900 000 encaissés et rapprochés
+    (compte : 3 000 000 disponibles) ; lot affecté à un constructeur tiers."""
+    client, client_user, adv, finance, promoter, lot, reservation_id, fee_call = _sales_scenario()
+    _pay(finance, promoter, reservation_id, fee_call['id'], '100000.00')
+    complement = _issue(adv, reservation_id, promoter, 'premier_versement').data
+    _pay(finance, promoter, reservation_id, complement['id'], '2900000.00')
+    constructeur, constructeur_user, constructeur_org = _register('constructeur')
+    set_rls_context(organization_id=promoter.id)
+    Lot.objects.filter(id=lot['id']).update(assigned_organization=constructeur_org)
+    program_id = Lot.objects.select_related('asset').get(id=lot['id']).asset.program_id
+    return {
+        'adv': adv, 'finance': finance, 'promoter': promoter, 'lot': lot, 'program_id': program_id,
+        'constructeur': constructeur, 'constructeur_user': constructeur_user, 'constructeur_org': constructeur_org,
+    }
+
+
+def _q(promoter):
+    return f'?organization_id={promoter.id}'
+
+
+def _prepare(s, milestone, amount='1000000.00'):
+    return s['finance'].post(
+        reverse('finance-disbursement-create') + _q(s['promoter']),
+        {'milestone': str(milestone.id), 'amount': amount}, format='json',
+    )
+
+
+def _action(s, name, disbursement_id, data=None):
+    return s['finance'].post(
+        reverse(f'finance-disbursement-{name}', args=[disbursement_id]) + _q(s['promoter']), data or {}, format='json',
+    )
+
+
+def _execute(s, disbursement_id, reference='SORTIE-001', executed_on='2026-10-01'):
+    return _action(s, 'execute', disbursement_id, {'bank_reference': reference, 'executed_on': executed_on})
+
+
+def _account(s, api=None):
+    return (api or s['finance']).get(
+        reverse('finance-program-account', args=[s['program_id']]) + _q(s['promoter']),
+    )
+
+
+def _executed_disbursement(s):
+    milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+    disbursement = _prepare(s, milestone).data
+    assert _action(s, 'eligibility', disbursement['id']).status_code == 200
+    response = _execute(s, disbursement['id'])
+    assert response.status_code == 201, response.data
+    return milestone, response.data
+
+
+@pytest.mark.django_db
+class TestDisbursementScenario:
+    """CDC §9.1 — 1 000 000 XOF au constructeur après acceptation, pris sur
+    le disponible : 3 000 000 − 1 000 000 = 2 000 000."""
+
+    def test_full_path_updates_the_simulated_balance(self):
+        s = _disbursement_scenario()
+        assert _account(s).data['balance']['available'] == '3000000.00'
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+
+        created = _prepare(s, milestone)
+        assert created.status_code == 201, created.data
+        assert created.data['status'] == 'draft'
+        assert created.data['beneficiary_organization']['id'] == str(s['constructeur_org'].id)
+        assert created.data['simulation'] is True
+
+        eligible = _action(s, 'eligibility', created.data['id'])
+        assert eligible.status_code == 200, eligible.data
+        assert eligible.data['status'] == 'eligible'
+        balance = _account(s).data['balance']
+        assert (balance['reserved'], balance['available']) == ('1000000.00', '2000000.00')
+
+        executed = _execute(s, created.data['id'])
+        assert executed.status_code == 201, executed.data
+        assert (executed.data['status'], executed.data['flow_status']) == ('executed_sim', 'bank_executed_sim')
+        assert executed.data['beneficiary_confirmation'] == 'absent'
+        # Une sortie exécutée reste déduite même avant rapprochement.
+        balance = _account(s).data['balance']
+        assert (balance['executed'], balance['reserved'], balance['available']) == ('1000000.00', '0.00', '2000000.00')
+
+    def test_the_account_lists_milestones_with_their_eligibility(self):
+        s = _disbursement_scenario()
+        _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+
+        milestones = {row['code']: row for row in _account(s).data['milestones']}
+
+        assert milestones['fondations']['disbursable'] is True
+        assert milestones['gros_oeuvre']['disbursable'] is False
+        assert "jalon non accepté techniquement dans sa version courante" in milestones['gros_oeuvre']['blockers']
+        assert milestones['fondations']['beneficiary_organization']['id'] == str(s['constructeur_org'].id)
+
+    def test_the_account_list_shows_the_program(self):
+        s = _disbursement_scenario()
+        accounts = s['finance'].get(reverse('finance-account-list')).data
+        row = next(row for row in accounts if row['program']['id'] == str(s['program_id']))
+        assert row['balance']['available'] == '3000000.00'
+
+
+@pytest.mark.django_db
+class TestDisbursementRefusalsT09:
+    def test_an_open_reserve_blocks_eligibility(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(
+            s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'], outcome='avec_reserve',
+        )
+        disbursement = _prepare(s, milestone).data
+
+        response = _action(s, 'eligibility', disbursement['id'])
+
+        assert response.status_code == 409
+        assert 'réserve ouverte sur le lot' in response.data['detail']
+        assert _execute(s, disbursement['id']).status_code == 409
+        set_rls_context(organization_id=s['promoter'].id)
+        assert Disbursement.objects.get(id=disbursement['id']).status == DisbursementStatus.DRAFT
+        assert _account(s).data['balance']['available'] == '3000000.00'
+
+    def test_an_insufficient_balance_blocks_eligibility_and_never_goes_negative(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        disbursement = _prepare(s, milestone, amount='3000001.00').data
+
+        response = _action(s, 'eligibility', disbursement['id'])
+
+        assert response.status_code == 409
+        assert 'disponible insuffisant (3000000.00 XOF disponibles)' in response.data['detail']
+        assert _account(s).data['balance']['available'] == '3000000.00'
+
+    def test_a_declaration_without_evidence_is_not_disbursable(self):
+        s = _disbursement_scenario()
+        milestone, _declaration, _inspector = _accept_milestone(s['promoter'], s['lot']['id'], 'fondations')
+        disbursement = _prepare(s, milestone).data
+
+        response = _action(s, 'eligibility', disbursement['id'])
+
+        assert response.status_code == 409
+        assert 'aucune pièce justificative' in response.data['detail']
+
+    def test_a_draft_is_never_executed_directly(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        disbursement = _prepare(s, milestone).data
+
+        assert _execute(s, disbursement['id']).status_code == 409
+
+    def test_a_beneficiary_change_after_preparation_blocks_eligibility(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        disbursement = _prepare(s, milestone).data
+        set_rls_context(organization_id=s['promoter'].id)
+        Lot.objects.filter(id=s['lot']['id']).update(assigned_organization=s['promoter'])
+
+        response = _action(s, 'eligibility', disbursement['id'])
+
+        assert response.status_code == 409
+        assert 'prestataire affecté au lot a changé' in response.data['detail']
+
+
+@pytest.mark.django_db
+class TestLapsedAcceptanceT07:
+    """Pièce ajoutée après acceptation : la demande ELIGIBLE revient à DRAFT,
+    le montant est libéré, l'exécution est refusée jusqu'à nouvelle revue."""
+
+    def test_new_evidence_sends_an_eligible_request_back_to_draft(self):
+        s = _disbursement_scenario()
+        milestone, declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        disbursement = _prepare(s, milestone).data
+        assert _action(s, 'eligibility', disbursement['id']).status_code == 200
+
+        _add_evidence(s['promoter'], declaration, s['constructeur_user'])
+
+        account = _account(s).data
+        assert account['balance']['reserved'] == '0.00'
+        assert account['balance']['available'] == '3000000.00'
+        row = next(row for row in account['disbursements'] if row['id'] == disbursement['id'])
+        assert row['status'] == 'draft'
+        assert _execute(s, disbursement['id']).status_code == 409
+        set_rls_context(organization_id=s['promoter'].id)
+        assert AuditEvent.objects.filter(object_id=disbursement['id'], action='disbursement.eligibility_lapsed').exists()
+
+    def test_execution_rechecks_the_conditions(self):
+        s = _disbursement_scenario()
+        milestone, declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        disbursement = _prepare(s, milestone).data
+        assert _action(s, 'eligibility', disbursement['id']).status_code == 200
+        _add_evidence(s['promoter'], declaration, s['constructeur_user'])
+
+        response = _execute(s, disbursement['id'])
+
+        assert response.status_code == 409
+        set_rls_context(organization_id=s['promoter'].id)
+        assert Disbursement.objects.get(id=disbursement['id']).status == DisbursementStatus.DRAFT
+
+
+@pytest.mark.django_db
+class TestDisbursementIdempotenceT10:
+    def test_a_replayed_preparation_returns_the_open_request(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        first = _prepare(s, milestone)
+        replay = _prepare(s, milestone)
+        other_amount = _prepare(s, milestone, amount='500000.00')
+
+        assert (first.status_code, replay.status_code, other_amount.status_code) == (201, 200, 409)
+        assert replay.data['id'] == first.data['id']
+
+    def test_a_replayed_execution_never_creates_a_second_outflow(self):
+        s = _disbursement_scenario()
+        _milestone, executed = _executed_disbursement(s)
+
+        replay = _execute(s, executed['id'])
+        other_reference = _execute(s, executed['id'], reference='SORTIE-002')
+
+        assert replay.status_code == 200
+        assert replay.data['id'] == executed['id']
+        assert other_reference.status_code == 409
+        assert _account(s).data['balance']['executed'] == '1000000.00'
+
+    def test_a_reference_is_never_reused_by_another_outflow(self):
+        s = _disbursement_scenario()
+        _milestone, _executed = _executed_disbursement(s)
+        other, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'gros_oeuvre', s['constructeur_user'])
+        second = _prepare(s, other).data
+        assert _action(s, 'eligibility', second['id']).status_code == 200
+
+        assert _execute(s, second['id']).status_code == 409
+
+
+@pytest.mark.django_db(transaction=True)
+class TestConcurrentEligibilityT10:
+    """Deux contrôles simultanés (deux vraies connexions) de 2 000 000 chacun
+    sur 3 000 000 disponibles : un seul réserve, le disponible ne devient
+    jamais négatif."""
+
+    def test_two_requests_never_consume_the_same_balance(self):
+        with transaction.atomic():
+            # Un test transactionnel antérieur a pu vider la base, gabarit de
+            # jalons semé par migration compris (garde-fou partagé, conftest).
+            ensure_senegal_milestone_template_seeded()
+            s = _disbursement_scenario()
+            finance_user = User.objects.get(email__startswith='finance-')
+            ids = []
+            for code in ('fondations', 'gros_oeuvre'):
+                milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], code, s['constructeur_user'])
+                ids.append(_prepare(s, milestone, amount='2000000.00').data['id'])
+        promoter_id = s['promoter'].id
+
+        barrier = threading.Barrier(2, timeout=5)
+        outcomes = []
+        lock = threading.Lock()
+
+        def worker(disbursement_id):
+            try:
+                barrier.wait()
+                with transaction.atomic():
+                    set_rls_context(user_id=finance_user.id, organization_id=promoter_id)
+                    result = services.check_disbursement_eligibility(
+                        finance=finance_user, caller_organization_id=promoter_id,
+                        target_organization_id=promoter_id, disbursement_id=disbursement_id,
+                    )
+                with lock:
+                    outcomes.append('eligible' if result is not None else 'not found')
+            except services.DisbursementError:
+                with lock:
+                    outcomes.append('refused')
+            except Exception as exc:  # noqa: BLE001
+                with lock:
+                    outcomes.append(f'error: {exc!r}')
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=worker, args=(disbursement_id,)) for disbursement_id in ids]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+
+        assert sorted(outcomes) == ['eligible', 'refused']
+        with transaction.atomic():
+            set_rls_context(user_id=finance_user.id, organization_id=promoter_id)
+            program = Lot.objects.select_related('asset__program').get(id=s['lot']['id']).asset.program
+            assert services.account_balance(program)['available'] == Decimal('1000000.00')
+
+
+@pytest.mark.django_db
+class TestReconciliationWithoutConfirmationT11:
+    def test_finance_reconciles_with_the_mandatory_reason_and_the_absence_stays_visible(self):
+        s = _disbursement_scenario()
+        _milestone, executed = _executed_disbursement(s)
+
+        without_reason = _action(s, 'reconcile', executed['id'])
+        other_reason = _action(s, 'reconcile', executed['id'], {'reason': 'RAS'})
+        reconciled = _action(s, 'reconcile', executed['id'], {'reason': NO_CONFIRMATION})
+
+        assert (without_reason.status_code, other_reason.status_code) == (409, 409)
+        assert reconciled.status_code == 200, reconciled.data
+        assert reconciled.data['flow_status'] == 'reconciled_sim'
+        assert reconciled.data['beneficiary_confirmation'] == 'absent'
+        assert reconciled.data['reconciliation_reason'] == NO_CONFIRMATION
+        assert _action(s, 'reconcile', executed['id'], {'reason': NO_CONFIRMATION}).status_code == 409
+
+    def test_a_late_confirmation_keeps_the_reconciliation_and_its_reason(self):
+        s = _disbursement_scenario()
+        _milestone, executed = _executed_disbursement(s)
+        _action(s, 'reconcile', executed['id'], {'reason': NO_CONFIRMATION})
+
+        confirmed = s['constructeur'].post(reverse('beneficiary-disbursement-confirm', args=[executed['id']]))
+
+        assert confirmed.status_code == 200
+        assert confirmed.data['flow_status'] == 'reconciled_sim'
+        assert confirmed.data['beneficiary_confirmation'] == 'confirmed'
+        assert confirmed.data['reconciliation_reason'] == NO_CONFIRMATION
+
+
+@pytest.mark.django_db
+class TestBeneficiaryConfirmation:
+    def test_the_beneficiary_sees_and_confirms_its_outflow_then_finance_reconciles_without_reason(self):
+        s = _disbursement_scenario()
+        _milestone, executed = _executed_disbursement(s)
+
+        listed = s['constructeur'].get(reverse('beneficiary-disbursement-list'))
+        assert listed.status_code == 200
+        assert [row['id'] for row in listed.data] == [executed['id']]
+        assert listed.data[0]['program']['id'] == str(s['program_id'])
+
+        confirmed = s['constructeur'].post(reverse('beneficiary-disbursement-confirm', args=[executed['id']]))
+        assert confirmed.status_code == 200
+        assert confirmed.data['flow_status'] == 'beneficiary_confirmed_sim'
+        replay = s['constructeur'].post(reverse('beneficiary-disbursement-confirm', args=[executed['id']]))
+        assert replay.status_code == 200
+
+        reconciled = _action(s, 'reconcile', executed['id'])
+        assert reconciled.status_code == 200
+        assert (reconciled.data['flow_status'], reconciled.data['reconciliation_reason']) == ('reconciled_sim', '')
+
+    def test_another_constructeur_neither_sees_nor_confirms(self):
+        s = _disbursement_scenario()
+        _milestone, executed = _executed_disbursement(s)
+        stranger, _user, _org = _register('constructeur')
+
+        assert stranger.get(reverse('beneficiary-disbursement-list')).data == []
+        assert stranger.post(reverse('beneficiary-disbursement-confirm', args=[executed['id']])).status_code == 404
+
+    def test_a_draft_is_invisible_to_the_beneficiary(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        _prepare(s, milestone)
+
+        assert s['constructeur'].get(reverse('beneficiary-disbursement-list')).data == []
+
+
+@pytest.mark.django_db
+class TestDisbursementCancellation:
+    def test_cancelling_an_eligible_request_releases_its_amount(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        disbursement = _prepare(s, milestone).data
+        _action(s, 'eligibility', disbursement['id'])
+
+        assert _action(s, 'cancel', disbursement['id']).status_code == 409
+        cancelled = _action(s, 'cancel', disbursement['id'], {'reason': 'Montant à revoir'})
+
+        assert cancelled.status_code == 200
+        assert cancelled.data['status'] == 'cancelled'
+        assert _account(s).data['balance']['available'] == '3000000.00'
+        # Le jalon accepte une nouvelle demande.
+        assert _prepare(s, milestone, amount='800000.00').status_code == 201
+
+    def test_an_executed_outflow_is_never_cancelled(self):
+        s = _disbursement_scenario()
+        _milestone, executed = _executed_disbursement(s)
+
+        assert _action(s, 'cancel', executed['id'], {'reason': 'Erreur'}).status_code == 409
+
+
+@pytest.mark.django_db
+class TestDisbursementPermissionsAndImmutability:
+    def test_only_finance_acts_and_the_keyimmo_team_reads(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        disbursement = _prepare(s, milestone).data
+
+        assert _account(s, api=s['adv']).status_code == 200
+        for api in (s['adv'], s['constructeur']):
+            assert api.post(
+                reverse('finance-disbursement-create') + _q(s['promoter']),
+                {'milestone': str(milestone.id), 'amount': '1000.00'}, format='json',
+            ).status_code == 403
+            assert api.post(
+                reverse('finance-disbursement-eligibility', args=[disbursement['id']]) + _q(s['promoter']),
+            ).status_code == 403
+        assert _account(s, api=s['constructeur']).status_code == 403
+        assert s['finance'].post(reverse('beneficiary-disbursement-confirm', args=[disbursement['id']])).status_code == 403
+
+    def test_an_executed_outflow_is_immutable_and_never_deleted(self):
+        s = _disbursement_scenario()
+        _milestone, executed = _executed_disbursement(s)
+        set_rls_context(organization_id=s['promoter'].id)
+
+        for mutation in (
+            lambda: Disbursement.objects.filter(id=executed['id']).update(amount=Decimal('1.00')),
+            lambda: Disbursement.objects.filter(id=executed['id']).update(bank_reference='AUTRE'),
+            lambda: Disbursement.objects.filter(id=executed['id']).update(status='cancelled'),
+            lambda: Disbursement.objects.filter(id=executed['id']).update(flow_status='planned'),
+        ):
+            with pytest.raises(DatabaseError), transaction.atomic():
+                mutation()
+        # Aucune policy DELETE : la suppression n'atteint aucune ligne (le
+        # trigger BEFORE DELETE couvre en plus un rôle qui contournerait la RLS).
+        Disbursement.objects.filter(id=executed['id']).delete()
+        assert Disbursement.objects.filter(id=executed['id']).exists()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM pg_trigger WHERE tgname = 'sales_disbursement_guard_delete'",
+            )
+            assert cursor.fetchone()[0] == 1
+
+    def test_fractional_xof_amounts_are_refused(self):
+        s = _disbursement_scenario()
+        milestone, _declaration = _accept_with_evidence(s['promoter'], s['lot']['id'], 'fondations', s['constructeur_user'])
+        assert _prepare(s, milestone, amount='1000.50').status_code == 409

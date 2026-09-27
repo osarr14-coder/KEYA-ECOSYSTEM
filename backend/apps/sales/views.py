@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.backoffice.permissions import IsAdminKeyimmoOrGestionnaireADV, IsFinance, IsKeyimmoTeam
+from apps.evidence.permissions import IsConstructeur
 
 from . import services
 from .models import ReservationStatus
@@ -18,12 +19,17 @@ from .serializers import (
     ContractTransitionSerializer,
     ContractVersionSerializer,
     CustomerReceiptSerializer,
+    DisbursementCreateSerializer,
+    DisbursementExecuteSerializer,
+    DisbursementReasonSerializer,
+    DisbursementSerializer,
     PaymentCallCandidateSerializer,
     PaymentCallIssueSerializer,
     PaymentCallSerializer,
     ReceiptCreateSerializer,
     ReservationRequestSerializer,
     ReservationSerializer,
+    balance_payload,
 )
 
 
@@ -448,3 +454,214 @@ def _receipt_payload(receipt):
         'currency': receipt.currency, 'received_on': receipt.received_on.isoformat(), 'status': receipt.status,
         'status_label': receipt.get_status_display(), 'simulation': True,
     }
+
+
+# ─── Décaissements — ticket B-052 ──────────────────────────────────────────
+
+
+class ProgramAccountListView(APIView):
+    """`GET /api/finance/accounts/` — comptes simulés des programmes (solde
+    détaillé). Lecture équipe KEYIMMO."""
+
+    permission_classes = [permissions.IsAuthenticated, IsKeyimmoTeam]
+
+    def get(self, request):
+        accounts = services.list_program_accounts(caller_organization_id=_caller_organization_id(request))
+        return Response([
+            {
+                'organization': {'id': str(account['program'].organization_id),
+                                 'name': account['program'].organization.name},
+                'program': {'id': str(account['program'].id), 'name': account['program'].name},
+                'balance': balance_payload(account['balance']),
+            }
+            for account in accounts
+        ])
+
+
+class ProgramAccountView(APIView):
+    """`GET /api/finance/programs/{id}/account/?organization_id=` — solde,
+    jalons (éligibilité technique, prestataire affecté), décaissements."""
+
+    permission_classes = [permissions.IsAuthenticated, IsKeyimmoTeam]
+
+    def get(self, request, program_id):
+        account = services.get_program_account(
+            caller_organization_id=_caller_organization_id(request),
+            target_organization_id=_target_organization_id(request),
+            program_id=program_id,
+        )
+        if account is None:
+            raise NotFound()
+        program = account['program']
+        return Response({
+            'organization': {'id': str(program.organization_id), 'name': program.organization.name},
+            'program': {'id': str(program.id), 'name': program.name},
+            'balance': balance_payload(account['balance']),
+            'milestones': [
+                {
+                    'id': str(row['milestone'].id), 'code': row['milestone'].code, 'label': row['milestone'].label,
+                    'order': row['milestone'].order,
+                    'lot': {'id': str(row['lot'].id), 'name': row['lot'].name},
+                    'beneficiary_organization': {'id': str(row['beneficiary'].id), 'name': row['beneficiary'].name},
+                    'disbursable': not row['blockers'], 'blockers': row['blockers'],
+                    'open_disbursement': str(row['open_disbursement'].id) if row['open_disbursement'] else None,
+                }
+                for row in account['milestones']
+            ],
+            'disbursements': DisbursementSerializer(account['disbursements'], many=True).data,
+        })
+
+
+def _disbursement_response(request, target_organization_id, disbursement, status=200):
+    disbursement = services.load_disbursement(
+        caller_organization_id=_caller_organization_id(request),
+        target_organization_id=target_organization_id, disbursement_id=disbursement.id,
+    )
+    return Response(DisbursementSerializer(disbursement).data, status=status)
+
+
+class DisbursementCreateView(APIView):
+    """`POST /api/finance/disbursements/?organization_id=` — Finance seul ;
+    `{"milestone": …, "amount": …}`. 201 à la création, 200 si la même
+    demande est rejouée (idempotence), 409 si une autre est déjà ouverte."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request):
+        target_organization_id = _target_organization_id(request)
+        serializer = DisbursementCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            disbursement, created = services.prepare_disbursement(
+                finance=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id,
+                milestone_id=serializer.validated_data['milestone'], amount=serializer.validated_data['amount'],
+            )
+        except services.DisbursementError as exc:
+            return _conflict(exc)
+        if disbursement is None:
+            raise NotFound()
+        return _disbursement_response(request, target_organization_id, disbursement, status=201 if created else 200)
+
+
+class DisbursementEligibilityView(APIView):
+    """`POST /api/finance/disbursements/{id}/eligibility/?organization_id=` —
+    DRAFT → ELIGIBLE (montant réservé) ou 409 motivé (T09)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, disbursement_id):
+        target_organization_id = _target_organization_id(request)
+        try:
+            disbursement = services.check_disbursement_eligibility(
+                finance=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id, disbursement_id=disbursement_id,
+            )
+        except services.DisbursementError as exc:
+            return _conflict(exc)
+        if disbursement is None:
+            raise NotFound()
+        return _disbursement_response(request, target_organization_id, disbursement)
+
+
+class DisbursementExecuteView(APIView):
+    """`POST /api/finance/disbursements/{id}/execute/?organization_id=` —
+    `{"bank_reference": …, "executed_on": …}`. 201 à l'exécution, 200 si la
+    même référence est rejouée (T10), 409 sinon."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, disbursement_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = DisbursementExecuteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            disbursement, created = services.execute_disbursement(
+                finance=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id, disbursement_id=disbursement_id,
+                **serializer.validated_data,
+            )
+        except services.DisbursementError as exc:
+            return _conflict(exc)
+        if disbursement is None:
+            raise NotFound()
+        return _disbursement_response(request, target_organization_id, disbursement, status=201 if created else 200)
+
+
+class DisbursementCancelView(APIView):
+    """`POST /api/finance/disbursements/{id}/cancel/?organization_id=` —
+    `{"reason": …}` obligatoire ; jamais après exécution."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, disbursement_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = DisbursementReasonSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            disbursement = services.cancel_disbursement(
+                finance=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id, disbursement_id=disbursement_id,
+                reason=serializer.validated_data['reason'],
+            )
+        except services.DisbursementError as exc:
+            return _conflict(exc)
+        if disbursement is None:
+            raise NotFound()
+        return _disbursement_response(request, target_organization_id, disbursement)
+
+
+class DisbursementReconcileView(APIView):
+    """`POST /api/finance/disbursements/{id}/reconcile/?organization_id=` —
+    sans confirmation du bénéficiaire, `{"reason": "Confirmation bénéficiaire
+    non reçue"}` est obligatoire (T11)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, disbursement_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = DisbursementReasonSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            disbursement = services.reconcile_disbursement(
+                finance=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id, disbursement_id=disbursement_id,
+                reason=serializer.validated_data['reason'],
+            )
+        except services.DisbursementError as exc:
+            return _conflict(exc)
+        if disbursement is None:
+            raise NotFound()
+        return _disbursement_response(request, target_organization_id, disbursement)
+
+
+class BeneficiaryDisbursementListView(APIView):
+    """`GET /api/build/disbursements/` — sorties exécutées vers
+    l'organisation du constructeur connecté."""
+
+    permission_classes = [permissions.IsAuthenticated, IsConstructeur]
+
+    def get(self, request):
+        disbursements = services.list_disbursements_as_beneficiary(
+            caller_organization_id=_caller_organization_id(request),
+        )
+        return Response(DisbursementSerializer(disbursements, many=True).data)
+
+
+class BeneficiaryDisbursementConfirmView(APIView):
+    """`POST /api/build/disbursements/{id}/confirm/` — le constructeur
+    bénéficiaire confirme la réception (information, pas preuve bancaire)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsConstructeur]
+
+    def post(self, request, disbursement_id):
+        try:
+            disbursement = services.confirm_disbursement_as_beneficiary(
+                constructeur=request.user, caller_organization_id=_caller_organization_id(request),
+                disbursement_id=disbursement_id,
+            )
+        except services.DisbursementError as exc:
+            return _conflict(exc)
+        if disbursement is None:
+            raise NotFound()
+        return Response(DisbursementSerializer(disbursement).data)

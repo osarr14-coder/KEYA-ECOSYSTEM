@@ -453,6 +453,12 @@ def _find_open_reserve_for_lot(lot):
     return None
 
 
+def lot_has_open_reserve(lot):
+    """Ticket B-052 — condition « aucune réserve ouverte » d'un décaissement
+    (CDC V3 §8.2, T09). Sous contexte RLS de l'organisation du lot."""
+    return _find_open_reserve_for_lot(lot) is not None
+
+
 def list_missions_for_inspector(*, inspector, caller_organization_id):
     """Les missions affectées à `inspector`, avec un statut « faite / à
     faire » dérivé — jamais stocké (voir `InspectionMission`, doctrine

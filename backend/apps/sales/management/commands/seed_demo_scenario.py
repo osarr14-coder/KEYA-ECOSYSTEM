@@ -101,9 +101,12 @@ class Command(BaseCommand):
                     organization=promoter, program=program, name='Bâtiment A', location='Cocody, Abidjan',
                 )
                 for name, surface in LOTS:
+                    # Promoteur-constructeur en auto-exécution : bénéficiaire
+                    # explicite des décaissements (ticket B-052).
                     lot = Lot.objects.create(
                         organization=promoter, asset=asset, name=name, surface=surface,
                         sale_price=PRICE, commercial_status=LotCommercialStatus.DISPONIBLE,
+                        assigned_organization=promoter,
                     )
                     instantiate_milestones_for_lot(lot)
                 self.stdout.write(f'Programme « {PROGRAM_NAME} » créé : {len(LOTS)} lots à {PRICE} XOF.')

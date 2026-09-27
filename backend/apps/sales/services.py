@@ -17,10 +17,11 @@ from django.utils import timezone
 
 from apps.audit import services as audit
 from apps.core.rls import set_rls_context
-from apps.inspections.services import is_milestone_technically_accepted
+from apps.evidence.models import Evidence, WorkDeclaration
+from apps.inspections.services import is_milestone_technically_accepted, lot_has_open_reserve
 from apps.organizations.models import Organization
 from apps.pricing.services import get_active_legal_payment_tier_template
-from apps.programs.models import Lot, LotClient, LotCommercialStatus
+from apps.programs.models import Lot, LotClient, LotCommercialStatus, Milestone, Program
 
 from .models import (
     BLOCKING_STATUSES,
@@ -30,7 +31,12 @@ from .models import (
     Allocation,
     ContractVersion,
     CustomerReceipt,
+    Disbursement,
+    DisbursementFlowStatus,
+    DisbursementStatus,
     FlowStatus,
+    NO_CONFIRMATION_REASON,
+    OPEN_DISBURSEMENT_STATUSES,
     PaymentCall,
     PaymentCallKind,
     Reservation,
@@ -960,3 +966,453 @@ def _with_settlement(calls):
         call.allocated_total = allocated_amount(call)
         call.settled_total = settled_amount(call)
     return calls
+
+
+# ─── Décaissements — ticket B-052 (CDC V3 §8.2/§8.3) ─────────────────────────
+
+
+class DisbursementError(Exception):
+    """Opération de décaissement impossible dans l'état courant — le message
+    dit pourquoi. Réponse 409."""
+
+
+_DISBURSEMENT_RELATIONS = (
+    'organization', 'program', 'lot', 'milestone', 'beneficiary_organization', 'prepared_by', 'executed_by',
+    'beneficiary_confirmed_by', 'reconciled_by', 'cancelled_by',
+)
+
+
+def beneficiary_organization_id_for(lot):
+    """Prestataire affecté au lot (`Lot.assigned_organization`) ; à défaut,
+    l'organisation du programme elle-même (promoteur-constructeur en
+    auto-exécution, cas déjà assumé depuis le ticket 009)."""
+    return lot.assigned_organization_id or lot.organization_id
+
+
+def account_balance(program):
+    """Solde simulé du compte du programme (CDC §8.2) : encaissements
+    rapprochés − sorties exécutées (rapprochées ou non) − demandes ELIGIBLE
+    (montant réservé). Sous contexte RLS de l'organisation du programme."""
+    received = _sum(CustomerReceipt.objects.filter(
+        organization_id=program.organization_id, status=FlowStatus.RECONCILED_SIM,
+        reservation__lot__asset__program=program,
+    ))
+    executed = _sum(Disbursement.objects.filter(program=program, status=DisbursementStatus.EXECUTED_SIM))
+    reserved = _sum(Disbursement.objects.filter(program=program, status=DisbursementStatus.ELIGIBLE))
+    return {
+        'received': received, 'executed': executed, 'reserved': reserved,
+        'available': received - executed - reserved, 'currency': DEFAULT_CURRENCY,
+    }
+
+
+def milestone_disbursement_blockers(milestone):
+    """Conditions TECHNIQUES d'un décaissement (CDC §8.2), hors solde : liste
+    des raisons de refus, vide si le jalon est décaissable."""
+    blockers = []
+    if not is_milestone_technically_accepted(milestone):
+        blockers.append("jalon non accepté techniquement dans sa version courante")
+    if lot_has_open_reserve(milestone.lot):
+        blockers.append('réserve ouverte sur le lot')
+    declaration = WorkDeclaration.objects.filter(milestone=milestone).order_by('-created_at').first()
+    if declaration is None or not Evidence.objects.filter(work_declaration=declaration).exists():
+        blockers.append('aucune pièce justificative sur la déclaration')
+    return blockers
+
+
+def _lock_program(program_id):
+    """Verrou de ligne sur le compte : toute opération qui consomme ou libère
+    du disponible passe par lui (T10 — deux demandes ne consomment jamais
+    simultanément le même disponible)."""
+    return Program.objects.select_for_update().get(id=program_id)
+
+
+def _locked_disbursement(disbursement_id):
+    return (
+        Disbursement.objects.select_for_update(of=('self',))
+        .select_related('milestone', 'lot', 'program').filter(id=disbursement_id).first()
+    )
+
+
+def _release_lapsed_eligibility(program):
+    """CDC §8.2/T07 : une demande ELIGIBLE dont le jalon n'est plus
+    décaissable (pièce ajoutée après acceptation, nouvelle réserve…) revient
+    à DRAFT et libère son montant. Réévalué à chaque lecture du compte et
+    avant tout contrôle — jamais de réservation de fonds sur une acceptation
+    caduque."""
+    for disbursement in Disbursement.objects.select_for_update(of=('self',)).select_related(
+        'milestone', 'milestone__lot',
+    ).filter(program=program, status=DisbursementStatus.ELIGIBLE):
+        blockers = milestone_disbursement_blockers(disbursement.milestone)
+        if blockers:
+            disbursement.status = DisbursementStatus.DRAFT
+            disbursement.eligible_at = None
+            disbursement.save(update_fields=['status', 'eligible_at', 'updated_at'])
+            audit.record(
+                organization_id=disbursement.organization_id, actor=None, action='disbursement.eligibility_lapsed',
+                obj=disbursement, payload={'reasons': blockers, 'released_amount': str(disbursement.amount)},
+            )
+
+
+def _beneficiary_anomaly(disbursement):
+    if beneficiary_organization_id_for(disbursement.lot) != disbursement.beneficiary_organization_id:
+        return ('le prestataire affecté au lot a changé depuis la préparation de la demande : '
+                'annuler cette demande et en préparer une nouvelle')
+    return None
+
+
+def prepare_disbursement(*, finance, caller_organization_id, target_organization_id, milestone_id, amount):
+    """Demande DRAFT liée au jalon et au prestataire affecté (CDC §8.2).
+    IDEMPOTENTE : une seule demande ouverte par jalon ; la même requête
+    rejouée renvoie la demande existante (`created=False`)."""
+    if amount is None or amount <= 0:
+        raise DisbursementError('Le montant doit être strictement positif.')
+    if amount != amount.quantize(_WHOLE_UNITS):
+        raise DisbursementError('Montant en XOF entiers uniquement.')
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        milestone = Milestone.objects.select_related('lot', 'lot__asset').filter(id=milestone_id).first()
+        if milestone is None:
+            return None, False
+        program = _lock_program(milestone.lot.asset.program_id)
+        existing = Disbursement.objects.filter(milestone=milestone, status__in=OPEN_DISBURSEMENT_STATUSES).first()
+        if existing is not None:
+            if existing.amount != amount:
+                raise DisbursementError(
+                    f'Une demande est déjà ouverte pour ce jalon ({existing.amount} {existing.currency}) : '
+                    "l'annuler avant d'en préparer une autre."
+                )
+            return existing, False
+        disbursement = Disbursement.objects.create(
+            organization_id=program.organization_id, program=program, lot=milestone.lot, milestone=milestone,
+            beneficiary_organization_id=beneficiary_organization_id_for(milestone.lot),
+            amount=amount, currency=DEFAULT_CURRENCY, prepared_by=finance,
+        )
+        audit.record(
+            organization_id=program.organization_id, actor=finance, action='disbursement.prepared', obj=disbursement,
+            payload={'milestone_id': str(milestone.id), 'amount': str(amount),
+                     'beneficiary_organization_id': str(disbursement.beneficiary_organization_id),
+                     'simulation': True},
+        )
+        return disbursement, True
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def check_disbursement_eligibility(*, finance, caller_organization_id, target_organization_id, disbursement_id):
+    """DRAFT → ELIGIBLE : jalon accepté, aucune réserve ouverte, pièces
+    présentes, disponible suffisant — le montant est alors RÉSERVÉ. Sous
+    verrou du compte. Une éligibilité applicative n'est pas une autorisation
+    bancaire réelle (CDC §8.2)."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        found = Disbursement.objects.filter(id=disbursement_id).values('program_id').first()
+        if found is None:
+            return None
+        program = _lock_program(found['program_id'])
+        _release_lapsed_eligibility(program)
+        disbursement = _locked_disbursement(disbursement_id)
+        if disbursement.status == DisbursementStatus.ELIGIBLE:
+            return disbursement
+        if disbursement.status != DisbursementStatus.DRAFT:
+            raise DisbursementError(f'Demande {disbursement.get_status_display().lower()} : aucun contrôle possible.')
+        reasons = milestone_disbursement_blockers(disbursement.milestone)
+        anomaly = _beneficiary_anomaly(disbursement)
+        if anomaly:
+            reasons.append(anomaly)
+        available = account_balance(program)['available']
+        if disbursement.amount > available:
+            reasons.append(f'disponible insuffisant ({available} {DEFAULT_CURRENCY} disponibles)')
+        if reasons:
+            raise DisbursementError('Décaissement non éligible : ' + ' ; '.join(reasons) + '.')
+        disbursement.status = DisbursementStatus.ELIGIBLE
+        disbursement.eligible_at = timezone.now()
+        disbursement.save(update_fields=['status', 'eligible_at', 'updated_at'])
+        audit.record(
+            organization_id=disbursement.organization_id, actor=finance, action='disbursement.eligible',
+            obj=disbursement, payload={'reserved_amount': str(disbursement.amount), 'available_before': str(available)},
+        )
+        return disbursement
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def execute_disbursement(*, finance, caller_organization_id, target_organization_id, disbursement_id,
+                         bank_reference, executed_on):
+    """ELIGIBLE → EXECUTED_SIM, conditions REVÉRIFIÉES (CDC §8.2). Idempotent
+    (T10) : la même référence rejouée sur la même demande renvoie l'exécution
+    existante (`created=False`) ; sur une autre demande, refus."""
+    reference = (bank_reference or '').strip()
+    if not reference:
+        raise DisbursementError('La référence bancaire simulée est obligatoire.')
+    if executed_on is None:
+        raise DisbursementError("La date d'exécution est obligatoire.")
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        found = Disbursement.objects.filter(id=disbursement_id).values('program_id').first()
+        if found is None:
+            return None, False
+        program = _lock_program(found['program_id'])
+
+        def replay_or_conflict():
+            existing = Disbursement.objects.filter(program=program, bank_reference=reference).first()
+            if existing is None:
+                return None
+            if existing.id != disbursement_id or existing.executed_on != executed_on:
+                raise DisbursementError(
+                    f'La référence « {reference} » désigne déjà un autre mouvement : '
+                    'un mouvement exécuté ne se modifie jamais.'
+                )
+            return existing
+
+        replay = replay_or_conflict()
+        if replay is not None:
+            return replay, False
+        _release_lapsed_eligibility(program)
+        disbursement = _locked_disbursement(disbursement_id)
+        if disbursement.status == DisbursementStatus.EXECUTED_SIM:
+            raise DisbursementError(
+                f'Décaissement déjà exécuté (référence « {disbursement.bank_reference} ») : jamais une seconde sortie.'
+            )
+        if disbursement.status != DisbursementStatus.ELIGIBLE:
+            raise DisbursementError(
+                'Seule une demande éligible s’exécute : relancer le contrôle d’éligibilité '
+                '(une acceptation devenue caduque ramène la demande en brouillon).'
+            )
+        anomaly = _beneficiary_anomaly(disbursement)
+        if anomaly:
+            raise DisbursementError(f'Exécution bloquée : {anomaly}.')
+        # Le montant de cette demande est déjà réservé : il est compté dans
+        # `reserved`, on ne le déduit donc pas deux fois.
+        if account_balance(program)['available'] < 0:
+            raise DisbursementError('Exécution bloquée : le solde du compte deviendrait négatif.')
+        disbursement.status = DisbursementStatus.EXECUTED_SIM
+        disbursement.flow_status = DisbursementFlowStatus.BANK_EXECUTED_SIM
+        disbursement.bank_reference = reference
+        disbursement.executed_on = executed_on
+        disbursement.executed_by = finance
+        disbursement.executed_at = timezone.now()
+        try:
+            with transaction.atomic():
+                disbursement.save(update_fields=[
+                    'status', 'flow_status', 'bank_reference', 'executed_on', 'executed_by', 'executed_at',
+                    'updated_at',
+                ])
+        except IntegrityError:
+            raise DisbursementError(f'La référence « {reference} » désigne déjà un autre mouvement.')
+        audit.record(
+            organization_id=disbursement.organization_id, actor=finance, action='disbursement.executed',
+            obj=disbursement,
+            payload={'bank_reference': reference, 'amount': str(disbursement.amount),
+                     'currency': disbursement.currency,
+                     'beneficiary_organization_id': str(disbursement.beneficiary_organization_id),
+                     'simulation': True},
+        )
+        return disbursement, True
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def cancel_disbursement(*, finance, caller_organization_id, target_organization_id, disbursement_id, reason):
+    """Annulation AVANT exécution, motivée ; libère la réservation de fonds.
+    Aucune annulation après exécution (contrepassation hors MVP, CDC §8.3)."""
+    if not reason or not reason.strip():
+        raise DisbursementError("Le motif d'annulation est obligatoire.")
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        found = Disbursement.objects.filter(id=disbursement_id).values('program_id').first()
+        if found is None:
+            return None
+        _lock_program(found['program_id'])
+        disbursement = _locked_disbursement(disbursement_id)
+        if disbursement.status == DisbursementStatus.CANCELLED:
+            return disbursement
+        if disbursement.status == DisbursementStatus.EXECUTED_SIM:
+            raise DisbursementError('Un décaissement exécuté ne s’annule jamais (contrepassation hors MVP).')
+        released = disbursement.status == DisbursementStatus.ELIGIBLE
+        disbursement.status = DisbursementStatus.CANCELLED
+        disbursement.cancelled_by = finance
+        disbursement.cancelled_at = timezone.now()
+        disbursement.cancel_reason = reason.strip()
+        disbursement.save(update_fields=['status', 'cancelled_by', 'cancelled_at', 'cancel_reason', 'updated_at'])
+        audit.record(
+            organization_id=disbursement.organization_id, actor=finance, action='disbursement.cancelled',
+            obj=disbursement, justification=disbursement.cancel_reason,
+            payload={'released_amount': str(disbursement.amount) if released else '0'},
+        )
+        return disbursement
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def reconcile_disbursement(*, finance, caller_organization_id, target_organization_id, disbursement_id, reason=''):
+    """Rapprochement (CDC §8.3). Sans confirmation du bénéficiaire, le motif
+    « Confirmation bénéficiaire non reçue » est obligatoire (T11) — l'absence
+    reste visible, elle n'est jamais transformée en confirmation. Une
+    anomalie bloque le rapprochement."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        disbursement = _locked_disbursement(disbursement_id)
+        if disbursement is None:
+            return None
+        if disbursement.status != DisbursementStatus.EXECUTED_SIM:
+            raise DisbursementError('Seul un décaissement exécuté se rapproche.')
+        if disbursement.flow_status == DisbursementFlowStatus.RECONCILED_SIM:
+            raise DisbursementError('Ce décaissement est déjà rapproché.')
+        anomalies = []
+        if disbursement.currency != DEFAULT_CURRENCY:
+            anomalies.append('devise différente de celle du compte')
+        anomaly = _beneficiary_anomaly(disbursement)
+        if anomaly:
+            anomalies.append(anomaly)
+        if anomalies:
+            raise DisbursementError('Rapprochement bloqué : ' + ' ; '.join(anomalies) + '.')
+        confirmed = disbursement.flow_status == DisbursementFlowStatus.BENEFICIARY_CONFIRMED_SIM
+        reason = (reason or '').strip()
+        if not confirmed and reason != NO_CONFIRMATION_REASON:
+            raise DisbursementError(
+                f'Sans confirmation du bénéficiaire, le rapprochement exige le motif « {NO_CONFIRMATION_REASON} ».'
+            )
+        disbursement.flow_status = DisbursementFlowStatus.RECONCILED_SIM
+        disbursement.reconciled_by = finance
+        disbursement.reconciled_at = timezone.now()
+        disbursement.reconciliation_reason = '' if confirmed else reason
+        disbursement.save(update_fields=[
+            'flow_status', 'reconciled_by', 'reconciled_at', 'reconciliation_reason', 'updated_at',
+        ])
+        audit.record(
+            organization_id=disbursement.organization_id, actor=finance, action='disbursement.reconciled',
+            obj=disbursement, justification=disbursement.reconciliation_reason,
+            payload={'beneficiary_confirmed': confirmed, 'simulation': True},
+        )
+        return disbursement
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def confirm_disbursement_as_beneficiary(*, constructeur, caller_organization_id, disbursement_id):
+    """Le prestataire confirme la réception (`BENEFICIARY_CONFIRMED_SIM`,
+    CDC §8.3) — une information, pas une preuve bancaire. Idempotent. Une
+    confirmation tardive, après un rapprochement sans confirmation, est
+    enregistrée sans réécrire ce rapprochement ni son motif."""
+    found = Disbursement.objects.filter(
+        id=disbursement_id, beneficiary_organization_id=caller_organization_id,
+    ).values('organization_id').first()
+    if found is None:
+        return None
+    try:
+        set_rls_context(organization_id=found['organization_id'])
+        disbursement = _locked_disbursement(disbursement_id)
+        if disbursement is None or disbursement.beneficiary_organization_id != caller_organization_id:
+            return None
+        if disbursement.status != DisbursementStatus.EXECUTED_SIM:
+            raise DisbursementError('Seul un décaissement exécuté peut être confirmé.')
+        if disbursement.beneficiary_confirmed_at is not None:
+            return _load_disbursement(disbursement.id)
+        disbursement.beneficiary_confirmed_by = constructeur
+        disbursement.beneficiary_confirmed_at = timezone.now()
+        fields = ['beneficiary_confirmed_by', 'beneficiary_confirmed_at', 'updated_at']
+        if disbursement.flow_status == DisbursementFlowStatus.BANK_EXECUTED_SIM:
+            disbursement.flow_status = DisbursementFlowStatus.BENEFICIARY_CONFIRMED_SIM
+            fields.append('flow_status')
+        disbursement.save(update_fields=fields)
+        audit.record(
+            organization_id=disbursement.organization_id, actor=constructeur, action='disbursement.beneficiary_confirmed',
+            obj=disbursement, payload={'after_reconciliation': 'flow_status' not in fields},
+        )
+        return _load_disbursement(disbursement.id)
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def _load_disbursement(disbursement_id):
+    return Disbursement.objects.select_related(*_DISBURSEMENT_RELATIONS).get(id=disbursement_id)
+
+
+def load_disbursement(*, caller_organization_id, target_organization_id, disbursement_id):
+    """Relecture complète (relations préchargées) pour la réponse d'API."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        return _load_disbursement(disbursement_id)
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def list_disbursements_as_beneficiary(*, caller_organization_id):
+    """Sorties EXÉCUTÉES vers l'organisation de l'appelant (constructeur) ;
+    les demandes internes à Finance (brouillon, éligible, annulée) ne le
+    concernent pas encore. Lues sous le contexte de chaque programme, pour
+    précharger programme, lot et jalon (invisibles sous le sien)."""
+    rows = list(Disbursement.objects.filter(
+        beneficiary_organization_id=caller_organization_id, status=DisbursementStatus.EXECUTED_SIM,
+    ).values_list('organization_id', flat=True).distinct())
+    results = []
+    try:
+        for organization_id in rows:
+            set_rls_context(organization_id=organization_id)
+            results.extend(Disbursement.objects.select_related(*_DISBURSEMENT_RELATIONS).filter(
+                organization_id=organization_id, beneficiary_organization_id=caller_organization_id,
+                status=DisbursementStatus.EXECUTED_SIM,
+            ))
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+    return sorted(results, key=lambda disbursement: disbursement.executed_at, reverse=True)
+
+
+def list_program_accounts(*, caller_organization_id):
+    """Comptes des programmes ayant au moins une réservation ou un
+    décaissement, toutes organisations — équipe KEYIMMO."""
+    accounts = []
+    organization_ids = list(Organization.objects.values_list('id', flat=True))
+    try:
+        for organization_id in organization_ids:
+            set_rls_context(organization_id=organization_id)
+            programs = Program.objects.filter(organization_id=organization_id).select_related('organization')
+            for program in programs:
+                has_activity = (
+                    Reservation.objects.filter(lot__asset__program=program).exists()
+                    or Disbursement.objects.filter(program=program).exists()
+                )
+                if has_activity:
+                    _release_lapsed_eligibility(program)
+                    accounts.append({'program': program, 'balance': account_balance(program)})
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+    return sorted(accounts, key=lambda account: (account['program'].organization.name, account['program'].name))
+
+
+def get_program_account(*, caller_organization_id, target_organization_id, program_id):
+    """Compte d'un programme : solde détaillé, jalons de ses lots avec leur
+    éligibilité technique et le prestataire affecté, décaissements."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        program = Program.objects.select_related('organization').filter(id=program_id).first()
+        if program is None:
+            return None
+        _release_lapsed_eligibility(program)
+        disbursements = list(
+            Disbursement.objects.select_related(*_DISBURSEMENT_RELATIONS).filter(program=program)
+            .order_by('-created_at'),
+        )
+        open_by_milestone = {
+            disbursement.milestone_id: disbursement for disbursement in disbursements
+            if disbursement.status in OPEN_DISBURSEMENT_STATUSES
+        }
+        lots = Lot.objects.filter(asset__program=program).select_related(
+            'assigned_organization', 'organization',
+        ).order_by('name')
+        milestones = []
+        for lot in lots:
+            beneficiary = lot.assigned_organization or lot.organization
+            for milestone in lot.milestones.order_by('order'):
+                milestone.lot = lot
+                milestones.append({
+                    'milestone': milestone, 'lot': lot, 'beneficiary': beneficiary,
+                    'blockers': milestone_disbursement_blockers(milestone),
+                    'open_disbursement': open_by_milestone.get(milestone.id),
+                })
+        return {
+            'program': program, 'balance': account_balance(program),
+            'milestones': milestones, 'disbursements': disbursements,
+        }
+    finally:
+        set_rls_context(organization_id=caller_organization_id)

@@ -7,13 +7,22 @@ from .views import (
     AdminReservationCancelView,
     AdminReservationListView,
     AllocationCreateView,
+    BeneficiaryDisbursementConfirmView,
+    BeneficiaryDisbursementListView,
     CatalogLotListView,
+    DisbursementCancelView,
+    DisbursementCreateView,
+    DisbursementEligibilityView,
+    DisbursementExecuteView,
+    DisbursementReconcileView,
     FinanceFileView,
     MyContractListView,
     MyContractSignView,
     MyPaymentCallListView,
     MyReservationCancelView,
     MyReservationListView,
+    ProgramAccountListView,
+    ProgramAccountView,
     ReceiptCreateView,
     ReceiptReconcileView,
     ReservationCreateView,
@@ -70,5 +79,30 @@ urlpatterns = [
     path(
         'finance/receipts/<uuid:receipt_id>/reconcile/',
         ReceiptReconcileView.as_view(), name='finance-receipt-reconcile',
+    ),
+    # Ticket B-052 — décaissements simulés.
+    path('finance/accounts/', ProgramAccountListView.as_view(), name='finance-account-list'),
+    path('finance/programs/<uuid:program_id>/account/', ProgramAccountView.as_view(), name='finance-program-account'),
+    path('finance/disbursements/', DisbursementCreateView.as_view(), name='finance-disbursement-create'),
+    path(
+        'finance/disbursements/<uuid:disbursement_id>/eligibility/',
+        DisbursementEligibilityView.as_view(), name='finance-disbursement-eligibility',
+    ),
+    path(
+        'finance/disbursements/<uuid:disbursement_id>/execute/',
+        DisbursementExecuteView.as_view(), name='finance-disbursement-execute',
+    ),
+    path(
+        'finance/disbursements/<uuid:disbursement_id>/cancel/',
+        DisbursementCancelView.as_view(), name='finance-disbursement-cancel',
+    ),
+    path(
+        'finance/disbursements/<uuid:disbursement_id>/reconcile/',
+        DisbursementReconcileView.as_view(), name='finance-disbursement-reconcile',
+    ),
+    path('build/disbursements/', BeneficiaryDisbursementListView.as_view(), name='beneficiary-disbursement-list'),
+    path(
+        'build/disbursements/<uuid:disbursement_id>/confirm/',
+        BeneficiaryDisbursementConfirmView.as_view(), name='beneficiary-disbursement-confirm',
     ),
 ]

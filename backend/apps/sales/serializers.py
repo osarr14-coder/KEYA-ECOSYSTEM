@@ -239,3 +239,100 @@ class ReceiptCreateSerializer(serializers.Serializer):
 class AllocationCreateSerializer(serializers.Serializer):
     payment_call = serializers.UUIDField()
     amount = serializers.DecimalField(max_digits=16, decimal_places=2)
+
+
+# ─── Décaissements — ticket B-052 ──────────────────────────────────────────
+
+
+def balance_payload(balance):
+    return {
+        'received': _money(balance['received']), 'executed': _money(balance['executed']),
+        'reserved': _money(balance['reserved']), 'available': _money(balance['available']),
+        'currency': balance['currency'], 'simulation': True,
+    }
+
+
+def _email(user):
+    return user.email if user else None
+
+
+class DisbursementSerializer(serializers.Serializer):
+    """Toutes les relations sont préchargées par le service (lues sous le
+    contexte RLS du programme) : aucune requête ici. `simulation: true` :
+    aucun fonds réel (CDC §3.1). `beneficiary_confirmation` : `absent` reste
+    visible même après un rapprochement motivé (CDC §8.3, T11)."""
+
+    id = serializers.UUIDField()
+    organization = serializers.SerializerMethodField()
+    program = serializers.SerializerMethodField()
+    lot = serializers.SerializerMethodField()
+    milestone = serializers.SerializerMethodField()
+    beneficiary_organization = serializers.SerializerMethodField()
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2)
+    currency = serializers.CharField()
+    status = serializers.CharField()
+    status_label = serializers.CharField(source='get_status_display')
+    flow_status = serializers.CharField()
+    flow_status_label = serializers.CharField(source='get_flow_status_display')
+    bank_reference = serializers.CharField(allow_null=True)
+    executed_on = serializers.DateField(allow_null=True)
+    executed_at = serializers.DateTimeField(allow_null=True)
+    executed_by = serializers.SerializerMethodField()
+    beneficiary_confirmation = serializers.SerializerMethodField()
+    beneficiary_confirmed_at = serializers.DateTimeField(allow_null=True)
+    reconciled_at = serializers.DateTimeField(allow_null=True)
+    reconciled_by = serializers.SerializerMethodField()
+    reconciliation_reason = serializers.CharField()
+    cancel_reason = serializers.CharField()
+    cancelled_at = serializers.DateTimeField(allow_null=True)
+    eligible_at = serializers.DateTimeField(allow_null=True)
+    prepared_by = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField()
+    simulation = serializers.SerializerMethodField()
+
+    def get_organization(self, disbursement):
+        return _organization(disbursement.organization)
+
+    def get_program(self, disbursement):
+        return {'id': str(disbursement.program_id), 'name': disbursement.program.name}
+
+    def get_lot(self, disbursement):
+        return {'id': str(disbursement.lot_id), 'name': disbursement.lot.name}
+
+    def get_milestone(self, disbursement):
+        milestone = disbursement.milestone
+        return {'id': str(milestone.id), 'code': milestone.code, 'label': milestone.label}
+
+    def get_beneficiary_organization(self, disbursement):
+        return _organization(disbursement.beneficiary_organization)
+
+    def get_executed_by(self, disbursement):
+        return _email(disbursement.executed_by)
+
+    def get_reconciled_by(self, disbursement):
+        return _email(disbursement.reconciled_by)
+
+    def get_prepared_by(self, disbursement):
+        return _email(disbursement.prepared_by)
+
+    def get_beneficiary_confirmation(self, disbursement):
+        if disbursement.status != 'executed_sim':
+            return None
+        return 'confirmed' if disbursement.beneficiary_confirmed_at else 'absent'
+
+    def get_simulation(self, disbursement):
+        return True
+
+
+class DisbursementCreateSerializer(serializers.Serializer):
+    milestone = serializers.UUIDField()
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2)
+
+
+class DisbursementExecuteSerializer(serializers.Serializer):
+    bank_reference = serializers.CharField(max_length=64)
+    executed_on = serializers.DateField()
+
+
+class DisbursementReasonSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, default='')
