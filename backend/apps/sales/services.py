@@ -12,6 +12,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.audit import services as audit
@@ -19,14 +20,17 @@ from apps.core.rls import set_rls_context
 from apps.inspections.services import is_milestone_technically_accepted
 from apps.organizations.models import Organization
 from apps.pricing.services import get_active_legal_payment_tier_template
-from apps.programs.models import Lot, LotCommercialStatus
+from apps.programs.models import Lot, LotClient, LotCommercialStatus
 
 from .models import (
     BLOCKING_STATUSES,
     DEFAULT_CURRENCY,
     IN_PROGRESS_CONTRACT_STATUSES,
     ContractStatus,
+    Allocation,
     ContractVersion,
+    CustomerReceipt,
+    FlowStatus,
     PaymentCall,
     PaymentCallKind,
     Reservation,
@@ -68,6 +72,11 @@ def _expire_if_overdue(reservation, now):
     partir de `reserved` (Phase 3), un encaissement existe et le CDC suspend
     toute expiration automatique au profit d'une revue Finance (§6.1)."""
     if reservation.status != ReservationStatus.HELD or reservation.held_until > now:
+        return False
+    # Ticket B-051 — CDC §6.1 : « après enregistrement d'un encaissement
+    # bancaire simulé, l'expiration automatique est suspendue pour revue
+    # Finance ; aucune libération ou restitution automatique ».
+    if reservation.receipts.exists():
         return False
     reservation.status = ReservationStatus.EXPIRED
     reservation.save(update_fields=['status', 'updated_at'])
@@ -266,6 +275,12 @@ def _cancel(reservation, *, actor, reason):
         raise ReservationTransitionError('Ce blocage a déjà expiré.')
     if reservation.status != ReservationStatus.HELD:
         raise ReservationTransitionError('Seule une réservation bloquée (sans encaissement) peut être annulée.')
+    if reservation.receipts.exists():
+        # Ticket B-051 — désistement et remboursement hors MVP (CDC §6.1, A06).
+        raise ReservationTransitionError(
+            'Un encaissement a déjà été reçu sur cette réservation : son annulation (désistement, '
+            'remboursement) est hors du périmètre de la démonstration.'
+        )
     reservation.status = ReservationStatus.CANCELLED
     reservation.cancelled_by = actor
     reservation.cancellation_reason = reason
@@ -519,6 +534,12 @@ def sign_contract_as_client(*, client, caller_organization_id, contract_id):
             organization_id=contract.organization_id, actor=client, action='contract.signed_simulated',
             obj=contract, payload={'version': contract.version, 'simulation': True},
         )
+        # Ticket B-051 — la signature peut être la dernière condition de la
+        # concrétisation (premier versement déjà couvert).
+        evaluate_reservation_transitions(
+            Reservation.objects.select_for_update(of=('self',)).select_related('lot').get(id=contract.reservation_id),
+            actor=client,
+        )
         return contract
     finally:
         set_rls_context(organization_id=caller_organization_id)
@@ -626,7 +647,7 @@ def list_payment_calls_as_team(*, caller_organization_id, target_organization_id
         if reservation is None:
             return None
         _template, candidates, blocking_reason = compute_payment_call_candidates(reservation)
-        calls = list(reservation.payment_calls.select_related('issued_by').order_by('issued_at'))
+        calls = _with_settlement(reservation.payment_calls.select_related('issued_by').order_by('issued_at'))
         return {'calls': calls, 'candidates': candidates, 'blocking_reason': blocking_reason}
     finally:
         set_rls_context(organization_id=caller_organization_id)
@@ -686,8 +707,256 @@ def list_client_payment_calls(*, client, caller_organization_id, reservation_id)
         return None
     try:
         set_rls_context(organization_id=organization_ids.pop())
-        return list(
+        return _with_settlement(
             PaymentCall.objects.filter(reservation_id=reservation_id, client=client).order_by('issued_at'),
         )
     finally:
         set_rls_context(organization_id=caller_organization_id)
+
+
+# ─── Encaissements, affectations, transitions — ticket B-051 (CDC V3 §6.1/§8) ──
+
+
+class ReceiptError(Exception):
+    """Opération d'encaissement impossible dans l'état courant — le message
+    dit pourquoi. Réponse 409."""
+
+
+def _sum(queryset):
+    return queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
+
+def allocated_amount(payment_call):
+    return _sum(payment_call.allocations.all())
+
+
+def settled_amount(payment_call):
+    """Seules les affectations d'encaissements RAPPROCHÉS comptent (CDC §6.1 :
+    « encaissement simulé rapproché et affecté »)."""
+    return _sum(payment_call.allocations.filter(receipt__status=FlowStatus.RECONCILED_SIM))
+
+
+def unallocated_amount(receipt):
+    return receipt.amount - _sum(receipt.allocations.all())
+
+
+def _is_settled(reservation, kind):
+    call = reservation.payment_calls.filter(kind=kind).first()
+    return call is not None and settled_amount(call) >= call.amount
+
+
+def evaluate_reservation_transitions(reservation, *, actor):
+    """Transitions AUTOMATIQUES du CDC §6.1, réévaluées après chaque
+    affectation, rapprochement ou signature — jamais un bouton :
+    - HELD → RESERVED : frais appelés, entièrement couverts par des
+      encaissements rapprochés (« le paiement des seuls frais ne concrétise
+      pas le dossier ») ;
+    - RESERVED → COMMITTED : dernière version du contrat signée ET frais +
+      complément du premier versement couverts (T03 : total 3 000 000, sans
+      double imputation). À la concrétisation : lot « vendu », `LotClient`.
+    Sous contexte RLS de l'organisation du lot."""
+    if reservation.status == ReservationStatus.HELD and _is_settled(reservation, PaymentCallKind.FRAIS):
+        reservation.status = ReservationStatus.RESERVED
+        reservation.save(update_fields=['status', 'updated_at'])
+        audit.record(
+            organization_id=reservation.organization_id, actor=actor, action='reservation.reserved', obj=reservation,
+            payload={'reason': 'frais encaissés, rapprochés et affectés'},
+        )
+
+    if reservation.status == ReservationStatus.RESERVED:
+        latest_contract = reservation.contract_versions.order_by('-version').first()
+        signed = latest_contract is not None and latest_contract.status == ContractStatus.SIGNED_SIMULATED
+        if signed and _is_settled(reservation, PaymentCallKind.FRAIS) and _is_settled(
+            reservation, PaymentCallKind.PREMIER_VERSEMENT,
+        ):
+            reservation.status = ReservationStatus.COMMITTED
+            reservation.save(update_fields=['status', 'updated_at'])
+            _set_lot_status(reservation.lot, LotCommercialStatus.VENDU)
+            LotClient.objects.get_or_create(
+                lot=reservation.lot, client_id=reservation.client_id,
+                defaults={'organization_id': reservation.organization_id},
+            )
+            audit.record(
+                organization_id=reservation.organization_id, actor=actor, action='reservation.committed',
+                obj=reservation,
+                payload={'contract_version': latest_contract.version, 'reason': 'contrat signé et premier versement couvert'},
+            )
+
+
+def _finance_reservation(reservation_id):
+    return (
+        Reservation.objects.select_for_update(of=('self',))
+        .select_related('lot', 'organization', 'client')
+        .filter(id=reservation_id)
+        .first()
+    )
+
+
+def record_receipt(*, finance, caller_organization_id, target_organization_id, reservation_id,
+                   bank_reference, amount, received_on):
+    """Encaissement simulé (état « reçu en banque »). IDEMPOTENT (CDC §8.3,
+    T10) : la même référence bancaire rejouée à l'identique renvoie le
+    mouvement existant (`created=False`), jamais un second ; rejouée avec
+    d'autres données, elle est refusée — jamais une modification silencieuse."""
+    reference = (bank_reference or '').strip()
+    if not reference:
+        raise ReceiptError('La référence bancaire simulée est obligatoire.')
+    if amount is None or amount <= 0:
+        raise ReceiptError('Le montant doit être strictement positif.')
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        reservation = _finance_reservation(reservation_id)
+        if reservation is None:
+            return None, False
+
+        def existing_or_conflict():
+            existing = CustomerReceipt.objects.filter(
+                organization_id=reservation.organization_id, bank_reference=reference,
+            ).first()
+            if existing is None:
+                return None
+            if (existing.reservation_id, existing.amount, existing.received_on) != (reservation.id, amount, received_on):
+                raise ReceiptError(
+                    f'La référence « {reference} » désigne déjà un autre mouvement : '
+                    'un mouvement enregistré ne se modifie jamais.'
+                )
+            return existing
+
+        existing = existing_or_conflict()
+        if existing is not None:
+            return existing, False
+
+        _expire_if_overdue(reservation, timezone.now())
+        if reservation.status not in (ReservationStatus.HELD, ReservationStatus.RESERVED, ReservationStatus.COMMITTED):
+            raise ReceiptError('Cette réservation est expirée ou annulée : aucun encaissement ne peut y être rattaché.')
+        try:
+            with transaction.atomic():
+                receipt = CustomerReceipt.objects.create(
+                    organization_id=reservation.organization_id, reservation=reservation,
+                    client_id=reservation.client_id, bank_reference=reference, amount=amount,
+                    currency=reservation.currency, received_on=received_on, recorded_by=finance,
+                )
+        except IntegrityError:
+            existing = existing_or_conflict()
+            return existing, False
+        audit.record(
+            organization_id=reservation.organization_id, actor=finance, action='receipt.recorded', obj=receipt,
+            payload={
+                'reservation_id': str(reservation.id), 'bank_reference': reference, 'amount': str(amount),
+                'currency': receipt.currency, 'simulation': True,
+            },
+        )
+        return receipt, True
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def allocate_receipt(*, finance, caller_organization_id, target_organization_id, receipt_id, payment_call_id, amount):
+    """Affecte une partie d'un encaissement à un appel du MÊME dossier.
+
+    Verrou de ligne sur la RÉSERVATION : toutes les affectations d'un
+    dossier sont sérialisées, donc jamais deux fois le même montant d'un
+    encaissement, ni au-delà du montant d'un appel, même depuis deux
+    encaissements différents (T10/T12). Pas de verrou sur l'appel lui-même :
+    `SELECT … FOR UPDATE` exige aussi une policy RLS UPDATE, que la table
+    append-only des appels n'a volontairement pas (la ligne serait alors
+    invisible — constaté en écrivant les tests de ce ticket)."""
+    if amount is None or amount <= 0:
+        raise ReceiptError('Le montant affecté doit être strictement positif.')
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        reservation_id = CustomerReceipt.objects.filter(id=receipt_id).values_list('reservation_id', flat=True).first()
+        if reservation_id is None:
+            return None
+        reservation = _finance_reservation(reservation_id)
+        receipt = CustomerReceipt.objects.get(id=receipt_id)
+        call = PaymentCall.objects.filter(id=payment_call_id).first()
+        if call is None or call.reservation_id != receipt.reservation_id:
+            raise ReceiptError('Cet appel n\'appartient pas au dossier de cet encaissement.')
+        if amount > unallocated_amount(receipt):
+            raise ReceiptError(
+                f'Montant supérieur au solde non affecté de l\'encaissement ({unallocated_amount(receipt)} {receipt.currency}).'
+            )
+        remaining_on_call = call.amount - allocated_amount(call)
+        if amount > remaining_on_call:
+            raise ReceiptError(
+                f'Montant supérieur au reste à couvrir sur cet appel ({remaining_on_call} {call.currency}) : '
+                'aucune double imputation.'
+            )
+        allocation = Allocation.objects.create(
+            organization_id=receipt.organization_id, receipt=receipt, payment_call=call,
+            client_id=receipt.client_id, amount=amount, allocated_by=finance,
+        )
+        audit.record(
+            organization_id=receipt.organization_id, actor=finance, action='receipt.allocated', obj=allocation,
+            payload={'receipt_id': str(receipt.id), 'payment_call_id': str(call.id), 'amount': str(amount)},
+        )
+        evaluate_reservation_transitions(reservation, actor=finance)
+        return allocation
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def reconcile_receipt(*, finance, caller_organization_id, target_organization_id, receipt_id):
+    """Rapprochement (CDC §8.1) : vérifie montant, devise, client, référence
+    et affectations ; une anomalie le bloque. Déclenche les transitions."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        receipt = CustomerReceipt.objects.select_for_update().select_related('reservation').filter(id=receipt_id).first()
+        if receipt is None:
+            return None
+        if receipt.status != FlowStatus.BANK_EXECUTED_SIM:
+            raise ReceiptError('Cet encaissement est déjà rapproché.')
+        reservation = receipt.reservation
+        anomalies = []
+        if receipt.currency != reservation.currency:
+            anomalies.append('devise différente de celle du dossier')
+        if receipt.client_id != reservation.client_id:
+            anomalies.append('client différent de celui du dossier')
+        if unallocated_amount(receipt) < 0:
+            anomalies.append('affectations supérieures au montant reçu')
+        if anomalies:
+            raise ReceiptError('Rapprochement bloqué : ' + ', '.join(anomalies) + '.')
+        receipt.status = FlowStatus.RECONCILED_SIM
+        receipt.reconciled_by = finance
+        receipt.reconciled_at = timezone.now()
+        receipt.save(update_fields=['status', 'reconciled_by', 'reconciled_at'])
+        audit.record(
+            organization_id=receipt.organization_id, actor=finance, action='receipt.reconciled', obj=receipt,
+            payload={'unallocated': str(unallocated_amount(receipt)), 'simulation': True},
+        )
+        evaluate_reservation_transitions(_finance_reservation(reservation.id), actor=finance)
+        return receipt
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def get_finance_file(*, caller_organization_id, target_organization_id, reservation_id):
+    """Dossier financier d'une réservation (équipe KEYIMMO) : appels avec
+    montants affectés/couverts, encaissements avec leur solde non affecté."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        reservation = Reservation.objects.select_related('lot', 'organization', 'client').filter(id=reservation_id).first()
+        if reservation is None:
+            return None
+        calls = _with_settlement(reservation.payment_calls.select_related('issued_by').order_by('issued_at'))
+        receipts = list(
+            reservation.receipts.select_related('recorded_by', 'reconciled_by').prefetch_related('allocations')
+            .order_by('recorded_at'),
+        )
+        for receipt in receipts:
+            receipt.unallocated_total = unallocated_amount(receipt)
+        return {'reservation': reservation, 'calls': calls, 'receipts': receipts}
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def _with_settlement(calls):
+    """Montants affectés / couverts de chaque appel, calculés sous le
+    contexte RLS courant (celui du lot) — jamais recalculés par le
+    serializer, qui tourne après restauration du contexte de l'appelant."""
+    calls = list(calls)
+    for call in calls:
+        call.allocated_total = allocated_amount(call)
+        call.settled_total = settled_amount(call)
+    return calls

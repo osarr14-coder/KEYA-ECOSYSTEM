@@ -3,22 +3,25 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.backoffice.permissions import IsAdminKeyimmoOrGestionnaireADV, IsKeyimmoTeam
+from apps.backoffice.permissions import IsAdminKeyimmoOrGestionnaireADV, IsFinance, IsKeyimmoTeam
 
 from . import services
 from .models import ReservationStatus
 from .permissions import IsClient
 from .serializers import (
     AdminCancelSerializer,
+    AllocationCreateSerializer,
     AdminReservationSerializer,
     CatalogLotSerializer,
     ClientPaymentCallSerializer,
     ContractContentSerializer,
     ContractTransitionSerializer,
     ContractVersionSerializer,
+    CustomerReceiptSerializer,
     PaymentCallCandidateSerializer,
     PaymentCallIssueSerializer,
     PaymentCallSerializer,
+    ReceiptCreateSerializer,
     ReservationRequestSerializer,
     ReservationSerializer,
 )
@@ -102,10 +105,11 @@ class MyReservationCancelView(APIView):
 
 
 class AdminReservationListView(APIView):
-    """`GET /api/reservations/admin/?status=` — admin_keyimmo et
-    gestionnaire_adv, toutes organisations."""
+    """`GET /api/reservations/admin/?status=` — équipe KEYIMMO (admin, ADV,
+    et Finance depuis B-051 : il doit trouver les dossiers à encaisser),
+    toutes organisations."""
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+    permission_classes = [permissions.IsAuthenticated, IsKeyimmoTeam]
 
     def get(self, request):
         status = request.query_params.get('status') or None
@@ -336,3 +340,111 @@ class MyPaymentCallListView(APIView):
         if calls is None:
             raise NotFound()
         return Response(ClientPaymentCallSerializer(calls, many=True).data)
+
+
+# ─── Encaissements — ticket B-051 ──────────────────────────────────────────
+
+
+class FinanceFileView(APIView):
+    """`GET /api/finance/reservations/{id}/?organization_id=` — dossier
+    financier : appels (affecté / couvert) et encaissements (solde non
+    affecté). Lecture équipe KEYIMMO."""
+
+    permission_classes = [permissions.IsAuthenticated, IsKeyimmoTeam]
+
+    def get(self, request, reservation_id):
+        result = services.get_finance_file(
+            caller_organization_id=_caller_organization_id(request),
+            target_organization_id=_target_organization_id(request),
+            reservation_id=reservation_id,
+        )
+        if result is None:
+            raise NotFound()
+        reservation = result['reservation']
+        return Response({
+            'reservation': {'id': str(reservation.id), 'status': reservation.status,
+                            'status_label': reservation.get_status_display()},
+            'calls': PaymentCallSerializer(result['calls'], many=True).data,
+            'receipts': CustomerReceiptSerializer(result['receipts'], many=True).data,
+        })
+
+
+class ReceiptCreateView(APIView):
+    """`POST /api/finance/reservations/{id}/receipts/?organization_id=` —
+    Finance seul. 201 à la création ; 200 si la même référence est rejouée à
+    l'identique (idempotence, T10) ; 409 si elle désigne un autre mouvement."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, reservation_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = ReceiptCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            receipt, created = services.record_receipt(
+                finance=request.user,
+                caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id,
+                reservation_id=reservation_id,
+                **serializer.validated_data,
+            )
+        except services.ReceiptError as exc:
+            return _conflict(exc)
+        if receipt is None:
+            raise NotFound()
+        return Response(_receipt_payload(receipt), status=201 if created else 200)
+
+
+class AllocationCreateView(APIView):
+    """`POST /api/finance/receipts/{id}/allocations/?organization_id=` —
+    Finance seul ; `{"payment_call": …, "amount": …}`."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, receipt_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = AllocationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            allocation = services.allocate_receipt(
+                finance=request.user,
+                caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id,
+                receipt_id=receipt_id,
+                payment_call_id=serializer.validated_data['payment_call'],
+                amount=serializer.validated_data['amount'],
+            )
+        except services.ReceiptError as exc:
+            return _conflict(exc)
+        if allocation is None:
+            raise NotFound()
+        return Response({'id': str(allocation.id), 'amount': f'{allocation.amount:.2f}'}, status=201)
+
+
+class ReceiptReconcileView(APIView):
+    """`POST /api/finance/receipts/{id}/reconcile/?organization_id=` —
+    Finance seul. Déclenche les transitions automatiques de la réservation."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, receipt_id):
+        try:
+            receipt = services.reconcile_receipt(
+                finance=request.user,
+                caller_organization_id=_caller_organization_id(request),
+                target_organization_id=_target_organization_id(request),
+                receipt_id=receipt_id,
+            )
+        except services.ReceiptError as exc:
+            return _conflict(exc)
+        if receipt is None:
+            raise NotFound()
+        return Response(_receipt_payload(receipt))
+
+
+def _receipt_payload(receipt):
+    return {
+        'id': str(receipt.id), 'bank_reference': receipt.bank_reference, 'amount': f'{receipt.amount:.2f}',
+        'currency': receipt.currency, 'received_on': receipt.received_on.isoformat(), 'status': receipt.status,
+        'status_label': receipt.get_status_display(), 'simulation': True,
+    }

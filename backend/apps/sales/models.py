@@ -219,3 +219,93 @@ class PaymentCall(models.Model):
 
     def __str__(self):
         return f'Appel {self.get_kind_display()} {self.amount} {self.currency} — {self.reservation}'
+
+
+class FlowStatus(models.TextChoices):
+    """CDC V3 §8.3 — `PLANNED → BANK_EXECUTED_SIM → RECONCILED_SIM` pour les
+    deux flux (ticket B-051). Pour un encaissement, l'état « prévu » est
+    l'appel de fonds lui-même : un encaissement naît donc exécuté."""
+
+    BANK_EXECUTED_SIM = 'bank_executed_sim', 'Reçu en banque (simulé)'
+    RECONCILED_SIM = 'reconciled_sim', 'Rapproché (simulé)'
+
+
+class CustomerReceipt(models.Model):
+    """Encaissement SIMULÉ du client vers le compte du programme (ticket
+    B-051, CDC V3 §5/§8.1). Enregistré par Finance, jamais par le client ni
+    par l'ADV.
+
+    `bank_reference` : référence bancaire simulée, UNIQUE par compte (ici
+    l'organisation du programme) et par sens du flux (CDC §8.3) — une
+    requête répétée ne crée jamais un second mouvement (T10). Montant,
+    devise, réservation et référence sont immuables dès l'enregistrement
+    (trigger, migration 0008) ; seul le statut avance.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name='customer_receipts',
+    )
+    reservation = models.ForeignKey(Reservation, on_delete=models.PROTECT, related_name='receipts')
+    client = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='customer_receipts',
+    )
+    bank_reference = models.CharField(max_length=64)
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    currency = models.CharField(max_length=3, default=DEFAULT_CURRENCY)
+    received_on = models.DateField()
+    status = models.CharField(max_length=20, choices=FlowStatus.choices, default=FlowStatus.BANK_EXECUTED_SIM)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='recorded_customer_receipts',
+    )
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    reconciled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='reconciled_customer_receipts',
+    )
+    reconciled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'sales_customer_receipt'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organization', 'bank_reference'], name='sales_receipt_unique_bank_reference',
+            ),
+            models.CheckConstraint(check=Q(amount__gt=0), name='sales_receipt_amount_positive'),
+        ]
+
+    def __str__(self):
+        return f'Encaissement {self.bank_reference} {self.amount} {self.currency}'
+
+
+class Allocation(models.Model):
+    """Affectation d'une partie d'un encaissement à un appel de fonds du
+    MÊME dossier (ticket B-051, CDC V3 §8.1). Append-only : une affectation
+    ne se modifie ni ne se supprime (contrepassation hors MVP). Aucune
+    double imputation : la somme des affectations d'un encaissement ne
+    dépasse jamais son montant, celle d'un appel jamais le montant appelé
+    (vérifié sous verrou de ligne, apps/sales/services.py)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name='allocations',
+    )
+    receipt = models.ForeignKey(CustomerReceipt, on_delete=models.PROTECT, related_name='allocations')
+    payment_call = models.ForeignKey(PaymentCall, on_delete=models.PROTECT, related_name='allocations')
+    client = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='allocations',
+    )
+    amount = models.DecimalField(max_digits=16, decimal_places=2)
+    allocated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='recorded_allocations',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'sales_allocation'
+        constraints = [
+            models.CheckConstraint(check=Q(amount__gt=0), name='sales_allocation_amount_positive'),
+        ]
+
+    def __str__(self):
+        return f'Affectation {self.amount} → {self.payment_call_id}'

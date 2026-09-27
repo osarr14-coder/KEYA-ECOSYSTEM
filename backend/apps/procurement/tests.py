@@ -980,6 +980,11 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # que les appels du client lui-même (404 sinon) — ajouté au
             # balayage ci-dessus.
             'payment-call-team', 'my-payment-calls',
+            # Ticket B-051 — ajout conscient : encaissements simulés. Lecture
+            # du dossier financier par l'équipe KEYIMMO ; enregistrement,
+            # affectation, rapprochement : rôle finance seul. Jamais
+            # accessibles au constructeur/sponsor.
+            'finance-file', 'finance-receipt-create', 'finance-allocation-create', 'finance-receipt-reconcile',
         }
         assert actual == expected
 

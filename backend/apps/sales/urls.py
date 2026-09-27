@@ -6,12 +6,16 @@ from .views import (
     AdminContractUpdateView,
     AdminReservationCancelView,
     AdminReservationListView,
+    AllocationCreateView,
     CatalogLotListView,
+    FinanceFileView,
     MyContractListView,
     MyContractSignView,
     MyPaymentCallListView,
     MyReservationCancelView,
     MyReservationListView,
+    ReceiptCreateView,
+    ReceiptReconcileView,
     ReservationCreateView,
     TeamPaymentCallView,
 )
@@ -52,5 +56,19 @@ urlpatterns = [
     path(
         'me/reservations/<uuid:reservation_id>/payment-calls/',
         MyPaymentCallListView.as_view(), name='my-payment-calls',
+    ),
+    # Ticket B-051 — encaissements simulés.
+    path('finance/reservations/<uuid:reservation_id>/', FinanceFileView.as_view(), name='finance-file'),
+    path(
+        'finance/reservations/<uuid:reservation_id>/receipts/',
+        ReceiptCreateView.as_view(), name='finance-receipt-create',
+    ),
+    path(
+        'finance/receipts/<uuid:receipt_id>/allocations/',
+        AllocationCreateView.as_view(), name='finance-allocation-create',
+    ),
+    path(
+        'finance/receipts/<uuid:receipt_id>/reconcile/',
+        ReceiptReconcileView.as_view(), name='finance-receipt-reconcile',
     ),
 ]

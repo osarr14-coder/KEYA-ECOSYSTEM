@@ -1,6 +1,10 @@
 from rest_framework import serializers
 
-from .models import DEFAULT_CURRENCY, ContractVersion, PaymentCall, PaymentCallKind, Reservation
+from .models import DEFAULT_CURRENCY, ContractVersion, CustomerReceipt, PaymentCall, PaymentCallKind, Reservation
+
+
+def _money(value):
+    return None if value is None else f'{value:.2f}'
 
 
 def _organization(organization):
@@ -125,14 +129,36 @@ class PaymentCallSerializer(serializers.ModelSerializer):
     kind_label = serializers.CharField(source='get_kind_display', read_only=True)
     issued_by = serializers.EmailField(source='issued_by.email', read_only=True)
     reservation = serializers.UUIDField(source='reservation_id', read_only=True)
+    # Ticket B-051 — calculés par le service sous le contexte RLS du lot
+    # (`allocated_total`/`settled_total`), jamais ici.
+    allocated_amount = serializers.SerializerMethodField()
+    settled_amount = serializers.SerializerMethodField()
+    settlement = serializers.SerializerMethodField()
 
     class Meta:
         model = PaymentCall
         fields = [
             'id', 'reservation', 'kind', 'kind_label', 'tier_code', 'tier_label', 'cumulative_cap_percent',
-            'amount', 'currency', 'issued_by', 'issued_at',
+            'amount', 'currency', 'issued_by', 'issued_at', 'allocated_amount', 'settled_amount', 'settlement',
         ]
         read_only_fields = fields
+
+    def get_allocated_amount(self, call):
+        return _money(getattr(call, 'allocated_total', None))
+
+    def get_settled_amount(self, call):
+        return _money(getattr(call, 'settled_total', None))
+
+    def get_settlement(self, call):
+        """`to_pay` / `partial` / `settled` — couvert seulement par des
+        encaissements RAPPROCHÉS (CDC §6.1) ; un versement partiel ne solde
+        pas l'appel (T12)."""
+        settled = getattr(call, 'settled_total', None)
+        if settled is None:
+            return None
+        if settled >= call.amount:
+            return 'settled'
+        return 'partial' if settled > 0 else 'to_pay'
 
 
 class ClientPaymentCallSerializer(PaymentCallSerializer):
@@ -166,3 +192,50 @@ class PaymentCallCandidateSerializer(serializers.Serializer):
 class PaymentCallIssueSerializer(serializers.Serializer):
     kind = serializers.ChoiceField(choices=PaymentCallKind.choices)
     tier_code = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class AllocationSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    payment_call = serializers.UUIDField(source='payment_call_id')
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2)
+    created_at = serializers.DateTimeField()
+
+
+class CustomerReceiptSerializer(serializers.ModelSerializer):
+    """Ticket B-051. `simulation: true` : aucun fonds réel (CDC §3.1)."""
+
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
+    recorded_by = serializers.EmailField(source='recorded_by.email', read_only=True)
+    reconciled_by = serializers.SerializerMethodField()
+    unallocated_amount = serializers.SerializerMethodField()
+    allocations = AllocationSerializer(many=True, read_only=True)
+    simulation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomerReceipt
+        fields = [
+            'id', 'bank_reference', 'amount', 'currency', 'received_on', 'status', 'status_label',
+            'recorded_by', 'recorded_at', 'reconciled_by', 'reconciled_at', 'unallocated_amount',
+            'allocations', 'simulation',
+        ]
+        read_only_fields = fields
+
+    def get_reconciled_by(self, receipt):
+        return receipt.reconciled_by.email if receipt.reconciled_by else None
+
+    def get_unallocated_amount(self, receipt):
+        return _money(getattr(receipt, 'unallocated_total', None))
+
+    def get_simulation(self, receipt):
+        return True
+
+
+class ReceiptCreateSerializer(serializers.Serializer):
+    bank_reference = serializers.CharField(max_length=64)
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2)
+    received_on = serializers.DateField()
+
+
+class AllocationCreateSerializer(serializers.Serializer):
+    payment_call = serializers.UUIDField()
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2)

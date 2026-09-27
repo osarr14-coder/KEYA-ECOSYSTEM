@@ -769,3 +769,228 @@ class TestPaymentCallIsAppendOnly:
             assert {row[0] for row in cursor.fetchall()} == {'sales_payment_call_no_update', 'sales_payment_call_no_delete'}
 
         assert PaymentCall.objects.get(id=call_id).amount == Decimal('100000.00')
+
+
+# ─── Encaissements, affectations, transitions — ticket B-051 ──────────────
+
+from apps.programs.models import LotClient  # noqa: E402
+
+from .models import CustomerReceipt  # noqa: E402
+
+
+def _receipt(finance, promoter, reservation_id, amount, reference=None, received_on='2026-09-28'):
+    return finance.post(
+        reverse('finance-receipt-create', args=[reservation_id]) + f'?organization_id={promoter.id}',
+        {'bank_reference': reference or f'SIM-{_next()}', 'amount': amount, 'received_on': received_on},
+        format='json',
+    )
+
+
+def _allocate(finance, promoter, receipt_id, call_id, amount):
+    return finance.post(
+        reverse('finance-allocation-create', args=[receipt_id]) + f'?organization_id={promoter.id}',
+        {'payment_call': call_id, 'amount': amount}, format='json',
+    )
+
+
+def _reconcile(finance, promoter, receipt_id):
+    return finance.post(reverse('finance-receipt-reconcile', args=[receipt_id]) + f'?organization_id={promoter.id}')
+
+
+def _pay(finance, promoter, reservation_id, call_id, amount):
+    receipt = _receipt(finance, promoter, reservation_id, amount).data
+    assert _allocate(finance, promoter, receipt['id'], call_id, amount).status_code == 201
+    assert _reconcile(finance, promoter, receipt['id']).status_code == 200
+    return receipt
+
+
+def _status(promoter, reservation_id):
+    set_rls_context(organization_id=promoter.id)
+    return Reservation.objects.get(id=reservation_id).status
+
+
+def _sign(client, adv, promoter, reservation_id):
+    contract = _approved_contract(adv, promoter, reservation_id)
+    assert client.post(reverse('my-contract-sign', args=[contract['id']])).status_code == 200
+
+
+def _sales_scenario():
+    client, client_user, adv, promoter, lot, reservation_id = _finance_scenario()
+    finance, _finance_user, _org = _register('finance')
+    fee_call = _issue(adv, reservation_id, promoter, 'frais').data
+    return client, client_user, adv, finance, promoter, lot, reservation_id, fee_call
+
+
+@pytest.mark.django_db
+class TestReservationLifecycleT03:
+    """CDC T03 — frais 100 000 seuls → RESERVED ; complément 2 900 000
+    rapproché + contrat signé → COMMITTED ; total premier versement
+    3 000 000, sans double imputation."""
+
+    def _paid_then_signed(self, sign_first):
+        client, client_user, adv, finance, promoter, lot, reservation_id, fee_call = _sales_scenario()
+        if sign_first:
+            _sign(client, adv, promoter, reservation_id)
+        _pay(finance, promoter, reservation_id, fee_call['id'], '100000.00')
+        assert _status(promoter, reservation_id) == 'reserved'
+
+        complement = _issue(adv, reservation_id, promoter, 'premier_versement').data
+        _pay(finance, promoter, reservation_id, complement['id'], '2900000.00')
+        if not sign_first:
+            assert _status(promoter, reservation_id) == 'reserved'
+            _sign(client, adv, promoter, reservation_id)
+        return client, client_user, adv, finance, promoter, lot, reservation_id
+
+    def test_payment_before_signature(self):
+        client, client_user, _adv, finance, promoter, lot, reservation_id = self._paid_then_signed(sign_first=False)
+
+        assert _status(promoter, reservation_id) == 'committed'
+        set_rls_context(organization_id=promoter.id)
+        assert Lot.objects.get(id=lot['id']).commercial_status == 'vendu'
+        assert LotClient.objects.filter(lot_id=lot['id'], client=client_user).exists()
+        calls = finance.get(reverse('finance-file', args=[reservation_id]) + f'?organization_id={promoter.id}').data['calls']
+        assert sum(Decimal(call['settled_amount']) for call in calls) == Decimal('3000000.00')
+        assert {call['settlement'] for call in calls} == {'settled'}
+
+    def test_signature_before_payment(self):
+        _client, _user, _adv, _finance, promoter, _lot, reservation_id = self._paid_then_signed(sign_first=True)
+        assert _status(promoter, reservation_id) == 'committed'
+
+    def test_an_allocation_without_reconciliation_does_not_advance_the_reservation(self):
+        _client, _user, _adv, finance, promoter, _lot, reservation_id, fee_call = _sales_scenario()
+        receipt = _receipt(finance, promoter, reservation_id, '100000.00').data
+        _allocate(finance, promoter, receipt['id'], fee_call['id'], '100000.00')
+
+        assert _status(promoter, reservation_id) == 'held'
+        _reconcile(finance, promoter, receipt['id'])
+        assert _status(promoter, reservation_id) == 'reserved'
+
+
+@pytest.mark.django_db
+class TestPartialAndExcessPaymentsT12:
+    def test_a_partial_payment_does_not_settle_the_call(self):
+        client, _user, _adv, finance, promoter, _lot, reservation_id, fee_call = _sales_scenario()
+
+        _pay(finance, promoter, reservation_id, fee_call['id'], '60000.00')
+
+        assert _status(promoter, reservation_id) == 'held'
+        row = client.get(reverse('my-payment-calls', args=[reservation_id])).data[0]
+        assert (row['settled_amount'], row['settlement']) == ('60000.00', 'partial')
+
+    def test_an_excess_stays_unallocated_and_is_never_consumed_twice(self):
+        _client, _user, _adv, finance, promoter, _lot, reservation_id, fee_call = _sales_scenario()
+        receipt = _receipt(finance, promoter, reservation_id, '150000.00').data
+
+        assert _allocate(finance, promoter, receipt['id'], fee_call['id'], '100000.00').status_code == 201
+        over = _allocate(finance, promoter, receipt['id'], fee_call['id'], '1.00')
+        assert over.status_code == 409
+        assert 'aucune double imputation' in over.data['detail']
+        _reconcile(finance, promoter, receipt['id'])
+
+        file = finance.get(reverse('finance-file', args=[reservation_id]) + f'?organization_id={promoter.id}').data
+        assert file['receipts'][0]['unallocated_amount'] == '50000.00'
+        assert _status(promoter, reservation_id) == 'reserved'
+
+    def test_an_allocation_can_never_exceed_the_receipt(self):
+        _client, _user, adv, finance, promoter, _lot, reservation_id, fee_call = _sales_scenario()
+        receipt = _receipt(finance, promoter, reservation_id, '50000.00').data
+        assert _allocate(finance, promoter, receipt['id'], fee_call['id'], '60000.00').status_code == 409
+
+
+@pytest.mark.django_db
+class TestReceiptIdempotenceT10:
+    def test_the_same_bank_reference_replayed_never_creates_a_second_movement(self):
+        _client, _user, _adv, finance, promoter, _lot, reservation_id, _fee = _sales_scenario()
+
+        first = _receipt(finance, promoter, reservation_id, '100000.00', reference='SIM-REF-1')
+        replay = _receipt(finance, promoter, reservation_id, '100000.00', reference='SIM-REF-1')
+        conflicting = _receipt(finance, promoter, reservation_id, '999.00', reference='SIM-REF-1')
+
+        assert (first.status_code, replay.status_code, conflicting.status_code) == (201, 200, 409)
+        assert replay.data['id'] == first.data['id']
+        set_rls_context(organization_id=promoter.id)
+        assert CustomerReceipt.objects.filter(bank_reference='SIM-REF-1').count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+class TestConcurrentAllocationsT10:
+    """Deux affectations simultanées (deux vraies connexions) sur le même
+    encaissement de 100 000 : jamais plus de 100 000 affectés."""
+
+    def test_the_same_receipt_is_never_consumed_twice(self):
+        with transaction.atomic():
+            _client, _user, adv, finance_api, promoter, _lot, reservation_id, fee_call = _sales_scenario()
+            finance_user = User.objects.get(email__startswith='finance-')
+            receipt_id = _receipt(finance_api, promoter, reservation_id, '100000.00').data['id']
+
+        barrier = threading.Barrier(2, timeout=5)
+        outcomes = []
+        lock = threading.Lock()
+
+        def worker():
+            try:
+                barrier.wait()
+                with transaction.atomic():
+                    set_rls_context(user_id=finance_user.id, organization_id=promoter.id)
+                    services.allocate_receipt(
+                        finance=finance_user, caller_organization_id=promoter.id,
+                        target_organization_id=promoter.id, receipt_id=receipt_id,
+                        payment_call_id=fee_call['id'], amount=Decimal('80000.00'),
+                    )
+                with lock:
+                    outcomes.append('allocated')
+            except services.ReceiptError:
+                with lock:
+                    outcomes.append('refused')
+            except Exception as exc:  # noqa: BLE001
+                with lock:
+                    outcomes.append(f'error: {exc!r}')
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+
+        assert sorted(outcomes) == ['allocated', 'refused']
+        with transaction.atomic():
+            set_rls_context(organization_id=promoter.id)
+            total = sum(a.amount for a in CustomerReceipt.objects.get(id=receipt_id).allocations.all())
+            assert total == Decimal('80000.00')
+
+
+@pytest.mark.django_db
+class TestReceiptSuspendsExpiryAndCancellation:
+    def test_a_hold_with_a_receipt_neither_expires_nor_can_be_cancelled(self):
+        client, _user, _adv, finance, promoter, _lot, reservation_id, _fee = _sales_scenario()
+        _receipt(finance, promoter, reservation_id, '100000.00')
+        _age_hold(promoter, reservation_id)
+
+        client.get(reverse('catalog-lot-list'))
+        assert _status(promoter, reservation_id) == 'held'
+        response = client.post(reverse('my-reservation-cancel', args=[reservation_id]))
+        assert response.status_code == 409
+        assert 'encaissement' in response.data['detail']
+
+
+@pytest.mark.django_db
+class TestFinancePermissionsAndImmutability:
+    def test_only_finance_records_and_the_adv_only_reads(self):
+        _client, _user, adv, finance, promoter, _lot, reservation_id, _fee = _sales_scenario()
+
+        assert _receipt(adv, promoter, reservation_id, '100000.00').status_code == 403
+        assert adv.get(reverse('finance-file', args=[reservation_id]) + f'?organization_id={promoter.id}').status_code == 200
+        assert finance.get(reverse('reservation-admin-list')).status_code == 200
+
+    def test_a_recorded_receipt_amount_can_never_be_changed(self):
+        _client, _user, _adv, finance, promoter, _lot, reservation_id, _fee = _sales_scenario()
+        receipt_id = _receipt(finance, promoter, reservation_id, '100000.00').data['id']
+        set_rls_context(organization_id=promoter.id)
+
+        with pytest.raises(DatabaseError, match='immuables'):
+            with transaction.atomic():
+                CustomerReceipt.objects.filter(id=receipt_id).update(amount=Decimal('1.00'))
+
+        assert CustomerReceipt.objects.get(id=receipt_id).amount == Decimal('100000.00')
