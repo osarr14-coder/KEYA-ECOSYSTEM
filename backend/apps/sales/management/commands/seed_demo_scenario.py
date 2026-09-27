@@ -12,6 +12,14 @@ créé — une démonstration en cours n'est pas réinitialisée par un redéplo
 
 Données intégralement fictives (CDC §9.1) ; aucun acteur ne correspond à un
 partenaire contractuellement acquis.
+
+Audit UI R1 (étape 0) — **jeu initial versionné `DEMO-CI-v1`**, conforme au
+CDC R1 §9.1 et à l'arbitrage A02 (Côte d'Ivoire) : Country Pack « CI », un
+programme « Résidence Démonstration Abidjan », deux biens à 30 000 000 XOF,
+deux jalons (« Fondations », « Élévation », template CI posé par cette
+commande), deux clients, un constructeur, un bureau de contrôle, les
+comptes gestionnaire, Finance et administrateur. Toute évolution du jeu
+change `DATASET_VERSION` (jamais une modification silencieuse).
 """
 from decimal import Decimal
 
@@ -23,8 +31,20 @@ from django.db import transaction
 
 from apps.core.rls import set_rls_context
 from apps.organizations.models import CountryPack, Membership, Organization, Role
-from apps.programs.models import Asset, Lot, LotCommercialStatus, Program
+from apps.programs.models import (
+    Asset, Lot, LotCommercialStatus, MilestoneTemplate, MilestoneTemplateStep, Program,
+)
 from apps.programs.services import instantiate_milestones_for_lot
+
+DATASET_VERSION = 'DEMO-CI-v1'
+COUNTRY_CODE = 'CI'
+COUNTRY_LABEL = "Côte d'Ivoire"
+# CDC R1 §9.1 : deux jalons de démonstration. Valeurs fictives, non validées
+# juridiquement (A09). Posés par le jeu de démonstration, pas par une
+# migration : une base sans démonstration (tests, autre déploiement) ne
+# reçoit aucun Country Pack ni template fictif.
+MILESTONE_TEMPLATE_VERSION = 1
+MILESTONE_STEPS = [('fondations', 'Fondations'), ('elevation', 'Élévation')]
 
 KEYIMMO_ORG = 'KEYIMMO AFRIC (démo)'
 PROMOTER_ORG = 'Promoteur-constructeur Démonstration Abidjan'
@@ -61,9 +81,8 @@ class Command(BaseCommand):
         if len(password) < 10:
             raise CommandError('DEMO_PASSWORD doit faire au moins 10 caractères.')
 
-        country_pack = CountryPack.objects.filter(code='SN').first()
-        if country_pack is None:
-            raise CommandError("CountryPack 'SN' introuvable — lancer `manage.py migrate` d'abord.")
+        country_pack = self._ensure_country_pack()
+        self.stdout.write(f'Jeu initial {DATASET_VERSION} (Country Pack {COUNTRY_CODE}).')
 
         with transaction.atomic():
             organizations = {
@@ -111,7 +130,30 @@ class Command(BaseCommand):
                     instantiate_milestones_for_lot(lot)
                 self.stdout.write(f'Programme « {PROGRAM_NAME} » créé : {len(LOTS)} lots à {PRICE} XOF.')
 
-        call_command('seed_demo_payment_tiers', admin_email='admin.demo@keya.test', stdout=self.stdout)
+        call_command(
+            'seed_demo_payment_tiers', admin_email='admin.demo@keya.test', country=COUNTRY_CODE, stdout=self.stdout,
+        )
         self.stdout.write(self.style.SUCCESS(
-            f'Scénario de démonstration prêt : {len(ACCOUNTS)} comptes (mot de passe : DEMO_PASSWORD).'
+            f'Scénario de démonstration {DATASET_VERSION} prêt : {len(ACCOUNTS)} comptes (mot de passe : DEMO_PASSWORD).'
         ))
+
+    @staticmethod
+    @transaction.atomic
+    def _ensure_country_pack():
+        """Country Pack CI et son template de jalons, créés s'ils manquent.
+
+        Un template CI v1 déjà présent n'est jamais modifié (version
+        conservée, CDC §1) : toute évolution passe par une nouvelle version.
+        """
+        country_pack, _ = CountryPack.objects.get_or_create(
+            code=COUNTRY_CODE, defaults={'label': COUNTRY_LABEL},
+        )
+        template, created = MilestoneTemplate.objects.get_or_create(
+            country_pack=country_pack, version=MILESTONE_TEMPLATE_VERSION, defaults={'is_active': True},
+        )
+        if created:
+            MilestoneTemplateStep.objects.bulk_create([
+                MilestoneTemplateStep(template=template, order=index, code=code, label=label)
+                for index, (code, label) in enumerate(MILESTONE_STEPS, start=1)
+            ])
+        return country_pack

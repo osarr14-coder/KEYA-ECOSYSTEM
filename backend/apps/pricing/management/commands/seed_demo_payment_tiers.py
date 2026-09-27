@@ -24,6 +24,7 @@ from apps.pricing.services import (
     get_active_legal_payment_tier_template,
 )
 
+# Ticket B-050 — barème de démonstration du Country Pack Sénégal.
 DEMO_STEPS = [
     {'order': 1, 'code': 'reservation', 'label': 'Premier versement (réservation)', 'cumulative_cap_percent': Decimal('10'), 'allows_progressive_payments': False},
     {'order': 2, 'code': 'fondations', 'label': 'Fondations achevées', 'cumulative_cap_percent': Decimal('35'), 'allows_progressive_payments': False},
@@ -33,18 +34,36 @@ DEMO_STEPS = [
 ]
 
 
+# Audit UI R1 (étape 0) — barème de démonstration du Country Pack Côte
+# d'Ivoire (CDC R1 A02), aligné sur le jeu §9.1 : premier versement 10 %
+# (3 000 000 XOF sur 30 000 000, frais inclus), puis un palier par jalon du
+# template CI (Fondations, Élévation). Pourcentages suivants FICTIFS, non
+# validés juridiquement ni par le PO (A09) — données de présentation.
+CI_DEMO_STEPS = [
+    {'order': 1, 'code': 'reservation', 'label': 'Premier versement (réservation)', 'cumulative_cap_percent': Decimal('10'), 'allows_progressive_payments': False},
+    {'order': 2, 'code': 'fondations', 'label': 'Fondations', 'cumulative_cap_percent': Decimal('50'), 'allows_progressive_payments': False},
+    {'order': 3, 'code': 'elevation', 'label': 'Élévation', 'cumulative_cap_percent': Decimal('100'), 'allows_progressive_payments': False},
+]
+
+STEPS_BY_COUNTRY = {'SN': DEMO_STEPS, 'CI': CI_DEMO_STEPS}
+
+
 class Command(BaseCommand):
-    help = 'Crée et active un barème de paiement de démonstration (non validé juridiquement) pour le Sénégal.'
+    help = 'Crée et active un barème de paiement de démonstration (non validé juridiquement) pour un Country Pack.'
 
     def add_arguments(self, parser):
         parser.add_argument('--admin-email', required=True, help='Compte admin_keyimmo auteur du barème.')
+        parser.add_argument(
+            '--country', default='SN', choices=sorted(STEPS_BY_COUNTRY), help='Code du Country Pack (défaut : SN).',
+        )
 
     def handle(self, *args, **options):
-        country_pack = CountryPack.objects.filter(code='SN').first()
+        code = options.get('country') or 'SN'
+        country_pack = CountryPack.objects.filter(code=code).first()
         if country_pack is None:
-            raise CommandError("CountryPack 'SN' introuvable — lancer `manage.py migrate` d'abord.")
+            raise CommandError(f"CountryPack '{code}' introuvable — lancer `manage.py migrate` d'abord.")
         if get_active_legal_payment_tier_template(country_pack.id) is not None:
-            self.stdout.write(self.style.WARNING('Un barème est déjà actif pour SN : rien à faire.'))
+            self.stdout.write(self.style.WARNING(f'Un barème est déjà actif pour {code} : rien à faire.'))
             return
         admin = get_user_model().objects.filter(email=options['admin_email']).first()
         if admin is None:
@@ -55,9 +74,9 @@ class Command(BaseCommand):
                 .values_list('version', flat=True).first() or 0
             ) + 1
             template = create_legal_payment_tier_template(
-                admin=admin, country_pack_id=country_pack.id, version=version, steps=DEMO_STEPS,
+                admin=admin, country_pack_id=country_pack.id, version=version, steps=STEPS_BY_COUNTRY[code],
             )
             activate_legal_payment_tier_template(admin=admin, template_id=template.id)
         self.stdout.write(self.style.SUCCESS(
-            f'Barème de démonstration v{version} créé et activé pour SN (valeurs NON validées juridiquement).'
+            f'Barème de démonstration v{version} créé et activé pour {code} (valeurs NON validées juridiquement).'
         ))
