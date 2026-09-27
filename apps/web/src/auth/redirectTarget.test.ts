@@ -38,6 +38,10 @@ describe('resolveRedirectApp — mapping rôle → app (ticket 020)', () => {
     },
   );
 
+  it('finance -> web (ticket F-068 : dossiers financiers et comptes des programmes)', () => {
+    expect(resolveRedirectApp(makeMe('finance'))).toBe('web');
+  });
+
   it('gestionnaire_adv -> web (ticket F-065 : équipe KEYIMMO, onglets restreints)', () => {
     expect(resolveRedirectApp(makeMe('gestionnaire_adv'))).toBe('web');
   });

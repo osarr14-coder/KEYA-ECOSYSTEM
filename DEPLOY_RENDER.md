@@ -129,9 +129,19 @@ Pour dérouler le scénario du CDC V3 (§9) sans intervention en base :
 | `client1.demo@keya.test`, `client2.demo@keya.test` | client (acquéreur) | HOME |
 | `adv.demo@keya.test` | gestionnaire ADV | apps/web |
 | `admin.demo@keya.test` | admin KEYIMMO | apps/web |
-| `finance.demo@keya.test` | Finance (démo) | aucun écran encore (F-068) |
+| `finance.demo@keya.test` | Finance (démo) | apps/web (Réservations, Comptes & décaissements) |
 | `constructeur.demo@keya.test` | constructeur | BUILD |
 | `inspecteur.demo@keya.test` | bureau de contrôle | CONTROL |
+
+Parcours conseillé (CDC §9.1) : `client1` réserve le Lot A1 dans HOME → `adv` rédige, soumet et
+approuve le contrat puis émet l'appel « Frais » (apps/web, Réservations) → `finance` enregistre
+l'encaissement de 100 000, l'affecte et le rapproche (la réservation passe « Réservée ») → `adv`
+émet le complément (2 900 000) → `finance` l'encaisse, `client1` signe le contrat (« Concrétisée »)
+→ déclaration des fondations avec une pièce, puis avis conforme du contrôleur (**limite actuelle** :
+ni la déclaration de travaux dans BUILD ni l'affectation d'une mission au contrôleur n'ont encore
+d'écran — étape à réaliser côté serveur tant que le ticket dédié n'est pas livré) → `finance` prépare 1 000 000 sur le jalon, contrôle l'éligibilité, exécute (Comptes &
+décaissements) → `constructeur` confirme la réception (BUILD, Paiements reçus) → `finance`
+rapproche. Disponible final : 2 000 000 XOF.
 
 Données intégralement fictives. Pour retirer l'accès : vider `DEMO_PASSWORD` ne supprime
 pas les comptes ; changer sa valeur puis redéployer change leur mot de passe.

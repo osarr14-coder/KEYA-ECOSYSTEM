@@ -1,0 +1,55 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+
+import type { ReceivedDisbursement } from '../api/types';
+import { createMockApiClient, withApiClient } from '../testUtils';
+import { DisbursementsView } from './DisbursementsView';
+
+function disbursement(overrides: Partial<ReceivedDisbursement> = {}): ReceivedDisbursement {
+  return {
+    id: 'disbursement-1',
+    organization: { id: 'org-promoteur', name: 'Promoteur Démonstration' },
+    program: { id: 'program-1', name: 'Résidence Démonstration Abidjan' },
+    lot: { id: 'lot-1', name: 'Lot A1' },
+    milestone: { id: 'milestone-1', code: 'fondations', label: 'Fondations' },
+    amount: '1000000.00',
+    currency: 'XOF',
+    flow_status: 'bank_executed_sim',
+    flow_status_label: 'Exécuté en banque (simulé)',
+    bank_reference: 'SORTIE-001',
+    executed_on: '2026-10-01',
+    beneficiary_confirmation: 'absent',
+    beneficiary_confirmed_at: null,
+    reconciliation_reason: '',
+    simulation: true,
+    ...overrides,
+  };
+}
+
+describe('DisbursementsView — paiements reçus (ticket F-068)', () => {
+  it('liste les paiements reçus et confirme la réception', async () => {
+    const confirmDisbursement = vi.fn().mockResolvedValue(disbursement({ beneficiary_confirmation: 'confirmed' }));
+    const listReceivedDisbursements = vi.fn()
+      .mockResolvedValueOnce([disbursement()])
+      .mockResolvedValue([disbursement({
+        beneficiary_confirmation: 'confirmed', flow_status: 'beneficiary_confirmed_sim',
+        flow_status_label: 'Confirmé par le bénéficiaire (simulé)',
+      })]);
+    const api = createMockApiClient({ listReceivedDisbursements, confirmDisbursement });
+    render(withApiClient(api, <DisbursementsView />));
+
+    expect(await screen.findByText(/1\s000\s000 XOF · référence SORTIE-001 du 2026-10-01/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer la réception' }));
+
+    await waitFor(() => expect(confirmDisbursement).toHaveBeenCalledWith('disbursement-1'));
+    expect(await screen.findByText('Réception confirmée.')).toBeInTheDocument();
+    expect(screen.getByTestId('disbursement-flow')).toHaveTextContent('Confirmé par le bénéficiaire (simulé)');
+  });
+
+  it('état vide explicite', async () => {
+    const api = createMockApiClient({ listReceivedDisbursements: vi.fn().mockResolvedValue([]) });
+    render(withApiClient(api, <DisbursementsView />));
+
+    expect(await screen.findByTestId('no-disbursements')).toBeInTheDocument();
+  });
+});

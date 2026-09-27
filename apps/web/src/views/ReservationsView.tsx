@@ -9,13 +9,25 @@ import { formatDrfFieldErrors } from '../api/errors';
 import type { AdminReservation, ReservationStatus } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { AdminContractPanel } from './AdminContractPanel';
+import { FinancialFilePanel } from './FinancialFilePanel';
 
 /**
  * Ticket F-067 — réservations côté équipe KEYIMMO (admin_keyimmo et
  * gestionnaire_adv), toutes organisations (backend B-048). Le statut est
  * celui du cycle de vente (CDC V3 §6.1), jamais un `TrustLevel` : texte
  * simple, pas `StatusBadge`.
+ *
+ * Ticket F-068 — Finance y accède aussi (lecture, backend B-051) pour
+ * trouver les dossiers et y enregistrer les mouvements : `canManageSales`
+ * (admin/ADV) garde l'annulation, le contrat et l'émission des appels ;
+ * `canRecordMovements` (Finance) les encaissements. Les gardes réelles
+ * restent côté serveur.
  */
+
+export interface SalesPermissions {
+  canManageSales: boolean;
+  canRecordMovements: boolean;
+}
 
 const STATUS_OPTIONS: { value: ReservationStatus | ''; label: string }[] = [
   { value: 'held', label: 'Bloquées' },
@@ -84,7 +96,9 @@ function CancelForm({ reservation, onCancelled }: { reservation: AdminReservatio
   );
 }
 
-function ReservationCard({ reservation, onChanged }: { reservation: AdminReservation; onChanged: () => void }) {
+function ReservationCard({
+  reservation, onChanged, permissions,
+}: { reservation: AdminReservation; onChanged: () => void; permissions: SalesPermissions }) {
   return (
     <Card title={`${reservation.program.name} — ${reservation.lot.name}`} icon="building">
       <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 16px', margin: 0 }}>
@@ -115,15 +129,25 @@ function ReservationCard({ reservation, onChanged }: { reservation: AdminReserva
           </>
         )}
       </dl>
-      {reservation.status === 'held' && <CancelForm reservation={reservation} onCancelled={onChanged} />}
+      {permissions.canManageSales && reservation.status === 'held' && (
+        <CancelForm reservation={reservation} onCancelled={onChanged} />
+      )}
       {/* Ticket F-067 (partie 2) — contrat, historique compris même après
           expiration ou annulation (lecture seule dans ce cas). */}
-      <AdminContractPanel reservation={reservation} />
+      {permissions.canManageSales && <AdminContractPanel reservation={reservation} />}
+      <FinancialFilePanel
+        reservation={reservation}
+        canIssueCalls={permissions.canManageSales}
+        canRecordMovements={permissions.canRecordMovements}
+        onChanged={onChanged}
+      />
     </Card>
   );
 }
 
-export function ReservationsView() {
+const DEFAULT_PERMISSIONS: SalesPermissions = { canManageSales: true, canRecordMovements: false };
+
+export function ReservationsView({ permissions = DEFAULT_PERMISSIONS }: { permissions?: SalesPermissions }) {
   const api = useApiClient();
   const [statusFilter, setStatusFilter] = useState<ReservationStatus | ''>('held');
   const state = useApiResource(() => api.listReservations(statusFilter || undefined), [statusFilter]);
@@ -152,7 +176,12 @@ export function ReservationsView() {
         )}
         {state.status === 'success' && state.data.length === 0 && <p>Aucune réservation dans cet état.</p>}
         {state.status === 'success' && state.data.map((reservation) => (
-          <ReservationCard key={reservation.id} reservation={reservation} onChanged={state.refetch} />
+          <ReservationCard
+            key={reservation.id}
+            reservation={reservation}
+            onChanged={state.refetch}
+            permissions={permissions}
+          />
         ))}
       </div>
     </section>

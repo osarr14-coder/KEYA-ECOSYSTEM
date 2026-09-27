@@ -40,6 +40,7 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
     getMyReservations: vi.fn().mockResolvedValue([]),
     getCatalogLots: vi.fn().mockResolvedValue([LOT]),
     getMyContracts: vi.fn().mockResolvedValue([]),
+    getMyPaymentCalls: vi.fn().mockResolvedValue([]),
     ...overrides,
   });
   render(withApiClient(api, <ClientSalesView />));

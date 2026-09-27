@@ -9,6 +9,7 @@ import { useApiClient } from './api/ApiClientContext';
 import { useApiResource } from './api/useApiResource';
 import { AllLotsView } from './views/AllLotsView';
 import { ExceptionsView } from './views/ExceptionsView';
+import { DisbursementsView } from './views/DisbursementsView';
 import { TasksView } from './views/TasksView';
 
 // Réutilise AppShell tel quel (ticket 007), variante dense (ticket 009,
@@ -50,11 +51,13 @@ function buildModules(): AppModule[] {
   ];
 }
 
-type ViewId = 'exceptions' | 'all_lots' | 'tasks';
+type ViewId = 'exceptions' | 'all_lots' | 'disbursements' | 'tasks';
 
 const TABS: { id: ViewId; label: string; icon: IconName }[] = [
   { id: 'exceptions', label: 'Exceptions', icon: 'alert-triangle' },
   { id: 'all_lots', label: 'Tous les lots', icon: 'building' },
+  // Ticket F-068 — décaissements simulés reçus (backend B-052).
+  { id: 'disbursements', label: 'Paiements reçus', icon: 'wallet' },
   // Ticket F-061 — destination réelle de la cloche AppShell (jusqu'ici un
   // lien mort `href="/tasks"`, ticket F-045).
   { id: 'tasks', label: 'Tâches', icon: 'bell' },
@@ -177,6 +180,7 @@ export function App() {
           {activeTab === 'all_lots' && (
             <AllLotsView initialSearch={lotSearchFilter} activeOrganizationId={activeOrganizationId} />
           )}
+          {activeTab === 'disbursements' && <DisbursementsView />}
           {activeTab === 'tasks' && <TasksView />}
         </>
       )}

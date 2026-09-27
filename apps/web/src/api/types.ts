@@ -436,3 +436,137 @@ export interface ContractVersion {
   updated_at: string;
 }
 
+
+// ─── Ticket F-068 — appels de fonds, encaissements, décaissements (B-050/51/52) ──
+
+export type PaymentCallKind = 'frais' | 'premier_versement' | 'versement';
+export type Settlement = 'to_pay' | 'partial' | 'settled';
+
+/** Miroir de `apps.sales.serializers.PaymentCallSerializer`. Montants en
+ * chaîne, jamais recalculés côté frontend. */
+export interface PaymentCall {
+  id: string;
+  reservation: string;
+  kind: PaymentCallKind;
+  kind_label: string;
+  tier_code: string;
+  tier_label: string;
+  cumulative_cap_percent: string | null;
+  amount: string;
+  currency: string;
+  issued_by: string;
+  issued_at: string;
+  allocated_amount: string | null;
+  settled_amount: string | null;
+  settlement: Settlement | null;
+}
+
+export interface PaymentCallCandidate {
+  kind: PaymentCallKind;
+  kind_label: string;
+  tier_code: string;
+  tier_label: string;
+  cumulative_cap_percent: string | null;
+  amount: string;
+  available: boolean;
+  reason: string | null;
+}
+
+export interface TeamPaymentCalls {
+  calls: PaymentCall[];
+  candidates: PaymentCallCandidate[];
+  blocking_reason: string | null;
+}
+
+export type FlowStatus = 'bank_executed_sim' | 'reconciled_sim';
+
+export interface CustomerReceipt {
+  id: string;
+  bank_reference: string;
+  amount: string;
+  currency: string;
+  received_on: string;
+  status: FlowStatus;
+  status_label: string;
+  recorded_by: string;
+  recorded_at: string;
+  reconciled_by: string | null;
+  reconciled_at: string | null;
+  unallocated_amount: string | null;
+  allocations: { id: string; payment_call: string; amount: string; created_at: string }[];
+  simulation: boolean;
+}
+
+export interface FinanceFile {
+  reservation: { id: string; status: ReservationStatus; status_label: string };
+  calls: PaymentCall[];
+  receipts: CustomerReceipt[];
+}
+
+export interface AccountBalance {
+  received: string;
+  executed: string;
+  reserved: string;
+  available: string;
+  currency: string;
+  simulation: boolean;
+}
+
+export interface ProgramAccountSummary {
+  organization: { id: string; name: string };
+  program: { id: string; name: string };
+  balance: AccountBalance;
+}
+
+export type DisbursementStatus = 'draft' | 'eligible' | 'executed_sim' | 'cancelled';
+export type DisbursementFlowStatus = 'planned' | 'bank_executed_sim' | 'beneficiary_confirmed_sim' | 'reconciled_sim';
+
+/** Miroir de `apps.sales.serializers.DisbursementSerializer` (ticket
+ * B-052). `beneficiary_confirmation: 'absent'` reste visible même après un
+ * rapprochement motivé (CDC §8.3). */
+export interface Disbursement {
+  id: string;
+  organization: { id: string; name: string };
+  program: { id: string; name: string };
+  lot: { id: string; name: string };
+  milestone: { id: string; code: string; label: string };
+  beneficiary_organization: { id: string; name: string };
+  amount: string;
+  currency: string;
+  status: DisbursementStatus;
+  status_label: string;
+  flow_status: DisbursementFlowStatus;
+  flow_status_label: string;
+  bank_reference: string | null;
+  executed_on: string | null;
+  executed_at: string | null;
+  executed_by: string | null;
+  beneficiary_confirmation: 'confirmed' | 'absent' | null;
+  beneficiary_confirmed_at: string | null;
+  reconciled_at: string | null;
+  reconciled_by: string | null;
+  reconciliation_reason: string;
+  cancel_reason: string;
+  cancelled_at: string | null;
+  eligible_at: string | null;
+  prepared_by: string | null;
+  created_at: string;
+  simulation: boolean;
+}
+
+export interface AccountMilestone {
+  id: string;
+  code: string;
+  label: string;
+  order: number;
+  lot: { id: string; name: string };
+  beneficiary_organization: { id: string; name: string };
+  disbursable: boolean;
+  blockers: string[];
+  open_disbursement: string | null;
+}
+
+export interface ProgramAccount extends ProgramAccountSummary {
+  milestones: AccountMilestone[];
+  disbursements: Disbursement[];
+}

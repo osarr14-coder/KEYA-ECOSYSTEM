@@ -9,7 +9,7 @@ import { useApiClient } from './api/ApiClientContext';
 import { ApiError } from './api/client';
 import { useApiResource } from './api/useApiResource';
 import {
-  ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE, deriveAllRoleCodes, hasBackofficeAccess,
+  ADMIN_KEYIMMO_ROLE, FINANCE_ROLE, GESTIONNAIRE_ADV_ROLE, deriveAllRoleCodes, hasBackofficeAccess,
 } from './auth/adminAccess';
 import {
   buildRedirectUrl, isSameOriginRedirect, resolveAppOrigins, resolveRedirectApp,
@@ -18,6 +18,7 @@ import type { TabRoute } from './navigation/tabRouting';
 import { useUrlSyncedTab } from './navigation/useUrlSyncedTab';
 import { BackofficeView } from './views/BackofficeView';
 import { DevisView } from './views/DevisView';
+import { FinanceAccountsView } from './views/FinanceAccountsView';
 import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
 import { LotsCommercialView } from './views/LotsCommercialView';
 import { PricingView } from './views/PricingView';
@@ -27,8 +28,8 @@ import { ReservationsView } from './views/ReservationsView';
 import { TasksView } from './views/TasksView';
 
 type AuthenticatedTabId =
-  'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'programs' | 'program-requests'
-  | 'tasks';
+  'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
+  | 'program-requests' | 'tasks';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -59,6 +60,10 @@ type AuthenticatedTabId =
  */
 const ADMIN_ONLY = [ADMIN_KEYIMMO_ROLE];
 const ADMIN_AND_ADV = [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE];
+// Ticket F-068 — Finance (équipe KEYIMMO, décision B-047) : réservations
+// (dossiers financiers) et comptes des programmes. Même périmètre que
+// `IsKeyimmoTeam` côté backend.
+const KEYIMMO_TEAM = [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE, FINANCE_ROLE];
 
 const TAB_DEFINITIONS: {
   id: AuthenticatedTabId; label: string; path: string; icon: IconName; group?: string; roles: string[];
@@ -91,7 +96,16 @@ const TAB_DEFINITIONS: {
     path: '/reservations',
     icon: 'clipboard-check',
     group: 'Ventes & tarification',
-    roles: ADMIN_AND_ADV,
+    roles: KEYIMMO_TEAM,
+  },
+  // Ticket F-068 — comptes simulés et décaissements (backend B-052).
+  {
+    id: 'finance',
+    label: 'Comptes & décaissements',
+    path: '/finance',
+    icon: 'wallet',
+    group: 'Ventes & tarification',
+    roles: KEYIMMO_TEAM,
   },
   {
     id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building', roles: ADMIN_AND_ADV,
@@ -210,7 +224,7 @@ function AuthenticatedApp() {
     return (
       <main style={{ padding: '24px' }}>
         <AlertBanner title="Accès refusé">
-          Cet écran est réservé à l&apos;équipe KEYIMMO (rôles admin_keyimmo et gestionnaire_adv).
+          Cet écran est réservé à l&apos;équipe KEYIMMO (rôles admin_keyimmo, gestionnaire_adv et finance).
         </AlertBanner>
       </main>
     );
@@ -233,6 +247,8 @@ function AuthenticatedApp() {
 function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   const api = useApiClient();
   const isAdmin = userRoles.includes(ADMIN_KEYIMMO_ROLE);
+  const isAdv = userRoles.includes(GESTIONNAIRE_ADV_ROLE);
+  const isFinance = userRoles.includes(FINANCE_ROLE);
   // Ticket F-065 — onglets du rôle courant (les rôles ne changent pas en
   // cours de session). Premier onglet visible = repli : un ADV qui arrive
   // sur `/` (Back-office, admin seul) ou un lien vers un onglet admin est
@@ -284,7 +300,12 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'pricing' && <PricingView />}
       {activeTab === 'legal-tiers' && <LegalPaymentTiersView />}
       {activeTab === 'lots' && <LotsCommercialView canEditPrice={isAdmin} />}
-      {activeTab === 'reservations' && <ReservationsView />}
+      {activeTab === 'reservations' && (
+        <ReservationsView
+          permissions={{ canManageSales: isAdmin || isAdv, canRecordMovements: isFinance }}
+        />
+      )}
+      {activeTab === 'finance' && <FinanceAccountsView canAct={isFinance} />}
       {activeTab === 'programs' && <ProgramsView />}
       {activeTab === 'program-requests' && <ProgramRequestsView />}
       {activeTab === 'tasks' && <TasksView />}

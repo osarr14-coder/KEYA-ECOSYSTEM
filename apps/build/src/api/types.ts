@@ -114,3 +114,24 @@ export interface Task {
   created_at: string;
   completed_at: string | null;
 }
+
+/** Ticket F-068 — sortie simulée du compte d'un programme vers
+ * l'organisation du constructeur (backend B-052, CDC V3 §8.2/§8.3). Miroir
+ * partiel de `apps.sales.serializers.DisbursementSerializer`. */
+export interface ReceivedDisbursement {
+  id: string;
+  organization: { id: string; name: string };
+  program: { id: string; name: string };
+  lot: { id: string; name: string };
+  milestone: { id: string; code: string; label: string };
+  amount: string;
+  currency: string;
+  flow_status: 'bank_executed_sim' | 'beneficiary_confirmed_sim' | 'reconciled_sim';
+  flow_status_label: string;
+  bank_reference: string | null;
+  executed_on: string | null;
+  beneficiary_confirmation: 'confirmed' | 'absent' | null;
+  beneficiary_confirmed_at: string | null;
+  reconciliation_reason: string;
+  simulation: boolean;
+}

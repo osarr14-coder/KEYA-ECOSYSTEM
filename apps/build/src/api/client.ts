@@ -4,6 +4,7 @@ import type {
   LotRow,
   Me,
   PaginatedResponse,
+  ReceivedDisbursement,
   Task,
 } from './types';
 
@@ -152,6 +153,16 @@ export function createApiClient({
      * complete_task` ne touche que la `Task` elle-même).
      */
     completeTask: (taskId: string) => request<Task>(`/api/tasks/${taskId}/complete/`, { method: 'POST' }),
+
+    /**
+     * Ticket F-068 — `GET /api/build/disbursements/` (B-052) : sorties
+     * exécutées vers l'organisation active ; `POST …/confirm/` : le
+     * bénéficiaire confirme la réception (information, pas preuve bancaire).
+     */
+    listReceivedDisbursements: () => request<ReceivedDisbursement[]>('/api/build/disbursements/'),
+    confirmDisbursement: (disbursementId: string) => request<ReceivedDisbursement>(
+      `/api/build/disbursements/${disbursementId}/confirm/`, { method: 'POST' },
+    ),
   };
 }
 

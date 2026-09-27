@@ -9,6 +9,7 @@ import { ApiError } from '../api/client';
 import type { CatalogLot, Reservation, ReservationStatus } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { ClientContractPanel } from './ClientContractPanel';
+import { ClientPaymentCallsPanel } from './ClientPaymentCallsPanel';
 
 /**
  * Ticket F-066 — parcours d'achat du client (CDC V3 §9.2, étapes 1-2) :
@@ -47,6 +48,11 @@ function nextStep(reservation: Reservation) {
     case 'held':
       return `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. `
         + 'Prochaine étape : votre contrat, préparé par le gestionnaire, puis les frais de réservation.';
+    case 'reserved':
+      return 'Frais de réservation encaissés : le bien vous est réservé. '
+        + 'Prochaine étape : signature du contrat et complément du premier versement.';
+    case 'committed':
+      return 'Acquisition concrétisée (simulation) : contrat signé et premier versement couvert.';
     case 'expired':
       return 'Le délai de blocage est écoulé sans versement : le bien a été libéré.';
     case 'cancelled':
@@ -86,6 +92,8 @@ function ReservationRow({ reservation, onChanged }: { reservation: Reservation; 
       <p style={{ margin: '4px 0 0' }}>{nextStep(reservation)}</p>
       {/* Ticket F-066 (partie 2) — contrat, tant que la réservation vit. */}
       {ACTIVE_STATUSES.includes(reservation.status) && <ClientContractPanel reservationId={reservation.id} />}
+      {/* Ticket F-068 — appels de fonds et leur couverture. */}
+      {ACTIVE_STATUSES.includes(reservation.status) && <ClientPaymentCallsPanel reservationId={reservation.id} />}
       {reservation.status === 'held' && !confirming && (
         <Button type="button" variant="secondary" onClick={() => setConfirming(true)} style={{ marginTop: '8px' }}>
           Annuler cette réservation

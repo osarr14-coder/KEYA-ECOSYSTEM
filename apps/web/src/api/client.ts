@@ -1,6 +1,7 @@
 import type {
   AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, ContractAction,
-  ContractVersion, CountryPackSummary,
+  ContractVersion, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
+  ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
@@ -555,6 +556,89 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
       request<Task>(
         `/api/tasks/${taskId}/admin-complete/${toQueryString({ organization_id: organization })}`,
         { method: 'POST' },
+      )
+    ),
+
+    // ─── Ticket F-068 — appels de fonds, encaissements, décaissements ──────
+    // `organizationId` : organisation du lot / du programme (bascule RLS
+    // explicite côté serveur), jamais l'organisation active de l'appelant.
+
+    /** `GET /api/reservations/{id}/payment-calls/admin/` (B-050) — appels
+     * émis et prochains appels calculés par le serveur. */
+    getTeamPaymentCalls: (reservationId: string, organizationId: string) => (
+      request<TeamPaymentCalls>(
+        `/api/reservations/${reservationId}/payment-calls/admin/${toQueryString({ organization_id: organizationId })}`,
+      )
+    ),
+    /** Émission : admin et ADV seulement (403 pour Finance). */
+    issuePaymentCall: (reservationId: string, organizationId: string, kind: PaymentCallKind, tierCode = '') => (
+      request<unknown>(
+        `/api/reservations/${reservationId}/payment-calls/admin/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { kind, tier_code: tierCode } },
+      )
+    ),
+    /** `GET /api/finance/reservations/{id}/` (B-051) — dossier financier. */
+    getFinanceFile: (reservationId: string, organizationId: string) => (
+      request<FinanceFile>(`/api/finance/reservations/${reservationId}/${toQueryString({ organization_id: organizationId })}`)
+    ),
+    /** Finance seul ; 200 si la même référence est rejouée à l'identique. */
+    recordReceipt: (
+      reservationId: string,
+      organizationId: string,
+      payload: { bank_reference: string; amount: string; received_on: string },
+    ) => request<CustomerReceipt>(
+      `/api/finance/reservations/${reservationId}/receipts/${toQueryString({ organization_id: organizationId })}`,
+      { method: 'POST', json: payload },
+    ),
+    allocateReceipt: (receiptId: string, organizationId: string, paymentCallId: string, amount: string) => (
+      request<unknown>(
+        `/api/finance/receipts/${receiptId}/allocations/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { payment_call: paymentCallId, amount } },
+      )
+    ),
+    reconcileReceipt: (receiptId: string, organizationId: string) => (
+      request<unknown>(
+        `/api/finance/receipts/${receiptId}/reconcile/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST' },
+      )
+    ),
+    /** `GET /api/finance/accounts/` (B-052) — comptes simulés des programmes. */
+    listProgramAccounts: () => request<ProgramAccountSummary[]>('/api/finance/accounts/'),
+    getProgramAccount: (programId: string, organizationId: string) => (
+      request<ProgramAccount>(`/api/finance/programs/${programId}/account/${toQueryString({ organization_id: organizationId })}`)
+    ),
+    prepareDisbursement: (organizationId: string, milestoneId: string, amount: string) => (
+      request<Disbursement>(
+        `/api/finance/disbursements/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { milestone: milestoneId, amount } },
+      )
+    ),
+    checkDisbursementEligibility: (disbursementId: string, organizationId: string) => (
+      request<Disbursement>(
+        `/api/finance/disbursements/${disbursementId}/eligibility/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST' },
+      )
+    ),
+    executeDisbursement: (
+      disbursementId: string,
+      organizationId: string,
+      payload: { bank_reference: string; executed_on: string },
+    ) => request<Disbursement>(
+      `/api/finance/disbursements/${disbursementId}/execute/${toQueryString({ organization_id: organizationId })}`,
+      { method: 'POST', json: payload },
+    ),
+    cancelDisbursement: (disbursementId: string, organizationId: string, reason: string) => (
+      request<Disbursement>(
+        `/api/finance/disbursements/${disbursementId}/cancel/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { reason } },
+      )
+    ),
+    /** Sans confirmation du bénéficiaire, `reason` doit valoir
+     * « Confirmation bénéficiaire non reçue » (CDC §8.3, T11). */
+    reconcileDisbursement: (disbursementId: string, organizationId: string, reason = '') => (
+      request<Disbursement>(
+        `/api/finance/disbursements/${disbursementId}/reconcile/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { reason } },
       )
     ),
   };

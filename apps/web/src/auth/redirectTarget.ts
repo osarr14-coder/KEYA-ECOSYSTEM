@@ -43,12 +43,15 @@ export type { AppOrigins };
  * **Ticket F-065** : `gestionnaire_adv` → `web` aussi (équipe KEYIMMO,
  * onglets restreints dans `App.tsx`) — sans cette branche, il retombait sur
  * HOME, l'app client, sans aucun de ses écrans.
+ *
+ * **Ticket F-068** : `finance` → `web` aussi (équipe KEYIMMO : dossiers
+ * financiers et comptes des programmes).
  */
 export function resolveRedirectApp(me: Me): keyof AppOrigins {
   const primaryRole = me.memberships[0]?.role_code;
   if (primaryRole === 'inspecteur') return 'control';
   if (primaryRole === 'constructeur') return 'build';
-  if (primaryRole === 'admin_keyimmo' || primaryRole === 'gestionnaire_adv') return 'web';
+  if (primaryRole === 'admin_keyimmo' || primaryRole === 'gestionnaire_adv' || primaryRole === 'finance') return 'web';
   return 'home';
 }
 

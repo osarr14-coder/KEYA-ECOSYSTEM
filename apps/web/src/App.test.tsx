@@ -530,12 +530,14 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
     return { api, getAdminTasks };
   }
 
-  it('entre dans apps/web et ne voit que Lots, Réservations (F-067), Programmes et Demandes de programme', async () => {
+  it('entre dans apps/web et ne voit que Lots, Réservations (F-067), Comptes (F-068), Programmes et Demandes', async () => {
     renderAsAdv();
 
     const tabBar = await screen.findByRole('navigation', { name: 'Sections back-office' });
     const tabLabels = Array.from(tabBar.querySelectorAll('button')).map((button) => button.textContent);
-    expect(tabLabels).toEqual(['Lots — prix & statut', 'Réservations', 'Programmes', 'Demandes de programme']);
+    expect(tabLabels).toEqual([
+      'Lots — prix & statut', 'Réservations', 'Comptes & décaissements', 'Programmes', 'Demandes de programme',
+    ]);
     expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
   });
 
@@ -566,6 +568,40 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
   it('une connexion ADV redirige vers apps/web', async () => {
     const login = vi.fn().mockResolvedValue({ access: 'tok', refresh: 'ref' });
     const { redirect } = renderApp({ login, getMe: vi.fn().mockResolvedValue(ME_ADV) });
+
+    await fillAndSubmit();
+
+    await waitFor(() => expect(redirect).toHaveBeenCalledWith(expect.stringContaining('localhost:5176')));
+  });
+});
+
+describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
+  const ME_FINANCE: Me = {
+    id: 'finance-1', email: 'finance@example.com', full_name: 'Finance',
+    memberships: [
+      { organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'finance', role_label: 'Finance (démo)' },
+    ],
+  };
+
+  it('entre dans apps/web et ne voit que Réservations et Comptes & décaissements', async () => {
+    localStorage.setItem('keya_access_token', 'stored-finance-token');
+    const getAdminTasks = vi.fn().mockResolvedValue([]);
+    const api = createMockApiClient({
+      getMe: vi.fn().mockResolvedValue(ME_FINANCE),
+      getAdminTasks,
+      listReservations: vi.fn().mockResolvedValue([]),
+    });
+    render(withApiClient(api, <App />));
+
+    const tabBar = await screen.findByRole('navigation', { name: 'Sections back-office' });
+    const tabLabels = Array.from(tabBar.querySelectorAll('button')).map((button) => button.textContent);
+    expect(tabLabels).toEqual(['Réservations', 'Comptes & décaissements']);
+    expect(getAdminTasks).not.toHaveBeenCalled();
+  });
+
+  it('une connexion Finance redirige vers apps/web', async () => {
+    const login = vi.fn().mockResolvedValue({ access: 'tok', refresh: 'ref' });
+    const { redirect } = renderApp({ login, getMe: vi.fn().mockResolvedValue(ME_FINANCE) });
 
     await fillAndSubmit();
 

@@ -65,6 +65,20 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     getAdminTasks: vi.fn(notMocked),
     // Ticket F-062/F-063 (marquer une tâche traitée, B-044 cross-org) :
     completeAdminTask: vi.fn(notMocked),
+    // Ticket F-068 (appels de fonds, encaissements, décaissements — B-050/51/52) :
+    getTeamPaymentCalls: vi.fn(notMocked),
+    issuePaymentCall: vi.fn(notMocked),
+    getFinanceFile: vi.fn(notMocked),
+    recordReceipt: vi.fn(notMocked),
+    allocateReceipt: vi.fn(notMocked),
+    reconcileReceipt: vi.fn(notMocked),
+    listProgramAccounts: vi.fn(notMocked),
+    getProgramAccount: vi.fn(notMocked),
+    prepareDisbursement: vi.fn(notMocked),
+    checkDisbursementEligibility: vi.fn(notMocked),
+    executeDisbursement: vi.fn(notMocked),
+    cancelDisbursement: vi.fn(notMocked),
+    reconcileDisbursement: vi.fn(notMocked),
     ...overrides,
   };
 }

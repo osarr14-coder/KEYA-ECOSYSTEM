@@ -21,6 +21,7 @@ export function deriveAllRoleCodes(me: Me): string[] {
 
 export const ADMIN_KEYIMMO_ROLE = 'admin_keyimmo';
 export const GESTIONNAIRE_ADV_ROLE = 'gestionnaire_adv';
+export const FINANCE_ROLE = 'finance';
 
 /** Ticket F-065 — l'ADV fait partie de l'équipe KEYIMMO (décision
  * utilisateur, ticket B-047) : il entre dans `apps/web`, mais n'y voit que
@@ -29,5 +30,6 @@ export const GESTIONNAIRE_ADV_ROLE = 'gestionnaire_adv';
  * `IsAdminKeyimmoOrGestionnaireADV` côté backend. */
 export function hasBackofficeAccess(me: Me): boolean {
   const roles = deriveAllRoleCodes(me);
-  return roles.includes(ADMIN_KEYIMMO_ROLE) || roles.includes(GESTIONNAIRE_ADV_ROLE);
+  // Ticket F-068 — Finance aussi (équipe KEYIMMO), onglets restreints.
+  return [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE, FINANCE_ROLE].some((role) => roles.includes(role));
 }

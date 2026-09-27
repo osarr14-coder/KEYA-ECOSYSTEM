@@ -191,3 +191,18 @@ export interface ContractVersion {
   updated_at: string;
 }
 
+/** Ticket F-068 — appel de fonds côté client (backend B-050/B-051,
+ * `ClientPaymentCallSerializer`) : jamais l'identité du membre KEYIMMO qui
+ * l'a émis. `settlement` : couvert seulement par des encaissements
+ * rapprochés (CDC §6.1) ; un versement partiel ne solde pas l'appel. */
+export interface ClientPaymentCall {
+  id: string;
+  kind: 'frais' | 'premier_versement' | 'versement';
+  kind_label: string;
+  tier_label: string;
+  amount: string;
+  currency: string;
+  issued_at: string;
+  settled_amount: string | null;
+  settlement: 'to_pay' | 'partial' | 'settled' | null;
+}

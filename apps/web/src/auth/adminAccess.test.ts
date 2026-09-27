@@ -53,6 +53,10 @@ describe(
       expect(hasBackofficeAccess(makeMe(['gestionnaire_adv']))).toBe(true);
     });
 
+    it('ticket F-068 — accès accordé à finance (équipe KEYIMMO)', () => {
+      expect(hasBackofficeAccess(makeMe(['finance']))).toBe(true);
+    });
+
     it('ticket F-065 — gestionnaire_adv hors première membership : accès accordé aussi', () => {
       expect(hasBackofficeAccess(makeMe(['sponsor', 'gestionnaire_adv']))).toBe(true);
     });

@@ -1,5 +1,5 @@
 import type {
-  CatalogLot, ContractVersion, EvidenceFeedItem, LotOverview, Me, MyLot, ProgramRequest, Reservation, Task,
+  CatalogLot, ClientPaymentCall, ContractVersion, EvidenceFeedItem, LotOverview, Me, MyLot, ProgramRequest, Reservation, Task,
 } from './types';
 
 export class ApiError extends Error {
@@ -139,6 +139,10 @@ export function createApiClient({
     ),
     signContract: (contractId: string) => (
       request<ContractVersion>(`/api/me/contracts/${contractId}/sign/`, { method: 'POST' })
+    ),
+    // Ticket F-068 — appels de fonds du client (backend B-050/B-051).
+    getMyPaymentCalls: (reservationId: string) => (
+      request<ClientPaymentCall[]>(`/api/me/reservations/${reservationId}/payment-calls/`)
     ),
   };
 }

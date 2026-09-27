@@ -30,6 +30,10 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
     listReservations: vi.fn().mockResolvedValue([reservation()]),
     listContracts: vi.fn().mockResolvedValue([]),
+    getFinanceFile: vi.fn().mockResolvedValue({
+      reservation: { id: 'reservation-1', status: 'held', status_label: 'Bloquée' }, calls: [], receipts: [],
+    }),
+    getTeamPaymentCalls: vi.fn().mockResolvedValue({ calls: [], candidates: [], blocking_reason: null }),
     ...overrides,
   });
   render(withApiClient(api, <ReservationsView />));
