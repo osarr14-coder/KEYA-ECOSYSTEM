@@ -1,5 +1,5 @@
 import type {
-  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, ContractAction,
+  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, JournalEntry, CommercialLot, ContractAction,
   ContractVersion, ControlToAssign, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
   InspectorSummary, PaymentNotice, PublicProgram, PublicWorksite, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
@@ -170,25 +170,8 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     return (await response.json()) as T;
   }
 
-  /** `POST /api/auth/register/` — inscription d'un acquéreur (rôle
-   * `client`, libre-service côté serveur). Les erreurs de validation (email
-   * déjà utilisé, mot de passe trop court) sont renvoyées telles quelles. */
-  async function registerClient(payload: { email: string; password: string; full_name: string }): Promise<void> {
-    const response = await fetch(`${baseUrl}/api/auth/register/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, role: 'client' }),
-    });
-    if (!response.ok) {
-      let body: unknown;
-      try { body = await response.json(); } catch { body = undefined; }
-      throw new ApiError(response.status, `Échec de l'inscription (${response.status})`, undefined, body);
-    }
-  }
-
   return {
     login,
-    registerClient,
     getPublicOffer: () => publicGet<PublicProgram[]>('/api/public/offer/'),
     getPublicWorksites: () => publicGet<PublicWorksite[]>('/api/public/worksites/'),
     /** Sans argument, lit `getAccessToken()` (session déjà persistée —
@@ -206,6 +189,10 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
      */
     searchUsers: (query: string) =>
       request<BackofficeUserSummary[]>(`/api/backoffice/users/${toQueryString({ q: query })}`),
+
+    /** `GET /api/admin/journal/` — audit UI R1 (R02) : journal des actes,
+     * lecture seule, administrateur uniquement. */
+    getAdminJournal: () => request<JournalEntry[]>('/api/admin/journal/'),
 
     /** `GET /api/backoffice/users/{id}/` (ticket 011) — organisation(s)/
      * rôle(s) de l'utilisateur ciblé, strictement lecture seule. */

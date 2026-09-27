@@ -896,9 +896,14 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             'backoffice-user-search', 'backoffice-user-detail', 'backoffice-user-deactivate',
             'backoffice-mission-create',
             # Ticket B-041 — ajout conscient : liste transverse (toutes
-            # organisations) et résolution des litiges, réservées à
-            # `admin_keyimmo`, jamais accessibles au rôle constructeur.
+            # organisations) et résolution des litiges, réservées au
+            # gestionnaire depuis l'audit UI R1 (R02), jamais accessibles au
+            # rôle constructeur.
             'backoffice-litige-list', 'backoffice-litige-resolve',
+            # Audit UI R1 — ajout conscient : identifiant de l'instance de
+            # démonstration (public, aucune donnée métier, M01/D01) et journal
+            # en lecture seule réservé à l'administrateur (R02).
+            'public-demo-instance', 'admin-journal',
             'procurement-devis-create', 'procurement-devis-lock',
             'procurement-admin-devis-list',
             'procurement-my-candidatures', 'procurement-my-candidature-detail',
@@ -1844,8 +1849,13 @@ def _create_mission_for_lot(*, admin_client, admin_user, admin_org, sponsor_org,
     _inspecteur_client, _inspecteur_org, inspecteur_user = _register(
         f'inspecteur-{suffix}@example.com', f'Org Inspecteur {suffix}', role_code='inspecteur',
     )
+    # Audit UI R1 (R02) : l'affectation du contrôleur relève du gestionnaire,
+    # plus de l'administrateur (qui garde les devis et tarifs, hors scénario).
+    manager_client, _manager_org, _manager_user = _register(
+        f'gestionnaire-{suffix}@example.com', f'Org Gestionnaire {suffix}', role_code='gestionnaire_adv',
+    )
 
-    return admin_client.post(
+    return manager_client.post(
         reverse('backoffice-mission-create'),
         {
             'organization': str(sponsor_org.id),
@@ -2564,7 +2574,9 @@ class TestLotBcChargeNegativeMarginAlert:
         task = Task.objects.get(subject_type__model='lotledger', subject_id=ledger.id)
         assert task.source == LOT_LEDGER_MARGIN_NEGATIVE_SOURCE
         assert task.type == TaskType.ALERT
-        assert task.assignee_id == admin_user.id
+        # Audit UI R1 (R02) : alerte adressée à l'acteur de la mission, qui est
+        # désormais le gestionnaire (voir `_create_mission_for_lot`).
+        assert task.assignee.email == 'gestionnaire-alert@example.com'
         assert task.status == TaskStatus.PENDING
         assert lot.name in task.label
 
@@ -2862,7 +2874,11 @@ class TestCommercialLotSearch:
         )
 
         devis_search = admin_client.get(reverse('procurement-admin-lot-search'), {'q': 'mis en concurrence'})
-        commercial_search = admin_client.get(
+        # Audit UI R1 (R02) : la commercialisation relève du gestionnaire.
+        manager, _manager_org, _manager_user = _register(
+            'commercial-locked-manager@example.com', 'Org Commercial Manager', role_code='gestionnaire_adv',
+        )
+        commercial_search = manager.get(
             reverse('program-commercial-lot-search'), {'q': 'mis en concurrence'},
         )
 
@@ -2878,8 +2894,11 @@ class TestCommercialLotSearch:
         assert str(AMOUNT_A) not in commercial_search.content.decode()
 
     def test_an_empty_query_returns_nothing_never_a_full_dump(self):
-        admin_client, _admin_org, _admin_user, _sponsor_org, _lot, _a, _b = _setup_lot_up_for_bid('commercial-empty')
-        response = admin_client.get(reverse('program-commercial-lot-search'))
+        _setup_lot_up_for_bid('commercial-empty')
+        manager, _manager_org, _manager_user = _register(
+            'commercial-empty-manager@example.com', 'Org Commercial Empty Manager', role_code='gestionnaire_adv',
+        )
+        response = manager.get(reverse('program-commercial-lot-search'))
         assert response.status_code == 200
         assert response.data == []
 

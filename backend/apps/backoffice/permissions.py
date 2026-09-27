@@ -33,36 +33,31 @@ class IsAdminKeyimmo(BasePermission):
         ).exists()
 
 
+class IsGestionnaireADV(BasePermission):
+    """Audit UI R1 (R02, PO-2026-09-27-09 — remplace l'ancienne
+    `IsAdminKeyimmoOrGestionnaireADV` de B-046) : préparer le scénario
+    métier (programmes, biens, lots et prix), réservations, contrats et
+    appels, affectation des contrôles — capacités du SEUL gestionnaire
+    (CDC R1 §4). L'administrateur ne s'attribue aucun pouvoir métier.
+    Sémantique transverse « rôle dans n'importe laquelle des organisations »
+    inchangée."""
+
+    message = 'Réservé aux membres du rôle gestionnaire_adv.'
+
+    def has_permission(self, request, view):
+        return _has_any_role(request.user, [GESTIONNAIRE_ADV_ROLE_CODE])
+
+
 class IsAdminKeyimmoOrGestionnaireADV(BasePermission):
-    """Ticket B-046 (Phase 1 de `docs/audit-cdc-v3-mvp-ecart-vefa.md`) —
-    sépare les pouvoirs « préparer le scénario métier » (création de
-    programme/bien/lot, décision sur les demandes de programme sur mesure)
-    du reste des capacités `admin_keyimmo` (tarifs, devis, back-office
-    utilisateurs), conformément au CDC V3 §4 : « comptes démontrant des
-    fonctions incompatibles sont distincts ».
-
-    ADDITIVE, jamais une restriction : `admin_keyimmo` garde tous ses
-    pouvoirs actuels (un admin est de fait habilité aux actions ADV) — ce
-    n'est qu'un SECOND chemin d'accès pour un compte `gestionnaire_adv` qui
-    n'a pas besoin d'être aussi `admin_keyimmo`. Même sémantique « rôle dans
-    N'IMPORTE LAQUELLE des organisations » que `IsAdminKeyimmo` ci-dessus
-    (jamais l'organisation active) : la préparation de programmes est par
-    nature une capacité transverse, pas limitée à un lieu.
-
-    Rôle `finance` du CDC volontairement PAS ajouté ici — voir la section
-    « Ajustement de séquencement » du ticket B-046 : aucun objet financier
-    n'existe encore pour qu'une telle permission protège quoi que ce soit.
-    """
+    """Données de RÉFÉRENCE lues par l'administrateur (provisionnement du
+    scénario) ET par le gestionnaire (préparation des programmes) — ex. la
+    liste des Country Packs. Jamais pour une action métier (voir
+    `IsGestionnaireADV`, audit R02)."""
 
     message = 'Réservé aux membres des rôles admin_keyimmo ou gestionnaire_adv.'
 
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return Membership.objects.filter(
-            user=request.user,
-            role__code__in=[ADMIN_KEYIMMO_ROLE_CODE, GESTIONNAIRE_ADV_ROLE_CODE],
-        ).exists()
+        return _has_any_role(request.user, [ADMIN_KEYIMMO_ROLE_CODE, GESTIONNAIRE_ADV_ROLE_CODE])
 
 
 def _has_any_role(user, role_codes):
@@ -86,15 +81,13 @@ class IsFinance(BasePermission):
 
 
 class IsKeyimmoTeam(BasePermission):
-    """Ticket B-050 — lecture commune de l'équipe KEYIMMO (admin, ADV,
-    Finance) sur les objets de vente : chacun doit voir les appels de fonds
-    pour faire son propre travail, sans pour autant pouvoir faire celui des
-    autres (les écritures gardent leur permission dédiée)."""
+    """Ticket B-050 — lecture commune de l'équipe métier (ADV, Finance) sur
+    les objets de vente : chacun doit voir les appels de fonds pour faire
+    son propre travail, sans pour autant pouvoir faire celui des autres (les
+    écritures gardent leur permission dédiée). Audit UI R1 (R02) :
+    l'administrateur n'en fait plus partie (aucun pouvoir métier)."""
 
-    message = "Réservé à l'équipe KEYIMMO (admin_keyimmo, gestionnaire_adv, finance)."
+    message = "Réservé à l'équipe métier (gestionnaire_adv, finance)."
 
     def has_permission(self, request, view):
-        return _has_any_role(
-            request.user, [ADMIN_KEYIMMO_ROLE_CODE, GESTIONNAIRE_ADV_ROLE_CODE, FINANCE_ROLE_CODE],
-        )
-
+        return _has_any_role(request.user, [GESTIONNAIRE_ADV_ROLE_CODE, FINANCE_ROLE_CODE])

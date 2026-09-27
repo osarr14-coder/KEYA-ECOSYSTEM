@@ -42,6 +42,11 @@ def _register_admin(email, organization_name):
     return _register(email, organization_name, role_code='admin_keyimmo')
 
 
+def _register_adv(email, organization_name):
+    """Audit UI R1 (R02) : missions et litiges relèvent du gestionnaire."""
+    return _register(email, organization_name, role_code='gestionnaire_adv')
+
+
 def _setup_constructeur_org(email, organization_name):
     client, organization, user = _register(email, organization_name, role_code='constructeur')
     program = Program.objects.create(organization=organization, name='Programme')
@@ -80,10 +85,11 @@ class TestBackofficeAccessIsReservedToAdminKeyimmo:
 
 
 @pytest.mark.django_db
-class TestMissionCreationIsReservedToAdminKeyimmo:
-    """Ticket 012 — critère d'acceptation : seul un membre `admin_keyimmo`
-    peut créer une affectation, testé comme une tentative explicite refusée
-    pour tout autre rôle, pas une simple absence de bouton côté UI.
+class TestMissionCreationIsReservedToTheManager:
+    """Ticket 012, révisé par l'audit UI R1 (R02) : seul le gestionnaire
+    (`gestionnaire_adv`) crée une affectation — l'administrateur n'a aucun
+    pouvoir métier. Testé comme une tentative explicite refusée pour tout
+    autre rôle, pas une simple absence de bouton côté UI.
     """
 
     def test_non_admin_cannot_create_a_mission(self):
@@ -105,8 +111,29 @@ class TestMissionCreationIsReservedToAdminKeyimmo:
         )
         assert response.status_code == 403
 
-    def test_admin_keyimmo_can_create_a_mission(self):
-        admin_client, admin_org, _admin_user = _register_admin(
+    def test_admin_cannot_create_a_mission(self):
+        admin_client, _admin_org, _admin_user = _register_admin(
+            'mission-perm-r02-admin@example.com', 'Org Mission Perm R02 Admin',
+        )
+        _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
+            'mission-perm-r02-constructeur@example.com', 'Org Mission Perm R02 Constructeur',
+        )
+        _inspecteur_client, _inspecteur_org, inspecteur_user = _setup_inspecteur(
+            'mission-perm-r02-inspecteur@example.com', 'Org Mission Perm R02 Inspecteur',
+        )
+        response = admin_client.post(
+            reverse('backoffice-mission-create'),
+            {
+                'organization': str(organization.id),
+                'work_declaration': str(declaration.id),
+                'assigned_inspector': str(inspecteur_user.id),
+            },
+            format='json',
+        )
+        assert response.status_code == 403
+
+    def test_the_manager_can_create_a_mission(self):
+        admin_client, admin_org, _admin_user = _register_adv(
             'mission-perm-admin@example.com', 'Org Mission Perm Admin',
         )
         _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
@@ -134,7 +161,7 @@ class TestMissionCreationIsReservedToAdminKeyimmo:
         tests.py) — la chaîne complète vue→service→exception→403 doit
         fonctionner de bout en bout.
         """
-        admin_client, admin_org, _admin_user = _register_admin(
+        admin_client, admin_org, _admin_user = _register_adv(
             'mission-perm-indep-admin@example.com', 'Org Mission Perm Indep Admin',
         )
         _constructeur_client, organization, _c_user, _lot, declaration = _setup_constructeur_org(
@@ -378,15 +405,21 @@ def _open_litige_for_org(organization, lot, client_email):
 
 
 @pytest.mark.django_db
-class TestLitigeAdminTransverseVisibility:
-    """Ticket B-041 — critère central : `admin_keyimmo` voit et résout des
-    litiges dans une organisation dont il n'est membre d'AUCUNE ligne
-    `Membership` (nouvelle branche RLS transverse, voir
-    apps/support/migrations/0002_rls.py).
+class TestLitigeManagerTransverseVisibility:
+    """Ticket B-041, révisé par l'audit UI R1 (R02) : le GESTIONNAIRE voit et
+    résout des litiges dans une organisation dont il n'est membre d'AUCUNE
+    ligne `Membership` (branche RLS transverse, migrations support 0002 puis
+    0003) ; l'administrateur n'a plus ce pouvoir métier.
     """
 
-    def test_admin_sees_a_litige_in_an_organization_it_is_not_a_member_of(self):
+    def test_admin_can_neither_list_nor_resolve_litiges(self):
         admin_client, _admin_org, _admin_user = _register_admin(
+            'litige-r02-admin@example.com', 'Org Litige R02 Admin',
+        )
+        assert admin_client.get(reverse('backoffice-litige-list')).status_code == 403
+
+    def test_manager_sees_a_litige_in_an_organization_it_is_not_a_member_of(self):
+        admin_client, _admin_org, _admin_user = _register_adv(
             'litige-visibility-admin@example.com', 'Org Litige Visibility Admin',
         )
         _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
@@ -420,7 +453,7 @@ class TestLitigeAdminTransverseVisibility:
         lot sans litige doit rester invisible, exactement comme avant ce
         ticket.
         """
-        admin_client, _admin_org, _admin_user = _register_admin(
+        admin_client, _admin_org, _admin_user = _register_adv(
             'litige-no-blanket-admin@example.com', 'Org Litige No Blanket Admin',
         )
         _constructeur_client, _organization, _c_user, lot, _declaration = _setup_constructeur_org(
@@ -432,8 +465,8 @@ class TestLitigeAdminTransverseVisibility:
         set_rls_context(user_id=_admin_user.id, organization_id=_admin_org.id)
         assert not Lot.objects.filter(id=lot.id).exists()
 
-    def test_admin_resolves_a_litige_in_an_organization_it_is_not_a_member_of(self):
-        admin_client, _admin_org, _admin_user = _register_admin(
+    def test_manager_resolves_a_litige_in_an_organization_it_is_not_a_member_of(self):
+        admin_client, _admin_org, _admin_user = _register_adv(
             'litige-resolve-admin@example.com', 'Org Litige Resolve Admin',
         )
         _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
@@ -466,7 +499,7 @@ class TestLitigeAdminTransverseVisibility:
         assert response.status_code == 403
 
     def test_resolving_without_a_note_is_rejected(self):
-        admin_client, _admin_org, _admin_user = _register_admin(
+        admin_client, _admin_org, _admin_user = _register_adv(
             'litige-note-admin@example.com', 'Org Litige Note Admin',
         )
         _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
@@ -482,7 +515,7 @@ class TestLitigeAdminTransverseVisibility:
         assert response.status_code == 400
 
     def test_resolving_an_already_closed_litige_is_rejected(self):
-        admin_client, _admin_org, _admin_user = _register_admin(
+        admin_client, _admin_org, _admin_user = _register_adv(
             'litige-twice-admin@example.com', 'Org Litige Twice Admin',
         )
         _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(
@@ -507,7 +540,7 @@ class TestLitigeAdminTransverseVisibility:
         objet Visible Trust — le résoudre ne doit produire AUCUN
         `TrustEvent`, contrairement à une réserve (ticket 005).
         """
-        admin_client, _admin_org, _admin_user = _register_admin(
+        admin_client, _admin_org, _admin_user = _register_adv(
             'litige-no-trust-admin@example.com', 'Org Litige No Trust Admin',
         )
         _constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(

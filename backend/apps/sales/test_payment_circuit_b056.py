@@ -93,9 +93,11 @@ class TestAdvValidation:
         _age_hold(other_promoter, other_id)
         assert _validate(adv, other_id, other_promoter).status_code == 409
 
-    def test_only_the_adv_or_the_admin_validates(self):
+    def test_only_the_adv_validates(self):
+        # Audit UI R1 (R02) : l'administrateur n'a plus ce pouvoir métier.
         client, _user, _adv, finance, promoter, _lot, reservation_id = _scenario()
-        for api in (client, finance):
+        admin, _admin_user, _admin_org = _register('admin_keyimmo')
+        for api in (client, finance, admin):
             assert _validate(api, reservation_id, promoter).status_code == 403
 
 
@@ -198,4 +200,6 @@ class TestMyInbox:
         )
         assert done.status_code == 200
         assert done.data['status'] == 'done'
-        assert User.objects.filter(email__startswith='gestionnaire_adv-').count() == 2
+        # L'ADV du scénario, celui qui a publié le lot (audit R02 : le
+        # gestionnaire, plus l'administrateur) et l'intrus.
+        assert User.objects.filter(email__startswith='gestionnaire_adv-').count() == 3

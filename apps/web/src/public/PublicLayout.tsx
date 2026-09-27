@@ -91,8 +91,8 @@ export function PublicLayout({
             {path !== '/connexion' && (
               <Button type="button" variant="secondary" onClick={() => navigate('/connexion')}>Se connecter</Button>
             )}
-            {path !== '/inscription' && !isMobile && (
-              <Button type="button" variant="accent" onClick={() => navigate('/inscription')}>Créer mon espace</Button>
+            {path !== '/acces' && !isMobile && (
+              <Button type="button" variant="accent" onClick={() => navigate('/acces')}>Accès sur invitation</Button>
             )}
           </div>
         </div>
@@ -116,7 +116,7 @@ export function PublicLayout({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px' }}>
             <a href="#programmes" onClick={() => path !== '/' && navigate('/')}>Programmes</a>
             <a href="/connexion" onClick={(event) => { event.preventDefault(); navigate('/connexion'); }}>Espace client</a>
-            <a href="/inscription" onClick={(event) => { event.preventDefault(); navigate('/inscription'); }}>Créer mon espace</a>
+            <a href="/acces" onClick={(event) => { event.preventDefault(); navigate('/acces'); }}>Accès sur invitation</a>
           </div>
           <span style={{ fontSize: '13px', color: 'rgba(201, 210, 224, 0.7)', width: '100%' }}>
             © KEYIMMO AFRIC — plateforme de démonstration, données fictives.

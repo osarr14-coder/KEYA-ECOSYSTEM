@@ -209,6 +209,12 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
+# Audit UI R1 (R01, PO-2026-09-27-08) : aucune inscription publique. L'accès
+# se fait par comptes de démonstration provisionnés par l'administrateur
+# (CDC §10). `POST /api/auth/register/` répond 404 tant que ce réglage est
+# faux — il ne l'est que dans settings_test.py (fabrique de comptes de test).
+PUBLIC_REGISTRATION_ENABLED = config('PUBLIC_REGISTRATION_ENABLED', default=False, cast=bool)
+
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 
 # Ticket B-055 — la racine du backend (`/`) n'avait aucune page : ouverte par

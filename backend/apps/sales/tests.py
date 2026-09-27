@@ -59,8 +59,9 @@ def _register(role='client'):
 
 def _published_lot(price=PRICE, name=None):
     """Lot publié dans une organisation « promoteur » dont aucun client de
-    ces tests n'est membre — créé via l'API admin, comme en production."""
-    admin_client, _admin_user, _admin_org = _register('admin_keyimmo')
+    ces tests n'est membre — créé via l'API par le gestionnaire (audit UI R1,
+    R02 : l'administrateur n'a plus aucun pouvoir métier)."""
+    admin_client, _admin_user, _admin_org = _register('gestionnaire_adv')
     promoter = Organization.objects.create(
         name=f'Promoteur {_next()}', country_pack=CountryPack.objects.get(code='SN'),
     )

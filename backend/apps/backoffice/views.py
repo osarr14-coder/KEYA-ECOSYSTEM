@@ -5,13 +5,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import User
+from apps.core.rls import set_rls_context
 from apps.inspections import services as inspections_services
+from apps.organizations.models import Organization
 from apps.support import services as support_services
 from apps.support.models import Litige
 from apps.support.serializers import LitigeResolveSerializer, LitigeSerializer
 
 from . import services
-from .permissions import IsAdminKeyimmo
+from .permissions import IsAdminKeyimmo, IsGestionnaireADV
 from .serializers import (
     MissionAdminSerializer,
     MissionCreateSerializer,
@@ -80,7 +82,7 @@ class CreateMissionView(APIView):
     cette vue ne fait que vérifier le rôle admin et déléguer.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]  # Audit UI R1 (R02)
 
     def post(self, request):
         serializer = MissionCreateSerializer(data=request.data)
@@ -119,13 +121,28 @@ class LitigeListView(APIView):
     retrouver un litige déjà clôturé.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]  # Audit UI R1 (R02)
 
     def get(self, request):
+        # Audit UI R1 (R02) : lecture organisation par organisation, sous le
+        # contexte RLS de chacune (même principe que les autres listes
+        # transverses, ex. `list_program_accounts`) — le lot joint n'est
+        # lisible transversalement que par sa propre organisation.
         status_filter = request.query_params.get('status')
-        litiges = Litige.objects.select_related('lot', 'opened_by', 'resolved_by')
-        if status_filter:
-            litiges = litiges.filter(status=status_filter)
+        caller_organization_id = request.organization.id if request.organization else None
+        litiges = []
+        try:
+            for organization_id in Organization.objects.values_list('id', flat=True):
+                set_rls_context(organization_id=organization_id)
+                queryset = Litige.objects.filter(organization_id=organization_id).select_related(
+                    'lot', 'opened_by', 'resolved_by',
+                )
+                if status_filter:
+                    queryset = queryset.filter(status=status_filter)
+                litiges.extend(queryset)
+        finally:
+            if caller_organization_id is not None:
+                set_rls_context(organization_id=caller_organization_id)
         return Response(LitigeSerializer(litiges, many=True).data)
 
 
@@ -136,7 +153,7 @@ class LitigeResolveView(APIView):
     garde `test_backoffice_module_never_imports_or_references_the_trust_module`.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]  # Audit UI R1 (R02)
 
     def post(self, request, litige_id):
         litige = Litige.objects.filter(id=litige_id).first()
@@ -164,7 +181,7 @@ class ControlsToAssignView(APIView):
     organisations, avec la mission en cours. Réservé à `admin_keyimmo`,
     comme l'affectation elle-même (`CreateMissionView`)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]  # Audit UI R1 (R02)
 
     def get(self, request):
         rows = inspections_services.list_controls_to_assign(
@@ -177,7 +194,7 @@ class InspectorListView(APIView):
     """`GET /api/backoffice/inspectors/` — ticket B-054 : contrôleurs
     affectables."""
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]  # Audit UI R1 (R02)
 
     def get(self, request):
         return Response(services.list_inspectors(admin_user=request.user))

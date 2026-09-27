@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from apps.backoffice.permissions import IsAdminKeyimmoOrGestionnaireADV, IsFinance, IsKeyimmoTeam
+from apps.backoffice.permissions import IsFinance, IsGestionnaireADV, IsKeyimmoTeam
 from apps.evidence.permissions import IsConstructeur
 
 from . import public, services
@@ -164,7 +164,7 @@ class AdminReservationCancelView(APIView):
     """`POST /api/reservations/{id}/admin-cancel/?organization_id=` —
     annulation motivée par admin_keyimmo/gestionnaire_adv."""
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]
 
     def post(self, request, reservation_id):
         organization_id = request.query_params.get('organization_id')
@@ -201,7 +201,7 @@ class AdminContractListCreateView(APIView):
     """`GET/POST /api/reservations/{id}/contracts/admin/?organization_id=` —
     versions d'une réservation, nouvelle version `DRAFT` (admin, ADV)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]
 
     def get(self, request, reservation_id):
         contracts = services.list_contract_versions_as_admin(
@@ -236,7 +236,7 @@ class AdminContractUpdateView(APIView):
     """`PATCH /api/contracts/{id}/admin/?organization_id=` — contenu d'un
     brouillon seulement (409 sinon)."""
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]
 
     def patch(self, request, contract_id):
         target_organization_id = _target_organization_id(request)
@@ -261,7 +261,7 @@ class AdminContractTransitionView(APIView):
     """`POST /api/contracts/{id}/admin-transition/?organization_id=` —
     `{"action": "submit" | "back_to_draft" | "approve"}`."""
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]
 
     def post(self, request, contract_id):
         target_organization_id = _target_organization_id(request)
@@ -328,7 +328,7 @@ class TeamPaymentCallView(APIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         return [permissions.IsAuthenticated(), IsKeyimmoTeam()]
 
     def get(self, request, reservation_id):
@@ -708,7 +708,7 @@ class ReservationValidateView(APIView):
     ADV : valide le dossier d'une réservation bloquée et émet l'appel
     « Frais » ; 409 si déjà validée, expirée ou annulée."""
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]
 
     def post(self, request, reservation_id):
         try:

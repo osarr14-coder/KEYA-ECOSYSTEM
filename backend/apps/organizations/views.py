@@ -2,7 +2,7 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.backoffice.permissions import IsAdminKeyimmo
+from apps.backoffice.permissions import IsAdminKeyimmoOrGestionnaireADV
 
 from .models import CountryPack
 from .serializers import CountryPackListSerializer
@@ -24,7 +24,9 @@ class CountryPackListView(APIView):
     sélecteur.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    # Audit UI R1 (R02) : donnée de référence, lue par l'admin (paliers du
+    # Country Pack) et par le gestionnaire (création de programme).
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
 
     def get(self, request):
         country_packs = CountryPack.objects.filter(is_active=True).order_by('label')

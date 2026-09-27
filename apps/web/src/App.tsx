@@ -18,6 +18,7 @@ import type { TabRoute } from './navigation/tabRouting';
 import { useUrlSyncedTab } from './navigation/useUrlSyncedTab';
 import { BackofficeView } from './views/BackofficeView';
 import { ControlsView } from './views/ControlsView';
+import { JournalView } from './views/JournalView';
 import { DevisView } from './views/DevisView';
 import { FinanceAccountsView } from './views/FinanceAccountsView';
 import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
@@ -31,12 +32,12 @@ import { type NavigationTarget, TodayView } from './views/TodayView';
 import { signInAndRedirect } from './auth/signInAndRedirect';
 import { PublicHome } from './public/PublicHome';
 import { PublicLayout } from './public/PublicLayout';
-import { SignupView } from './public/SignupView';
+import { AccessView } from './public/AccessView';
 import { type PublicPath, usePublicPath } from './public/usePublicPath';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
-  | 'program-requests' | 'controls' | 'payment-notices' | 'todo';
+  | 'program-requests' | 'controls' | 'payment-notices' | 'todo' | 'journal';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -65,12 +66,16 @@ type AuthenticatedTabId =
  * Lots). Même périmètre que `IsAdminKeyimmoOrGestionnaireADV` côté backend,
  * qui reste la vraie garde : ce filtre n'évite que des écrans en 403.
  */
+// Audit UI R1 (R02, PO-2026-09-27-09) — l'administrateur n'a AUCUN pouvoir
+// métier : comptes, paliers du Country Pack, journal en lecture seule. Les
+// écrans métier passent au gestionnaire (ADV) et à Finance. Même périmètre
+// que les permissions serveur (`IsGestionnaireADV`, `IsKeyimmoTeam`,
+// `IsAdminKeyimmo`), qui restent la vraie garde.
 const ADMIN_ONLY = [ADMIN_KEYIMMO_ROLE];
-const ADMIN_AND_ADV = [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE];
-// Ticket F-068 — Finance (équipe KEYIMMO, décision B-047) : réservations
-// (dossiers financiers) et comptes des programmes. Même périmètre que
-// `IsKeyimmoTeam` côté backend.
-const KEYIMMO_TEAM = [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE, FINANCE_ROLE];
+const ADV_ONLY = [GESTIONNAIRE_ADV_ROLE];
+// Ticket F-068 — Finance : réservations (dossiers financiers) et comptes
+// des programmes. Même périmètre que `IsKeyimmoTeam` côté backend.
+const KEYIMMO_TEAM = [GESTIONNAIRE_ADV_ROLE, FINANCE_ROLE];
 
 /*
  * Ticket F-075 (direction « Confiance premium ») — navigation UNIQUE par la
@@ -98,7 +103,7 @@ const TAB_DEFINITIONS: {
   },
   // Ticket F-064 — prix et statut commercial des lots existants.
   {
-    id: 'lots', label: 'Lots — prix & statut', path: '/lots', icon: 'wallet', group: 'Ventes', roles: ADMIN_AND_ADV,
+    id: 'lots', label: 'Lots — prix & statut', path: '/lots', icon: 'wallet', group: 'Ventes', roles: ADV_ONLY,
   },
   // Ticket F-068 — comptes simulés et décaissements (backend B-052).
   {
@@ -107,17 +112,20 @@ const TAB_DEFINITIONS: {
   // Ticket F-069 — affectation des contrôles de chantier (backend B-054),
   // admin seul comme `POST /api/backoffice/missions/` (ticket 012).
   {
-    id: 'controls', label: 'Contrôles à affecter', path: '/controles', icon: 'shield-check', group: 'Chantier', roles: ADMIN_ONLY,
+    id: 'controls', label: 'Contrôles à affecter', path: '/controles', icon: 'shield-check', group: 'Chantier', roles: ADV_ONLY,
   },
   // Ticket F-049 — création Program/Asset/Lot ; F-058 — demandes sur mesure.
   {
-    id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building', group: 'Programmes', roles: ADMIN_AND_ADV,
+    id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building', group: 'Programmes', roles: ADV_ONLY,
   },
   {
-    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', group: 'Programmes', roles: ADMIN_AND_ADV,
+    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', group: 'Programmes', roles: ADV_ONLY,
   },
   {
     id: 'backoffice', label: 'Utilisateurs', path: '/back-office', icon: 'shield-check', group: 'Administration', roles: ADMIN_ONLY,
+  },
+  {
+    id: 'journal', label: 'Journal', path: '/journal', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY,
   },
   {
     id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY,
@@ -257,7 +265,6 @@ function AuthenticatedApp() {
  */
 function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   const api = useApiClient();
-  const isAdmin = userRoles.includes(ADMIN_KEYIMMO_ROLE);
   const isAdv = userRoles.includes(GESTIONNAIRE_ADV_ROLE);
   const isFinance = userRoles.includes(FINANCE_ROLE);
   // Ticket F-065 — onglets du rôle courant (les rôles ne changent pas en
@@ -305,15 +312,16 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
         />
       )}
       {activeTab === 'backoffice' && <BackofficeView />}
+      {activeTab === 'journal' && <JournalView />}
       {activeTab === 'devis' && <DevisView />}
       {activeTab === 'pricing' && <PricingView />}
       {activeTab === 'legal-tiers' && <LegalPaymentTiersView />}
-      {activeTab === 'lots' && <LotsCommercialView canEditPrice={isAdmin} />}
+      {activeTab === 'lots' && <LotsCommercialView canEditPrice={isAdv} />}
       {activeTab === 'reservations' && (
         <ReservationsView
           key={dossier ? `${dossier.id}-${dossier.nonce}` : 'list'}
           openReservationId={dossier?.id ?? null}
-          permissions={{ canManageSales: isAdmin || isAdv, canRecordMovements: isFinance }}
+          permissions={{ canManageSales: isAdv, canRecordMovements: isFinance }}
         />
       )}
       {activeTab === 'payment-notices' && <PaymentNoticesView canAct={isFinance} />}
@@ -334,14 +342,14 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
  */
 /**
  * Ticket F-079 — sans session : pages publiques (accueil `/`, connexion
- * `/connexion`, inscription `/inscription`), dans le même gabarit.
+ * `/connexion`, accès sur invitation `/acces` — audit R01), dans le même gabarit.
  */
 function PublicSite({ redirect }: { redirect: (url: string) => void }) {
   const [path, navigate] = usePublicPath();
   return (
     <PublicLayout path={path} navigate={navigate}>
       {path === '/connexion' && <LoginView redirect={redirect} navigate={navigate} />}
-      {path === '/inscription' && <SignupView redirect={redirect} navigate={navigate} />}
+      {path === '/acces' && <AccessView navigate={navigate} />}
       {path === '/' && <PublicHome navigate={navigate} />}
     </PublicLayout>
   );
@@ -497,11 +505,11 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
           <p style={{ margin: 0, fontSize: '14px' }}>
             Pas encore de compte ?{' '}
             <a
-              href="/inscription"
-              onClick={(event) => { event.preventDefault(); navigate('/inscription'); }}
+              href="/acces"
+              onClick={(event) => { event.preventDefault(); navigate('/acces'); }}
               style={{ fontWeight: 700 }}
             >
-              Créer mon espace acquéreur
+              Accès sur invitation
             </a>
           </p>
         </form>

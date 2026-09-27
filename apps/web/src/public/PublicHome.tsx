@@ -258,13 +258,9 @@ function ProgramCard({ program, navigate }: { program: PublicProgram; navigate: 
           </table>
         )}
         <div style={{ marginTop: 'auto', paddingTop: '8px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          {soldOut ? (
-            <Button type="button" variant="secondary" onClick={() => navigate('/inscription')}>
-              Être informé des prochains programmes
-            </Button>
-          ) : (
-            <Button type="button" variant="accent" onClick={() => navigate('/inscription')}>
-              Réserver — créer mon espace
+          {!soldOut && (
+            <Button type="button" variant="accent" onClick={() => navigate('/acces')}>
+              Réserver — accès sur invitation
             </Button>
           )}
         </div>
@@ -554,13 +550,13 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
           }}
         >
           <div>
-            <h2 style={{ margin: 0, color: '#FFFFFF', fontSize: 'clamp(26px, 3vw, 34px)' }}>Prêt à réserver votre logement ?</h2>
+            <h2 style={{ margin: 0, color: '#FFFFFF', fontSize: 'clamp(26px, 3vw, 34px)' }}>Participer à la démonstration</h2>
             <p style={{ margin: '8px 0 0', color: 'rgba(255, 255, 255, 0.75)' }}>
-              Créez votre espace acquéreur en une minute, puis réservez le lot de votre choix.
+              L’accès se fait sur invitation, avec des comptes de démonstration fictifs.
             </p>
           </div>
-          <Button type="button" variant="accent" onClick={() => navigate('/inscription')} style={{ minHeight: '52px', padding: '0 26px' }}>
-            Créer mon espace acquéreur
+          <Button type="button" variant="accent" onClick={() => navigate('/acces')} style={{ minHeight: '52px', padding: '0 26px' }}>
+            Accès sur invitation
           </Button>
         </div>
       </section>

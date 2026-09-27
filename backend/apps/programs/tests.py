@@ -96,10 +96,11 @@ def _register_gestionnaire_adv(email, organization_name):
 _admin_client_sequence = 0
 
 
-def _any_admin_client():
-    """Client `admin_keyimmo` jetable, pour les fixtures qui n'ont besoin
-    que d'un exécutant autorisé — ticket B-039, création de
-    Program/Asset/Lot réservée à `admin_keyimmo`, jamais self-service.
+def _any_manager_client():
+    """Client gestionnaire (`gestionnaire_adv`) jetable, pour les fixtures
+    qui n'ont besoin que d'un exécutant autorisé — création de
+    Program/Asset/Lot, jamais self-service. Audit UI R1 (R02) : ce pouvoir
+    métier est celui du gestionnaire, plus de `admin_keyimmo` (B-039).
     Compteur (pas `uuid`) pour un email/nom d'organisation lisible et
     unique par appel, même discipline que les suffixes déjà utilisés
     ailleurs dans ce fichier (`_setup_sponsor_program_with_lots`).
@@ -107,8 +108,8 @@ def _any_admin_client():
     global _admin_client_sequence
     _admin_client_sequence += 1
     suffix = _admin_client_sequence
-    client, _organization, _user = _register_admin(
-        f'fixture-admin-{suffix}@example.com', f'Org Fixture Admin {suffix}',
+    client, _organization, _user = _register_gestionnaire_adv(
+        f'fixture-manager-{suffix}@example.com', f'Org Fixture Manager {suffix}',
     )
     return client
 
@@ -151,7 +152,7 @@ def _setup_sponsor_program_with_lots(suffix, lot_surfaces=(None,)):
         f'sponsor-cost-{suffix}@example.com', f'Org Sponsor Cost {suffix}',
     )
     sponsor_org = Organization.objects.get(name=f'Org Sponsor Cost {suffix}')
-    admin_client = _any_admin_client()
+    admin_client = _any_manager_client()
     program = _create_program(admin_client, sponsor_org.id, f'Programme Cost {suffix}')
     asset = _create_asset(admin_client, sponsor_org.id, program['id'], f'Bien Cost {suffix}')
     lots = [
@@ -181,7 +182,7 @@ class TestMilestoneInstantiation:
 
         client = _register_and_authenticate('sponsor1@example.com', 'Org Jalons 1')
         organization = Organization.objects.get(name='Org Jalons 1')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id)
         asset = _create_asset(admin_client, organization.id, program['id'])
         lot = _create_lot(admin_client, organization.id, asset['id'])
@@ -197,7 +198,7 @@ class TestMilestoneInstantiation:
     def test_editing_template_in_db_only_affects_lots_created_afterwards(self):
         _client = _register_and_authenticate('sponsor2@example.com', 'Org Jalons 2')
         organization = Organization.objects.get(name='Org Jalons 2')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id)
         asset = _create_asset(admin_client, organization.id, program['id'])
 
@@ -286,10 +287,11 @@ class TestHierarchyIntegrity:
     """
 
     def test_asset_creation_requires_a_program(self):
-        # Ticket B-039 : la création est réservée à admin_keyimmo — un
+        # Ticket B-039, révisé par l'audit UI R1 (R02) : la création est
+        # réservée au gestionnaire (gestionnaire_adv), plus à admin_keyimmo — un
         # 403 masquerait le 400 réellement testé ici (le champ manquant),
-        # donc l'appelant doit être un admin, `organization` fourni.
-        admin_client, organization, _user = _register_admin('integrity1-admin@example.com', 'Org Intégrité 1 Admin')
+        # donc l'appelant doit être le gestionnaire, `organization` fourni.
+        admin_client, organization, _user = _register_gestionnaire_adv('integrity1-adv@example.com', 'Org Intégrité 1 ADV')
         response = admin_client.post(
             reverse('asset-list'), {'organization': str(organization.id), 'name': 'Bien orphelin'}, format='json',
         )
@@ -297,7 +299,7 @@ class TestHierarchyIntegrity:
         assert 'program' in response.data
 
     def test_lot_creation_requires_an_asset(self):
-        admin_client, organization, _user = _register_admin('integrity2-admin@example.com', 'Org Intégrité 2 Admin')
+        admin_client, organization, _user = _register_gestionnaire_adv('integrity2-adv@example.com', 'Org Intégrité 2 ADV')
         response = admin_client.post(
             reverse('lot-list'), {'organization': str(organization.id), 'name': 'Lot orphelin'}, format='json',
         )
@@ -329,7 +331,7 @@ class TestCrudIsOrganizationScoped:
     def _setup_org_a_hierarchy_then_switch_to_org_b(self):
         _client_a = _register_and_authenticate('crud-a@example.com', 'Org CRUD A')
         organization_a = Organization.objects.get(name='Org CRUD A')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program_a = _create_program(admin_client, organization_a.id, name='Programme A')
         asset_a = _create_asset(admin_client, organization_a.id, program_a['id'], name='Bien A')
         lot_a = _create_lot(admin_client, organization_a.id, asset_a['id'], name='Lot A')
@@ -423,7 +425,7 @@ class TestLotAssignedOrganization:
     def test_lot_has_no_assigned_organization_by_default(self):
         _client = _register_and_authenticate('assign-default@example.com', 'Org Assign Default')
         organization = Organization.objects.get(name='Org Assign Default')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id)
         asset = _create_asset(admin_client, organization.id, program['id'])
         lot = _create_lot(admin_client, organization.id, asset['id'])
@@ -433,7 +435,7 @@ class TestLotAssignedOrganization:
     def test_assign_organization_sets_the_field(self):
         client = _register_and_authenticate('assign-sets@example.com', 'Org Assign Sets')
         organization = Organization.objects.get(name='Org Assign Sets')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id)
         asset = _create_asset(admin_client, organization.id, program['id'])
         lot = _create_lot(admin_client, organization.id, asset['id'])
@@ -456,7 +458,7 @@ class TestLotAssignedOrganization:
     def test_assign_organization_requires_organization_id(self):
         client = _register_and_authenticate('assign-requires@example.com', 'Org Assign Requires')
         organization = Organization.objects.get(name='Org Assign Requires')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id)
         asset = _create_asset(admin_client, organization.id, program['id'])
         lot = _create_lot(admin_client, organization.id, asset['id'])
@@ -468,7 +470,7 @@ class TestLotAssignedOrganization:
     def test_assign_organization_rejects_an_unknown_organization_id(self):
         client = _register_and_authenticate('assign-unknown@example.com', 'Org Assign Unknown')
         organization = Organization.objects.get(name='Org Assign Unknown')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id)
         asset = _create_asset(admin_client, organization.id, program['id'])
         lot = _create_lot(admin_client, organization.id, asset['id'])
@@ -483,7 +485,7 @@ class TestLotAssignedOrganization:
     def test_assign_organization_on_a_lot_of_another_organization_returns_404(self):
         _client_a = _register_and_authenticate('assign-other-a@example.com', 'Org Assign Other A')
         organization_a = Organization.objects.get(name='Org Assign Other A')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization_a.id)
         asset = _create_asset(admin_client, organization_a.id, program['id'])
         lot = _create_lot(admin_client, organization_a.id, asset['id'])
@@ -509,7 +511,7 @@ class TestLotSurfaceField:
     def test_surface_can_be_set_via_the_existing_lot_endpoint(self):
         _client = _register_and_authenticate('lot-surface-set@example.com', 'Org Lot Surface Set')
         organization = Organization.objects.get(name='Org Lot Surface Set')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id)
         asset = _create_asset(admin_client, organization.id, program['id'])
 
@@ -519,7 +521,7 @@ class TestLotSurfaceField:
     def test_surface_is_null_by_default_no_guessed_value(self):
         _client = _register_and_authenticate('lot-surface-default@example.com', 'Org Lot Surface Default')
         organization = Organization.objects.get(name='Org Lot Surface Default')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id)
         asset = _create_asset(admin_client, organization.id, program['id'])
 
@@ -906,11 +908,12 @@ class TestProgramCostSequenceForcedCollision:
 
 @pytest.mark.django_db
 class TestProgramAssetLotAdminGatekeeping:
-    """Ticket B-039 — KEYIMMO est le gatekeeper de l'introduction des
-    programmes immobiliers : `admin_keyimmo` seul peut créer/modifier/
-    supprimer `Program`/`Asset`/`Lot`, sans jamais avoir besoin d'un
-    `Membership` réel dans l'organisation cible (capacité transverse, voir
-    `apps.backoffice.permissions.IsAdminKeyimmo`). Les autres organisations
+    """Ticket B-039, révisé par l'audit UI R1 (R02, PO-2026-09-27-09) —
+    KEYIMMO reste le gatekeeper de l'introduction des programmes : le
+    GESTIONNAIRE (`gestionnaire_adv`) seul crée/modifie/supprime
+    `Program`/`Asset`/`Lot`, sans `Membership` réel dans l'organisation
+    cible (capacité transverse, `IsGestionnaireADV`) ; l'administrateur n'a
+    plus ce pouvoir métier. Les autres organisations
     restent en lecture seule (`list`/`retrieve`/`hierarchy`), comportement
     strictement inchangé par ce ticket.
     """
@@ -920,7 +923,7 @@ class TestProgramAssetLotAdminGatekeeping:
             'gatekeeping-member@example.com', 'Org Gatekeeping Member',
         )
         organization = Organization.objects.get(name='Org Gatekeeping Member')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id, 'Programme Gatekeeping')
         asset = _create_asset(admin_client, organization.id, program['id'], 'Bien Gatekeeping')
         lot = _create_lot(admin_client, organization.id, asset['id'], 'Lot Gatekeeping')
@@ -960,12 +963,12 @@ class TestProgramAssetLotAdminGatekeeping:
         assert Asset.objects.get(id=asset['id']).name == 'Bien Gatekeeping'
         assert Lot.objects.get(id=lot['id']).name == 'Lot Gatekeeping'
 
-    def test_admin_keyimmo_can_write_for_an_organization_where_he_has_no_membership_at_all(self):
+    def test_the_manager_can_write_for_an_organization_where_he_has_no_membership_at_all(self):
         organization = Organization.objects.create(
             name='Org Sans Membership Admin', country_pack=CountryPack.objects.get(code='SN'),
         )
-        admin_client, _admin_org, admin_user = _register_admin(
-            'gatekeeping-admin@example.com', 'Org Gatekeeping Admin',
+        admin_client, _admin_org, admin_user = _register_gestionnaire_adv(
+            'gatekeeping-adv@example.com', 'Org Gatekeeping ADV',
         )
         assert not Membership.objects.filter(user=admin_user, organization=organization).exists()
 
@@ -1008,7 +1011,7 @@ class TestProgramAssetLotAdminGatekeeping:
         set_rls_context(organization_id=organization.id)
         assert not Program.objects.filter(id=program['id']).exists()
         # Aucun Membership n'a jamais été créé pour permettre tout ceci —
-        # la capacité transverse d'admin_keyimmo est la seule en jeu.
+        # la capacité transverse du gestionnaire est la seule en jeu.
         assert not Membership.objects.filter(user=admin_user, organization=organization).exists()
 
     def test_write_without_organization_id_query_param_is_rejected_on_update_and_destroy(self):
@@ -1019,8 +1022,8 @@ class TestProgramAssetLotAdminGatekeeping:
         organization = Organization.objects.create(
             name='Org Query Param Requis', country_pack=CountryPack.objects.get(code='SN'),
         )
-        admin_client, _admin_org, _admin_user = _register_admin(
-            'gatekeeping-queryparam-admin@example.com', 'Org Gatekeeping Query Param Admin',
+        admin_client, _admin_org, _admin_user = _register_gestionnaire_adv(
+            'gatekeeping-queryparam-adv@example.com', 'Org Gatekeeping Query Param ADV',
         )
         program = _create_program(admin_client, organization.id, 'Programme Sans Query Param')
 
@@ -1029,12 +1032,24 @@ class TestProgramAssetLotAdminGatekeeping:
         ).status_code == 400
         assert admin_client.delete(reverse('program-detail', args=[program['id']])).status_code == 400
 
+    def test_admin_keyimmo_can_no_longer_write_programs_assets_or_lots(self):
+        """Audit UI R1 (R02) : refus SERVEUR, rien n'est créé."""
+        organization = Organization.objects.create(
+            name='Org R02 Admin Refus', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        admin_client, _admin_org, _admin_user = _register_admin('gatekeeping-r02-admin@example.com', 'Org R02 Admin')
+        assert admin_client.post(
+            reverse('program-list'), {'organization': str(organization.id), 'name': 'Refusé'}, format='json',
+        ).status_code == 403
+        set_rls_context(organization_id=organization.id)
+        assert not Program.objects.filter(organization=organization).exists()
+
     def test_read_access_for_ordinary_members_is_unchanged(self):
         member_client = _register_and_authenticate(
             'gatekeeping-read@example.com', 'Org Gatekeeping Read',
         )
         organization = Organization.objects.get(name='Org Gatekeeping Read')
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, organization.id, 'Programme Lecture')
         _asset = _create_asset(admin_client, organization.id, program['id'], 'Bien Lecture')
 
@@ -1046,13 +1061,14 @@ class TestProgramAssetLotAdminGatekeeping:
 @pytest.mark.django_db
 class TestLotCommercialFieldsGatekeeping:
     """Ticket B-042 — `commercial_status`/`sale_price` suivent le même
-    verrou que `name`/`surface` (ticket B-039) : écriture réservée à
-    `admin_keyimmo`, même chemin de mutation (`LotViewSet.update`)."""
+    verrou que `name`/`surface` (ticket B-039) : écriture réservée au
+    gestionnaire depuis l'audit UI R1 (R02), même chemin de mutation
+    (`LotViewSet.update`)."""
 
-    def test_admin_keyimmo_can_set_commercial_status_and_sale_price(self):
+    def test_the_manager_can_set_commercial_status_and_sale_price(self):
         sponsor_org, _program, lots = _setup_sponsor_program_with_lots('commercial-admin')
         lot = lots[0]
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
 
         response = admin_client.patch(
             reverse('lot-detail', args=[lot['id']]) + f'?organization_id={sponsor_org.id}',
@@ -1085,7 +1101,7 @@ class TestLotCommercialFieldsGatekeeping:
     def test_an_invalid_commercial_status_is_rejected(self):
         sponsor_org, _program, lots = _setup_sponsor_program_with_lots('commercial-invalid')
         lot = lots[0]
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
 
         response = admin_client.patch(
             reverse('lot-detail', args=[lot['id']]) + f'?organization_id={sponsor_org.id}',
@@ -1157,7 +1173,7 @@ class TestProgramRequest:
         response = member_client.get(reverse('program-request-list-create'))
         assert response.status_code == 403
 
-    def test_admin_keyimmo_lists_requests_across_organizations_without_membership(self):
+    def test_the_manager_lists_requests_across_organizations_without_membership(self):
         client_a = _register_and_authenticate('request-cross-a@example.com', 'Org Request Cross A')
         client_a.post(
             reverse('program-request-list-create'), {'description': 'Demande cross A'}, format='json',
@@ -1166,7 +1182,7 @@ class TestProgramRequest:
         client_b.post(
             reverse('program-request-list-create'), {'description': 'Demande cross B'}, format='json',
         )
-        admin_client, _admin_org, admin_user = _register_admin(
+        admin_client, _admin_org, admin_user = _register_gestionnaire_adv(
             'request-cross-admin@example.com', 'Org Request Cross Admin',
         )
         org_a = Organization.objects.get(name='Org Request Cross A')
@@ -1178,13 +1194,16 @@ class TestProgramRequest:
         assert response.status_code == 200
         organization_names = {row['organization_name'] for row in response.data}
         assert {'Org Request Cross A', 'Org Request Cross B'}.issubset(organization_names)
+        # Audit UI R1 (R02) : l'administrateur n'instruit plus les demandes.
+        admin_client, _o, _u = _register_admin('request-cross-r02-admin@example.com', 'Org Request R02 Admin')
+        assert admin_client.get(reverse('program-request-list-create')).status_code == 403
 
-    def test_admin_keyimmo_can_filter_requests_by_status(self):
+    def test_the_manager_can_filter_requests_by_status(self):
         client = _register_and_authenticate('request-filter@example.com', 'Org Request Filter')
         created = client.post(
             reverse('program-request-list-create'), {'description': 'À filtrer'}, format='json',
         ).data
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         organization = Organization.objects.get(name='Org Request Filter')
         admin_client.post(
             reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
@@ -1197,13 +1216,13 @@ class TestProgramRequest:
         assert all(row['id'] != created['id'] for row in pending.data)
         assert any(row['id'] == created['id'] for row in accepted.data)
 
-    def test_admin_keyimmo_can_accept_a_request_without_creating_a_program(self):
+    def test_the_manager_can_accept_a_request_without_creating_a_program(self):
         client = _register_and_authenticate('request-accept@example.com', 'Org Request Accept')
         organization = Organization.objects.get(name='Org Request Accept')
         created = client.post(
             reverse('program-request-list-create'), {'description': 'À accepter'}, format='json',
         ).data
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
 
         response = admin_client.post(
             reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
@@ -1219,13 +1238,13 @@ class TestProgramRequest:
         set_rls_context(organization_id=organization.id)
         assert not Program.objects.filter(organization=organization).exists()
 
-    def test_admin_keyimmo_can_refuse_a_request(self):
+    def test_the_manager_can_refuse_a_request(self):
         client = _register_and_authenticate('request-refuse@example.com', 'Org Request Refuse')
         organization = Organization.objects.get(name='Org Request Refuse')
         created = client.post(
             reverse('program-request-list-create'), {'description': 'À refuser'}, format='json',
         ).data
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
 
         response = admin_client.post(
             reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
@@ -1255,7 +1274,7 @@ class TestProgramRequest:
         created = client.post(
             reverse('program-request-list-create'), {'description': 'Sans query param'}, format='json',
         ).data
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
 
         response = admin_client.post(
             reverse('program-request-decide', args=[created['id']]), {'status': 'acceptee'}, format='json',
@@ -1269,7 +1288,7 @@ class TestProgramRequest:
         created = client.post(
             reverse('program-request-list-create'), {'description': 'Statut invalide'}, format='json',
         ).data
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
 
         response = admin_client.post(
             reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
@@ -1292,7 +1311,7 @@ class TestProgramRequest:
         created = client.post(
             reverse('program-request-list-create'), {'description': 'À notifier — acceptée'}, format='json',
         ).data
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
 
         admin_client.post(
             reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
@@ -1313,7 +1332,7 @@ class TestProgramRequest:
         created = client.post(
             reverse('program-request-list-create'), {'description': 'À notifier — refusée'}, format='json',
         ).data
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
 
         admin_client.post(
             reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
@@ -1358,9 +1377,10 @@ class TestGestionnaireADVRole:
         assert Asset.objects.filter(id=asset['id']).exists()
         assert Lot.objects.filter(id=lot['id']).exists()
 
-    def test_gestionnaire_adv_alone_can_update_but_never_destroy(self):
-        """B-047 — suppression retirée à l'ADV (cascade sur les affectations
-        client des lots), modification conservée."""
+    def test_gestionnaire_adv_alone_can_update_and_destroy(self):
+        """B-047 réservait la suppression à admin_keyimmo ; audit UI R1 (R02) :
+        préparer le scénario métier, suppression comprise, relève du seul
+        gestionnaire."""
         target_organization = Organization.objects.create(
             name='Org Cible ADV MAJ', country_pack=CountryPack.objects.get(code='SN'),
         )
@@ -1378,17 +1398,18 @@ class TestGestionnaireADVRole:
         )
         assert response.status_code == 200
 
-        assert adv_client.delete(reverse('lot-detail', args=[lot['id']]) + query).status_code == 403
-        assert adv_client.delete(reverse('asset-detail', args=[asset['id']]) + query).status_code == 403
-        assert adv_client.delete(reverse('program-detail', args=[program['id']]) + query).status_code == 403
+        assert adv_client.delete(reverse('lot-detail', args=[lot['id']]) + query).status_code == 204
+        assert adv_client.delete(reverse('asset-detail', args=[asset['id']]) + query).status_code == 204
+        assert adv_client.delete(reverse('program-detail', args=[program['id']]) + query).status_code == 204
         set_rls_context(organization_id=target_organization.id)
-        assert Program.objects.filter(id=program['id']).exists()
-        assert Lot.objects.filter(id=lot['id']).exists()
+        assert not Program.objects.filter(id=program['id']).exists()
+        assert not Lot.objects.filter(id=lot['id']).exists()
 
-    def test_gestionnaire_adv_can_set_commercial_status_but_not_sale_price(self):
-        """B-047 — le prix de vente est du pricing (admin_keyimmo) ; le
-        statut commercial est le suivi des ventes (ADV). Une requête qui
-        mêle les deux est refusée EN BLOC, jamais appliquée à moitié."""
+    def test_gestionnaire_adv_sets_sale_price_and_commercial_status_but_admin_cannot(self):
+        """B-047 réservait le prix de vente à admin_keyimmo ; audit UI R1
+        (R02) : prix et statut commercial relèvent du gestionnaire. Une
+        requête de l'administrateur est refusée EN BLOC, jamais appliquée à
+        moitié."""
         target_organization = Organization.objects.create(
             name='Org Cible ADV Prix', country_pack=CountryPack.objects.get(code='SN'),
         )
@@ -1400,8 +1421,9 @@ class TestGestionnaireADVRole:
         lot = _create_lot(adv_client, target_organization.id, asset['id'], 'Lot ADV Prix')
         url = reverse('lot-detail', args=[lot['id']]) + f'?organization_id={target_organization.id}'
 
-        assert adv_client.patch(url, {'sale_price': '1.00'}, format='json').status_code == 403
-        assert adv_client.patch(
+        admin_client, _admin_org, _admin_user = _register_admin('adv-price-admin@example.com', 'Org ADV Price Admin')
+        assert admin_client.patch(url, {'sale_price': '1.00'}, format='json').status_code == 403
+        assert admin_client.patch(
             url, {'sale_price': '1.00', 'commercial_status': 'vendu'}, format='json',
         ).status_code == 403
         set_rls_context(organization_id=target_organization.id)
@@ -1409,12 +1431,13 @@ class TestGestionnaireADVRole:
         assert untouched.sale_price is None
         assert untouched.commercial_status != 'vendu'
 
-        assert adv_client.patch(url, {'commercial_status': 'vendu'}, format='json').status_code == 200
+        assert adv_client.patch(
+            url, {'sale_price': '45000000.00', 'commercial_status': 'vendu'}, format='json',
+        ).status_code == 200
         set_rls_context(organization_id=target_organization.id)
-        assert Lot.objects.get(id=lot['id']).commercial_status == 'vendu'
-
-        admin_client = _any_admin_client()
-        assert admin_client.patch(url, {'sale_price': '45000000.00'}, format='json').status_code == 200
+        priced = Lot.objects.get(id=lot['id'])
+        assert priced.commercial_status == 'vendu'
+        assert priced.sale_price == Decimal('45000000.00')
 
     def test_gestionnaire_adv_gets_403_on_every_other_admin_only_endpoint(self):
         """B-047 — refus jusque-là seulement constatés en live (revue
@@ -1437,8 +1460,8 @@ class TestGestionnaireADVRole:
             ('post', reverse('legal-payment-tier-template-create')),
             ('post', reverse('control-office-rate-create')),
             ('get', reverse('backoffice-user-search') + '?q=a'),
-            ('post', reverse('backoffice-mission-create')),
-            ('get', reverse('backoffice-litige-list')),
+            # Audit UI R1 (R02) : missions et litiges relèvent désormais du
+            # gestionnaire (voir apps/backoffice/tests.py).
             ('get', reverse('procurement-admin-lot-search') + '?q=a'),
             ('get', reverse('task-admin-inbox')),
         ]
@@ -1483,9 +1506,10 @@ class TestGestionnaireADVRole:
         ).status_code == 403
         assert member_client.get(reverse('program-request-list-create')).status_code == 403
 
-    def test_admin_keyimmo_keeps_every_power_unaffected_by_the_new_adv_permission(self):
-        """Non-régression explicite, critère d'acceptation B-046 :
-        `admin_keyimmo` fait exactement ce qu'il faisait avant ce ticket."""
+    def test_admin_keyimmo_has_no_business_power_any_more(self):
+        """Audit UI R1 (R02, PO-2026-09-27-09) — remplace la non-régression
+        de B-046 (« admin_keyimmo garde tous ses pouvoirs ») : l'administrateur
+        ne prépare plus le scénario métier et n'instruit plus les demandes."""
         target_organization = Organization.objects.create(
             name='Org Cible Non Regression Admin', country_pack=CountryPack.objects.get(code='SN'),
         )
@@ -1494,28 +1518,27 @@ class TestGestionnaireADVRole:
         )
         assert not Membership.objects.filter(user=admin_user, organization=target_organization).exists()
 
-        program = _create_program(admin_client, target_organization.id, 'Programme Non Régression')
-        assert 'id' in program, program
-        asset = _create_asset(admin_client, target_organization.id, program['id'], 'Bien Non Régression')
-        lot = _create_lot(admin_client, target_organization.id, asset['id'], 'Lot Non Régression')
-        assert 'id' in lot, lot
+        assert admin_client.post(
+            reverse('program-list'), {'organization': str(target_organization.id), 'name': 'Refusé'}, format='json',
+        ).status_code == 403
 
         requester_client = _register_and_authenticate(
             'adv-nonregression-requester@example.com', 'Org ADV Non Regression Requester',
         )
         requester_organization = Organization.objects.get(name='Org ADV Non Regression Requester')
         created = requester_client.post(
-            reverse('program-request-list-create'), {'description': 'Non régression admin'}, format='json',
+            reverse('program-request-list-create'), {'description': 'Refus admin'}, format='json',
         ).data
 
-        assert admin_client.get(reverse('program-request-list-create')).status_code == 200
+        assert admin_client.get(reverse('program-request-list-create')).status_code == 403
         decision = admin_client.post(
             reverse('program-request-decide', args=[created['id']])
             + f'?organization_id={requester_organization.id}',
             {'status': 'acceptee'}, format='json',
         )
-        assert decision.status_code == 200
-
+        assert decision.status_code == 403
+        set_rls_context(organization_id=target_organization.id)
+        assert not Program.objects.filter(organization=target_organization).exists()
 
 @pytest.mark.django_db
 class TestGestionnaireADVBackofficeScreens:
@@ -1541,7 +1564,7 @@ class TestGestionnaireADVBackofficeScreens:
         target_organization = Organization.objects.create(
             name='Org Cible ADV Commerciale', country_pack=CountryPack.objects.get(code='SN'),
         )
-        admin_client = _any_admin_client()
+        admin_client = _any_manager_client()
         program = _create_program(admin_client, target_organization.id, 'Programme Commercial')
         asset = _create_asset(admin_client, target_organization.id, program['id'], 'Bien Commercial')
         lot = _create_lot(

@@ -166,3 +166,112 @@ class TestT14NewInstanceAfterArchive:
         set_rls_context(organization_id=promoter.id)
         new_program = Program.objects.get(name=PROGRAM_NAME, demo_instance=second)
         assert offer[0]['id'] == str(new_program.id)
+
+
+# ─── R01 : aucune inscription publique (CDC §10, PO-2026-09-27-08) ─────────
+
+from django.test import override_settings  # noqa: E402
+
+from apps.accounts.models import User  # noqa: E402
+
+
+@pytest.mark.django_db
+class TestR01NoPublicRegistration:
+    def test_registration_is_closed_outside_the_test_factory(self):
+        with override_settings(PUBLIC_REGISTRATION_ENABLED=False):
+            response = APIClient().post(
+                reverse('register'),
+                {'email': 'visiteur@example.com', 'password': 'Visiteur-2026!', 'full_name': 'Visiteur', 'role': 'client'},
+                format='json',
+            )
+        assert response.status_code == 404
+        assert not User.objects.filter(email='visiteur@example.com').exists()
+
+    def test_registration_is_closed_by_default_in_the_project_settings(self, monkeypatch):
+        import importlib
+
+        from config import settings as project_settings
+        monkeypatch.delenv('PUBLIC_REGISTRATION_ENABLED', raising=False)
+        assert importlib.reload(project_settings).PUBLIC_REGISTRATION_ENABLED is False
+
+    def test_provisioned_demo_accounts_can_still_log_in(self):
+        _seed()
+        assert _login('client1.demo@keya.test') is not None
+
+
+# ─── R02 : administrateur sans pouvoir métier (CDC §4, PO-2026-09-27-09) ───
+
+ADMIN = 'admin.demo@keya.test'
+ADV = 'adv.demo@keya.test'
+FINANCE = 'finance.demo@keya.test'
+
+
+def _promoter_lot():
+    promoter = Organization.objects.get(name=PROMOTER_ORG)
+    set_rls_context(organization_id=promoter.id)
+    return promoter, Lot.objects.filter(organization=promoter).order_by('name').first()
+
+
+@pytest.mark.django_db
+class TestR02AdminHasNoBusinessPower:
+    """Refus SERVEUR (403), pas seulement un menu masqué."""
+
+    def test_admin_is_refused_every_business_read(self):
+        _seed()
+        admin = _login(ADMIN)
+        for name in (
+            'reservation-admin-list', 'finance-account-list', 'finance-payment-notice-list',
+            'backoffice-control-list', 'backoffice-inspector-list', 'backoffice-litige-list',
+        ):
+            assert admin.get(reverse(name)).status_code == 403, name
+
+    def test_admin_cannot_prepare_the_business_scenario(self):
+        _seed()
+        admin = _login(ADMIN)
+        promoter, lot = _promoter_lot()
+        created = admin.post(reverse('program-list'), {'organization': str(promoter.id), 'name': 'X'}, format='json')
+        assert created.status_code == 403
+        price = admin.patch(
+            reverse('lot-detail', args=[lot.id]) + f'?organization_id={promoter.id}', {'sale_price': '1.00'}, format='json',
+        )
+        assert price.status_code == 403
+        set_rls_context(organization_id=promoter.id)
+        lot.refresh_from_db()
+        assert str(lot.sale_price) == '30000000.00'
+
+    def test_admin_keeps_accounts_reference_data_and_read_only_journal(self):
+        _seed()
+        admin = _login(ADMIN)
+        assert admin.get(reverse('backoffice-user-search') + '?q=demo').status_code == 200
+        assert admin.get(reverse('country-pack-list')).status_code == 200
+        assert admin.get(reverse('admin-journal')).status_code == 200
+        # Journal en lecture seule : aucune écriture exposée.
+        assert admin.post(reverse('admin-journal'), {}, format='json').status_code == 405
+        assert admin.delete(reverse('admin-journal')).status_code == 405
+
+    def test_the_manager_does_the_business_work_instead(self):
+        _seed()
+        adv = _login(ADV)
+        promoter, lot = _promoter_lot()
+        assert adv.get(reverse('reservation-admin-list')).status_code == 200
+        assert adv.get(reverse('backoffice-control-list')).status_code == 200
+        created = adv.post(reverse('program-list'), {'organization': str(promoter.id), 'name': 'Programme ADV'}, format='json')
+        assert created.status_code == 201, created.data
+        price = adv.patch(
+            reverse('lot-detail', args=[lot.id]) + f'?organization_id={promoter.id}', {'sale_price': '30000000.00'},
+            format='json',
+        )
+        assert price.status_code == 200, price.data
+
+    def test_journal_is_refused_to_business_roles(self):
+        _seed()
+        for email in (ADV, FINANCE):
+            assert _login(email).get(reverse('admin-journal')).status_code == 403
+
+    def test_journal_lists_business_acts(self):
+        _seed()
+        client1 = _login('client1.demo@keya.test')
+        promoter, lot = _promoter_lot()
+        client1.post(reverse('reservation-create'), {'lot': str(lot.id), 'organization': str(promoter.id)}, format='json')
+        journal = _login(ADMIN).get(reverse('admin-journal')).json()
+        assert any(entry['actor'] == 'client1.demo@keya.test' for entry in journal)

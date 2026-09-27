@@ -14,7 +14,6 @@ from apps.tasks.models import TaskPriority, TaskType
 from apps.tasks.services import close_tasks, notify_user
 
 ADV_ROLE_CODE = 'gestionnaire_adv'
-ADMIN_ROLE_CODE = 'admin_keyimmo'
 FINANCE_ROLE_CODE = 'finance'
 
 RESERVATION_TO_VALIDATE = 'reservation_to_validate'
@@ -42,11 +41,10 @@ def users_with_role(role_code, *, restore_user_id):
 
 
 def _sales_team(*, restore_user_id):
-    """ADV ; à défaut d'ADV, les admins KEYIMMO (jamais une notification
-    perdue faute de destinataire)."""
-    return users_with_role(ADV_ROLE_CODE, restore_user_id=restore_user_id) or users_with_role(
-        ADMIN_ROLE_CODE, restore_user_id=restore_user_id,
-    )
+    """Le gestionnaire (ADV). Audit UI R1 (R02) : plus de repli sur
+    l'administrateur, qui n'a aucun pouvoir métier et ne pourrait pas agir
+    sur la notification."""
+    return users_with_role(ADV_ROLE_CODE, restore_user_id=restore_user_id)
 
 
 def _xof(amount):

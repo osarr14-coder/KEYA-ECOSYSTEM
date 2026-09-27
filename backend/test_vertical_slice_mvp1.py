@@ -83,27 +83,28 @@ def _jpeg_file(name):
 class TestVerticalSliceMVP1:
     def test_full_chain_from_program_creation_to_client_visible_resolved_reserve(self):
         # --- 1. Programme → Bien → Lot, jalons auto-instanciés (API navigable) ---
-        # Ticket B-039 : introduction du programme réservée à admin_keyimmo
-        # (KEYIMMO gatekeeper) — l'admin est donc enregistré ici, avant même
-        # le constructeur, et crée la hiérarchie pour l'organisation du
+        # Ticket B-039, révisé par l'audit UI R1 (R02) : introduction du
+        # programme réservée au GESTIONNAIRE (KEYIMMO gatekeeper, plus
+        # admin_keyimmo, sans pouvoir métier) — enregistré ici, avant même
+        # le constructeur, il crée la hiérarchie pour l'organisation du
         # constructeur (organisation fournie explicitement, même bascule
         # RLS que create_program_cost). Réutilisé tel quel à l'étape 4
         # (affectation de mission), plus besoin d'un second enregistrement.
-        admin_client, admin_org, admin_user = _register(
-            'e2e2-admin@example.com', 'Org E2E2 Admin', role_code='admin_keyimmo',
+        manager_client, manager_org, manager_user = _register(
+            'e2e2-manager@example.com', 'Org E2E2 Gestionnaire', role_code='gestionnaire_adv',
         )
         constructeur_client, organization, constructeur_user = _register(
             'e2e2-constructeur@example.com', 'Org E2E2 Constructeur', role_code='constructeur',
         )
 
-        program_response = admin_client.post(
+        program_response = manager_client.post(
             reverse('program-list'),
             {'organization': str(organization.id), 'name': 'Programme Keur Massar'}, format='json',
         )
         assert program_response.status_code == 201, program_response.data
         program_id = program_response.data['id']
 
-        asset_response = admin_client.post(
+        asset_response = manager_client.post(
             reverse('asset-list'),
             {
                 'organization': str(organization.id), 'program': program_id,
@@ -114,7 +115,7 @@ class TestVerticalSliceMVP1:
         assert asset_response.status_code == 201, asset_response.data
         asset_id = asset_response.data['id']
 
-        lot_response = admin_client.post(
+        lot_response = manager_client.post(
             reverse('lot-list'),
             {'organization': str(organization.id), 'asset': asset_id, 'name': 'Lot 12'}, format='json',
         )
@@ -122,7 +123,7 @@ class TestVerticalSliceMVP1:
         lot_id = lot_response.data['id']
 
         # Bascule RLS explicite vers l'organisation du constructeur : la
-        # création admin ci-dessus restaure le contexte RLS de l'admin dans
+        # création ci-dessus restaure le contexte RLS du gestionnaire dans
         # son `finally` (ticket B-039) — une relecture ORM directe non
         # basculée échouerait silencieusement (piège déjà documenté,
         # `apps/programs/tests.py::TestProgramCostImmutability`).
@@ -172,9 +173,9 @@ class TestVerticalSliceMVP1:
         )
         assert evidence_response.status_code == 201, evidence_response.data
 
-        # --- 4. admin_keyimmo affecte un inspecteur indépendant (ticket 012) ---
-        # `admin_client`/`admin_org`/`admin_user` déjà enregistrés à l'étape 1
-        # (ticket B-039 : c'est ce même admin qui a créé le programme).
+        # --- 4. le gestionnaire affecte un inspecteur indépendant (ticket 012) ---
+        # `manager_client`/`manager_org`/`manager_user` déjà enregistrés à l'étape 1
+        # (c'est ce même gestionnaire qui a créé le programme).
         inspecteur_client, inspecteur_organization, inspecteur_user = _register(
             'e2e2-inspecteur@example.com', 'Org E2E2 Inspecteur', role_code='inspecteur',
         )
@@ -183,7 +184,7 @@ class TestVerticalSliceMVP1:
             'organisation que le lot inspecté.'
         )
 
-        mission1_response = admin_client.post(
+        mission1_response = manager_client.post(
             reverse('backoffice-mission-create'),
             {
                 'organization': str(organization.id),
@@ -296,9 +297,9 @@ class TestVerticalSliceMVP1:
             'ReserveCorrectionCreateSerializer ne doit exposer aucun champ status en entrée.'
         )
 
-        # --- 7. admin_keyimmo affecte une mission de suivi, l'inspecteur ---
+        # --- 7. le gestionnaire affecte une mission de suivi, l'inspecteur ---
         #        la mène, la réserve est levée ------------------------------
-        mission2_response = admin_client.post(
+        mission2_response = manager_client.post(
             reverse('backoffice-mission-create'),
             {
                 'organization': str(organization.id),

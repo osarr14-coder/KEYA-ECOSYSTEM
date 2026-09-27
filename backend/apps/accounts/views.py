@@ -1,4 +1,6 @@
+from django.conf import settings
 from rest_framework import generics, permissions, status
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -35,6 +37,9 @@ class RegisterView(generics.CreateAPIView):
     throttle_scope = 'register'
 
     def create(self, request, *args, **kwargs):
+        # Audit UI R1 (R01) : accès sur invitation uniquement (CDC §10).
+        if not settings.PUBLIC_REGISTRATION_ENABLED:
+            raise NotFound()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()

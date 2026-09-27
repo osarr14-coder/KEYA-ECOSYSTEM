@@ -71,3 +71,8 @@ REST_FRAMEWORK = {
     **REST_FRAMEWORK,
     'DEFAULT_THROTTLE_RATES': {'login': None, 'register': None, 'public': None},
 }
+
+# Audit UI R1 (R01) : l'inscription reste la fabrique de comptes des tests
+# unitaires. Fermée partout ailleurs (settings.py) ; un test vérifie la
+# fermeture (apps/sales/test_audit_ui_r1.py).
+PUBLIC_REGISTRATION_ENABLED = True

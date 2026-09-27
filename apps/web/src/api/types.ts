@@ -30,6 +30,18 @@ export interface Me {
  * utilisateur (la cible d'une recherche back-office), pas l'utilisateur
  * connecté, et ce serializer n'expose ni memberships ni rôle.
  */
+/** Audit UI R1 (R02) — événement du journal, lecture seule (admin). */
+export interface JournalEntry {
+  id: number;
+  created_at: string;
+  organization: string;
+  actor: string | null;
+  action: string;
+  object_type: string;
+  object_id: string;
+  justification: string;
+}
+
 export interface BackofficeUserSummary {
   id: string;
   email: string;

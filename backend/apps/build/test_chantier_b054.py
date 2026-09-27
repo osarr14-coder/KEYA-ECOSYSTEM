@@ -56,7 +56,10 @@ class TestChantierPathB054:
         builder, organization, _user, _program, _asset, lot = _setup_org_with_lot(
             'b054-constructeur@example.com', 'Org B054 Constructeur', role_code='constructeur',
         )
-        admin, _admin_org, _admin_user = _register('b054-admin@example.com', 'Org B054 KEYIMMO', role_code='admin_keyimmo')
+        # Audit UI R1 (R02) : l'affectation des contrôles relève du gestionnaire.
+        admin, _admin_org, _admin_user = _register(
+            'b054-adv-manager@example.com', 'Org B054 KEYIMMO', role_code='gestionnaire_adv',
+        )
         _inspector_client, inspector_org, inspector = _register(
             'b054-inspecteur@example.com', 'Org B054 Controle', role_code='inspecteur',
         )
@@ -141,11 +144,15 @@ class TestChantierIsolationB054:
         )
         assert other.get(reverse('build-lot-milestones', args=[lot.id])).status_code == 404
 
-    def test_controls_and_inspectors_are_admin_only(self):
+    def test_controls_and_inspectors_are_reserved_to_the_manager(self):
+        # Audit UI R1 (R02) : ni le constructeur, ni l'administrateur.
         builder, _org, _user, _program, _asset, _lot = _setup_org_with_lot(
             'b054-c@example.com', 'Org B054 C', role_code='constructeur',
         )
-        adv, _adv_org, _adv_user = _register('b054-adv@example.com', 'Org B054 ADV', role_code='gestionnaire_adv')
-        for client in (builder, adv):
+        admin, _admin_org, _admin_user = _register('b054-admin@example.com', 'Org B054 Admin', role_code='admin_keyimmo')
+        for client in (builder, admin):
             assert client.get(reverse('backoffice-control-list')).status_code == 403
             assert client.get(reverse('backoffice-inspector-list')).status_code == 403
+        adv, _adv_org, _adv_user = _register('b054-adv@example.com', 'Org B054 ADV', role_code='gestionnaire_adv')
+        assert adv.get(reverse('backoffice-control-list')).status_code == 200
+        assert adv.get(reverse('backoffice-inspector-list')).status_code == 200

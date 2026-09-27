@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.demo import demo_scope
-from apps.backoffice.permissions import IsAdminKeyimmo, IsAdminKeyimmoOrGestionnaireADV
+from apps.backoffice.permissions import IsAdminKeyimmo, IsGestionnaireADV
 from apps.core.viewsets import OrganizationScopedMixin
 from apps.messaging.mixins import MessageThreadMixin
 from apps.organizations.models import Organization
@@ -55,12 +55,12 @@ class ProgramViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
         if self.action in ('create', 'update', 'partial_update'):
             # Ticket B-046 — préparer le scénario métier (programme/bien/
             # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
-            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         if self.action == 'destroy':
-            # Ticket B-047 — la suppression reste admin_keyimmo : supprimer
-            # un programme emporte en cascade les affectations client de ses
-            # lots (revue indépendante de B-046).
-            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+            # Audit UI R1 (R02) : supprimer un élément du scénario métier est
+            # une action du gestionnaire, jamais de l'administrateur (B-047
+            # la réservait à admin_keyimmo).
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -141,12 +141,12 @@ class AssetViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
         if self.action in ('create', 'update', 'partial_update'):
             # Ticket B-046 — préparer le scénario métier (programme/bien/
             # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
-            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         if self.action == 'destroy':
-            # Ticket B-047 — la suppression reste admin_keyimmo : supprimer
-            # un programme emporte en cascade les affectations client de ses
-            # lots (revue indépendante de B-046).
-            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+            # Audit UI R1 (R02) : supprimer un élément du scénario métier est
+            # une action du gestionnaire, jamais de l'administrateur (B-047
+            # la réservait à admin_keyimmo).
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -218,12 +218,12 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
         if self.action in ('create', 'update', 'partial_update'):
             # Ticket B-046 — préparer le scénario métier (programme/bien/
             # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
-            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         if self.action == 'destroy':
-            # Ticket B-047 — la suppression reste admin_keyimmo : supprimer
-            # un programme emporte en cascade les affectations client de ses
-            # lots (revue indépendante de B-046).
-            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+            # Audit UI R1 (R02) : supprimer un élément du scénario métier est
+            # une action du gestionnaire, jamais de l'administrateur (B-047
+            # la réservait à admin_keyimmo).
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -250,8 +250,9 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
         # admin_keyimmo ; l'ADV garde le statut commercial (suivi des
         # ventes). Vérifié AVANT toute écriture : la requête est refusée en
         # bloc, jamais appliquée partiellement.
-        if request.data.get('sale_price') is not None and not IsAdminKeyimmo().has_permission(request, self):
-            raise PermissionDenied('Le prix de vente est réservé aux membres du rôle admin_keyimmo.')
+        # Audit UI R1 (R02) : le prix de vente relève du gestionnaire.
+        if request.data.get('sale_price') is not None and not IsGestionnaireADV().has_permission(request, self):
+            raise PermissionDenied('Le prix de vente est réservé aux membres du rôle gestionnaire_adv.')
         try:
             lot = services.update_lot(
                 admin_organization_id=request.organization.id if request.organization else None,
@@ -329,7 +330,7 @@ class CommercialLotSearchView(APIView):
     par organisation) et son coût.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]
 
     def get(self, request):
         lots = search_lots_for_commercial_as_admin(
@@ -462,7 +463,7 @@ class ProgramRequestListCreateView(APIView):
 
     def get_permissions(self):
         if self.request.method == 'GET':
-            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         return [permissions.IsAuthenticated()]
 
     def post(self, request):
@@ -513,7 +514,7 @@ class ProgramRequestDecisionView(APIView):
     `services.decide_program_request`.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+    permission_classes = [permissions.IsAuthenticated, IsGestionnaireADV]
 
     def post(self, request, request_id):
         organization_id = request.query_params.get('organization_id')

@@ -187,8 +187,10 @@ describe(
 
       expect(await screen.findByTestId('app-shell')).toHaveAttribute('data-density', 'dense');
       expect(screen.queryByLabelText('Connexion')).not.toBeInTheDocument();
-      // Ticket F-075 — écran d'arrivée : « À faire ».
-      expect(await screen.findByRole('heading', { name: 'Vos priorités du jour' })).toBeInTheDocument();
+      // Audit UI R1 (R02) : l'administrateur n'a pas d'écran métier (« À faire »
+      // relève du gestionnaire et de Finance) ; il arrive sur Utilisateurs.
+      expect(await screen.findByLabelText('Rechercher un utilisateur par email')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'À faire' })).not.toBeInTheDocument();
       // Ticket F-070 — déconnexion volontaire dans la barre du haut.
       expect(screen.getByRole('button', { name: /Se déconnecter/ })).toBeInTheDocument();
     });
@@ -298,13 +300,13 @@ describe(
         renderAuthenticated({ getMe });
 
         await screen.findByTestId('app-shell');
-        expect(screen.getByRole('link', { name: 'À faire' })).toHaveAttribute('aria-current', 'page');
+        // Audit UI R1 (R02) : écran d'arrivée de l'administrateur = Utilisateurs.
+        expect(screen.getByRole('link', { name: 'Utilisateurs' })).toHaveAttribute('aria-current', 'page');
         expect(screen.queryByLabelText('Rechercher un lot (nom)')).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('link', { name: "Devis / Appels d'offres" }));
 
         expect(await screen.findByLabelText('Rechercher un lot (nom)')).toBeInTheDocument();
-        expect(screen.queryByRole('heading', { name: 'Vos priorités du jour' })).not.toBeInTheDocument();
       },
     );
   },
@@ -323,6 +325,13 @@ describe(
     const getMeAdmin = () => vi.fn().mockResolvedValue({
       id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
       memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+    });
+    // Audit UI R1 (R02) : les écrans métier sont ceux du gestionnaire.
+    const getMeAdv = () => vi.fn().mockResolvedValue({
+      id: 'adv-1', email: 'adv@example.com', full_name: 'ADV',
+      memberships: [{
+        organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'gestionnaire_adv', role_label: 'Gestionnaire ADV',
+      }],
     });
 
     it('charger directement /tarifs affiche l\'écran Tarifs actif, jamais « À faire » par défaut', async () => {
@@ -357,12 +366,13 @@ describe(
         window.dispatchEvent(new PopStateEvent('popstate'));
       });
 
-      expect(await screen.findByRole('link', { name: 'À faire' })).toHaveAttribute('aria-current', 'page');
+      // Audit UI R1 (R02) : `/` ramène l'administrateur à son premier écran.
+      expect(await screen.findByRole('link', { name: 'Utilisateurs' })).toHaveAttribute('aria-current', 'page');
     });
 
     it('un chemin admin inconnu retombe sur « À faire » et corrige l\'URL affichée', async () => {
       window.history.replaceState(null, '', '/ecran-qui-n-existe-pas');
-      renderAuthenticated({ getMe: getMeAdmin() });
+      renderAuthenticated({ getMe: getMeAdv() });
 
       await screen.findByTestId('app-shell');
       expect(screen.getByRole('link', { name: 'À faire' })).toHaveAttribute('aria-current', 'page');
@@ -371,7 +381,7 @@ describe(
 
     // Ticket F-049 — nouvel onglet "Programmes" (création Program/Asset/Lot).
     it('changer d\'onglet vers Programmes affiche ProgramsView et met à jour l\'URL', async () => {
-      renderAuthenticated({ getMe: getMeAdmin() });
+      renderAuthenticated({ getMe: getMeAdv() });
 
       await screen.findByTestId('app-shell');
       fireEvent.click(screen.getByRole('link', { name: 'Programmes' }));
@@ -382,7 +392,7 @@ describe(
 
     // Ticket F-058 — pendant admin de ProgramRequestView.tsx (apps/home).
     it('changer d\'onglet vers Demandes de programme affiche ProgramRequestsView et met à jour l\'URL', async () => {
-      renderAuthenticated({ getMe: getMeAdmin() });
+      renderAuthenticated({ getMe: getMeAdv() });
 
       await screen.findByTestId('app-shell');
       fireEvent.click(screen.getByRole('link', { name: 'Demandes de programme' }));
@@ -392,8 +402,8 @@ describe(
     });
 
     // Ticket F-051/F-075 — barre latérale regroupée par métier.
-    it('la barre latérale regroupe les écrans par métier, « À faire » en tête (F-075)', async () => {
-      renderAuthenticated({ getMe: getMeAdmin() });
+    it('la barre latérale du gestionnaire regroupe les écrans métier, « À faire » en tête (F-075, R02)', async () => {
+      renderAuthenticated({ getMe: getMeAdv() });
 
       await screen.findByTestId('app-shell');
       const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
@@ -404,7 +414,17 @@ describe(
         'Finance', 'Comptes & décaissements',
         'Chantier', 'Contrôles à affecter',
         'Programmes', 'Programmes', 'Demandes de programme',
-        'Administration', 'Utilisateurs', "Devis / Appels d'offres", 'Tarifs', 'Paliers légaux',
+      ]);
+    });
+
+    it('audit R02 : la barre latérale de l’administrateur ne contient aucun écran métier', async () => {
+      renderAuthenticated({ getMe: getMeAdmin() });
+
+      await screen.findByTestId('app-shell');
+      const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
+      const entries = Array.from(sidebar.querySelectorAll('li')).map((item) => item.textContent);
+      expect(entries).toEqual([
+        'Administration', 'Utilisateurs', 'Journal', "Devis / Appels d'offres", 'Tarifs', 'Paliers légaux',
       ]);
     });
   },
@@ -518,18 +538,21 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
 
 describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
   it('ouvre « À faire » et met à jour l\'URL, jamais un rechargement complet (F-075)', async () => {
-    localStorage.setItem('keya_access_token', 'stored-admin-token');
+    // Audit UI R1 (R02) : « À faire » est un écran du gestionnaire.
+    localStorage.setItem('keya_access_token', 'stored-adv-token');
     const api = createMockApiClient({
       getMe: vi.fn().mockResolvedValue({
-        id: 'admin-1', email: 'admin@example.com', full_name: 'Admin',
-        memberships: [{ organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'admin_keyimmo', role_label: 'Admin' }],
+        id: 'adv-1', email: 'adv@example.com', full_name: 'ADV',
+        memberships: [{
+          organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'gestionnaire_adv', role_label: 'Gestionnaire ADV',
+        }],
       }),
       getMyInboxTasks: async () => [],
     });
     render(withApiClient(api, <App />));
     await screen.findByTestId('app-shell');
-    fireEvent.click(screen.getByRole('link', { name: 'Tarifs' }));
-    expect(window.location.pathname).toBe('/tarifs');
+    fireEvent.click(screen.getByRole('link', { name: 'Programmes' }));
+    expect(window.location.pathname).toBe('/programmes');
 
     fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
 
@@ -561,8 +584,9 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
     const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
     const labels = Array.from(sidebar.querySelectorAll('a')).map((link) => link.textContent);
     expect(labels).toEqual([
-      'À faire', 'Dossiers clients', 'Virements déclarés', 'Lots — prix & statut', 'Comptes & décaissements', 'Programmes',
-      'Demandes de programme',
+      // Audit UI R1 (R02) : l'affectation des contrôles passe au gestionnaire.
+      'À faire', 'Dossiers clients', 'Virements déclarés', 'Lots — prix & statut', 'Comptes & décaissements',
+      'Contrôles à affecter', 'Programmes', 'Demandes de programme',
     ]);
     expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
   });
@@ -687,7 +711,7 @@ describe('App — pages publiques (ticket F-079)', () => {
 
     const program = await screen.findByTestId('public-program');
     expect(program).toHaveTextContent('Complet');
-    expect(screen.queryByRole('button', { name: /Réserver — créer mon espace/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Réserver/ })).not.toBeInTheDocument();
   });
 
   it('« Se connecter » ouvre le formulaire à /connexion, sans rechargement ; le retour navigateur revient à l’accueil', async () => {
@@ -704,40 +728,24 @@ describe('App — pages publiques (ticket F-079)', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Suivre un achat immobilier neuf, du versement au chantier' })).toBeInTheDocument();
   });
 
-  it('inscription d’un acquéreur : compte client créé, connexion, redirection vers HOME', async () => {
-    const registerClient = vi.fn().mockResolvedValue(undefined);
-    const login = vi.fn().mockResolvedValue({ access: 'tok', refresh: 'ref' });
-    const getMe = vi.fn().mockResolvedValue({
-      id: 'u', email: 'awa@example.com', full_name: 'Awa',
-      memberships: [{ organization_id: 'o', organization_name: 'Compte personnel', role_code: 'client', role_label: 'Client' }],
-    });
-    const { redirect } = renderApp({ registerClient, login, getMe }, vi.fn(), '/inscription');
+  // Audit UI R1 (R01, PO-2026-09-27-08) : l'inscription publique est
+  // retirée ; ces tests remplacent ceux du formulaire d'inscription (F-079).
+  it.each(['/acces', '/inscription'])('%s affiche « Accès sur invitation », sans aucun formulaire d’identité', (path) => {
+    renderApp({}, vi.fn(), path);
 
-    fireEvent.change(screen.getByLabelText('Nom complet'), { target: { value: 'Awa Koné' } });
-    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'awa@example.com' } });
-    fireEvent.change(screen.getByLabelText('Mot de passe (8 caractères minimum)'), { target: { value: 'motdepasse' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Créer mon espace' }));
-
-    await waitFor(() => expect(registerClient).toHaveBeenCalledWith({
-      email: 'awa@example.com', password: 'motdepasse', full_name: 'Awa Koné',
-    }));
-    expect(login).toHaveBeenCalledWith('awa@example.com', 'motdepasse');
-    await waitFor(() => expect(redirect).toHaveBeenCalledWith(expect.stringContaining('localhost:5173')));
+    expect(screen.getByRole('heading', { level: 1, name: 'Accès sur invitation' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Nom complet|Email|Mot de passe/)).not.toBeInTheDocument();
+    expect(screen.getByText(/n’indiquez jamais d’identité/)).toBeInTheDocument();
   });
 
-  it('un refus du serveur à l’inscription (email déjà utilisé) est affiché tel quel, sans connexion', async () => {
-    const registerClient = vi.fn().mockRejectedValue(
-      new ApiError(400, 'bad request', undefined, { email: ['Un compte existe déjà avec cet email.'] }),
-    );
-    const login = vi.fn();
-    renderApp({ registerClient, login }, vi.fn(), '/inscription');
+  it('« Réserver » sur un programme mène à l’accès sur invitation, jamais à une inscription', async () => {
+    renderApp({ getPublicOffer: vi.fn().mockResolvedValue([PROGRAM]), getPublicWorksites: vi.fn().mockResolvedValue([]) }, vi.fn(), '/');
 
-    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'awa@example.com' } });
-    fireEvent.change(screen.getByLabelText('Mot de passe (8 caractères minimum)'), { target: { value: 'motdepasse' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Créer mon espace' }));
-
-    expect(await screen.findByText('Un compte existe déjà avec cet email.')).toBeInTheDocument();
-    expect(login).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Réserver — accès sur invitation' }));
+    expect(window.location.pathname).toBe('/acces');
+    expect(screen.getByRole('heading', { level: 1, name: 'Accès sur invitation' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Créer mon espace/ })).not.toBeInTheDocument();
   });
 });
 
