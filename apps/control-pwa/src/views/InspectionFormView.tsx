@@ -26,17 +26,53 @@ export interface InspectionFormViewProps {
 // CONTROL PWA n'utilise pas `AppShell` (layout tactile dédié, voir App.tsx)
 // donc n'hérite d'aucun des changements F-053, direction appliquée ici
 // directement.
+// Ticket F-076 (direction « Confiance premium ») — cartes blanches plus
+// aérées sur fond ivoire, légendes en petites capitales.
 const FIELDSET_STYLE = {
   border: `1px solid ${semanticColors.neutral.border}`,
-  borderRadius: '14px',
-  padding: '12px',
+  borderRadius: '18px',
+  padding: '12px 16px 16px',
+  margin: 0,
+  background: semanticColors.neutral.surface,
   boxShadow: 'var(--keya-shadow-sm)',
 };
 // Ticket F-045 — icône de repère devant chaque légende de section, même
 // famille visuelle que `Card` (icône + titre), sans introduire `Card` ici :
 // un `<fieldset>` a déjà sa propre sémantique de groupe de formulaire,
 // jamais dupliquée par un second conteneur.
-const LEGEND_STYLE = { display: 'flex', alignItems: 'center', gap: '6px' };
+const LEGEND_STYLE = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
+  padding: '0 6px',
+  fontSize: '12px',
+  fontWeight: 700,
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  color: semanticColors.neutral.textMuted,
+} as const;
+
+/** Ticket F-076 — tuile d'avis (Conforme / Réserve) : grande cible tactile,
+ * l'avis choisi est rempli (navy pour conforme, rouge sombre pour réserve)
+ * et dit en texte par la case cochée, jamais par la couleur seule. */
+function decisionTileStyle(selected: boolean, tone: 'primary' | 'danger') {
+  const fill = tone === 'primary' ? semanticColors.primary.background : semanticColors.danger.solid!;
+  const text = tone === 'primary' ? semanticColors.primary.text : '#FFFFFF';
+  return {
+    minHeight: '64px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '10px',
+    borderRadius: '14px',
+    border: `2px solid ${selected ? fill : semanticColors.neutral.border}`,
+    background: selected ? fill : semanticColors.neutral.surface,
+    color: selected ? text : semanticColors.neutral.text,
+    fontWeight: 700,
+    fontSize: '16px',
+    cursor: 'pointer',
+  } as const;
+}
 
 function PhotoThumbnail({ photo, onRemove }: { photo: LocalPhoto; onRemove: () => void }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
@@ -436,7 +472,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
         >
           ← Missions
         </button>
-        <h1 style={{ margin: '8px 0 4px' }}>{mission ? `${mission.lotName} — ${mission.assetName}` : missionId}</h1>
+        <h1 style={{ margin: '8px 0 4px', fontSize: '24px' }}>{mission ? `${mission.lotName} — ${mission.assetName}` : missionId}</h1>
         {mission && <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{mission.programName} · {mission.milestoneLabel}</p>}
       </div>
 
@@ -491,12 +527,22 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
 
       <fieldset style={FIELDSET_STYLE}>
         <legend style={LEGEND_STYLE}><Icon name="clipboard-check" size={18} />Checklist</legend>
-        {draft.checklist.map((item) => (
-          <label key={item.id} style={{ display: 'block', padding: '8px 0', minHeight: '44px' }}>
+        {draft.checklist.map((item, index) => (
+          <label
+            key={item.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              minHeight: '48px',
+              borderTop: index > 0 ? `1px solid ${semanticColors.neutral.border}` : 'none',
+            }}
+          >
             <input
               type="checkbox"
               checked={item.checked}
               onChange={() => toggleChecklistItem(item.id)}
+              style={{ width: '22px', height: '22px', flexShrink: 0, accentColor: semanticColors.primary.background }}
             />
             {item.label}
           </label>
@@ -505,8 +551,28 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
 
       <fieldset style={FIELDSET_STYLE}>
         <legend style={LEGEND_STYLE}><Icon name="camera" size={18} />Photos</legend>
-        <label>
-          Ajouter une photo
+        {/* Ticket F-076 — grande tuile tactile au lieu du champ fichier natif
+            (« Choose Files ») ; le champ reste le vrai contrôle accessible,
+            focus clavier rendu visible par `.keya-file-drop` (GlobalStyles). */}
+        <label
+          className="keya-file-drop"
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            minHeight: '72px',
+            marginTop: '4px',
+            borderRadius: '14px',
+            border: `2px dashed ${semanticColors.neutral.border}`,
+            color: semanticColors.neutral.heading,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          <Icon name="camera" size={20} />
+          + Ajouter une photo
           <Input
             type="file"
             accept="image/*"
@@ -514,6 +580,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
             multiple
             aria-label="Ajouter une photo"
             onChange={handlePhotoAdd}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
           />
         </label>
         <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
@@ -523,7 +590,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
         </ul>
       </fieldset>
 
-      <label style={{ display: 'block' }}>
+      <label style={{ display: 'block', fontWeight: 600 }}>
         Commentaire
         {/* `key={draft.id}` : force un vrai remount quand le brouillon
             change d'identité (ex : abandon d'un conflit puis reprise sur un
@@ -537,28 +604,39 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
           defaultValue={draft.comment}
           onBlur={handleCommentBlur}
           rows={3}
-          style={{ display: 'block', width: '100%', marginTop: '4px', resize: 'vertical' }}
+          style={{
+            display: 'block', width: '100%', marginTop: '6px', resize: 'vertical', padding: '12px 14px', borderRadius: '14px',
+            border: `1px solid ${semanticColors.neutral.border}`, font: 'inherit', fontWeight: 400,
+          }}
         />
       </label>
 
       <fieldset style={FIELDSET_STYLE}>
         <legend style={LEGEND_STYLE}><Icon name="check-circle" size={18} />Décision</legend>
-        <label style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', marginRight: '16px' }}>
-          <input
-            type="radio" name="decision" value="conforme"
-            checked={draft.decision === 'conforme'}
-            onChange={() => handleDecisionChange('conforme')}
-          />
-          Conforme
-        </label>
-        <label style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center' }}>
-          <input
-            type="radio" name="decision" value="reserve"
-            checked={draft.decision === 'reserve'}
-            onChange={() => handleDecisionChange('reserve')}
-          />
-          Réserve
-        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px', marginTop: '4px' }}>
+          <label style={decisionTileStyle(draft.decision === 'conforme', 'primary')}>
+            <input
+              type="radio" name="decision" value="conforme"
+              checked={draft.decision === 'conforme'}
+              onChange={() => handleDecisionChange('conforme')}
+              style={{ width: '20px', height: '20px', accentColor: semanticColors.accent.solid }}
+            />
+            Conforme
+          </label>
+          <label style={decisionTileStyle(draft.decision === 'reserve', 'danger')}>
+            <input
+              type="radio" name="decision" value="reserve"
+              checked={draft.decision === 'reserve'}
+              onChange={() => handleDecisionChange('reserve')}
+              style={{ width: '20px', height: '20px', accentColor: semanticColors.accent.solid }}
+            />
+            Réserve
+          </label>
+        </div>
+        <p style={{ margin: '12px 0 0', fontSize: '14px', color: semanticColors.neutral.textMuted }}>
+          Votre avis est enregistré sur cet appareil et envoyé dès que le réseau le permet. Un avis conforme sur une
+          mission de suivi lève la réserve.
+        </p>
       </fieldset>
     </section>
   );

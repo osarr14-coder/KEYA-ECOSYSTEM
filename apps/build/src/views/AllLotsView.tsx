@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, densityTokens, Input, ProgressBar, Select, type Density,
+  AlertBanner, ApiErrorBanner, Button, Card, densityTokens, Input, ProgressBar, Select, type Density, PageHeader,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -125,6 +125,10 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
 
   return (
     <section aria-label="Tous les lots" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <PageHeader
+        eyebrow="Pilotage du chantier"
+        title="Tous les lots"
+      />
       {/* Ticket F-055 (suite F-053/F-054) — filtres + export posés dans un
           `Card` : avant ce ticket, seul ce bloc flottait à même le canevas
           de page, contrairement au tableau de résultats juste en dessous

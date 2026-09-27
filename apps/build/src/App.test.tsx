@@ -55,17 +55,18 @@ describe('App — critère produit 26.2 : Exceptions par défaut, jamais les KPI
 
     expect(await screen.findByTestId('no-exceptions')).toBeInTheDocument();
     expect(screen.queryByLabelText('Rechercher un lot')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Exceptions' })).toHaveAttribute('aria-current', 'page');
+    // Ticket F-076 — entrée « À traiter » de la barre latérale (ex-onglet Exceptions).
+    expect(screen.getByRole('link', { name: 'À traiter' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('bascule vers "Tous les lots" au clic sur l\'onglet dédié', async () => {
     renderApp();
     await screen.findByTestId('no-exceptions');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Tous les lots' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Tous les lots' }));
 
     expect(await screen.findByLabelText('Rechercher un lot')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Tous les lots' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Tous les lots' })).toHaveAttribute('aria-current', 'page');
   });
 });
 
@@ -321,6 +322,6 @@ describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
 
     fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
 
-    expect(await screen.findByRole('button', { name: 'Tâches' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByRole('link', { name: /^Tâches/ })).toHaveAttribute('aria-current', 'page');
   });
 });

@@ -1,7 +1,8 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Select, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, PageHeader, Pill, type PillTone, Select, Stepper, type StepperStep,
+  semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -59,7 +60,100 @@ function FileAction({
   );
 }
 
-function MilestoneRow({ milestone, onChanged }: { milestone: LotMilestone; onChanged: () => void }) {
+const STATUS_TONE: Record<LotMilestone['status'], PillTone> = {
+  not_declared: 'neutral',
+  awaiting_documents: 'alert',
+  awaiting_control: 'accent',
+  under_reserve: 'danger',
+  accepted: 'success',
+};
+
+const STATUS_BAR: Record<LotMilestone['status'], string> = {
+  not_declared: semanticColors.neutral.border,
+  awaiting_documents: semanticColors.alert.border,
+  awaiting_control: semanticColors.accent.solid,
+  under_reserve: semanticColors.danger.border,
+  accepted: semanticColors.progress.fill,
+};
+
+/** Jalon mis en avant par défaut : celui qui attend une action du
+ * constructeur (réserve, pièce manquante), sinon le contrôle en cours,
+ * sinon le prochain à déclarer. */
+export function focusMilestone(milestones: LotMilestone[]): LotMilestone | undefined {
+  const lastDeclared = Math.max(0, ...milestones.filter((m) => m.status !== 'not_declared').map((m) => m.order));
+  return milestones.find((m) => m.status === 'under_reserve' && !m.correction_submitted)
+    ?? milestones.find((m) => m.status === 'awaiting_documents')
+    ?? milestones.find((m) => m.status === 'awaiting_control')
+    ?? milestones.find((m) => m.status === 'not_declared' && m.order > lastDeclared)
+    ?? milestones.find((m) => m.status === 'not_declared')
+    ?? milestones[0];
+}
+
+/** Niveau de confiance du jalon, du plus faible au plus fort. */
+export function trustSteps(milestone: LotMilestone): StepperStep[] {
+  const declared = milestone.status !== 'not_declared';
+  const documented = declared && milestone.evidence_count > 0 && milestone.status !== 'awaiting_documents';
+  const controlled = milestone.status === 'under_reserve' || milestone.status === 'accepted';
+  const validated = milestone.status === 'accepted';
+  const done = [declared, documented, controlled, validated];
+  const currentIndex = done.findIndex((isDone) => !isDone);
+  const captions = [
+    declared ? 'par vous' : undefined,
+    milestone.evidence_count > 0 ? `${milestone.evidence_count} pièce(s)` : undefined,
+    milestone.status === 'under_reserve'
+      ? 'avec réserve'
+      : milestone.control_scheduled && !controlled ? 'mission en cours' : undefined,
+    validated ? 'accepté techniquement' : undefined,
+  ];
+  return ['Déclaré', 'Documenté', 'Contrôlé', 'Validé'].map((label, index) => ({
+    id: ['declared', 'documented', 'controlled', 'validated'][index],
+    label,
+    caption: captions[index],
+    state: done[index] ? 'done' : index === currentIndex ? 'current' : 'upcoming',
+  }));
+}
+
+function ProgressStrip({
+  milestones, selectedId, onSelect,
+}: { milestones: LotMilestone[]; selectedId: string; onSelect: (id: string) => void }) {
+  return (
+    <Card aria-label="Avancement du lot">
+      <ol
+        style={{
+          listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px',
+        }}
+      >
+        {milestones.map((milestone) => {
+          const selected = milestone.id === selectedId;
+          return (
+            <li key={milestone.id}>
+              <button
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onSelect(milestone.id)}
+                className="keya-tab"
+                style={{
+                  width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', border: 'none',
+                  borderRadius: '12px', textAlign: 'left', font: 'inherit', color: 'inherit',
+                  background: selected ? semanticColors.neutral.subtle : 'transparent',
+                  outline: selected ? `2px solid ${semanticColors.accent.solid}` : undefined,
+                }}
+              >
+                <span aria-hidden="true" style={{ height: '8px', borderRadius: '4px', background: STATUS_BAR[milestone.status] }} />
+                <span style={{ fontWeight: 700 }}>{milestone.label}</span>
+                <span data-testid={`milestone-status-${milestone.code}`} style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>
+                  {milestone.status_label}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
+
+function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; onChanged: () => void }) {
   const api = useApiClient();
   const [declaring, setDeclaring] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,36 +192,47 @@ function MilestoneRow({ milestone, onChanged }: { milestone: LotMilestone; onCha
   }
 
   return (
-    <li
+    <section
       aria-label={`Jalon ${milestone.label}`}
       style={{
-        padding: '12px',
+        background: semanticColors.neutral.surface,
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '14px',
+        borderRadius: '20px',
+        padding: 'clamp(18px, 3vw, 28px)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '18px',
       }}
     >
-      <strong>{`${milestone.order}. ${milestone.label}`}</strong>
-      {' · '}
-      <span data-testid={`milestone-status-${milestone.code}`}>{milestone.status_label}</span>
-      {milestone.evidence_count > 0 && ` · ${milestone.evidence_count} pièce(s)`}
-      {milestone.control_scheduled && ' · contrôle planifié'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0, fontSize: '26px' }}>{`${milestone.order}. ${milestone.label}`}</h2>
+        <Pill tone={STATUS_TONE[milestone.status]}>{milestone.status_label}</Pill>
+        {milestone.control_scheduled && <Pill tone="primary">Contrôle planifié</Pill>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: semanticColors.neutral.textMuted }}>
+          Niveau de confiance
+        </span>
+        <Stepper steps={trustSteps(milestone)} aria-label={`Niveau de confiance — ${milestone.label}`} />
+      </div>
 
       {milestone.status === 'not_declared' && (
-        <div style={{ marginTop: '8px' }}>
-          <Button type="button" onClick={() => { void declare(); }} disabled={declaring}>
+        <div>
+          <p style={{ margin: '0 0 10px' }}>Déclarez ce jalon dès que les travaux sont terminés, puis joignez au moins une pièce.</p>
+          <Button type="button" variant="accent" onClick={() => { void declare(); }} disabled={declaring}>
             {declaring ? 'Déclaration…' : 'Déclarer ce jalon'}
           </Button>
         </div>
       )}
       {milestone.status === 'awaiting_documents' && (
         <>
-          <p style={{ margin: '4px 0 0' }}>Joignez au moins une pièce : une déclaration sans pièce n&apos;est pas contrôlée.</p>
+          <p style={{ margin: 0 }}>Joignez au moins une pièce : une déclaration sans pièce n&apos;est pas contrôlée.</p>
           <FileAction label={`Pièce pour ${milestone.label}`} submitLabel="Joindre la pièce" onSubmit={addEvidence} />
         </>
       )}
       {milestone.status === 'awaiting_control' && (
         <>
-          <p style={{ margin: '4px 0 0' }}>
+          <p style={{ margin: 0 }}>
             {milestone.control_scheduled
               ? 'Le bureau de contrôle est missionné.'
               : 'En attente de l’affectation d’un contrôleur par KEYIMMO.'}
@@ -137,10 +242,10 @@ function MilestoneRow({ milestone, onChanged }: { milestone: LotMilestone; onCha
       )}
       {milestone.status === 'under_reserve' && (
         milestone.correction_submitted ? (
-          <p style={{ margin: '4px 0 0' }}>Correction proposée : en attente du recontrôle (seul le contrôleur lève la réserve).</p>
+          <p style={{ margin: 0 }}>Correction proposée : en attente du recontrôle (seul le contrôleur lève la réserve).</p>
         ) : (
           <>
-            <p style={{ margin: '4px 0 0' }}>Réserve ouverte : proposez une correction avec une nouvelle pièce.</p>
+            <p style={{ margin: 0 }}>Réserve ouverte : proposez une correction avec une nouvelle pièce.</p>
             <FileAction
               label={`Correction pour ${milestone.label}`}
               submitLabel="Proposer la correction"
@@ -150,31 +255,65 @@ function MilestoneRow({ milestone, onChanged }: { milestone: LotMilestone; onCha
         )
       )}
       {milestone.status === 'accepted' && (
-        <p style={{ margin: '4px 0 0' }}>Validé techniquement — démonstration (avis conforme, aucune réserve ouverte).</p>
+        <p style={{ margin: 0 }}>Validé techniquement — démonstration (avis conforme, aucune réserve ouverte).</p>
       )}
-      {error && <div style={{ marginTop: '8px' }}><AlertBanner title={error} /></div>}
-    </li>
+      {error && <AlertBanner title={error} />}
+      <p style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
+        Le bureau de contrôle est missionné par KEYIMMO. Seul le contrôleur lève une réserve ; ajouter une pièce après
+        l&apos;avis relance une revue.
+      </p>
+    </section>
   );
 }
 
 function LotMilestones({ lotId }: { lotId: string }) {
   const api = useApiClient();
   const state = useApiResource(() => api.listLotMilestones(lotId), [lotId]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (state.status === 'loading') return <p>Chargement des jalons…</p>;
   if (state.status === 'error') {
     return <ApiErrorBanner error={state.error} title="Impossible de charger les jalons." onRetry={state.refetch} />;
   }
+  if (state.data.length === 0) return <p>Aucun jalon pour ce lot.</p>;
+  const milestones = [...state.data].sort((a, b) => a.order - b.order);
+  const selected = milestones.find((milestone) => milestone.id === selectedId) ?? focusMilestone(milestones)!;
+  const nextToDeclare = milestones.find(
+    (milestone) => milestone.status === 'not_declared' && milestone.order > selected.order,
+  );
+  const accepted = milestones.filter((milestone) => milestone.status === 'accepted').length;
+
   return (
-    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {state.data.map((milestone) => (
-        <MilestoneRow
-          key={`${milestone.id}-${milestone.status}-${milestone.evidence_count}-${milestone.correction_submitted}`}
-          milestone={milestone}
-          onChanged={state.refetch}
-        />
-      ))}
-    </ul>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <ProgressStrip milestones={milestones} selectedId={selected.id} onSelect={setSelectedId} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
+        <div style={{ flex: '1 1 520px', minWidth: 0 }}>
+          <MilestoneDetail
+            key={`${selected.id}-${selected.status}-${selected.evidence_count}-${selected.correction_submitted}`}
+            milestone={selected}
+            onChanged={state.refetch}
+          />
+        </div>
+        <aside style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <Card title="Avancement" icon="check-circle" tone="accent">
+            <p style={{ margin: 0 }}>
+              <strong style={{ fontSize: '22px' }}>{`${accepted} / ${milestones.length}`}</strong>
+              {' jalons acceptés techniquement'}
+            </p>
+          </Card>
+          {nextToDeclare && (
+            <Card title="Prochain jalon à déclarer" icon="clipboard-check">
+              <p style={{ margin: '0 0 12px' }}>
+                {`${nextToDeclare.label} — déclarez-le dès que les travaux sont terminés, avec au moins une pièce.`}
+              </p>
+              <Button type="button" variant="secondary" onClick={() => setSelectedId(nextToDeclare.id)}>
+                {`Ouvrir « ${nextToDeclare.label} »`}
+              </Button>
+            </Card>
+          )}
+        </aside>
+      </div>
+    </div>
   );
 }
 
@@ -186,38 +325,39 @@ export function MilestonesView({ activeOrganizationId }: { activeOrganizationId:
   );
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
 
+  const lots = lotsState.status === 'success' ? lotsState.data.results : [];
+  const lotId = selectedLotId && lots.some((lot) => lot.id === selectedLotId) ? selectedLotId : lots[0]?.id;
+  const lot = lots.find((candidate) => candidate.id === lotId);
+
   return (
     <section aria-label="Jalons">
-      <h2>Jalons</h2>
+      <PageHeader
+        eyebrow={lot ? lot.program_name : 'Chantier'}
+        title={lot ? `${lot.name} — suivi des jalons` : 'Chantiers & jalons'}
+        actions={lots.length > 0 && lotId ? (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
+            Lot
+            <Select
+              aria-label="Choisir un lot"
+              value={lotId}
+              onChange={(event) => setSelectedLotId(event.target.value)}
+              style={{ minWidth: '280px' }}
+            >
+              {lots.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>{`${candidate.program_name} — ${candidate.name}`}</option>
+              ))}
+            </Select>
+          </label>
+        ) : undefined}
+      />
       {lotsState.status === 'loading' && <p>Chargement…</p>}
       {lotsState.status === 'error' && (
         <ApiErrorBanner error={lotsState.error} title="Impossible de charger vos lots." onRetry={lotsState.refetch} />
       )}
-      {lotsState.status === 'success' && lotsState.data.results.length === 0 && (
+      {lotsState.status === 'success' && lots.length === 0 && (
         <p data-testid="no-lots">Aucun lot dans cette organisation.</p>
       )}
-      {lotsState.status === 'success' && lotsState.data.results.length > 0 && (() => {
-        const lots = lotsState.data.results;
-        const lotId = selectedLotId && lots.some((lot) => lot.id === selectedLotId) ? selectedLotId : lots[0].id;
-        return (
-          <>
-            <label style={{ display: 'block', marginBottom: '12px' }}>
-              Lot
-              <Select
-                aria-label="Choisir un lot"
-                value={lotId}
-                onChange={(event) => setSelectedLotId(event.target.value)}
-                style={{ marginTop: '4px', maxWidth: '420px' }}
-              >
-                {lots.map((lot) => (
-                  <option key={lot.id} value={lot.id}>{`${lot.program_name} — ${lot.name}`}</option>
-                ))}
-              </Select>
-            </label>
-            <LotMilestones key={lotId} lotId={lotId} />
-          </>
-        );
-      })()}
+      {lotId && <LotMilestones key={lotId} lotId={lotId} />}
     </section>
   );
 }

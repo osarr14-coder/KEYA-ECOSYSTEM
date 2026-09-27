@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, semanticColors, PageHeader,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -68,7 +68,7 @@ export function TasksView() {
 
   return (
     <section aria-label="Tâches">
-      <h2>Tâches</h2>
+      <PageHeader eyebrow="Boîte de réception" title="Tâches" />
 
       {state.status === 'loading' && <p>Chargement…</p>}
       {state.status === 'error' && (

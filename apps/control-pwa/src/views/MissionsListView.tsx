@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  AlertBanner, Button, Icon, semanticColors,
+  AlertBanner, Button, Icon, Pill, semanticColors,
 } from '@keya/design-system';
 
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
@@ -33,12 +33,18 @@ export interface MissionsListViewProps {
 const MISSION_TYPE_STYLE = { fontSize: '13px', color: semanticColors.neutral.textMuted };
 
 function MissionTypeIndicator({ mission }: { mission: Mission }) {
+  // Ticket F-076 — pastilles : une mission de suivi (réserve ouverte) se
+  // distingue au premier coup d'œil d'une première inspection.
   if (!mission.reserveId) {
-    return <span data-testid="mission-type" data-mission-type="first" style={MISSION_TYPE_STYLE}>Première inspection</span>;
+    return (
+      <span data-testid="mission-type" data-mission-type="first" style={MISSION_TYPE_STYLE}>
+        <Pill tone="primary">Première inspection</Pill>
+      </span>
+    );
   }
   return (
     <span data-testid="mission-type" data-mission-type="follow-up" style={MISSION_TYPE_STYLE}>
-      Mission de suivi — Réserve #{mission.reserveId.slice(0, 8)}
+      <Pill tone="alert">Mission de suivi — Réserve #{mission.reserveId.slice(0, 8)}</Pill>
     </span>
   );
 }
@@ -148,27 +154,29 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
                 style={{
                   width: '100%',
                   textAlign: 'left',
-                  padding: '12px',
+                  padding: '16px',
                   minHeight: '44px',
                   background: semanticColors.neutral.surface,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'flex-start',
                   justifyContent: 'flex-start',
-                  gap: '4px',
+                  gap: '8px',
                   fontWeight: 400,
+                  color: semanticColors.neutral.text,
                   // Ticket F-054 (refonte visuelle, suite de F-053) — même
                   // traitement que `Card` : ombre + rayon plus prononcé,
                   // cette carte cliquable en a plus besoin qu'un bouton
                   // secondaire ordinaire (aucun autre repère visuel de
                   // "carte" ici, contrairement à Card qui a déjà sa bordure).
-                  borderRadius: '14px',
+                  borderRadius: '18px',
+                  borderLeft: `5px solid ${mission.reserveId ? semanticColors.alert.border : semanticColors.accent.solid}`,
                   boxShadow: 'var(--keya-shadow-sm)',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Icon name="building" size={18} color={semanticColors.neutral.textMuted} />
-                  <strong>{mission.lotName}</strong> — {mission.assetName}
+                  <strong style={{ fontSize: '16px' }}>{mission.lotName}</strong> — {mission.assetName}
                 </div>
                 <div>{mission.programName} · {mission.milestoneLabel}</div>
                 <div><MissionTypeIndicator mission={mission} /></div>

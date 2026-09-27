@@ -45,11 +45,10 @@ function BrandBar() {
         alignItems: 'center',
         gap: '8px',
         marginBottom: '12px',
-        padding: '10px 12px',
-        borderRadius: '12px',
+        padding: '10px 12px 10px 14px',
+        borderRadius: '16px',
         background: BRAND_GRADIENT,
-        borderBottom: `2px solid ${brandColors.gold}`,
-        boxShadow: 'var(--keya-shadow-sm)',
+        boxShadow: 'var(--keya-shadow-md)',
       }}
     >
       <span
@@ -57,21 +56,20 @@ function BrandBar() {
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          width: '26px',
-          height: '26px',
-          borderRadius: '8px',
-          background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
+          width: '32px',
+          height: '32px',
+          borderRadius: '9px',
+          background: brandColors.gold,
           color: brandColors.navy,
-          fontWeight: 700,
+          fontWeight: 600,
           fontFamily: typography.headingFontFamily,
-          fontSize: '13px',
-          boxShadow: 'var(--keya-shadow-sm)',
+          fontSize: '14px',
           flexShrink: 0,
         }}
       >
         K+
       </span>
-      <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '15px', color: '#FFFFFF' }}>
+      <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '17px', color: '#FFFFFF' }}>
         KEYA
       </span>
       <span style={{ fontSize: '11px', color: brandColors.gold, fontWeight: 600, letterSpacing: '0.05em' }}>

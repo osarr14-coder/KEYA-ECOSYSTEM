@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, Input, Select, StatusBadge, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Input, Select, StatusBadge, semanticColors, PageHeader,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -264,6 +264,11 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
 
   return (
     <section aria-label="Exceptions" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <PageHeader
+        eyebrow="Pilotage du chantier"
+        title="À traiter en priorité"
+        subtitle="Lots en retard, contrôles à planifier, capacités manquantes et réserves ouvertes : ce qui demande votre attention."
+      />
       {totalCount === 0 && (
         <p data-testid="no-exceptions">Aucune exception en ce moment — tout est à jour.</p>
       )}

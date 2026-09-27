@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { LotMilestone, LotRow } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
-import { MilestonesView } from './MilestonesView';
+import { MilestonesView, focusMilestone, trustSteps } from './MilestonesView';
 
 const LOT: LotRow = {
   id: 'lot-1',
@@ -102,5 +102,39 @@ describe('MilestonesView — jalons côté constructeur (ticket F-069)', () => {
     expect(await screen.findByTestId('milestone-status-fondations')).toHaveTextContent('En attente de contrôle');
     expect(screen.getByText('Le bureau de contrôle est missionné.')).toBeInTheDocument();
     expect(screen.getByTestId('milestone-status-gros_oeuvre')).toHaveTextContent('Accepté techniquement');
+  });
+});
+
+describe('MilestonesView — lecture de l\'avancement (ticket F-076)', () => {
+  const foncier = milestone({ id: 'm1', order: 1, code: 'foncier', label: 'Foncier' });
+  const fondations = milestone({
+    id: 'm3', order: 3, status: 'accepted', status_label: 'Accepté techniquement', evidence_count: 2,
+  });
+  const grosOeuvre = milestone({ id: 'm4', order: 4, code: 'gros_oeuvre', label: 'Gros œuvre' });
+
+  it('met en avant la réserve à corriger, puis la pièce manquante, puis le contrôle, puis le prochain à déclarer', () => {
+    const reserve = milestone({ id: 'm5', order: 5, status: 'under_reserve', status_label: 'Sous réserve' });
+    const docs = milestone({ id: 'm6', order: 6, status: 'awaiting_documents', status_label: 'Pièces attendues' });
+    expect(focusMilestone([foncier, fondations, grosOeuvre, reserve, docs])?.id).toBe('m5');
+    expect(focusMilestone([foncier, fondations, grosOeuvre, docs])?.id).toBe('m6');
+    // Jamais « Foncier » (avant le dernier jalon déclaré) : le prochain à déclarer est « Gros œuvre ».
+    expect(focusMilestone([foncier, fondations, grosOeuvre])?.id).toBe('m4');
+  });
+
+  it('niveau de confiance : Déclaré → Documenté → Contrôlé → Validé, dérivé de l\'état serveur', () => {
+    const states = (m: LotMilestone) => trustSteps(m).map((step) => step.state);
+    expect(states(grosOeuvre)).toEqual(['current', 'upcoming', 'upcoming', 'upcoming']);
+    expect(states(milestone({ status: 'awaiting_documents' }))).toEqual(['done', 'current', 'upcoming', 'upcoming']);
+    expect(states(milestone({ status: 'awaiting_control', evidence_count: 1 }))).toEqual(['done', 'done', 'current', 'upcoming']);
+    expect(states(fondations)).toEqual(['done', 'done', 'done', 'done']);
+  });
+
+  it('le bandeau montre chaque jalon ; cliquer un jalon ouvre sa fiche', async () => {
+    renderView([foncier, fondations, grosOeuvre]);
+
+    expect(await screen.findByRole('region', { name: 'Jalon Gros œuvre' })).toBeInTheDocument();
+    expect(screen.getByTestId('milestone-status-foncier')).toHaveTextContent('Non déclaré');
+    fireEvent.click(screen.getByRole('button', { name: /Fondations/ }));
+    expect(screen.getByRole('region', { name: 'Jalon Fondations' })).toHaveTextContent('Validé techniquement');
   });
 });

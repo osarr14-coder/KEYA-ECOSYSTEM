@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
+  AlertBanner, ApiErrorBanner, AppShell, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
   type AppModule, type IconName, logoutToLoginScreen,
 } from '@keya/design-system';
 
@@ -38,28 +38,31 @@ function buildModules(): AppModule[] {
     ? buildCrossAppUrl(APP_ORIGINS.home, accessToken, refreshToken)
     : APP_ORIGINS.home;
 
+  // Ticket F-076 — les autres espaces, sous les vues de BUILD elles-mêmes.
   return [
-    { id: 'home', label: 'Accueil', href: homeHref, icon: 'home' },
+    { id: 'home', label: 'Accueil', href: homeHref, icon: 'home', group: 'Autres espaces' },
     {
-      id: 'build', label: 'BUILD', href: '/build', requiredRoles: ['constructeur', 'inspecteur'], icon: 'building',
+      id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'], icon: 'wallet', group: 'Autres espaces',
     },
     {
-      id: 'finance', label: 'FINANCE', href: '/finance', requiredRoles: ['sponsor'], icon: 'wallet',
-    },
-    {
-      id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'], icon: 'shield-check',
+      id: 'notary', label: 'NOTARY', href: '/notary', requiredRoles: ['notaire'], icon: 'shield-check', group: 'Autres espaces',
     },
   ];
 }
 
 type ViewId = 'exceptions' | 'all_lots' | 'milestones' | 'disbursements' | 'tasks';
 
+/*
+ * Ticket F-076 (direction « Confiance premium ») — navigation UNIQUE : ces
+ * vues sont les entrées de la barre latérale (`AppShell.onModuleSelect`),
+ * plus de `TabBar` en double.
+ */
 const TABS: { id: ViewId; label: string; icon: IconName }[] = [
-  { id: 'exceptions', label: 'Exceptions', icon: 'alert-triangle' },
+  { id: 'exceptions', label: 'À traiter', icon: 'alert-triangle' },
   { id: 'all_lots', label: 'Tous les lots', icon: 'building' },
   // Ticket F-069 — déclarer un jalon, joindre des pièces, corriger une
   // réserve (backend B-054).
-  { id: 'milestones', label: 'Jalons', icon: 'clipboard-check' },
+  { id: 'milestones', label: 'Chantiers & jalons', icon: 'clipboard-check' },
   // Ticket F-068 — décaissements simulés reçus (backend B-052).
   { id: 'disbursements', label: 'Paiements reçus', icon: 'wallet' },
   // Ticket F-061 — destination réelle de la cloche AppShell (jusqu'ici un
@@ -129,35 +132,32 @@ export function App() {
     setActiveTab('all_lots');
   }
 
+  const pendingCount = taskInboxState.status === 'success' ? taskInboxState.data.length : 0;
+  const modules: AppModule[] = [
+    ...TABS.map(({ id, label, icon }) => ({
+      id, label, icon, href: `#${id}`, badge: id === 'tasks' ? pendingCount : undefined,
+    })),
+    ...buildModules(),
+  ];
+
   return (
     <AppShell
       // Ticket F-070 — déconnexion volontaire, vers l'écran de connexion.
       onLogout={() => logoutToLoginScreen()}
       density="dense"
-      // Ticket F-056 (suite F-053/054/055) — révision de la doctrine 17.3 :
-      // `brand` (bandeau <header> dégradé navy/or) était HOME-only depuis
-      // F-048 ; retour utilisateur explicite demandant le même traitement
-      // visuel complet sur les écrans professionnels — activé ici comme
-      // sur apps/web. Le bloc navy de sidebar, lui, était déjà universel
-      // sur les 4 apps depuis F-048.
       brand
       appLabel="BUILD"
-      modules={buildModules()}
+      modules={modules}
       userRoles={userRoles}
-      activeModuleId="build"
-      breadcrumbs={[{ label: 'BUILD' }]}
-      taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
-      // Ticket F-061 — bascule vers le nouvel onglet « Tâches » (même
-      // TabBar que "Exceptions"/"Tous les lots"), jamais une navigation
-      // `<a href>` classique (cette app n'a aucun routeur, un rechargement
-      // aurait perdu l'onglet actif sans jamais retomber sur « Tâches »).
+      activeModuleId={activeTab}
+      onModuleSelect={(id) => setActiveTab(id as ViewId)}
+      taskInboxCount={pendingCount}
+      // Ticket F-061 — la cloche ouvre « Tâches » sans rechargement.
       onTaskInboxClick={() => setActiveTab('tasks')}
       organizationOptions={organizationOptions}
       activeOrganizationId={activeOrganizationId ?? undefined}
       onOrganizationChange={handleOrganizationChange}
     >
-      <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as ViewId)} aria-label="Sections BUILD" />
-
       {!isOnline && (
         <div style={{ marginBottom: '12px' }}>
           <AlertBanner title="Hors ligne">

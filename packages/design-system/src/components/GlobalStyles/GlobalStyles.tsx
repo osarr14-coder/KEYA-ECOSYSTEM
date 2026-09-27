@@ -225,6 +225,12 @@ const GLOBAL_CSS = `
        en navigateur réel (technique rgba(var(--x), alpha) confirmée). */
     box-shadow: 0 0 0 3px rgba(var(--keya-focus-ring-rgb), 0.12);
   }
+  /* Ticket F-076 — tuile de dépôt de fichier (champ natif transparent
+     posé dessus) : focus clavier visible sur la tuile entière. */
+  .keya-file-drop:focus-within {
+    outline: 2px solid ${semanticColors.accent.solid};
+    outline-offset: 2px;
+  }
   .keya-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
