@@ -508,6 +508,15 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
                 work_declaration_id=mission.work_declaration_id, inspector=inspector,
                 created_at__gt=mission.created_at,
             ).exists()
+            # Ticket F-077 — recontrôle : une mission affectée APRÈS une
+            # inspection antérieure du même jalon (quel qu'en soit
+            # l'auteur). Reste vrai une fois la réserve levée, contrairement
+            # à `reserve_id` : sans ce champ, CONTROL affichait un recontrôle
+            # terminé comme une seconde « Première inspection », en double.
+            follow_up = Inspection.objects.filter(
+                work_declaration_id=mission.work_declaration_id,
+                created_at__lte=mission.created_at,
+            ).exists()
             lot = mission.work_declaration.milestone.lot
             open_reserve = _find_open_reserve_for_lot(lot)
             # Ticket 014 bis (friction 1 du 4e rapport bout-en-bout) :
@@ -534,6 +543,7 @@ def list_missions_for_inspector(*, inspector, caller_organization_id):
                 'organization_id': str(mission.organization_id),
                 'work_declaration_id': str(mission.work_declaration_id),
                 'completed': completed,
+                'follow_up': follow_up,
                 # Ticket 013 (bug 3 du rapport bout-en-bout) : sans ces deux
                 # champs, une mission de suivi n'a AUCUN moyen légitime de
                 # savoir quelle réserve elle concerne, ni quel

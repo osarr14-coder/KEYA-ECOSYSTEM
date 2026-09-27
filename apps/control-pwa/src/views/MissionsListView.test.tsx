@@ -174,3 +174,42 @@ describe(
     });
   },
 );
+
+describe('MissionsListView — missions terminées et recontrôles (ticket F-077)', () => {
+  it(
+    'un contrôle déjà rendu et son recontrôle rendu ne s\'affichent plus comme deux missions à faire : '
+    + 'ils rejoignent « Terminées », le second étiqueté « Recontrôle »',
+    async () => {
+      await clearIndexedDB();
+      await seedFixtureMissions([
+        { ...FIXTURE_MISSIONS[0], id: 'first', completed: true, followUp: false },
+        { ...FIXTURE_MISSIONS[0], id: 'recontrol', completed: true, followUp: true },
+        FIXTURE_MISSIONS[1],
+      ]);
+      const onSelectMission = vi.fn();
+      render(<MissionsListView onSelectMission={onSelectMission} />);
+
+      const done = await screen.findAllByTestId('completed-mission');
+      expect(done).toHaveLength(2);
+      expect(done.map((item) => item.querySelector('[data-testid="mission-type"]')!.getAttribute('data-mission-type')).sort())
+        .toEqual(['first', 'recontrol']);
+      expect(done.every((item) => item.textContent!.includes('Avis rendu'))).toBe(true);
+      // Une mission rendue n'est plus un bouton : aucune seconde saisie possible depuis la liste.
+      expect(done.some((item) => item.querySelector('button'))).toBe(false);
+
+      // Seule la mission encore à faire reste cliquable.
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      fireEvent.click(screen.getByText(FIXTURE_MISSIONS[1].lotName));
+      expect(onSelectMission).toHaveBeenCalledWith(FIXTURE_MISSIONS[1].id);
+    },
+  );
+
+  it('toutes les missions rendues : message explicite, jamais une liste vide ambiguë', async () => {
+    await clearIndexedDB();
+    await seedFixtureMissions([{ ...FIXTURE_MISSIONS[0], completed: true }]);
+    render(<MissionsListView onSelectMission={() => {}} />);
+
+    expect(await screen.findByTestId('no-pending-missions')).toBeInTheDocument();
+    expect(screen.getAllByTestId('completed-mission')).toHaveLength(1);
+  });
+});

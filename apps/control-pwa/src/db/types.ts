@@ -80,6 +80,10 @@ export interface Mission {
    * la réserve a déjà un historique réel — un conflit (409) garanti dès la
    * première tentative, quel que soit l'outcome envoyé. */
   reserveLatestEventId: string | null;
+  /** Ticket F-077 : mission affectée APRÈS une inspection antérieure du même
+   * jalon (recontrôle). Reste vrai une fois la réserve levée, contrairement à
+   * `reserveId`. Optionnel : absent d'un cache écrit avant ce ticket. */
+  followUp?: boolean;
 }
 
 /**

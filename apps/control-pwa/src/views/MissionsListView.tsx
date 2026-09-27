@@ -33,19 +33,39 @@ export interface MissionsListViewProps {
 const MISSION_TYPE_STYLE = { fontSize: '13px', color: semanticColors.neutral.textMuted };
 
 function MissionTypeIndicator({ mission }: { mission: Mission }) {
-  // Ticket F-076 — pastilles : une mission de suivi (réserve ouverte) se
-  // distingue au premier coup d'œil d'une première inspection.
-  if (!mission.reserveId) {
+  // Ticket F-076 — pastilles. Ticket F-077 : un recontrôle dont la réserve
+  // est levée n'est plus présenté comme une « Première inspection » (il
+  // apparaissait en double de la première mission du même jalon).
+  if (mission.reserveId) {
     return (
-      <span data-testid="mission-type" data-mission-type="first" style={MISSION_TYPE_STYLE}>
-        <Pill tone="primary">Première inspection</Pill>
+      <span data-testid="mission-type" data-mission-type="follow-up" style={MISSION_TYPE_STYLE}>
+        <Pill tone="alert">Mission de suivi — Réserve #{mission.reserveId.slice(0, 8)}</Pill>
+      </span>
+    );
+  }
+  if (mission.followUp) {
+    return (
+      <span data-testid="mission-type" data-mission-type="recontrol" style={MISSION_TYPE_STYLE}>
+        <Pill tone="alert">Recontrôle</Pill>
       </span>
     );
   }
   return (
-    <span data-testid="mission-type" data-mission-type="follow-up" style={MISSION_TYPE_STYLE}>
-      <Pill tone="alert">Mission de suivi — Réserve #{mission.reserveId.slice(0, 8)}</Pill>
+    <span data-testid="mission-type" data-mission-type="first" style={MISSION_TYPE_STYLE}>
+      <Pill tone="primary">Première inspection</Pill>
     </span>
+  );
+}
+
+function MissionSummary({ mission }: { mission: Mission }) {
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Icon name="building" size={18} color={semanticColors.neutral.textMuted} />
+        <strong style={{ fontSize: '16px' }}>{mission.lotName}</strong> — {mission.assetName}
+      </div>
+      <div>{mission.programName} · {mission.milestoneLabel}</div>
+    </>
   );
 }
 
@@ -122,6 +142,9 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
     };
   }, [reloadToken]);
 
+  const pending = missions.filter((mission) => !mission.completed);
+  const done = missions.filter((mission) => mission.completed);
+
   return (
     <section aria-label="Mes missions">
       <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -136,9 +159,12 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
         />
       )}
       {loadState === 'ready' && missions.length === 0 && <p>Aucune mission pour le moment.</p>}
-      {loadState === 'ready' && missions.length > 0 && (
+      {loadState === 'ready' && missions.length > 0 && pending.length === 0 && (
+        <p data-testid="no-pending-missions">Aucune mission à faire : toutes vos inspections sont rendues.</p>
+      )}
+      {loadState === 'ready' && pending.length > 0 && (
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {missions.map((mission) => (
+          {pending.map((mission) => (
             <li key={mission.id}>
               {/* Ticket F-044 — `variant="secondary"`, mêmes tokens de bordure/
                   fond que le reste du projet, mais `style` réécrit la mise en
@@ -174,11 +200,7 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
                   boxShadow: 'var(--keya-shadow-sm)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Icon name="building" size={18} color={semanticColors.neutral.textMuted} />
-                  <strong style={{ fontSize: '16px' }}>{mission.lotName}</strong> — {mission.assetName}
-                </div>
-                <div>{mission.programName} · {mission.milestoneLabel}</div>
+                <MissionSummary mission={mission} />
                 <div><MissionTypeIndicator mission={mission} /></div>
                 {statusByMission[mission.id] && (
                   <SyncStatusIndicator status={statusByMission[mission.id]} />
@@ -187,6 +209,38 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
             </li>
           ))}
         </ul>
+      )}
+      {/* Ticket F-077 — missions déjà rendues : historique en lecture seule,
+          séparé de la file « à faire » (elles apparaissaient comme de
+          nouvelles missions, en double d'un recontrôle du même jalon). */}
+      {loadState === 'ready' && done.length > 0 && (
+        <section aria-label="Missions terminées" style={{ marginTop: '24px' }}>
+          <h2 style={{ fontSize: '18px', margin: '0 0 8px' }}>Terminées</h2>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {done.map((mission) => (
+              <li
+                key={mission.id}
+                data-testid="completed-mission"
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '18px',
+                  border: `1px solid ${semanticColors.neutral.border}`,
+                  background: semanticColors.neutral.subtle,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  color: semanticColors.neutral.textMuted,
+                }}
+              >
+                <MissionSummary mission={mission} />
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <MissionTypeIndicator mission={mission} />
+                  <Pill tone="success">Avis rendu</Pill>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </section>
   );

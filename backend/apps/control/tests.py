@@ -701,6 +701,12 @@ class TestMissionListView:
         # l'index 0 est donc la mission de suivi tout juste affectée.
         follow_up_row = response.data[0]
         assert follow_up_row['completed'] is False
+        # Ticket F-077 — la mission de suivi est repérée comme recontrôle,
+        # la première (déjà faite) jamais.
+        assert follow_up_row['follow_up'] is True
+        first_row = response.data[1]
+        assert first_row['completed'] is True
+        assert first_row['follow_up'] is False
 
     def test_mission_row_reserve_id_is_null_without_any_open_reserve(self):
         """Ticket 013 (bug 3 du rapport) — cas de base : une mission de

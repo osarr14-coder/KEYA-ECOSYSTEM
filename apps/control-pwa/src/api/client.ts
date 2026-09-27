@@ -147,7 +147,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
     const data = (await response.json()) as Array<{
       id: string; lot_name: string; asset_name: string; program_name: string; milestone_label: string;
       organization_id: string; work_declaration_id: string; completed: boolean;
-      reserve_id: string | null; reserve_latest_event_id: string | null;
+      reserve_id: string | null; reserve_latest_event_id: string | null; follow_up?: boolean;
     }>;
     return data.map((row) => ({
       id: row.id,
@@ -160,6 +160,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
       completed: row.completed,
       reserveId: row.reserve_id,
       reserveLatestEventId: row.reserve_latest_event_id,
+      followUp: row.follow_up ?? false,
     }));
   }
 
