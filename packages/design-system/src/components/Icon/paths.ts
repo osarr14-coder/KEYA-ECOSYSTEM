@@ -31,7 +31,8 @@ export type IconName =
   | 'users'
   | 'camera'
   | 'scale'
-  | 'moon';
+  | 'moon'
+  | 'log-out';
 
 /** Un `<path>` (ou plusieurs) par icône, déjà dans le repère 24x24 — le
  * composant `Icon` ne fait qu'entourer ces tracés d'un `<svg>` commun.
@@ -91,4 +92,6 @@ export const ICON_PATHS: Record<IconName, string[]> = {
   // discipline que le reste de ce fichier (grille 24x24, trait seul,
   // extrémités arrondies).
   moon: ['M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5 7 7 0 0 0 20.5 14.5Z'],
+  // Ticket F-070 — déconnexion : porte ouverte + flèche sortante.
+  'log-out': ['M9 20H5.5A1.5 1.5 0 0 1 4 18.5v-13A1.5 1.5 0 0 1 5.5 4H9', 'M15.5 16.5 20 12l-4.5-4.5', 'M20 12H9'],
 };

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, AppShell, BRAND_GRADIENT, Button, Field, Input, TabBar, brandColors, typography,
-  useIsMobile, useOnlineStatus, type AppModule, type IconName,
+  useIsMobile, useOnlineStatus, type AppModule, type IconName, logoutToLoginScreen,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -17,6 +17,7 @@ import {
 import type { TabRoute } from './navigation/tabRouting';
 import { useUrlSyncedTab } from './navigation/useUrlSyncedTab';
 import { BackofficeView } from './views/BackofficeView';
+import { ControlsView } from './views/ControlsView';
 import { DevisView } from './views/DevisView';
 import { FinanceAccountsView } from './views/FinanceAccountsView';
 import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
@@ -29,7 +30,7 @@ import { TasksView } from './views/TasksView';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
-  | 'program-requests' | 'tasks';
+  | 'program-requests' | 'controls' | 'tasks';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -116,6 +117,11 @@ const TAB_DEFINITIONS: {
   // n'est ni un devis, ni un tarif, ni un palier légal).
   {
     id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', roles: ADMIN_AND_ADV,
+  },
+  // Ticket F-069 — affectation des contrôles de chantier (backend B-054),
+  // admin seul comme `POST /api/backoffice/missions/` (ticket 012).
+  {
+    id: 'controls', label: 'Contrôles à affecter', path: '/controles', icon: 'shield-check', roles: ADMIN_ONLY,
   },
   // Ticket F-061 — destination réelle de la cloche AppShell (jusqu'ici un
   // lien mort `href="/tasks"`, ticket F-045). Entrée de premier niveau,
@@ -206,6 +212,9 @@ function AuthenticatedApp() {
     return (
       <main style={{ padding: '24px' }}>
         <ApiErrorBanner error={meState.error} title="Impossible de charger votre profil." onRetry={meState.refetch} />
+        <Button type="button" variant="secondary" onClick={() => logoutToLoginScreen()} style={{ marginTop: '12px' }}>
+          Se déconnecter
+        </Button>
       </main>
     );
   }
@@ -226,6 +235,10 @@ function AuthenticatedApp() {
         <AlertBanner title="Accès refusé">
           Cet écran est réservé à l&apos;équipe KEYIMMO (rôles admin_keyimmo, gestionnaire_adv et finance).
         </AlertBanner>
+        {/* Ticket F-070 — jamais une impasse : changer de compte. */}
+        <Button type="button" variant="secondary" onClick={() => logoutToLoginScreen()} style={{ marginTop: '12px' }}>
+          Se déconnecter
+        </Button>
       </main>
     );
   }
@@ -270,6 +283,8 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
 
   return (
     <AppShell
+      // Ticket F-070 — déconnexion volontaire, vers l'écran de connexion.
+      onLogout={() => logoutToLoginScreen()}
       density="dense"
       // Ticket F-056 (suite F-053/054/055) — révision de la doctrine 17.3 :
       // `brand` (bandeau <header> dégradé navy/or) était HOME-only depuis
@@ -308,6 +323,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'finance' && <FinanceAccountsView canAct={isFinance} />}
       {activeTab === 'programs' && <ProgramsView />}
       {activeTab === 'program-requests' && <ProgramRequestsView />}
+      {activeTab === 'controls' && <ControlsView />}
       {activeTab === 'tasks' && <TasksView />}
     </AppShell>
   );

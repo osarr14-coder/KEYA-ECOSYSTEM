@@ -180,6 +180,8 @@ describe(
       expect(await screen.findByTestId('app-shell')).toHaveAttribute('data-density', 'dense');
       expect(screen.queryByLabelText('Connexion')).not.toBeInTheDocument();
       expect(screen.getByLabelText('Rechercher un utilisateur par email')).toBeInTheDocument();
+      // Ticket F-070 — déconnexion volontaire dans la barre du haut.
+      expect(screen.getByRole('button', { name: /Se déconnecter/ })).toBeInTheDocument();
     });
 
     it(
@@ -194,6 +196,8 @@ describe(
 
         expect(await screen.findByText('Accès refusé')).toBeInTheDocument();
         expect(screen.queryByTestId('app-shell')).not.toBeInTheDocument();
+        // Ticket F-070 — jamais une impasse : on peut changer de compte.
+        expect(screen.getByRole('button', { name: 'Se déconnecter' })).toBeInTheDocument();
       },
     );
 

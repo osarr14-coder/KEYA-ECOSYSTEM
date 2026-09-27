@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { GlobalStyles } from '@keya/design-system';
+import { GlobalStyles, consumeLogoutRequest } from '@keya/design-system';
 
 import { ApiClientProvider } from './api/ApiClientContext';
 import { createApiClient } from './api/client';
@@ -14,6 +14,9 @@ import { receiveIncomingSession } from './auth/receiveIncomingSession';
 // éventuel fragment AVANT tout le reste, même mécanisme que
 // `apps/{home,build,control-pwa}` depuis le ticket 020. Sans fragment
 // (chargement normal de l'écran de connexion), ne fait rien.
+// Ticket F-070 — `?logout=1` (déconnexion demandée depuis n'importe quelle
+// app) : efface d'abord la session de cette origine.
+consumeLogoutRequest();
 receiveIncomingSession();
 
 const apiClient = createApiClient({

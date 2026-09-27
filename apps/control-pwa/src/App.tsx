@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  AlertBanner, BRAND_GRADIENT, brandColors, typography, useOnlineStatus,
+  AlertBanner, BRAND_GRADIENT, Icon, brandColors, logoutToLoginScreen, typography, useOnlineStatus,
 } from '@keya/design-system';
 
+import { getAllDrafts, saveMissions } from './db/repository';
 import { createDefaultApiClient, startSyncEngine } from './sync/syncEngine';
 import { InspectionFormView } from './views/InspectionFormView';
 import { MissionsListView } from './views/MissionsListView';
@@ -76,7 +77,50 @@ function BrandBar() {
       <span style={{ fontSize: '11px', color: brandColors.gold, fontWeight: 600, letterSpacing: '0.05em' }}>
         CONTROL
       </span>
+      <LogoutButton />
     </div>
+  );
+}
+
+/**
+ * Ticket F-070 — déconnexion volontaire (aucune n'existait). Une saisie
+ * d'inspection non encore synchronisée vit sur cet appareil : l'inspecteur
+ * est prévenu avant de partir (elle reste stockée localement et repartira à
+ * la prochaine session de ce même compte). Le cache des missions est vidé :
+ * le compte suivant ne doit jamais voir celles d'un autre contrôleur.
+ */
+function LogoutButton() {
+  async function handleLogout() {
+    const drafts = await getAllDrafts().catch(() => []);
+    const unsynced = drafts.filter((draft) => draft.syncStatus !== 'synced');
+    if (unsynced.length > 0 && !window.confirm(
+      `${unsynced.length} saisie(s) ne sont pas encore synchronisées sur le serveur. Se déconnecter quand même ?`,
+    )) return;
+    await saveMissions([]).catch(() => undefined);
+    logoutToLoginScreen();
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => { void handleLogout(); }}
+      style={{
+        marginLeft: 'auto',
+        border: 'none',
+        background: 'transparent',
+        color: '#FFFFFF',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        minHeight: '44px',
+        font: 'inherit',
+        fontSize: '13px',
+        cursor: 'pointer',
+      }}
+    >
+      <Icon name="log-out" size={18} />
+      Se déconnecter
+    </button>
   );
 }
 export function App() {

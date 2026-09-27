@@ -135,3 +135,23 @@ export interface ReceivedDisbursement {
   reconciliation_reason: string;
   simulation: boolean;
 }
+
+export type MilestoneControlStatus =
+  'not_declared' | 'awaiting_documents' | 'awaiting_control' | 'under_reserve' | 'accepted';
+
+/** Ticket F-069 — miroir de `apps.build.services.lot_milestone_rows`
+ * (B-054) : état toujours dérivé côté serveur, jamais recalculé ici. */
+export interface LotMilestone {
+  id: string;
+  order: number;
+  code: string;
+  label: string;
+  status: MilestoneControlStatus;
+  status_label: string;
+  work_declaration_id: string | null;
+  evidence_count: number;
+  latest_outcome: 'conforme' | 'avec_reserve' | null;
+  reserve_id: string | null;
+  correction_submitted: boolean;
+  control_scheduled: boolean;
+}

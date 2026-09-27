@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, AppShell, Select, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
-  type AppModule, type IconName,
+  type AppModule, type IconName, logoutToLoginScreen,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -182,6 +182,8 @@ export function App() {
 
   return (
     <AppShell
+      // Ticket F-070 — déconnexion volontaire, vers l'écran de connexion.
+      onLogout={() => logoutToLoginScreen()}
       density="confortable"
       // Ticket F-039 — seule app du projet à activer le bandeau <header>
       // navy (prop `brand`), resté HOME-only, intouché par F-048.

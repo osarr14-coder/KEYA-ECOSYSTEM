@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, AppShell, TabBar, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
-  type AppModule, type IconName,
+  type AppModule, type IconName, logoutToLoginScreen,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
@@ -10,6 +10,7 @@ import { useApiResource } from './api/useApiResource';
 import { AllLotsView } from './views/AllLotsView';
 import { ExceptionsView } from './views/ExceptionsView';
 import { DisbursementsView } from './views/DisbursementsView';
+import { MilestonesView } from './views/MilestonesView';
 import { TasksView } from './views/TasksView';
 
 // Réutilise AppShell tel quel (ticket 007), variante dense (ticket 009,
@@ -51,11 +52,14 @@ function buildModules(): AppModule[] {
   ];
 }
 
-type ViewId = 'exceptions' | 'all_lots' | 'disbursements' | 'tasks';
+type ViewId = 'exceptions' | 'all_lots' | 'milestones' | 'disbursements' | 'tasks';
 
 const TABS: { id: ViewId; label: string; icon: IconName }[] = [
   { id: 'exceptions', label: 'Exceptions', icon: 'alert-triangle' },
   { id: 'all_lots', label: 'Tous les lots', icon: 'building' },
+  // Ticket F-069 — déclarer un jalon, joindre des pièces, corriger une
+  // réserve (backend B-054).
+  { id: 'milestones', label: 'Jalons', icon: 'clipboard-check' },
   // Ticket F-068 — décaissements simulés reçus (backend B-052).
   { id: 'disbursements', label: 'Paiements reçus', icon: 'wallet' },
   // Ticket F-061 — destination réelle de la cloche AppShell (jusqu'ici un
@@ -127,6 +131,8 @@ export function App() {
 
   return (
     <AppShell
+      // Ticket F-070 — déconnexion volontaire, vers l'écran de connexion.
+      onLogout={() => logoutToLoginScreen()}
       density="dense"
       // Ticket F-056 (suite F-053/054/055) — révision de la doctrine 17.3 :
       // `brand` (bandeau <header> dégradé navy/or) était HOME-only depuis
@@ -180,6 +186,7 @@ export function App() {
           {activeTab === 'all_lots' && (
             <AllLotsView initialSearch={lotSearchFilter} activeOrganizationId={activeOrganizationId} />
           )}
+          {activeTab === 'milestones' && <MilestonesView activeOrganizationId={activeOrganizationId} />}
           {activeTab === 'disbursements' && <DisbursementsView />}
           {activeTab === 'tasks' && <TasksView />}
         </>

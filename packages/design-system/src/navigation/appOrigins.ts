@@ -42,3 +42,33 @@ export function buildCrossAppUrl(origin: string, accessToken: string, refreshTok
   const params = new URLSearchParams({ access_token: accessToken, refresh_token: refreshToken });
   return `${origin}/#${params.toString()}`;
 }
+
+
+/** Clés de session partagées par les apps (chacune dans le `localStorage`
+ * de SA propre origine). */
+const SESSION_KEYS = ['keya_access_token', 'keya_refresh_token', 'keya_active_organization_id'];
+
+/**
+ * Ticket F-070 — déconnexion volontaire : aucune app n'en proposait (seule
+ * la déconnexion forcée sur 401 existait, `forceLogout`), impossible donc de
+ * changer de compte sans vider le stockage à la main. Efface la session de
+ * l'origine COURANTE puis ouvre l'écran de connexion d'apps/web ; `?logout=1`
+ * demande à apps/web d'effacer aussi la sienne (autre origine, autre
+ * `localStorage`), sans quoi un jeton d'admin/ADV/Finance resté là rouvrirait
+ * directement le back-office.
+ */
+export function logoutToLoginScreen(assign: (url: string) => void = (url) => window.location.assign(url)): void {
+  for (const key of SESSION_KEYS) localStorage.removeItem(key);
+  assign(`${resolveAppOrigins().web}/?logout=1`);
+}
+
+/** Côté apps/web, au démarrage : honore `?logout=1` (voir ci-dessus).
+ * Retourne `true` si une déconnexion a été appliquée. */
+export function consumeLogoutRequest(): boolean {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('logout') !== '1') return false;
+  for (const key of SESSION_KEYS) localStorage.removeItem(key);
+  url.searchParams.delete('logout');
+  window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  return true;
+}

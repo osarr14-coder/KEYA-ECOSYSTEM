@@ -7,6 +7,7 @@ import * as repository from '../db/repository';
 import { createEmptyDraft, saveDraft } from '../db/repository';
 import { clearIndexedDB } from '../testUtils/clearIndexedDB';
 import { FIXTURE_MISSIONS, seedFixtureMissions } from '../testUtils/missionFixtures';
+import { MISSIONS_UPDATED_EVENT } from '../sync/syncEngine';
 import { MissionsListView } from './MissionsListView';
 
 beforeEach(async () => {
@@ -84,6 +85,17 @@ describe('MissionsListView', () => {
       expect(firstMissionItem).not.toHaveTextContent('Mission de suivi');
     },
   );
+
+  it('ticket F-069 — relit le cache quand la synchronisation le met à jour (premier affichage vide)', async () => {
+    await clearIndexedDB();
+    render(<MissionsListView onSelectMission={() => {}} />);
+    expect(await screen.findByText('Aucune mission pour le moment.')).toBeInTheDocument();
+
+    await seedFixtureMissions();
+    window.dispatchEvent(new Event(MISSIONS_UPDATED_EVENT));
+
+    expect(await screen.findByText(FIXTURE_MISSIONS[0].lotName)).toBeInTheDocument();
+  });
 });
 
 describe(

@@ -570,3 +570,28 @@ export interface ProgramAccount extends ProgramAccountSummary {
   milestones: AccountMilestone[];
   disbursements: Disbursement[];
 }
+
+// ─── Ticket F-069 — contrôles à affecter (backend B-054) ────────────────────
+
+/** Miroir de `apps.inspections.services.list_controls_to_assign`. */
+export interface ControlToAssign {
+  organization: { id: string; name: string };
+  program: { id: string; name: string };
+  lot: { id: string; name: string };
+  milestone: { id: string; code: string; label: string };
+  work_declaration_id: string;
+  declared_at: string;
+  status: 'awaiting_control' | 'under_reserve';
+  status_label: string;
+  evidence_count: number;
+  latest_outcome: 'conforme' | 'avec_reserve' | null;
+  correction_submitted: boolean;
+  pending_mission: { id: string; inspector_email: string; assigned_at: string } | null;
+}
+
+export interface InspectorSummary {
+  id: string;
+  email: string;
+  full_name: string;
+  organizations: string[];
+}

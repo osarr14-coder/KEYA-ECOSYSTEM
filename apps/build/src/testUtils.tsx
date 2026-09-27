@@ -20,6 +20,9 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     getMyTasks: vi.fn(notMocked),
     // Ticket F-062 (marquer une tâche traitée) :
     completeTask: vi.fn(notMocked),
+    // Ticket F-069 (jalons et déclaration, B-054) :
+    listLotMilestones: vi.fn(notMocked),
+    declareMilestone: vi.fn(notMocked),
     // Ticket F-068 (décaissements reçus, B-052) :
     listReceivedDisbursements: vi.fn(notMocked),
     confirmDisbursement: vi.fn(notMocked),

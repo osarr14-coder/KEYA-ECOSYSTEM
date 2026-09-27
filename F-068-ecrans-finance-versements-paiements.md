@@ -43,5 +43,5 @@ rapprochement Finance dans apps/web.
 
 - Déclaration de travaux (BUILD) et affectation d'une mission au contrôleur (apps/web) : aucun
   écran n'existe encore — dans la vérification ci-dessus, cette étape est passée par les
-  services Django. Ticket à ouvrir pour que le scénario soit intégralement déroulable à l'écran.
+  services Django. Livré depuis par B-054/F-069.
 - Pièce jointe aux encaissements, contrepassations, remboursements.

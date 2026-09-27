@@ -6,6 +6,7 @@ import {
 
 import { SyncStatusIndicator } from '../components/SyncStatusIndicator';
 import { getCachedMissions, getDraftForMission } from '../db/repository';
+import { MISSIONS_UPDATED_EVENT } from '../sync/syncEngine';
 import type { Mission, SyncStatus } from '../db/types';
 
 export interface MissionsListViewProps {
@@ -74,9 +75,15 @@ export function MissionsListView({ onSelectMission }: MissionsListViewProps) {
   // "Réessayer" relance le chargement sans dupliquer sa logique.
   const [reloadToken, setReloadToken] = useState(0);
 
+  // Ticket F-069 — relit le cache dès que la synchronisation l'a mis à jour.
+  useEffect(() => {
+    const reload = () => setReloadToken((token) => token + 1);
+    window.addEventListener(MISSIONS_UPDATED_EVENT, reload);
+    return () => window.removeEventListener(MISSIONS_UPDATED_EVENT, reload);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    setLoadState('loading');
     (async () => {
       let cachedMissions: Mission[];
       try {

@@ -108,6 +108,9 @@ export interface AppShellProps {
    * un compteur toujours à 0 menant vers un onglet interdit serait trompeur.
    * Défaut `true` : aucune app existante n'est modifiée. */
   showTaskInbox?: boolean;
+  /** Ticket F-070 — bouton « Se déconnecter » dans la barre du haut.
+   * Optionnel : sans handler, aucun bouton (rétrocompatible). */
+  onLogout?: () => void;
   user?: AppShellUser;
   organizationOptions?: AppShellOrganizationOption[];
   activeOrganizationId?: string;
@@ -147,6 +150,7 @@ export function AppShell({
   taskInboxCount = 0,
   onTaskInboxClick,
   showTaskInbox = true,
+  onLogout,
   user,
   organizationOptions = [],
   activeOrganizationId,
@@ -180,7 +184,10 @@ export function AppShell({
       data-density={density}
       style={{
         display: 'grid',
-        gridTemplateColumns: effectiveCollapsed ? '56px 1fr' : '220px 1fr',
+        // Ticket F-070 — `minmax(0, 1fr)` : un `1fr` seul vaut `minmax(auto,
+        // 1fr)`, la colonne s'élargissait au contenu le plus large (barre de
+        // 11 onglets d'apps/web) et poussait la barre du haut hors de l'écran.
+        gridTemplateColumns: effectiveCollapsed ? '56px minmax(0, 1fr)' : '220px minmax(0, 1fr)',
         gridTemplateRows: 'auto 1fr',
         minHeight: '100vh',
         fontSize: tokens.fontSize,
@@ -513,6 +520,29 @@ export function AppShell({
         >
           <Icon name="moon" size={18} />
         </button>
+
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            style={{
+              border: 'none',
+              background: brand ? 'transparent' : semanticColors.neutral.background,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 8px',
+              borderRadius: '8px',
+              color: brand ? '#FFFFFF' : semanticColors.neutral.textMuted,
+              font: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            <Icon name="log-out" size={18} />
+            {!isMobile && 'Se déconnecter'}
+            {isMobile && <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Se déconnecter</span>}
+          </button>
+        )}
       </header>
 
       <main style={{ padding: tokens.paddingInline }}>

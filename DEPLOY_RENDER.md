@@ -137,9 +137,10 @@ Parcours conseillé (CDC §9.1) : `client1` réserve le Lot A1 dans HOME → `ad
 approuve le contrat puis émet l'appel « Frais » (apps/web, Réservations) → `finance` enregistre
 l'encaissement de 100 000, l'affecte et le rapproche (la réservation passe « Réservée ») → `adv`
 émet le complément (2 900 000) → `finance` l'encaisse, `client1` signe le contrat (« Concrétisée »)
-→ déclaration des fondations avec une pièce, puis avis conforme du contrôleur (**limite actuelle** :
-ni la déclaration de travaux dans BUILD ni l'affectation d'une mission au contrôleur n'ont encore
-d'écran — étape à réaliser côté serveur tant que le ticket dédié n'est pas livré) → `finance` prépare 1 000 000 sur le jalon, contrôle l'éligibilité, exécute (Comptes &
+→ `constructeur` déclare « Fondations » et joint une pièce (BUILD, onglet Jalons) → `admin`
+missionne le contrôleur (apps/web, Contrôles à affecter) → `inspecteur` rend son avis (CONTROL) ;
+avec réserve : le constructeur propose une correction, l'admin missionne le recontrôle, avis
+conforme → `finance` prépare 1 000 000 sur le jalon, contrôle l'éligibilité, exécute (Comptes &
 décaissements) → `constructeur` confirme la réception (BUILD, Paiements reçus) → `finance`
 rapproche. Disponible final : 2 000 000 XOF.
 

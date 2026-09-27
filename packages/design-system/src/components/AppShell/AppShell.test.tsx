@@ -297,7 +297,7 @@ describe('AppShell — responsive mobile, dette de F-039 (ticket F-050)', () => 
     mockMatchMediaMobile();
     render(<AppShell density="confortable" modules={MODULES} userRoles={[]} />);
 
-    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '56px 1fr' });
+    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '56px minmax(0, 1fr)' });
   });
 
   it('en dessous du seuil mobile, les libellés de module sont masqués (rail icônes seules)', () => {
@@ -318,7 +318,7 @@ describe('AppShell — responsive mobile, dette de F-039 (ticket F-050)', () => 
   it('au-dessus du seuil (comportement par défaut de ce projet de test, matchMedia absent), rien ne change', () => {
     render(<AppShell density="confortable" modules={MODULES} userRoles={[]} />);
 
-    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '220px 1fr' });
+    expect(screen.getByTestId('app-shell')).toHaveStyle({ gridTemplateColumns: '220px minmax(0, 1fr)' });
     expect(screen.getByText('Accueil')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /replier la navigation/i })).toBeInTheDocument();
   });
@@ -431,5 +431,21 @@ describe('AppShell — bascule de mode sombre (ticket F-051)', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
 
     expect(screen.getByRole('button', { name: /désactiver le mode sombre/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('AppShell — déconnexion volontaire (ticket F-070)', () => {
+  it('sans handler, aucun bouton de déconnexion (rétrocompatible)', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
+    expect(screen.queryByRole('button', { name: /Se déconnecter/ })).not.toBeInTheDocument();
+  });
+
+  it('avec handler, « Se déconnecter » l’appelle', () => {
+    const onLogout = vi.fn();
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} onLogout={onLogout} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Se déconnecter/ }));
+
+    expect(onLogout).toHaveBeenCalledTimes(1);
   });
 });

@@ -260,10 +260,18 @@ export async function runSyncCycle(apiClient: ApiClient): Promise<void> {
  * retentera naturellement au cycle suivant, la liste de missions n'ayant
  * pas la même urgence qu'une saisie d'inspecteur à ne jamais perdre.
  */
+/** Ticket F-069 — émis après chaque mise à jour du cache de missions : la
+ * liste (`MissionsListView`) ne lisait le cache qu'une fois, à son montage,
+ * AVANT que la première synchronisation ne l'ait rempli — un contrôleur qui
+ * venait de se connecter voyait « Aucune mission » alors qu'une mission lui
+ * était affectée (constaté en déroulant le scénario en navigateur). */
+export const MISSIONS_UPDATED_EVENT = 'keya:missions-updated';
+
 export async function refreshMissions(apiClient: ApiClient): Promise<void> {
   try {
     const missions = await apiClient.listMissions();
     await saveMissions(missions);
+    window.dispatchEvent(new Event(MISSIONS_UPDATED_EVENT));
   } catch {
     // Retenté au prochain passage de `runIfOnline` — voir docstring.
   }

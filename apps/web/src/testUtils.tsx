@@ -79,6 +79,10 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     executeDisbursement: vi.fn(notMocked),
     cancelDisbursement: vi.fn(notMocked),
     reconcileDisbursement: vi.fn(notMocked),
+    // Ticket F-069 (affectation des contrôles, B-054) :
+    listControlsToAssign: vi.fn(notMocked),
+    listInspectors: vi.fn(notMocked),
+    assignMission: vi.fn(notMocked),
     ...overrides,
   };
 }

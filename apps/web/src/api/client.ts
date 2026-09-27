@@ -1,7 +1,7 @@
 import type {
   AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, ContractAction,
-  ContractVersion, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
-  ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
+  ContractVersion, ControlToAssign, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
+  InspectorSummary, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
@@ -640,6 +640,21 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
         `/api/finance/disbursements/${disbursementId}/reconcile/${toQueryString({ organization_id: organizationId })}`,
         { method: 'POST', json: { reason } },
       )
+    ),
+
+    // ─── Ticket F-069 — affectation des contrôles (backend B-054) ──────────
+    /** `GET /api/backoffice/controls/` — déclarations à contrôler, toutes
+     * organisations (admin seul). */
+    listControlsToAssign: () => request<ControlToAssign[]>('/api/backoffice/controls/'),
+    listInspectors: () => request<InspectorSummary[]>('/api/backoffice/inspectors/'),
+    /** `POST /api/backoffice/missions/` (ticket 012) — règle d'indépendance
+     * vérifiée par le serveur (403 si le contrôleur appartient à
+     * l'organisation contrôlée). */
+    assignMission: (organizationId: string, workDeclarationId: string, inspectorId: string) => (
+      request<unknown>('/api/backoffice/missions/', {
+        method: 'POST',
+        json: { organization: organizationId, work_declaration: workDeclarationId, assigned_inspector: inspectorId },
+      })
     ),
   };
 }

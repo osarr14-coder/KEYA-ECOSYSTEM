@@ -33,7 +33,9 @@ export type { InputProps } from './components/Input/Input';
 
 export { isForbiddenError } from './errors/isForbiddenError';
 
-export { buildCrossAppUrl, resolveAppOrigins } from './navigation/appOrigins';
+export {
+  buildCrossAppUrl, consumeLogoutRequest, logoutToLoginScreen, resolveAppOrigins,
+} from './navigation/appOrigins';
 export type { AppOrigins } from './navigation/appOrigins';
 
 export { useIsMobile } from './hooks/useIsMobile';

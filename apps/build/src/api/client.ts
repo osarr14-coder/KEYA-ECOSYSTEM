@@ -1,6 +1,7 @@
 import type {
   AllLotsQuery,
   ExceptionsPayload,
+  LotMilestone,
   LotRow,
   Me,
   PaginatedResponse,
@@ -130,11 +131,13 @@ export function createApiClient({
       const document = await request<{ id: string; duplicate_of: string | null }>(
         '/api/documents/', { method: 'POST', formData },
       );
-      await request('/api/evidences/', {
+      const evidence = await request<{ id: string }>('/api/evidences/', {
         method: 'POST',
         json: { work_declaration: params.workDeclarationId, documents: [document.id] },
       });
-      return { duplicateOf: document.duplicate_of };
+      // Ticket F-069 — `evidenceId` : une correction de réserve se rattache
+      // à l'Evidence qui vient d'être créée.
+      return { duplicateOf: document.duplicate_of, evidenceId: evidence.id };
     },
 
     /**
@@ -159,6 +162,16 @@ export function createApiClient({
      * exécutées vers l'organisation active ; `POST …/confirm/` : le
      * bénéficiaire confirme la réception (information, pas preuve bancaire).
      */
+    /**
+     * Ticket F-069 — `GET /api/build/lots/{id}/milestones/` (B-054) : jalons
+     * du lot et leur état de contrôle dérivé ; `POST /api/work-declarations/`
+     * (ticket 004) : déclarer un jalon (rôle constructeur).
+     */
+    listLotMilestones: (lotId: string) => request<LotMilestone[]>(`/api/build/lots/${lotId}/milestones/`),
+    declareMilestone: (milestoneId: string, note = '') => request<{ id: string }>(
+      '/api/work-declarations/', { method: 'POST', json: { milestone: milestoneId, note } },
+    ),
+
     listReceivedDisbursements: () => request<ReceivedDisbursement[]>('/api/build/disbursements/'),
     confirmDisbursement: (disbursementId: string) => request<ReceivedDisbursement>(
       `/api/build/disbursements/${disbursementId}/confirm/`, { method: 'POST' },

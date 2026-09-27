@@ -34,6 +34,10 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
         gap: '4px',
         borderBottom: `1px solid ${semanticColors.neutral.border}`,
         marginBottom: '16px',
+        // Ticket F-070 — beaucoup d'onglets : défilement horizontal de la
+        // barre, jamais un élargissement de la page ni des libellés cassés
+        // sur 4 lignes.
+        overflowX: 'auto',
       }}
     >
       {tabs.map((tab) => {
@@ -49,6 +53,8 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
               alignItems: 'center',
               gap: '6px',
               padding: '8px 16px',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
               border: 'none',
               borderBottom: isActive ? `2px solid ${semanticColors.neutral.text}` : '2px solid transparent',
               background: 'transparent',
