@@ -7,6 +7,7 @@ import {
 import { useApiClient } from '../api/ApiClientContext';
 import type { PublicProgram, PublicWorksite } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
+import { FacadeIllustration } from './illustrations/FacadeIllustration';
 import { paymentBreakdown } from './paymentBreakdown';
 import { CONTAINER_STYLE } from './PublicLayout';
 import type { PublicPath } from './usePublicPath';
@@ -433,6 +434,9 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         title="Des logements neufs, un prix figé à la réservation"
         subtitle="Le prix du lot est figé dès votre réservation. Les lots réservés disparaissent de la liste en temps réel."
       >
+        <div style={{ maxWidth: '1040px', marginBottom: '32px' }}>
+          <FacadeIllustration />
+        </div>
         {offerState.status === 'loading' && <p>Chargement des programmes…</p>}
         {offerState.status === 'error' && <p role="alert">Les programmes sont momentanément indisponibles. Réessayez dans un instant.</p>}
         {offerState.status === 'success' && programs.length === 0 && <p>Aucun programme publié pour le moment.</p>}
