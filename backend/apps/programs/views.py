@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import generics, permissions, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -45,10 +45,15 @@ class ProgramViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
     serializer_class = ProgramSerializer
 
     def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ('create', 'update', 'partial_update'):
             # Ticket B-046 — préparer le scénario métier (programme/bien/
             # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
             return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+        if self.action == 'destroy':
+            # Ticket B-047 — la suppression reste admin_keyimmo : supprimer
+            # un programme emporte en cascade les affectations client de ses
+            # lots (revue indépendante de B-046).
+            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -122,10 +127,15 @@ class AssetViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
     serializer_class = AssetSerializer
 
     def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ('create', 'update', 'partial_update'):
             # Ticket B-046 — préparer le scénario métier (programme/bien/
             # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
             return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+        if self.action == 'destroy':
+            # Ticket B-047 — la suppression reste admin_keyimmo : supprimer
+            # un programme emporte en cascade les affectations client de ses
+            # lots (revue indépendante de B-046).
+            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -190,10 +200,15 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
     serializer_class = LotSerializer
 
     def get_permissions(self):
-        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+        if self.action in ('create', 'update', 'partial_update'):
             # Ticket B-046 — préparer le scénario métier (programme/bien/
             # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
             return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
+        if self.action == 'destroy':
+            # Ticket B-047 — la suppression reste admin_keyimmo : supprimer
+            # un programme emporte en cascade les affectations client de ses
+            # lots (revue indépendante de B-046).
+            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -216,6 +231,12 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
         organization_id = request.query_params.get('organization_id')
         if not organization_id:
             raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+        # Ticket B-047 — le prix de vente est du pricing, réservé à
+        # admin_keyimmo ; l'ADV garde le statut commercial (suivi des
+        # ventes). Vérifié AVANT toute écriture : la requête est refusée en
+        # bloc, jamais appliquée partiellement.
+        if request.data.get('sale_price') is not None and not IsAdminKeyimmo().has_permission(request, self):
+            raise PermissionDenied('Le prix de vente est réservé aux membres du rôle admin_keyimmo.')
         try:
             lot = services.update_lot(
                 admin_organization_id=request.organization.id if request.organization else None,

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.evidence.validators import validate_document_file
+from apps.evidence.validators import raise_if_upload_was_too_large, validate_document_file
 from apps.inspections.models import InspectionOutcome
 
 
@@ -20,6 +20,10 @@ class SyncDocumentSerializer(serializers.Serializer):
     source = serializers.CharField(max_length=100)
     captured_at = serializers.DateTimeField(required=False, allow_null=True)
     correlation_id = serializers.UUIDField()
+
+    def to_internal_value(self, data):
+        raise_if_upload_was_too_large(self.context.get('request'))
+        return super().to_internal_value(data)
 
 
 class SyncEvidenceSerializer(serializers.Serializer):

@@ -5,8 +5,7 @@ from apps.trust.models import TrustLevel
 
 from .models import Document, DocumentVisibility, Evidence, SensitivityLevel, WorkDeclaration
 from .tasks import process_document_media
-
-IMAGE_CONTENT_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+from .validators import EXTENSION_BY_KIND, IMAGE_KINDS, detect_document_kind
 
 
 def create_document(
@@ -30,6 +29,16 @@ def create_document(
         organization=organization, hash=file_hash,
     ).order_by('created_at').first()
 
+    # Ticket B-047 — extension et traitement média décidés par le type
+    # DÉTECTÉ, jamais par le nom ou le Content-Type fournis par le client :
+    # un `facture.bat` commençant par `%PDF-` était stocké et téléchargé en
+    # `.bat`, et une photo déclarée `application/pdf` échappait au
+    # ré-encodage (métadonnées EXIF/GPS conservées). Type non détecté (seuls
+    # des appels directs au service, hors HTTP, peuvent l'atteindre — les
+    # deux chemins HTTP valident d'abord) : aucune extension.
+    kind = detect_document_kind(uploaded_file)
+    uploaded_file.name = f'document.{EXTENSION_BY_KIND[kind]}' if kind else 'document'
+
     document = Document.objects.create(
         organization=organization,
         owner=owner,
@@ -43,7 +52,7 @@ def create_document(
         file=uploaded_file,
     )
 
-    if getattr(uploaded_file, 'content_type', None) in IMAGE_CONTENT_TYPES:
+    if kind in IMAGE_KINDS:
         # organization_id/owner sont transmis explicitement : un worker
         # Celery réel n'a aucune requête HTTP pour les résoudre lui-même
         # (voir apps/evidence/tasks.py et docs/adr/0001-celery-eager-mode.md).

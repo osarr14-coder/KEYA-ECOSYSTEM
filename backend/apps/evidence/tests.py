@@ -1,5 +1,7 @@
 import io
+import struct
 import uuid
+import zlib
 
 import pytest
 from django.core import signing
@@ -466,6 +468,28 @@ def _make_pdf_file(name='piece.pdf', body=b'%PDF-1.4\n%fake pdf body for tests\n
     return SimpleUploadedFile(name, body, content_type='application/pdf')
 
 
+def _real_image_bytes(pillow_format, size=(40, 30)):
+    buffer = io.BytesIO()
+    Image.new('RGB', size, (120, 40, 200)).save(buffer, format=pillow_format)
+    return buffer.getvalue()
+
+
+def _png_chunk(chunk_type, data):
+    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+    return struct.pack('>I', len(data)) + chunk_type + data + struct.pack('>I', crc)
+
+
+def _png_claiming_size(width, height):
+    """PNG minuscule dont l'en-tête IHDR (CRC valide) annonce `width`×`height`
+    — reproduit une bombe de décompression sans jamais allouer ses pixels."""
+    return (
+        b'\x89PNG\r\n\x1a\n'
+        + _png_chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 0, 0, 0, 0))
+        + _png_chunk(b'IDAT', zlib.compress(b'\x00' * 64))
+        + _png_chunk(b'IEND', b'')
+    )
+
+
 @pytest.mark.django_db
 class TestDocumentUploadValidation:
     """Ticket B-046 (CDC §10) — aucune validation de type/taille n'existait
@@ -507,10 +531,120 @@ class TestDocumentUploadValidation:
         assert response.status_code == 400
 
     def test_a_file_over_the_size_limit_is_rejected(self):
+        """B-047 — écarté PENDANT la réception (MaxSizeUploadHandler), avec
+        un message explicite plutôt que « Aucun fichier n'a été soumis »."""
         client, _organization, _user, _milestone = _setup_org('upload-toobig@example.com', 'Org Upload Too Big')
         oversized = _make_pdf_file(body=b'%PDF-1.4\n' + b'0' * (10 * 1024 * 1024 + 1))
         response = _upload_document(client, upload_file=oversized)
         assert response.status_code == 400
+        assert 'trop volumineux' in str(response.data['file'][0])
+
+    def test_size_handler_discards_the_file_instead_of_storing_it(self):
+        """B-047 — preuve directe que les octets au-delà de la limite ne sont
+        jamais transmis aux gestionnaires suivants (mémoire, fichier
+        temporaire) : `SkipFile` interrompt la chaîne."""
+        from django.core.files.uploadhandler import SkipFile
+        from django.http import HttpRequest
+
+        from .upload_handlers import MaxSizeUploadHandler
+        from .validators import MAX_UPLOAD_SIZE_BYTES
+
+        request = HttpRequest()
+        handler = MaxSizeUploadHandler(request)
+        chunk = b'0' * (1024 * 1024)
+        assert handler.receive_data_chunk(chunk, 0) == chunk
+        with pytest.raises(SkipFile):
+            handler.receive_data_chunk(chunk, MAX_UPLOAD_SIZE_BYTES)
+        assert request.upload_too_large is True
+
+    def test_a_png_announcing_too_many_pixels_is_rejected_without_being_decoded(self):
+        """B-047 — bombe de décompression : 17 Ko annonçant 144 Mpx faisaient
+        monter le traitement miniature à 1,2 Go (revue de B-046)."""
+        client, _organization, _user, _milestone = _setup_org('upload-bomb@example.com', 'Org Upload Bomb')
+        bomb = SimpleUploadedFile('bombe.png', _png_claiming_size(12000, 12000), content_type='image/png')
+        response = _upload_document(client, upload_file=bomb)
+        assert response.status_code == 400
+        assert 'trop grande' in str(response.data['file'][0])
+
+    def test_a_png_with_a_bad_crc_gives_400_not_500(self):
+        """B-047 — Pillow lève `SyntaxError`, non interceptée en B-046."""
+        client, _organization, _user, _milestone = _setup_org('upload-crc@example.com', 'Org Upload CRC')
+        png = _real_image_bytes('PNG')
+        idat = png.index(b'IDAT')
+        length = struct.unpack('>I', png[idat - 4:idat])[0]
+        crc_at = idat + 4 + length
+        corrupted = png[:crc_at] + b'\x00\x00\x00\x00' + png[crc_at + 4:]
+        response = _upload_document(
+            client, upload_file=SimpleUploadedFile('photo.png', corrupted, content_type='image/png'),
+        )
+        assert response.status_code == 400
+
+    def test_a_truncated_jpeg_is_rejected(self):
+        """B-047 — `verify()` ne contrôle rien pour un JPEG ; le décodage
+        complet détecte un flux compressé interrompu."""
+        client, _organization, _user, _milestone = _setup_org('upload-jpeg-cut@example.com', 'Org Upload JPEG Cut')
+        jpeg = _real_image_bytes('JPEG')
+        start_of_scan = jpeg.index(b'\xff\xda')
+        truncated = jpeg[:start_of_scan + 12 + (len(jpeg) - start_of_scan) // 3]
+        response = _upload_document(
+            client, upload_file=SimpleUploadedFile('photo.jpg', truncated, content_type='image/jpeg'),
+        )
+        assert response.status_code == 400
+
+    def test_arbitrary_bytes_behind_a_jpeg_header_never_survive_storage(self):
+        """B-047 — limite constatée, pas supposée : libjpeg décode n'importe
+        quel flux compressé assez long (du bruit), aucune validation ne peut
+        donc prouver qu'un JPEG ne transporte rien d'autre. La garantie vient
+        du ré-encodage systématique des images détectées : le fichier stocké
+        ne contient plus les octets envoyés."""
+        client, _organization, _user, _milestone = _setup_org('upload-jpeg-junk@example.com', 'Org Upload JPEG Junk')
+        jpeg = _real_image_bytes('JPEG')
+        start_of_scan = jpeg.index(b'\xff\xda')
+        # Séquence 0x00..0xFF : acceptée telle quelle par le validateur
+        # (constaté), et pratiquement impossible dans un JPEG ré-encodé.
+        payload = bytes(range(256))
+        smuggled = jpeg[:start_of_scan + 12] + payload * 12
+
+        response = _upload_document(
+            client, upload_file=SimpleUploadedFile('photo.jpg', smuggled, content_type='image/jpeg'),
+        )
+
+        assert response.status_code == 201
+        document = Document.objects.get(id=response.data['id'])
+        with document.file.open('rb') as stored:
+            stored_bytes = stored.read()
+        assert payload not in stored_bytes
+        assert stored_bytes != smuggled
+
+    def test_the_stored_extension_comes_from_the_detected_type_never_from_the_client(self):
+        """B-047 — un `facture.bat` commençant par `%PDF-` était stocké (et
+        téléchargé) en `.bat`."""
+        client, _organization, _user, _milestone = _setup_org('upload-bat@example.com', 'Org Upload Bat')
+        disguised = SimpleUploadedFile('facture.bat', b'%PDF-\r\ncalc.exe', content_type='application/pdf')
+        response = _upload_document(client, upload_file=disguised)
+        assert response.status_code == 201
+        stored_name = Document.objects.get(id=response.data['id']).file.name
+        assert stored_name.endswith('.pdf')
+        assert '.bat' not in stored_name
+
+    def test_an_image_declared_as_pdf_is_still_processed(self):
+        """B-047 — le ré-encodage (qui retire aussi les métadonnées EXIF/GPS)
+        se déclenche sur le type DÉTECTÉ, plus sur le Content-Type déclaré."""
+        client, _organization, _user, _milestone = _setup_org('upload-png-as-pdf@example.com', 'Org Upload PNG As PDF')
+        lying = SimpleUploadedFile('photo.pdf', _real_image_bytes('PNG'), content_type='application/pdf')
+        response = _upload_document(client, upload_file=lying)
+        assert response.status_code == 201
+        assert Document.objects.get(id=response.data['id']).thumbnail.name
+
+    def test_a_multi_picture_jpeg_mpo_from_a_smartphone_is_accepted(self):
+        client, _organization, _user, _milestone = _setup_org('upload-mpo@example.com', 'Org Upload MPO')
+        buffer = io.BytesIO()
+        Image.new('RGB', (40, 30), (1, 2, 3)).save(
+            buffer, format='MPO', save_all=True, append_images=[Image.new('RGB', (40, 30))],
+        )
+        mpo = SimpleUploadedFile('photo.jpg', buffer.getvalue(), content_type='image/jpeg')
+        response = _upload_document(client, upload_file=mpo)
+        assert response.status_code == 201
 
     def test_rejected_upload_creates_no_document(self):
         """Critère d'acceptation B-046 : rejeté avant toute écriture."""

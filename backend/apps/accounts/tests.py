@@ -191,7 +191,7 @@ class TestLoginThrottling:
     def setup_method(self):
         cache.clear()
         self._original_rates = ScopedRateThrottle.THROTTLE_RATES
-        ScopedRateThrottle.THROTTLE_RATES = {'login': '5/min'}
+        ScopedRateThrottle.THROTTLE_RATES = {'login': '5/min', 'register': None}
 
     def teardown_method(self):
         ScopedRateThrottle.THROTTLE_RATES = self._original_rates
@@ -230,3 +230,47 @@ class TestLoginThrottling:
             format='json',
         )
         assert response.status_code == 429
+
+    def test_changing_x_forwarded_for_does_not_bypass_the_throttle(self):
+        """Ticket B-047 — contournement reproduit par la revue de B-046 : sans
+        `NUM_PROXIES`, DRF identifiait l'appelant par l'en-tête ENTIER. Ici,
+        comme derrière le proxy Render, la valeur choisie par le client est
+        suivie de l'adresse réelle ajoutée par le proxy : seule cette
+        dernière doit compter."""
+        client = APIClient()
+        _register(client, 'throttle-xff@example.com', 'Org Throttle XFF')
+
+        statuses = [
+            client.post(
+                reverse('login'),
+                {'email': 'throttle-xff@example.com', 'password': 'wrong'},
+                format='json',
+                HTTP_X_FORWARDED_FOR=f'10.9.8.{attempt}, 203.0.113.7',
+            ).status_code
+            for attempt in range(6)
+        ]
+
+        assert statuses == [401] * 5 + [429]
+
+
+@pytest.mark.django_db
+class TestRegisterThrottling:
+    """Ticket B-047 — même mécanique que TestLoginThrottling (voir sa
+    docstring pour le patch direct de l'attribut de classe)."""
+
+    def setup_method(self):
+        cache.clear()
+        self._original_rates = ScopedRateThrottle.THROTTLE_RATES
+        ScopedRateThrottle.THROTTLE_RATES = {'login': None, 'register': '3/hour'}
+
+    def teardown_method(self):
+        ScopedRateThrottle.THROTTLE_RATES = self._original_rates
+        cache.clear()
+
+    def test_registration_is_rate_limited_per_ip(self):
+        client = APIClient()
+        statuses = [
+            _register(client, f'enum-{attempt}@example.com', f'Org Enum {attempt}').status_code
+            for attempt in range(4)
+        ]
+        assert statuses == [201, 201, 201, 429]

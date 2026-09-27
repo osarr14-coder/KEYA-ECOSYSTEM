@@ -27,6 +27,12 @@ class ThrottledLoginView(TokenObtainPairView):
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
+    # Ticket B-047 — la réponse révèle si un email a déjà un compte ; sans
+    # vérification d'email (aucune infrastructure d'envoi), la cacher ne
+    # suffirait pas (une inscription qui réussit prouve que l'email était
+    # libre) : la limite de débit est la mitigation réelle.
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register'
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

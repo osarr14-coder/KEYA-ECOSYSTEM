@@ -146,12 +146,45 @@ REST_FRAMEWORK = {
     # Ticket B-046 (CDC §10) — bourrage d'identifiants sur /api/auth/login/
     # confirmé sans aucune protection avant ce ticket. `login` est le scope
     # utilisé par apps.accounts.views.ThrottledLoginView (ScopedRateThrottle,
-    # par IP pour cet endpoint anonyme). Désactivé en tests, voir
-    # config/settings_test.py.
+    # par IP pour cet endpoint anonyme). `register` (B-047) : l'inscription
+    # révèle si un email a déjà un compte, elle permettait d'énumérer les
+    # comptes sans limite. Désactivés en tests, voir config/settings_test.py.
     'DEFAULT_THROTTLE_RATES': {
         'login': '5/min',
+        'register': '20/hour',
+    },
+    # Ticket B-047 — SANS ce réglage, DRF identifie l'appelant par
+    # l'en-tête X-Forwarded-For ENTIER, que le client choisit librement :
+    # changer sa valeur à chaque tentative contournait le throttle (reproduit
+    # par la revue indépendante de B-046). Avec N proxys de confiance, DRF
+    # prend l'adresse ajoutée par le N-ième proxy en partant de la fin — jamais
+    # une valeur fournie par le client. Défaut 1 = le proxy Render ; à
+    # confirmer sur le déploiement réel (voir ticket B-047, « À confirmer au
+    # déploiement »). Sans proxy (dev local), aucun X-Forwarded-For n'est
+    # posé et DRF retombe sur REMOTE_ADDR.
+    'NUM_PROXIES': config('NUM_PROXIES', default=1, cast=int),
+}
+
+# Ticket B-047 — cache partagé en base pour les compteurs de throttle. Le
+# cache par défaut (LocMemCache) est propre à CHAQUE processus gunicorn
+# (limite multipliée par le nombre de workers) et vidé à chaque mise en
+# veille de l'instance Render free. Table créée par `createcachetable`
+# (render.yaml, buildCommand ; créée automatiquement pour la base de test).
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'keya_cache',
     },
 }
+
+# Ticket B-047 — `MaxSizeUploadHandler` EN PREMIER : coupe l'écriture d'un
+# fichier au-delà de 10 Mo PENDANT la réception, avant que les gestionnaires
+# par défaut (mémoire, puis fichier temporaire) ne l'aient stocké en entier.
+FILE_UPLOAD_HANDLERS = [
+    'apps.evidence.upload_handlers.MaxSizeUploadHandler',
+    'django.core.files.uploadhandler.MemoryFileUploadHandler',
+    'django.core.files.uploadhandler.TemporaryFileUploadHandler',
+]
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),

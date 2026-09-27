@@ -28,7 +28,7 @@ class SyncDocumentView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request):
-        serializer = SyncDocumentSerializer(data=request.data)
+        serializer = SyncDocumentSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 

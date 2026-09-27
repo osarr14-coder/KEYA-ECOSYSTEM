@@ -4,7 +4,7 @@ from apps.programs.models import Milestone
 
 from . import services
 from .models import Document, DocumentVisibility, Evidence, SensitivityLevel, WorkDeclaration
-from .validators import validate_document_file
+from .validators import raise_if_upload_was_too_large, validate_document_file
 
 
 class DocumentSerializer(serializers.ModelSerializer):
@@ -36,6 +36,10 @@ class DocumentUploadSerializer(serializers.Serializer):
         choices=SensitivityLevel.choices, default=SensitivityLevel.INTERNE,
     )
     captured_at = serializers.DateTimeField(required=False, allow_null=True)
+
+    def to_internal_value(self, data):
+        raise_if_upload_was_too_large(self.context.get('request'))
+        return super().to_internal_value(data)
 
     def create(self, validated_data):
         request = self.context['request']

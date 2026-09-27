@@ -100,7 +100,15 @@ d'associer et d'écraser la configuration de ce service existant.
   free utilisé ici, `migrate`/`seed_admin` tournent donc dans
   `buildCommand` — fonctionnellement correct, seule différence réelle :
   une migration qui échouerait bloquerait le build lui-même plutôt qu'une
-  étape post-build dédiée.
+  étape post-build dédiée. `createcachetable` y tourne aussi (ticket
+  B-047 : table du cache partagé des compteurs de throttle).
+- **`NUM_PROXIES` à vérifier après le premier déploiement** (ticket B-047) —
+  le throttle identifie l'appelant par l'adresse ajoutée par le dernier
+  proxy de confiance dans `X-Forwarded-For` (défaut : 1 proxy). Journaliser
+  l'en-tête d'une vraie requête : s'il contient plusieurs adresses ajoutées
+  par l'infrastructure Render, ajuster la variable d'environnement
+  `NUM_PROXIES` du service backend. Mal réglé, soit un attaquant
+  contourne le throttle, soit tous les utilisateurs partagent un compteur.
 
 ## Redéployer après un nouveau commit
 

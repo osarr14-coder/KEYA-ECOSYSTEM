@@ -1358,7 +1358,9 @@ class TestGestionnaireADVRole:
         assert Asset.objects.filter(id=asset['id']).exists()
         assert Lot.objects.filter(id=lot['id']).exists()
 
-    def test_gestionnaire_adv_alone_can_update_and_destroy(self):
+    def test_gestionnaire_adv_alone_can_update_but_never_destroy(self):
+        """B-047 — suppression retirée à l'ADV (cascade sur les affectations
+        client des lots), modification conservée."""
         target_organization = Organization.objects.create(
             name='Org Cible ADV MAJ', country_pack=CountryPack.objects.get(code='SN'),
         )
@@ -1366,6 +1368,8 @@ class TestGestionnaireADVRole:
             'adv-update@example.com', 'Org ADV Update',
         )
         program = _create_program(adv_client, target_organization.id, 'Programme ADV MAJ')
+        asset = _create_asset(adv_client, target_organization.id, program['id'], 'Bien ADV MAJ')
+        lot = _create_lot(adv_client, target_organization.id, asset['id'], 'Lot ADV MAJ')
         query = f'?organization_id={target_organization.id}'
 
         response = adv_client.patch(
@@ -1374,8 +1378,74 @@ class TestGestionnaireADVRole:
         )
         assert response.status_code == 200
 
-        response = adv_client.delete(reverse('program-detail', args=[program['id']]) + query)
-        assert response.status_code == 204
+        assert adv_client.delete(reverse('lot-detail', args=[lot['id']]) + query).status_code == 403
+        assert adv_client.delete(reverse('asset-detail', args=[asset['id']]) + query).status_code == 403
+        assert adv_client.delete(reverse('program-detail', args=[program['id']]) + query).status_code == 403
+        set_rls_context(organization_id=target_organization.id)
+        assert Program.objects.filter(id=program['id']).exists()
+        assert Lot.objects.filter(id=lot['id']).exists()
+
+    def test_gestionnaire_adv_can_set_commercial_status_but_not_sale_price(self):
+        """B-047 — le prix de vente est du pricing (admin_keyimmo) ; le
+        statut commercial est le suivi des ventes (ADV). Une requête qui
+        mêle les deux est refusée EN BLOC, jamais appliquée à moitié."""
+        target_organization = Organization.objects.create(
+            name='Org Cible ADV Prix', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        adv_client, _adv_org, _adv_user = _register_gestionnaire_adv(
+            'adv-price@example.com', 'Org ADV Price',
+        )
+        program = _create_program(adv_client, target_organization.id, 'Programme ADV Prix')
+        asset = _create_asset(adv_client, target_organization.id, program['id'], 'Bien ADV Prix')
+        lot = _create_lot(adv_client, target_organization.id, asset['id'], 'Lot ADV Prix')
+        url = reverse('lot-detail', args=[lot['id']]) + f'?organization_id={target_organization.id}'
+
+        assert adv_client.patch(url, {'sale_price': '1.00'}, format='json').status_code == 403
+        assert adv_client.patch(
+            url, {'sale_price': '1.00', 'commercial_status': 'vendu'}, format='json',
+        ).status_code == 403
+        set_rls_context(organization_id=target_organization.id)
+        untouched = Lot.objects.get(id=lot['id'])
+        assert untouched.sale_price is None
+        assert untouched.commercial_status != 'vendu'
+
+        assert adv_client.patch(url, {'commercial_status': 'vendu'}, format='json').status_code == 200
+        set_rls_context(organization_id=target_organization.id)
+        assert Lot.objects.get(id=lot['id']).commercial_status == 'vendu'
+
+        admin_client = _any_admin_client()
+        assert admin_client.patch(url, {'sale_price': '45000000.00'}, format='json').status_code == 200
+
+    def test_gestionnaire_adv_gets_403_on_every_other_admin_only_endpoint(self):
+        """B-047 — refus jusque-là seulement constatés en live (revue
+        indépendante de B-046, constat 9)."""
+        target_organization = Organization.objects.create(
+            name='Org Cible ADV Refus', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        adv_client, _adv_org, _adv_user = _register_gestionnaire_adv(
+            'adv-refusals@example.com', 'Org ADV Refusals',
+        )
+        program = _create_program(adv_client, target_organization.id, 'Programme ADV Refus')
+        query = f'?organization_id={target_organization.id}'
+
+        calls = [
+            ('post', reverse('program-cost-create', args=[program['id']])),
+            ('get', reverse('program-cost-current', args=[program['id']]) + query),
+            ('get', reverse('program-cost-history', args=[program['id']]) + query),
+            ('get', reverse('program-cost-repartition', args=[program['id']]) + query),
+            ('post', reverse('pricing-config-create')),
+            ('post', reverse('legal-payment-tier-template-create')),
+            ('post', reverse('control-office-rate-create')),
+            ('get', reverse('backoffice-user-search') + '?q=a'),
+            ('post', reverse('backoffice-mission-create')),
+            ('get', reverse('backoffice-litige-list')),
+            ('get', reverse('procurement-admin-lot-search') + '?q=a'),
+            ('get', reverse('procurement-admin-organization-search') + '?q=a'),
+            ('get', reverse('task-admin-inbox')),
+        ]
+        for method, url in calls:
+            response = getattr(adv_client, method)(url, {}, format='json')
+            assert response.status_code == 403, (method, url, response.status_code)
 
     def test_gestionnaire_adv_alone_can_list_and_decide_program_requests(self):
         requester_client = _register_and_authenticate(

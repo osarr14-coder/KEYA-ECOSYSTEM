@@ -54,15 +54,20 @@ MEDIA_ROOT = os.environ.get('MEDIA_ROOT') or tempfile.mkdtemp(prefix='keya_ecosy
 # process (worker réel vs reste de la suite).
 CELERY_TASK_ALWAYS_EAGER = os.environ.get('CELERY_TASK_ALWAYS_EAGER', 'True') == 'True'
 
-# Ticket B-046 — le throttle `login` (5/min, voir REST_FRAMEWORK dans
-# settings.py) est un taux de PRODUCTION. La suite complète appelle `login`
-# des centaines de fois (quasi chaque test qui a besoin d'un client
-# authentifié) : au taux de production, elle atteindrait le seuil en
-# quelques dizaines de tests et ferait échouer le RESTE de la suite avec des
-# 429 sans aucun rapport avec le code réellement testé — même piège que
-# SECURE_SSL_REDIRECT/CELERY_TASK_ALWAYS_EAGER ci-dessus. Désactivé
-# (`None` = pas de limite, comportement DRF documenté) pour ce module ; le
-# test dédié qui prouve le throttle (apps/accounts/tests.py) le réactive
-# explicitement via `override_settings` + `cache.clear()` pour repartir d'un
-# quota propre.
-REST_FRAMEWORK = {**REST_FRAMEWORK, 'DEFAULT_THROTTLE_RATES': {'login': None}}
+# Tickets B-046/B-047 — les throttles `login` (5/min) et `register`
+# (20/heure), voir REST_FRAMEWORK dans settings.py, sont des taux de
+# PRODUCTION. La suite complète appelle `register` et `login` des centaines
+# de fois (quasi chaque test qui a besoin d'un client authentifié) : au taux
+# de production, elle atteindrait le seuil en quelques dizaines de tests et
+# ferait échouer le RESTE de la suite avec des 429 sans aucun rapport avec
+# le code réellement testé — même piège que
+# SECURE_SSL_REDIRECT/CELERY_TASK_ALWAYS_EAGER ci-dessus. Désactivés
+# (`None` = pas de limite, comportement DRF documenté) pour ce module. Les
+# tests dédiés (apps/accounts/tests.py) les réactivent en patchant
+# directement `ScopedRateThrottle.THROTTLE_RATES` — PAS via
+# `override_settings`, sans effet sur cet attribut de classe figé à l'import
+# de DRF (voir la docstring de TestLoginThrottling).
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    'DEFAULT_THROTTLE_RATES': {'login': None, 'register': None},
+}

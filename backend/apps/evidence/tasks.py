@@ -73,6 +73,10 @@ def process_document_media(self, document_id, organization_id, requested_by_user
         document.file.open('rb')
         try:
             image = Image.open(document.file)
+            # Ticket B-047 — décodage JPEG à échelle réduite (sans effet sur
+            # un PNG) : l'image est de toute façon ramenée à MAX_DIMENSION_PX
+            # juste après, inutile d'allouer sa pleine résolution.
+            image.draft('RGB', (MAX_DIMENSION_PX, MAX_DIMENSION_PX))
             image.load()
         except (UnidentifiedImageError, OSError):
             return  # pas une image (ex : PDF) — rien à compresser/miniaturiser
