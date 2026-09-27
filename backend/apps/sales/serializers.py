@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import DEFAULT_CURRENCY, Reservation
+from .models import DEFAULT_CURRENCY, ContractVersion, Reservation
 
 
 def _organization(organization):
@@ -81,3 +81,38 @@ class AdminReservationSerializer(ReservationSerializer):
 
 class AdminCancelSerializer(serializers.Serializer):
     reason = serializers.CharField()
+
+
+class ContractVersionSerializer(serializers.ModelSerializer):
+    """Ticket B-049. `simulation: true` sur chaque version (CDC §3.1) :
+    l'acte est fictif, les écrans l'affichent comme tel."""
+
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
+    reservation = serializers.UUIDField(source='reservation_id', read_only=True)
+    lot_name = serializers.CharField(source='reservation.lot.name', read_only=True)
+    authored_by = serializers.EmailField(source='authored_by.email', read_only=True)
+    approved_by = serializers.SerializerMethodField()
+    simulation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContractVersion
+        fields = [
+            'id', 'reservation', 'lot_name', 'version', 'status', 'status_label', 'content',
+            'authored_by', 'submitted_at', 'approved_by', 'approved_at', 'signed_at',
+            'simulation', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def get_approved_by(self, contract):
+        return contract.approved_by.email if contract.approved_by else None
+
+    def get_simulation(self, contract):
+        return True
+
+
+class ContractContentSerializer(serializers.Serializer):
+    content = serializers.CharField(trim_whitespace=True)
+
+
+class ContractTransitionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=['submit', 'back_to_draft', 'approve'])

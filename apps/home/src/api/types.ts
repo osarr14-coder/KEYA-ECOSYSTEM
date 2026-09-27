@@ -167,3 +167,27 @@ export interface Reservation {
   created_at: string;
   updated_at: string;
 }
+
+export type ContractStatus = 'draft' | 'review' | 'approved' | 'signed_simulated';
+
+/** Miroir de `apps.sales.serializers.ContractVersionSerializer` (ticket
+ * B-049). Côté client, seules les versions approuvées ou signées sont
+ * renvoyées. `simulation` est toujours vrai : l'acte est fictif (CDC §3.1). */
+export interface ContractVersion {
+  id: string;
+  reservation: string;
+  lot_name: string;
+  version: number;
+  status: ContractStatus;
+  status_label: string;
+  content: string;
+  authored_by: string;
+  submitted_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  signed_at: string | null;
+  simulation: boolean;
+  created_at: string;
+  updated_at: string;
+}
+

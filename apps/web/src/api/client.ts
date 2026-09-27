@@ -1,5 +1,6 @@
 import type {
-  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, CountryPackSummary,
+  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, ContractAction,
+  ContractVersion, CountryPackSummary,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
@@ -451,6 +452,35 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
       request<AdminReservation>(
         `/api/reservations/${reservationId}/admin-cancel/${toQueryString({ organization_id: organizationId })}`,
         { method: 'POST', json: { reason } },
+      )
+    ),
+
+    /**
+     * Contrat fictif versionné (ticket B-049) — `organizationId` est celle
+     * de la réservation (organisation du lot), même bascule RLS explicite que
+     * `cancelReservation`.
+     */
+    listContracts: (reservationId: string, organizationId: string) => (
+      request<ContractVersion[]>(
+        `/api/reservations/${reservationId}/contracts/admin/${toQueryString({ organization_id: organizationId })}`,
+      )
+    ),
+    createContract: (reservationId: string, organizationId: string, content: string) => (
+      request<ContractVersion>(
+        `/api/reservations/${reservationId}/contracts/admin/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { content } },
+      )
+    ),
+    updateContract: (contractId: string, organizationId: string, content: string) => (
+      request<ContractVersion>(
+        `/api/contracts/${contractId}/admin/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'PATCH', json: { content } },
+      )
+    ),
+    transitionContract: (contractId: string, organizationId: string, action: ContractAction) => (
+      request<ContractVersion>(
+        `/api/contracts/${contractId}/admin-transition/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { action } },
       )
     ),
 

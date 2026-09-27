@@ -27,7 +27,11 @@ function reservation(overrides: Partial<AdminReservation> = {}): AdminReservatio
 }
 
 function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
-  const api = createMockApiClient({ listReservations: vi.fn().mockResolvedValue([reservation()]), ...overrides });
+  const api = createMockApiClient({
+    listReservations: vi.fn().mockResolvedValue([reservation()]),
+    listContracts: vi.fn().mockResolvedValue([]),
+    ...overrides,
+  });
   render(withApiClient(api, <ReservationsView />));
   return { api };
 }

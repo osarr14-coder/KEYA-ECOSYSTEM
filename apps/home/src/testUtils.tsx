@@ -24,6 +24,9 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     getMyReservations: vi.fn(notMocked),
     requestReservation: vi.fn(notMocked),
     cancelMyReservation: vi.fn(notMocked),
+    // Ticket F-066 partie 2 (contrat, B-049) :
+    getMyContracts: vi.fn(notMocked),
+    signContract: vi.fn(notMocked),
     ...overrides,
   };
 }

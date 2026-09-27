@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 from django.core.management import call_command
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -16,7 +16,7 @@ from apps.organizations.models import CountryPack, Membership, Organization, Rol
 from apps.programs.models import Lot
 
 from . import services
-from .models import Reservation, ReservationStatus
+from .models import ContractVersion, Reservation, ReservationStatus
 
 PASSWORD = 'strongpass123'
 PRICE = '30000000.00'
@@ -403,3 +403,185 @@ class TestAuditEventIsAppendOnly:
                 "SELECT tgname FROM pg_trigger WHERE tgrelid = 'audit_event'::regclass AND NOT tgisinternal",
             )
             assert {row[0] for row in cursor.fetchall()} == {'audit_event_no_update', 'audit_event_no_delete'}
+
+
+# ─── Contrat fictif versionné — ticket B-049 ──────────────────────────────
+
+CONTRACT_TEXT = 'Contrat de réservation fictif — Lot A12, prix 30 000 000 XOF. DÉMONSTRATION.'
+
+
+def _reservation_with(client_api=None):
+    client_api, client_user, _org = client_api or _register()
+    adv, adv_user, _adv_org = _register('gestionnaire_adv')
+    _admin, promoter, lot = _published_lot()
+    reservation_id = _reserve(client_api, promoter, lot).data['id']
+    return client_api, client_user, adv, adv_user, promoter, reservation_id
+
+
+def _contracts_url(reservation_id, promoter):
+    return reverse('contract-admin-list-create', args=[reservation_id]) + f'?organization_id={promoter.id}'
+
+
+def _transition(adv, contract_id, promoter, action):
+    return adv.post(
+        reverse('contract-admin-transition', args=[contract_id]) + f'?organization_id={promoter.id}',
+        {'action': action}, format='json',
+    )
+
+
+def _approved_contract(adv, promoter, reservation_id, text=CONTRACT_TEXT):
+    contract = adv.post(_contracts_url(reservation_id, promoter), {'content': text}, format='json').data
+    assert _transition(adv, contract['id'], promoter, 'submit').status_code == 200
+    assert _transition(adv, contract['id'], promoter, 'approve').status_code == 200
+    return contract
+
+
+@pytest.mark.django_db
+class TestContractLifecycle:
+    def test_adv_drafts_submits_approves_then_the_client_signs(self):
+        client, client_user, adv, adv_user, promoter, reservation_id = _reservation_with()
+
+        created = adv.post(_contracts_url(reservation_id, promoter), {'content': CONTRACT_TEXT}, format='json')
+        assert created.status_code == 201, created.data
+        assert created.data['version'] == 1
+        assert created.data['status'] == 'draft'
+        assert created.data['simulation'] is True
+        contract_id = created.data['id']
+
+        assert _transition(adv, contract_id, promoter, 'submit').data['status'] == 'review'
+        approved = _transition(adv, contract_id, promoter, 'approve')
+        assert approved.data['status'] == 'approved'
+        assert approved.data['approved_by'] == adv_user.email
+
+        signed = client.post(reverse('my-contract-sign', args=[contract_id]))
+        assert signed.status_code == 200
+        assert signed.data['status'] == 'signed_simulated'
+        assert signed.data['signed_at'] is not None
+        # « La version approuvée ne change pas lors de la signature. »
+        assert signed.data['content'] == CONTRACT_TEXT
+
+        # Journal cloisonné par organisation : lu sous celle du lot.
+        set_rls_context(organization_id=promoter.id)
+        actions = list(AuditEvent.objects.filter(object_id=contract_id).order_by('id').values_list('action', flat=True))
+        assert actions == ['contract.created', 'contract.submitted', 'contract.approved', 'contract.signed_simulated']
+
+    def test_a_draft_can_be_edited_and_returned_to_draft_from_review(self):
+        _client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        contract_id = adv.post(_contracts_url(reservation_id, promoter), {'content': 'v1'}, format='json').data['id']
+        edit_url = reverse('contract-admin-update', args=[contract_id]) + f'?organization_id={promoter.id}'
+
+        assert adv.patch(edit_url, {'content': 'v1 corrigée'}, format='json').data['content'] == 'v1 corrigée'
+        _transition(adv, contract_id, promoter, 'submit')
+        # Figé dès la soumission.
+        assert adv.patch(edit_url, {'content': 'retouche'}, format='json').status_code == 409
+        assert _transition(adv, contract_id, promoter, 'back_to_draft').data['status'] == 'draft'
+        assert adv.patch(edit_url, {'content': 'v1 finale'}, format='json').status_code == 200
+
+    def test_an_invalid_transition_is_refused(self):
+        _client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        contract_id = adv.post(_contracts_url(reservation_id, promoter), {'content': 'v1'}, format='json').data['id']
+        assert _transition(adv, contract_id, promoter, 'approve').status_code == 409
+        assert _transition(adv, contract_id, promoter, 'sign').status_code == 400
+
+    def test_only_one_version_in_progress_at_a_time(self):
+        _client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        assert adv.post(_contracts_url(reservation_id, promoter), {'content': 'v1'}, format='json').status_code == 201
+        response = adv.post(_contracts_url(reservation_id, promoter), {'content': 'v2'}, format='json')
+        assert response.status_code == 409
+
+
+@pytest.mark.django_db
+class TestSignedContractIsImmutableT04:
+    """CDC T04 — tentative de modifier une version signée : refus ; nouvelle
+    version requise ; ancienne consultable."""
+
+    def test_editing_a_signed_version_is_refused_and_a_new_version_is_required(self):
+        client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        contract = _approved_contract(adv, promoter, reservation_id)
+        client.post(reverse('my-contract-sign', args=[contract['id']]))
+        edit_url = reverse('contract-admin-update', args=[contract['id']]) + f'?organization_id={promoter.id}'
+
+        assert adv.patch(edit_url, {'content': 'falsifié'}, format='json').status_code == 409
+        assert _transition(adv, contract['id'], promoter, 'back_to_draft').status_code == 409
+
+        v2 = adv.post(_contracts_url(reservation_id, promoter), {'content': 'Avenant v2'}, format='json')
+        assert v2.status_code == 201
+        assert v2.data['version'] == 2
+
+        admin_versions = adv.get(_contracts_url(reservation_id, promoter)).data
+        assert [(row['version'], row['status']) for row in admin_versions] == [(1, 'signed_simulated'), (2, 'draft')]
+        # L'ancienne version reste consultable par le client ; le brouillon en
+        # cours, travail interne du gestionnaire, ne lui est pas montré.
+        client_versions = client.get(reverse('my-contracts', args=[reservation_id])).data
+        assert [(row['version'], row['status']) for row in client_versions] == [(1, 'signed_simulated')]
+        assert client_versions[0]['content'] == CONTRACT_TEXT
+
+    def test_the_database_itself_refuses_any_change_to_a_signed_version(self):
+        """Même si le code applicatif était contourné (SQL direct, sous le
+        contexte RLS de l'organisation), le trigger refuse."""
+        client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        contract = _approved_contract(adv, promoter, reservation_id)
+        client.post(reverse('my-contract-sign', args=[contract['id']]))
+        set_rls_context(organization_id=promoter.id)
+
+        with pytest.raises(DatabaseError, match='signée'):
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        'UPDATE sales_contract_version SET status = %s WHERE id = %s', ['draft', contract['id']],
+                    )
+        with pytest.raises(DatabaseError, match='contenu'):
+            with transaction.atomic():
+                version_2 = adv.post(_contracts_url(reservation_id, promoter), {'content': 'v2'}, format='json').data
+                _transition(adv, version_2['id'], promoter, 'submit')
+                set_rls_context(organization_id=promoter.id)
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        'UPDATE sales_contract_version SET content = %s WHERE id = %s', ['falsifié', version_2['id']],
+                    )
+
+        set_rls_context(organization_id=promoter.id)
+        assert ContractVersion.objects.get(id=contract['id']).status == 'signed_simulated'
+
+
+@pytest.mark.django_db
+class TestContractSignatureRules:
+    def test_the_client_cannot_sign_a_version_that_is_not_approved(self):
+        client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        contract_id = adv.post(_contracts_url(reservation_id, promoter), {'content': 'v1'}, format='json').data['id']
+        assert client.post(reverse('my-contract-sign', args=[contract_id])).status_code == 409
+
+    def test_only_the_latest_version_is_signable(self):
+        client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        first = _approved_contract(adv, promoter, reservation_id, 'v1')
+        _approved_contract(adv, promoter, reservation_id, 'v2')
+
+        response = client.post(reverse('my-contract-sign', args=[first['id']]))
+
+        assert response.status_code == 409
+        assert 'plus récente' in response.data['detail']
+
+    def test_another_client_can_neither_read_nor_sign(self):
+        _client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        intruder, _intruder_user, _intruder_org = _register()
+        contract = _approved_contract(adv, promoter, reservation_id)
+
+        assert intruder.get(reverse('my-contracts', args=[reservation_id])).status_code == 404
+        assert intruder.post(reverse('my-contract-sign', args=[contract['id']])).status_code == 404
+
+    def test_the_adv_cannot_sign_in_place_of_the_client(self):
+        _client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        contract = _approved_contract(adv, promoter, reservation_id)
+        assert adv.post(reverse('my-contract-sign', args=[contract['id']])).status_code == 404
+
+    def test_no_contract_on_an_expired_reservation(self):
+        client, _user, adv, _adv_user, promoter, reservation_id = _reservation_with()
+        contract = _approved_contract(adv, promoter, reservation_id)
+        _age_hold(promoter, reservation_id)
+
+        assert client.post(reverse('my-contract-sign', args=[contract['id']])).status_code == 409
+        assert adv.post(_contracts_url(reservation_id, promoter), {'content': 'v2'}, format='json').status_code == 409
+
+    def test_an_ordinary_client_cannot_use_the_admin_contract_routes(self):
+        client, _user, _adv, _adv_user, promoter, reservation_id = _reservation_with()
+        assert client.get(_contracts_url(reservation_id, promoter)).status_code == 403

@@ -6,8 +6,9 @@ import {
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
-import type { CatalogLot, Reservation } from '../api/types';
+import type { CatalogLot, Reservation, ReservationStatus } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
+import { ClientContractPanel } from './ClientContractPanel';
 
 /**
  * Ticket F-066 — parcours d'achat du client (CDC V3 §9.2, étapes 1-2) :
@@ -15,6 +16,8 @@ import { useApiResource } from '../api/useApiResource';
  * Backend B-048 : la disponibilité et le refus en cas de concurrence (T01)
  * sont décidés par le serveur, jamais recalculés ici.
  */
+
+const ACTIVE_STATUSES: ReservationStatus[] = ['held', 'reserved', 'committed'];
 
 // CDC V3 §5 : « l'interface indique son fuseau ». Scénario en Côte
 // d'Ivoire : heure d'Abidjan (GMT, sans heure d'été).
@@ -81,6 +84,8 @@ function ReservationRow({ reservation, onChanged }: { reservation: Reservation; 
       {' · '}
       {formatAmount(reservation.price_amount, reservation.currency)}
       <p style={{ margin: '4px 0 0' }}>{nextStep(reservation)}</p>
+      {/* Ticket F-066 (partie 2) — contrat, tant que la réservation vit. */}
+      {ACTIVE_STATUSES.includes(reservation.status) && <ClientContractPanel reservationId={reservation.id} />}
       {reservation.status === 'held' && !confirming && (
         <Button type="button" variant="secondary" onClick={() => setConfirming(true)} style={{ marginTop: '8px' }}>
           Annuler cette réservation

@@ -12,6 +12,9 @@ from .serializers import (
     AdminCancelSerializer,
     AdminReservationSerializer,
     CatalogLotSerializer,
+    ContractContentSerializer,
+    ContractTransitionSerializer,
+    ContractVersionSerializer,
     ReservationRequestSerializer,
     ReservationSerializer,
 )
@@ -135,3 +138,133 @@ class AdminReservationCancelView(APIView):
         if reservation is None:
             raise NotFound()
         return Response(AdminReservationSerializer(reservation).data)
+
+
+# ─── Contrat fictif versionné — ticket B-049 ──────────────────────────────
+
+
+def _target_organization_id(request):
+    organization_id = request.query_params.get('organization_id')
+    if not organization_id:
+        raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
+    return organization_id
+
+
+class AdminContractListCreateView(APIView):
+    """`GET/POST /api/reservations/{id}/contracts/admin/?organization_id=` —
+    versions d'une réservation, nouvelle version `DRAFT` (admin, ADV)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+
+    def get(self, request, reservation_id):
+        contracts = services.list_contract_versions_as_admin(
+            caller_organization_id=_caller_organization_id(request),
+            target_organization_id=_target_organization_id(request),
+            reservation_id=reservation_id,
+        )
+        if contracts is None:
+            raise NotFound()
+        return Response(ContractVersionSerializer(contracts, many=True).data)
+
+    def post(self, request, reservation_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = ContractContentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            contract = services.create_contract_version(
+                author=request.user,
+                caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id,
+                reservation_id=reservation_id,
+                content=serializer.validated_data['content'],
+            )
+        except services.ContractTransitionError as exc:
+            return _conflict(exc)
+        if contract is None:
+            raise NotFound()
+        return Response(ContractVersionSerializer(contract).data, status=201)
+
+
+class AdminContractUpdateView(APIView):
+    """`PATCH /api/contracts/{id}/admin/?organization_id=` — contenu d'un
+    brouillon seulement (409 sinon)."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+
+    def patch(self, request, contract_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = ContractContentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            contract = services.update_contract_content(
+                author=request.user,
+                caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id,
+                contract_id=contract_id,
+                content=serializer.validated_data['content'],
+            )
+        except services.ContractTransitionError as exc:
+            return _conflict(exc)
+        if contract is None:
+            raise NotFound()
+        return Response(ContractVersionSerializer(contract).data)
+
+
+class AdminContractTransitionView(APIView):
+    """`POST /api/contracts/{id}/admin-transition/?organization_id=` —
+    `{"action": "submit" | "back_to_draft" | "approve"}`."""
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+
+    def post(self, request, contract_id):
+        target_organization_id = _target_organization_id(request)
+        serializer = ContractTransitionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            contract = services.transition_contract(
+                actor=request.user,
+                caller_organization_id=_caller_organization_id(request),
+                target_organization_id=target_organization_id,
+                contract_id=contract_id,
+                action=serializer.validated_data['action'],
+            )
+        except services.ContractTransitionError as exc:
+            return _conflict(exc)
+        if contract is None:
+            raise NotFound()
+        return Response(ContractVersionSerializer(contract).data)
+
+
+class MyContractListView(APIView):
+    """`GET /api/me/reservations/{id}/contracts/` — les versions du contrat
+    de SA réservation ; 404 pour celle d'un autre client."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, reservation_id):
+        contracts = services.list_client_contract_versions(
+            client=request.user, caller_organization_id=_caller_organization_id(request),
+            reservation_id=reservation_id,
+        )
+        if contracts is None:
+            raise NotFound()
+        return Response(ContractVersionSerializer(contracts, many=True).data)
+
+
+class MyContractSignView(APIView):
+    """`POST /api/me/contracts/{id}/sign/` — signature SIMULÉE par le client
+    de la réservation, lui seul."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, contract_id):
+        try:
+            contract = services.sign_contract_as_client(
+                client=request.user, caller_organization_id=_caller_organization_id(request),
+                contract_id=contract_id,
+            )
+        except services.ContractTransitionError as exc:
+            return _conflict(exc)
+        if contract is None:
+            raise NotFound()
+        return Response(ContractVersionSerializer(contract).data)

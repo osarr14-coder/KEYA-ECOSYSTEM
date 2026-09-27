@@ -806,6 +806,9 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # Ticket B-048 :
             ('catalog-lot-list', [], {}),
             ('my-reservations', [], {}),
+            # Ticket B-049 (n'importe quel identifiant : 404 attendu, jamais
+            # une fuite) :
+            ('my-contracts', [own_lot.id], {}),
         ]
         for name, args, _kwargs in requests:
             response = own_client.get(reverse(name, args=args))
@@ -964,6 +967,13 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # `reservation-admin-*` admin_keyimmo/gestionnaire_adv.
             'catalog-lot-list', 'reservation-create', 'reservation-admin-list',
             'reservation-admin-cancel', 'my-reservations', 'my-reservation-cancel',
+            # Ticket B-049 — ajout conscient : contrat fictif versionné.
+            # `my-contracts` (GET) est ouvert à tout authentifié mais ne rend
+            # que les versions du client lui-même (404 sinon) — ajouté au
+            # balayage ci-dessus. `my-contract-sign` : le client de la
+            # réservation seul ; `contract-admin-*` : admin/ADV.
+            'contract-admin-list-create', 'contract-admin-update', 'contract-admin-transition',
+            'my-contracts', 'my-contract-sign',
         }
         assert actual == expected
 

@@ -8,6 +8,7 @@ import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
 import type { AdminReservation, ReservationStatus } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
+import { AdminContractPanel } from './AdminContractPanel';
 
 /**
  * Ticket F-067 — réservations côté équipe KEYIMMO (admin_keyimmo et
@@ -115,6 +116,9 @@ function ReservationCard({ reservation, onChanged }: { reservation: AdminReserva
         )}
       </dl>
       {reservation.status === 'held' && <CancelForm reservation={reservation} onCancelled={onChanged} />}
+      {/* Ticket F-067 (partie 2) — contrat, historique compris même après
+          expiration ou annulation (lecture seule dans ce cas). */}
+      <AdminContractPanel reservation={reservation} />
     </Card>
   );
 }

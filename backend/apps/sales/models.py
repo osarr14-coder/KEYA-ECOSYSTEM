@@ -85,3 +85,68 @@ class Reservation(models.Model):
 
     def __str__(self):
         return f'Réservation {self.lot} — {self.client} ({self.status})'
+
+
+class ContractStatus(models.TextChoices):
+    """CDC V3 §6.2 — `DRAFT → REVIEW → APPROVED → SIGNED_SIMULATED`
+    (ticket B-049). Retour `REVIEW → DRAFT` autorisé (correction avant
+    approbation)."""
+
+    DRAFT = 'draft', 'Brouillon'
+    REVIEW = 'review', 'En revue'
+    APPROVED = 'approved', 'Approuvé'
+    SIGNED_SIMULATED = 'signed_simulated', 'Signé (simulation)'
+
+
+IN_PROGRESS_CONTRACT_STATUSES = (ContractStatus.DRAFT, ContractStatus.REVIEW)
+
+
+class ContractVersion(models.Model):
+    """Une version du contrat fictif d'une réservation (ticket B-049, CDC
+    V3 §5/§6.2). Jamais écrasée : une correction crée la version suivante.
+
+    `organization` et `client` sont dénormalisés depuis la réservation :
+    même policy RLS que `Reservation` (organisation du lot OU client
+    lui-même). Le contenu est figé dès la soumission et toute version signée
+    est immuable — garanti par un trigger en base (migration 0004), pas
+    seulement par le code applicatif (T04).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        Organization, on_delete=models.PROTECT, related_name='contract_versions',
+    )
+    reservation = models.ForeignKey(Reservation, on_delete=models.PROTECT, related_name='contract_versions')
+    client = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='contract_versions',
+    )
+    version = models.PositiveIntegerField()
+    status = models.CharField(max_length=20, choices=ContractStatus.choices, default=ContractStatus.DRAFT)
+    content = models.TextField()
+    authored_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='authored_contract_versions',
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='approved_contract_versions',
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    signed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'sales_contract_version'
+        constraints = [
+            models.UniqueConstraint(fields=['reservation', 'version'], name='sales_contract_unique_version'),
+            # Au plus une version en cours de rédaction/revue par réservation.
+            models.UniqueConstraint(
+                fields=['reservation'],
+                condition=Q(status__in=[status.value for status in IN_PROGRESS_CONTRACT_STATUSES]),
+                name='sales_contract_one_version_in_progress',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Contrat v{self.version} — {self.reservation} ({self.status})'

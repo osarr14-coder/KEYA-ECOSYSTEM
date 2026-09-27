@@ -1,9 +1,14 @@
 from django.urls import path
 
 from .views import (
+    AdminContractListCreateView,
+    AdminContractTransitionView,
+    AdminContractUpdateView,
     AdminReservationCancelView,
     AdminReservationListView,
     CatalogLotListView,
+    MyContractListView,
+    MyContractSignView,
     MyReservationCancelView,
     MyReservationListView,
     ReservationCreateView,
@@ -22,4 +27,19 @@ urlpatterns = [
         'me/reservations/<uuid:reservation_id>/cancel/',
         MyReservationCancelView.as_view(), name='my-reservation-cancel',
     ),
+    # Ticket B-049 — contrat fictif versionné.
+    path(
+        'reservations/<uuid:reservation_id>/contracts/admin/',
+        AdminContractListCreateView.as_view(), name='contract-admin-list-create',
+    ),
+    path('contracts/<uuid:contract_id>/admin/', AdminContractUpdateView.as_view(), name='contract-admin-update'),
+    path(
+        'contracts/<uuid:contract_id>/admin-transition/',
+        AdminContractTransitionView.as_view(), name='contract-admin-transition',
+    ),
+    path(
+        'me/reservations/<uuid:reservation_id>/contracts/',
+        MyContractListView.as_view(), name='my-contracts',
+    ),
+    path('me/contracts/<uuid:contract_id>/sign/', MyContractSignView.as_view(), name='my-contract-sign'),
 ]

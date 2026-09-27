@@ -39,6 +39,7 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const api = createMockApiClient({
     getMyReservations: vi.fn().mockResolvedValue([]),
     getCatalogLots: vi.fn().mockResolvedValue([LOT]),
+    getMyContracts: vi.fn().mockResolvedValue([]),
     ...overrides,
   });
   render(withApiClient(api, <ClientSalesView />));

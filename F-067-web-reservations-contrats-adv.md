@@ -28,3 +28,25 @@ avant signature » ; §6.1 : annulation d'un blocage « par client/gestionnaire 
   avec motif ; aucune autre action n'est proposée sur une réservation expirée ou
   annulée.
 - Suite `apps/web` verte ; vérifié dans un vrai navigateur.
+
+## Scope — partie 2 (contrat, avec B-049)
+
+- Panneau « Contrat » dans chaque carte de réservation (`AdminContractPanel`) :
+  historique complet des versions (plus récente d'abord), y compris pour une réservation
+  expirée ou annulée (lecture seule).
+- Rédaction d'un premier brouillon ; brouillon modifiable et soumis pour revue ; version
+  en revue approuvée ou renvoyée en brouillon — jamais modifiée.
+- **Nouvelle version repliée derrière un bouton explicite** (« Corriger : créer une
+  nouvelle version »), pré-remplie avec la précédente, et avertissement si la version
+  précédente attend une signature (elle ne serait plus signable). Constat fait en
+  vérifiant l'écran dans un navigateur : un formulaire pré-rempli affiché en permanence
+  au-dessus d'une version en attente de signature invitait à la rendre non signable par
+  erreur.
+- Une version approuvée remplacée est signalée « n'est plus signable ».
+- Même marquage de simulation que HOME.
+
+## Critères d'acceptation (partie 2)
+
+- L'ADV mène un contrat de la rédaction à l'approbation ; la signature reste au client ;
+  une correction après signature crée une nouvelle version, l'ancienne restant visible.
+- Vérifié dans un vrai navigateur, de bout en bout avec HOME (F-066).

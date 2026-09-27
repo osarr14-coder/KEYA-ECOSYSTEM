@@ -1,5 +1,5 @@
 import type {
-  CatalogLot, EvidenceFeedItem, LotOverview, Me, MyLot, ProgramRequest, Reservation, Task,
+  CatalogLot, ContractVersion, EvidenceFeedItem, LotOverview, Me, MyLot, ProgramRequest, Reservation, Task,
 } from './types';
 
 export class ApiError extends Error {
@@ -132,6 +132,13 @@ export function createApiClient({
     ),
     cancelMyReservation: (reservationId: string) => (
       request<Reservation>(`/api/me/reservations/${reservationId}/cancel/`, { method: 'POST' })
+    ),
+    // Ticket F-066 (partie 2) — contrat fictif (backend B-049).
+    getMyContracts: (reservationId: string) => (
+      request<ContractVersion[]>(`/api/me/reservations/${reservationId}/contracts/`)
+    ),
+    signContract: (contractId: string) => (
+      request<ContractVersion>(`/api/me/contracts/${contractId}/sign/`, { method: 'POST' })
     ),
   };
 }

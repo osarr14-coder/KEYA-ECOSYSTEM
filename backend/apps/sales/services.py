@@ -18,7 +18,15 @@ from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
 from apps.programs.models import Lot, LotCommercialStatus
 
-from .models import BLOCKING_STATUSES, DEFAULT_CURRENCY, Reservation, ReservationStatus
+from .models import (
+    BLOCKING_STATUSES,
+    DEFAULT_CURRENCY,
+    IN_PROGRESS_CONTRACT_STATUSES,
+    ContractStatus,
+    ContractVersion,
+    Reservation,
+    ReservationStatus,
+)
 
 
 # Tout ce que les serializers lisent, chargé sous le contexte RLS de
@@ -294,3 +302,218 @@ def _expire_overdue_in_current_organization(organization_id, now):
             expired += 1
     return expired
 
+
+
+# ─── Contrat fictif versionné — ticket B-049 (CDC V3 §6.2) ─────────────────
+
+# Une réservation expirée ou annulée ne reçoit plus de contrat. `committed`
+# (Phase 3) reste ouvert : le CDC prévoit une correction après signature.
+CONTRACTABLE_RESERVATION_STATUSES = (
+    ReservationStatus.HELD, ReservationStatus.RESERVED, ReservationStatus.COMMITTED,
+)
+
+_CONTRACT_RELATIONS = ('reservation', 'reservation__lot', 'authored_by', 'approved_by')
+
+CLIENT_VISIBLE_CONTRACT_STATUSES = (ContractStatus.APPROVED, ContractStatus.SIGNED_SIMULATED)
+
+
+class ContractTransitionError(Exception):
+    """Transition ou modification de contrat interdite dans l'état courant.
+    Réponse 409."""
+
+
+def _contractable_reservation(reservation_id):
+    """Sous contexte RLS de l'organisation du lot."""
+    reservation = Reservation.objects.select_related('lot').filter(id=reservation_id).first()
+    if reservation is None:
+        return None
+    _expire_if_overdue(reservation, timezone.now())
+    if reservation.status not in CONTRACTABLE_RESERVATION_STATUSES:
+        raise ContractTransitionError(
+            'Cette réservation est expirée ou annulée : aucun contrat ne peut plus y être préparé ou signé.'
+        )
+    return reservation
+
+
+def list_contract_versions_as_admin(*, caller_organization_id, target_organization_id, reservation_id):
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        if not Reservation.objects.filter(id=reservation_id).exists():
+            return None
+        return list(
+            ContractVersion.objects.filter(reservation_id=reservation_id)
+            .select_related(*_CONTRACT_RELATIONS).order_by('version'),
+        )
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def create_contract_version(*, author, caller_organization_id, target_organization_id, reservation_id, content):
+    """Nouvelle version `DRAFT`, numérotée à la suite. Refusée si une version
+    est déjà en cours (`DRAFT`/`REVIEW`) — l'index unique partiel en est le
+    filet sous concurrence, rattrapé dans un savepoint."""
+    if not content or not content.strip():
+        raise ContractTransitionError('Le contenu du contrat est obligatoire.')
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        reservation = _contractable_reservation(reservation_id)
+        if reservation is None:
+            return None
+        if ContractVersion.objects.filter(
+            reservation=reservation, status__in=IN_PROGRESS_CONTRACT_STATUSES,
+        ).exists():
+            raise ContractTransitionError(
+                'Une version est déjà en cours de rédaction ou de revue : terminez-la avant d\'en créer une autre.'
+            )
+        latest = ContractVersion.objects.filter(reservation=reservation).order_by('-version').first()
+        try:
+            with transaction.atomic():
+                contract = ContractVersion.objects.create(
+                    organization_id=reservation.organization_id,
+                    reservation=reservation,
+                    client_id=reservation.client_id,
+                    version=(latest.version + 1) if latest else 1,
+                    status=ContractStatus.DRAFT,
+                    content=content.strip(),
+                    authored_by=author,
+                )
+        except IntegrityError:
+            raise ContractTransitionError('Une autre version vient d\'être créée pour cette réservation.')
+        audit.record(
+            organization_id=reservation.organization_id, actor=author, action='contract.created', obj=contract,
+            payload={'reservation_id': str(reservation.id), 'version': contract.version},
+        )
+        return ContractVersion.objects.select_related(*_CONTRACT_RELATIONS).get(id=contract.id)
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def _admin_contract(contract_id):
+    """Sous contexte RLS de l'organisation cible."""
+    return ContractVersion.objects.select_related(*_CONTRACT_RELATIONS).filter(id=contract_id).first()
+
+
+def update_contract_content(*, author, caller_organization_id, target_organization_id, contract_id, content):
+    if not content or not content.strip():
+        raise ContractTransitionError('Le contenu du contrat est obligatoire.')
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        contract = _admin_contract(contract_id)
+        if contract is None:
+            return None
+        if contract.status != ContractStatus.DRAFT:
+            raise ContractTransitionError(
+                'Seul un brouillon se modifie. Une version soumise, approuvée ou signée est figée : '
+                'créez une nouvelle version.'
+            )
+        _contractable_reservation(contract.reservation_id)
+        contract.content = content.strip()
+        contract.save(update_fields=['content', 'updated_at'])
+        audit.record(
+            organization_id=contract.organization_id, actor=author, action='contract.edited', obj=contract,
+            payload={'version': contract.version},
+        )
+        return contract
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+# action → (état de départ requis, état d'arrivée, action d'audit)
+_ADMIN_TRANSITIONS = {
+    'submit': (ContractStatus.DRAFT, ContractStatus.REVIEW, 'contract.submitted'),
+    'back_to_draft': (ContractStatus.REVIEW, ContractStatus.DRAFT, 'contract.returned_to_draft'),
+    'approve': (ContractStatus.REVIEW, ContractStatus.APPROVED, 'contract.approved'),
+}
+
+
+def transition_contract(*, actor, caller_organization_id, target_organization_id, contract_id, action):
+    if action not in _ADMIN_TRANSITIONS:
+        raise ContractTransitionError('Action inconnue.')
+    required, target, audit_action = _ADMIN_TRANSITIONS[action]
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        contract = _admin_contract(contract_id)
+        if contract is None:
+            return None
+        if contract.status != required:
+            raise ContractTransitionError(
+                f'Transition impossible depuis l\'état « {contract.get_status_display()} ».'
+            )
+        _contractable_reservation(contract.reservation_id)
+        now = timezone.now()
+        contract.status = target
+        update_fields = ['status', 'updated_at']
+        if action == 'submit':
+            contract.submitted_at = now
+            update_fields.append('submitted_at')
+        elif action == 'approve':
+            contract.approved_by = actor
+            contract.approved_at = now
+            update_fields += ['approved_by', 'approved_at']
+        contract.save(update_fields=update_fields)
+        audit.record(
+            organization_id=contract.organization_id, actor=actor, action=audit_action, obj=contract,
+            payload={'version': contract.version, 'from': required, 'to': target},
+        )
+        return contract
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def _client_contract_organization_id(client, **filters):
+    """Via la branche `client_id` de la policy RLS, sans jointure (même
+    piège que `_client_reservation_organization_ids`)."""
+    return ContractVersion.objects.filter(client=client, **filters).values_list('organization_id', flat=True).first()
+
+
+def list_client_contract_versions(*, client, caller_organization_id, reservation_id):
+    organization_id = (
+        _client_contract_organization_id(client, reservation_id=reservation_id)
+        or next(iter(_client_reservation_organization_ids(client, reservation_id)), None)
+    )
+    if organization_id is None:
+        return None
+    try:
+        set_rls_context(organization_id=organization_id)
+        # Brouillons et versions en revue sont un travail interne du
+        # gestionnaire : le client ne voit que ce qu'il peut signer ou a signé.
+        return list(
+            ContractVersion.objects.filter(
+                reservation_id=reservation_id, client=client,
+                status__in=CLIENT_VISIBLE_CONTRACT_STATUSES,
+            ).select_related(*_CONTRACT_RELATIONS).order_by('version'),
+        )
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def sign_contract_as_client(*, client, caller_organization_id, contract_id):
+    """Signature SIMULÉE (CDC §6.2) par le client de la réservation, lui seul.
+    Seule la dernière version, approuvée, est signable ; le contenu approuvé
+    n'est pas touché (le trigger le garantit aussi)."""
+    organization_id = _client_contract_organization_id(client, id=contract_id)
+    if organization_id is None:
+        return None
+    try:
+        set_rls_context(organization_id=organization_id)
+        contract = ContractVersion.objects.select_related(*_CONTRACT_RELATIONS).get(id=contract_id, client=client)
+        if contract.status != ContractStatus.APPROVED:
+            raise ContractTransitionError('Seule une version approuvée par le gestionnaire peut être signée.')
+        latest_version = ContractVersion.objects.filter(
+            reservation_id=contract.reservation_id,
+        ).order_by('-version').values_list('version', flat=True).first()
+        if contract.version != latest_version:
+            raise ContractTransitionError(
+                'Une version plus récente de ce contrat existe : seule la dernière version peut être signée.'
+            )
+        _contractable_reservation(contract.reservation_id)
+        contract.status = ContractStatus.SIGNED_SIMULATED
+        contract.signed_at = timezone.now()
+        contract.save(update_fields=['status', 'signed_at', 'updated_at'])
+        audit.record(
+            organization_id=contract.organization_id, actor=client, action='contract.signed_simulated',
+            obj=contract, payload={'version': contract.version, 'simulation': True},
+        )
+        return contract
+    finally:
+        set_rls_context(organization_id=caller_organization_id)

@@ -44,3 +44,23 @@ Constat : HOME n'avait **aucun catalogue** ; un client sans bien voyait seulemen
 - Un lot pris entre-temps donne un message explicite, jamais une erreur générique.
 - Utilisable à 390 px de large sans défilement horizontal (CDC T20).
 - Suite `apps/home` verte ; vérifié dans un vrai navigateur.
+
+## Scope — partie 2 (contrat, avec B-049)
+
+- Panneau « Contrat » sous chaque réservation active (`ClientContractPanel`) : « en cours de
+  préparation par le gestionnaire » tant qu'aucune version n'est approuvée ; sinon les
+  versions visibles, plus récente d'abord, avec contenu, date d'approbation et de
+  signature.
+- Le serveur ne renvoie au client **que les versions approuvées ou signées** : brouillons
+  et versions en revue sont un travail interne du gestionnaire (décision B-049).
+- **Signature simulée** : case « J'ai lu cette version du contrat et je comprends que sa
+  signature est simulée » obligatoire avant le bouton « Signer (simulation) ». Le serveur
+  décide seul de ce qui est signable ; son refus est affiché tel quel.
+- Marquage CDC §3.1 sur chaque version : « SIMULÉ — SANS VALEUR OPÉRATIONNELLE ·
+  DÉMONSTRATION — DONNÉES FICTIVES ».
+
+## Critères d'acceptation (partie 2)
+
+- Le client lit et signe (simulation) la version approuvée de son contrat ; une version
+  signée reste consultable ; aucune signature sans lecture reconnue.
+- Vérifié dans un vrai navigateur, de bout en bout avec l'écran ADV (F-067).
