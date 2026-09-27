@@ -87,7 +87,7 @@ export function StatusBadge({ level, event, className }: StatusBadgeProps) {
           gap: '4px',
           border: `1px solid ${meta.color}`,
           color: meta.color,
-          borderRadius: '999px',
+          borderRadius: '4px',
           padding: '2px 10px',
           background: 'transparent',
           cursor: 'pointer',
@@ -105,7 +105,7 @@ export function StatusBadge({ level, event, className }: StatusBadgeProps) {
             position: 'absolute', top: '100%', left: 0, marginTop: '4px', minWidth: '220px',
             background: semanticColors.neutral.surface,
             border: `1px solid ${semanticColors.neutral.border}`,
-            borderRadius: '8px',
+            borderRadius: '4px',
             padding: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 10,
           }}
         >

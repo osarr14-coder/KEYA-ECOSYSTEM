@@ -63,15 +63,30 @@ function FileAction({
 const STATUS_TONE: Record<LotMilestone['status'], PillTone> = {
   not_declared: 'neutral',
   awaiting_documents: 'alert',
-  awaiting_control: 'accent',
+  awaiting_control: 'info',
   under_reserve: 'danger',
   accepted: 'success',
 };
 
+/** PO-2026-09-27-20 (DESIGN_SYSTEM §8.2, A-DS-4) : famille de couleur de
+ * l'état CDC §7.1 ; un brouillon qui attend une pièce reste « action
+ * attendue ». */
+function milestoneTone(milestone: LotMilestone): PillTone {
+  switch (milestone.cdc_state) {
+    case 'DRAFT': return milestone.status === 'awaiting_documents' ? 'alert' : 'neutral';
+    case 'SUBMITTED': return 'alert';
+    case 'UNDER_REVIEW': return 'info';
+    case 'CHANGES_REQUESTED': return 'alert';
+    case 'RESUBMITTED': return 'info';
+    case 'TECHNICALLY_ACCEPTED': return 'success';
+    default: return STATUS_TONE[milestone.status];
+  }
+}
+
 const STATUS_BAR: Record<LotMilestone['status'], string> = {
   not_declared: semanticColors.neutral.border,
   awaiting_documents: semanticColors.alert.border,
-  awaiting_control: semanticColors.accent.solid,
+  awaiting_control: semanticColors.info.text,
   under_reserve: semanticColors.danger.border,
   accepted: semanticColors.progress.fill,
 };
@@ -134,9 +149,9 @@ function ProgressStrip({
                 className="keya-tab"
                 style={{
                   width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', border: 'none',
-                  borderRadius: '12px', textAlign: 'left', font: 'inherit', color: 'inherit',
+                  borderRadius: '6px', textAlign: 'left', font: 'inherit', color: 'inherit',
                   background: selected ? semanticColors.neutral.subtle : 'transparent',
-                  outline: selected ? `2px solid ${semanticColors.accent.solid}` : undefined,
+                  outline: selected ? `2px solid ${semanticColors.neutral.heading}` : undefined,
                 }}
               >
                 <span aria-hidden="true" style={{ height: '8px', borderRadius: '4px', background: STATUS_BAR[milestone.status] }} />
@@ -197,7 +212,7 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
       style={{
         background: semanticColors.neutral.surface,
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '20px',
+        borderRadius: '6px',
         padding: 'clamp(18px, 3vw, 28px)',
         display: 'flex',
         flexDirection: 'column',
@@ -206,9 +221,14 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: '26px' }}>{`${milestone.order}. ${milestone.label}`}</h2>
-        <Pill tone={STATUS_TONE[milestone.status]}>{milestone.status_label}</Pill>
-        {milestone.control_scheduled && <Pill tone="primary">Contrôle planifié</Pill>}
+        <Pill tone={milestoneTone(milestone)}>{milestone.status_label}</Pill>
+        {milestone.control_scheduled && <Pill tone="info">Contrôleur affecté</Pill>}
       </div>
+      {milestone.status_hint && (
+        <p data-testid="milestone-status-hint" style={{ margin: '-8px 0 0', color: semanticColors.neutral.textMuted }}>
+          {milestone.status_hint}
+        </p>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: semanticColors.neutral.textMuted }}>
           Niveau de confiance

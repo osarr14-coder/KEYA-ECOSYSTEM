@@ -159,10 +159,13 @@ describe('GlobalStyles — mode sombre, source unique des deux palettes (ticket 
     expect(explicitDeclarations.length).toBeGreaterThan(0);
   });
 
-  it('l\'anneau de focus utilise un triplet R,G,B en variable, jamais un hex figé (doit s\'adapter au thème)', () => {
+  // Adapté selon PO-2026-09-27-20 (DESIGN_SYSTEM §12) : anneau de focus
+  // 2 px à l'encre forte du thème (variable, jamais un hex figé), plus de
+  // halo translucide.
+  it('l\'anneau de focus est un trait de 2 px à l\'encre du thème, jamais un hex figé (doit s\'adapter au thème)', () => {
     const css = render(<GlobalStyles />).container.querySelector('style')!.textContent!;
 
-    expect(css).toContain('rgba(var(--keya-focus-ring-rgb), 0.12)');
+    expect(css).toContain('outline: 2px solid var(--keya-neutral-heading)');
     expect(css).not.toContain('rgba(17, 24, 39, 0.12)');
   });
 

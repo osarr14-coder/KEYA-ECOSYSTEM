@@ -40,9 +40,9 @@ export const SIGNALLED_LABEL = 'Virement signalé — non encaissé';
 
 export function settlementTone(call: ClientPaymentCall): PillTone {
   if (call.settlement === 'settled') return 'success';
-  if (call.notice?.status === 'declared') return 'primary';
+  if (call.notice?.status === 'declared') return 'info';
   if (call.settlement === 'partial') return 'alert';
-  return 'accent';
+  return 'alert';
 }
 
 export function settlementText(call: ClientPaymentCall) {
@@ -189,7 +189,7 @@ export function CallRow({ call, onChanged }: { call: ClientPaymentCall; onChange
               gap: '14px 20px',
               margin: 0,
               padding: '18px',
-              borderRadius: '16px',
+              borderRadius: '6px',
               background: semanticColors.neutral.subtle,
             }}
           >

@@ -2,7 +2,7 @@
 
 | Champ | Valeur |
 |---|---|
-| Statut | **Proposition soumise au Product Owner — rien n'est implémenté avant validation** (étape 3 de l'audit UI R1, méthode du prompt de design, point 2). |
+| Statut | **Validé par le Product Owner le 27 septembre 2026 (PO-2026-09-27-20)**, propositions A-DS-1 à A-DS-6 retenues. |
 | Date | 27 septembre 2026 |
 | Sources | `docs/prompt_design_keyimmo_claude_code.md` (cité « prompt ») ; `docs/cdc/KEYIMMO_AFRIC_CDC_V3_MVP_REVISION_R1.md` (« CDC ») ; `docs/audits/AUDIT_UI_KEYIMMO_AFRIC_R1.md` (constats V01–V12, X01–X05) ; `docs/decisions/JOURNAL_DECISIONS.md`. |
 | Décision cadre | **PO-2026-09-27-11** : pas de nouvelle refonte ; identité actuelle conservée (bleu nuit, doré, titres à empattements) ; règles du prompt appliquées, **sa palette remplacée par les couleurs actuelles** ; doré réservé à la marque et à l'action principale. |
@@ -234,7 +234,7 @@ Tests de gouvernance à ajouter (étape 3) : aucun dégradé ; doré limité à 
 | X01–X05 | Surfaces décimales, « lot(s) », date isolée sans année, gris « À venir » à vérifier, barre latérale client. | §9, §11, contraste vérifié par test. |
 | Dégradés | `BRAND_GRADIENT` et dégradés dans 7 fichiers (barre latérale, en-têtes BUILD/CONTROL, héros et catalogue client, page publique). | Aplat bleu nuit ; hachures du marquage conservées. |
 | Contraste | Pastille « Bloquée » (texte doré sur doré pâle) à 4,29:1. | Supprimée par §8.2. |
-| Glossaire | Libellés serveur différents de la cible (§8.3). | Alignés, avec adaptation des tests existants citant la décision de validation de ce document. |
+| Glossaire | Libellés serveur différents de la cible (§8.3). | Alignés à l'étape 3 (migration `sales/0014`, jalons dérivés côté serveur). |
 
 ## 14. Points à arbitrer par le Product Owner
 
@@ -254,3 +254,18 @@ Tests de gouvernance à ajouter (étape 3) : aucun dégradé ; doré limité à 
 3. **Écrans du CDC §9.2**, un par un, avec captures 375 px et 1440 px en clair, deux passes de relecture critique, et la liste des écarts à chaque écran.
 
 Aucune de ces étapes ne commence avant votre validation de ce document.
+
+## 16. Mise en œuvre (étape 3, PO-2026-09-27-20)
+
+| Élément | Où |
+|---|---|
+| Jetons (Information, rayons 4/6, ombre unique `--keya-shadow-overlay`, Plex Mono) | `packages/design-system/src/components/GlobalStyles/GlobalStyles.tsx`, `tokens/` |
+| Formateurs partagés montant, surface, accord | `packages/design-system/src/format/numbers.ts` (`formatMoney`, `formatSurface`, `pluralize`) |
+| Badge d'état compact (point + libellé, rayon 4 px) | `Pill` (familles §8.2 ; `accent` → Attention, `primary` → Information) |
+| Traçabilité | `Timeline`, `VersionHistory`, `ReserveCard`, `TrustLevels`, `Indicator`, `Money`, `DateTime`, `Reference`, `ReceiptProof` (unifié), `ArchiveBanner`, `Skeleton`, `EmptyState` |
+| Barre supérieure client (X05) | `AppShell navigation="topbar"` (HOME) |
+| Galerie (A-DS-3) | `apps/web` → `/design-system`, refusée hors environnement `DEMO` |
+| Libellés serveur (A-DS-4, A-DS-6, §8.3) | `apps/sales/models.py` (migration `sales/0014`), `apps/inspections/services.py` (`milestone_cdc_state`) |
+| Gouvernance | `designSystemGovernance.test.ts` (dégradés, flou, rayons, ombres, doré, texte doré), `contrastGovernance.test.tsx` (contrastes AA clair et sombre) |
+
+Restent hors de cette étape (voir le compte rendu) : l'échelle `TrustLevels` n'est pas encore branchée sur les écrans (il faut exposer, par niveau, qui / quand / version / périmètre côté serveur) ; `StatusBadge` (niveau de confiance en badge) subsiste dans BUILD « À traiter » et dans l'ancienne vue HOME `OverviewView` ; export PDF filigrané à créer avec le premier export.

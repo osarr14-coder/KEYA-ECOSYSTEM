@@ -30,14 +30,14 @@ function formatServerDate(value: string) {
 }
 
 const sectionStyle = {
-  display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px', borderRadius: '12px',
+  display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px', borderRadius: '6px',
   border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface,
 } as const;
 
 const labelStyle = { display: 'flex', flexDirection: 'column', gap: '6px', fontWeight: 600, fontSize: '15px' } as const;
 
 const fieldStyle = {
-  minHeight: '44px', padding: '10px 12px', borderRadius: '10px', fontSize: '16px', fontFamily: 'inherit',
+  minHeight: '44px', padding: '10px 12px', borderRadius: '6px', fontSize: '16px', fontFamily: 'inherit',
   border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface, color: semanticColors.neutral.text,
 } as const;
 

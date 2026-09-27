@@ -27,4 +27,7 @@ export const typography = {
     "'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
   headingFontFamily:
     "'Fraunces', Georgia, 'Times New Roman', serif",
+  /** PO-2026-09-27-20 (A-DS-1) : références (bancaire simulée, instance, version, empreinte). */
+  monoFontFamily:
+    "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
 };

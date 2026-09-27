@@ -38,7 +38,10 @@ describe('DisbursementsView — paiements reçus (ticket F-068)', () => {
     const api = createMockApiClient({ listReceivedDisbursements, confirmDisbursement });
     render(withApiClient(api, <DisbursementsView />));
 
-    expect(await screen.findByText(/1\s000\s000 XOF · référence SORTIE-001 du 2026-10-01/)).toBeInTheDocument();
+    // Adapté selon PO-2026-09-27-20 (DESIGN_SYSTEM §9) : référence en Plex Mono
+    // (élément distinct) et date au format « 1 oct. 2026 ».
+    expect(await screen.findByTestId('disbursement-execution'))
+      .toHaveTextContent(/1\s000\s000 XOF · référence SORTIE-001 du 1 oct\. 2026/);
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer la réception' }));
 
     await waitFor(() => expect(confirmDisbursement).toHaveBeenCalledWith('disbursement-1'));

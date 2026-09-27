@@ -22,7 +22,7 @@ export function Select({ style, className, children, ...rest }: SelectProps) {
         minHeight: '40px',
         padding: '0 14px',
         // Ticket F-073 — rayon aligné sur Button (12px), corps 15px.
-        borderRadius: '12px',
+        borderRadius: '4px',
         border: `1px solid ${semanticColors.neutral.border}`,
         fontSize: '15px',
         color: semanticColors.neutral.text,

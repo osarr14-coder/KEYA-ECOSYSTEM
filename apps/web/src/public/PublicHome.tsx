@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  Button, Icon, type IconName, Pill, Select, brandColors, semanticColors, typography, useIsMobile,
+  Button, Pill, Select, brandColors, semanticColors, useIsMobile,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -30,7 +30,7 @@ function formatXof(value: number | string) {
 function Section({
   id, eyebrow, title, subtitle, tinted = false, children,
 }: {
-  id: string; eyebrow: string; title: string; subtitle?: string; tinted?: boolean; children: React.ReactNode;
+  id: string; eyebrow?: string; title: string; subtitle?: string; tinted?: boolean; children: React.ReactNode;
 }) {
   return (
     <section
@@ -42,14 +42,10 @@ function Section({
     >
       <div style={CONTAINER_STYLE}>
         <div style={{ maxWidth: '720px', marginBottom: '32px' }}>
-          <span
-            style={{
-              fontSize: '13px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: semanticColors.accent.text,
-            }}
-          >
-            {eyebrow}
-          </span>
-          <h2 id={`${id}-title`} style={{ margin: '8px 0 0', fontSize: 'clamp(28px, 3.4vw, 38px)' }}>{title}</h2>
+          {eyebrow && (
+            <span style={{ fontSize: '14px', fontWeight: 600, color: semanticColors.neutral.textMuted }}>{eyebrow}</span>
+          )}
+          <h2 id={`${id}-title`} style={{ margin: eyebrow ? '8px 0 0' : 0, fontSize: 'clamp(24px, 3vw, 32px)' }}>{title}</h2>
           {subtitle && <p style={{ margin: '12px 0 0', fontSize: '17px', color: semanticColors.neutral.textMuted }}>{subtitle}</p>}
         </div>
         {children}
@@ -63,19 +59,16 @@ function Section({
  * aucun « séquestre », « protégé », « sécurisé », « garantie » ; formule
  * neutre du PO pour le contrôleur (PO-2026-09-27-01).
  */
-const MECHANISMS: { icon: IconName; title: string; text: string }[] = [
+const MECHANISMS: { title: string; text: string }[] = [
   {
-    icon: 'wallet',
     title: 'Versements sur le compte du programme (simulé)',
     text: 'Chaque versement est enregistré sur un compte propre au programme, distinct de celui de KEYIMMO AFRIC. Chaque appel de fonds porte sa propre référence.',
   },
   {
-    icon: 'clipboard-check',
     title: 'Un contrôleur examine chaque jalon',
     text: `Il examine les pièces déposées par le constructeur avant toute acceptation technique. ${CONTROLLER_DESIGNATION}`,
   },
   {
-    icon: 'check-circle',
     title: 'Décaissement après acceptation technique',
     text: 'La plateforme refuse tout décaissement au constructeur tant que le jalon n’est pas accepté techniquement ; une réserve ouverte le bloque aussi.',
   },
@@ -119,71 +112,74 @@ const FAQ: { q: string; r: string }[] = [
   },
 ];
 
+/**
+ * PO-2026-09-27-20 (DESIGN_SYSTEM V02) : ouverture éditoriale sur fond
+ * papier — titre de 32 px au plus, aligné à gauche, une action principale,
+ * puis le mécanisme démontré en liste numérotée séparée par des filets
+ * (plus de bandeau navy, de carte translucide ni de tuiles d'icônes).
+ */
 function Hero({ navigate }: { navigate: (path: PublicPath) => void }) {
   return (
-    <section style={{ background: `linear-gradient(160deg, ${brandColors.navy} 0%, #071527 100%)`, color: '#FFFFFF' }}>
+    <section style={{ borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
       <div
         style={{
           ...CONTAINER_STYLE,
-          padding: 'clamp(56px, 8vw, 104px) clamp(16px, 4vw, 40px)',
+          padding: 'clamp(40px, 6vw, 72px) clamp(16px, 4vw, 40px)',
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
-          gap: '40px',
-          alignItems: 'center',
+          gap: 'clamp(32px, 5vw, 64px)',
+          alignItems: 'start',
         }}
       >
         <div>
-          <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#E2C47A' }}>
+          <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: semanticColors.neutral.textMuted }}>
             Démonstration · Abidjan · données fictives
-          </span>
-          <h1 style={{ margin: '16px 0 18px', color: '#FFFFFF', fontSize: 'clamp(36px, 5vw, 58px)', lineHeight: 1.08 }}>
+          </p>
+          <h1 style={{ margin: '12px 0 16px', fontSize: 'clamp(26px, 3.2vw, 32px)', lineHeight: 1.2, maxWidth: '22ch' }}>
             Suivre un achat immobilier neuf, du versement au chantier
           </h1>
-          <p style={{ margin: '0 0 32px', fontSize: '18px', color: 'rgba(255, 255, 255, 0.82)', maxWidth: '540px' }}>
+          <p style={{ margin: '0 0 28px', fontSize: '17px', color: semanticColors.neutral.text, maxWidth: '60ch' }}>
             Cette démonstration déroule le parcours d’un acquéreur sur un programme fictif : chaque versement est enregistré sur
             le compte du programme (simulé), chaque jalon est examiné par un contrôleur, et aucun décaissement n’est possible
             sans acceptation technique.
           </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
             <a href="#programmes" className="keya-btn" style={heroButton(true)}>Voir les programmes</a>
             <a href="#simulateur" className="keya-btn" style={heroButton(false)}>Simuler mes paiements</a>
           </div>
-          <p style={{ margin: '24px 0 0', fontSize: '15px', color: 'rgba(255, 255, 255, 0.7)' }}>
+          <p style={{ margin: '24px 0 0', fontSize: '15px', color: semanticColors.neutral.textMuted }}>
             Vous avez reçu un compte de démonstration ?{' '}
             <a
               href="/connexion"
               onClick={(event) => { event.preventDefault(); navigate('/connexion'); }}
-              style={{ color: '#E2C47A', fontWeight: 700 }}
+              style={{ fontWeight: 700 }}
             >
               Se connecter
             </a>
           </p>
         </div>
-        <ul
+        <ol
           aria-label="Le mécanisme démontré"
-          style={{
-            listStyle: 'none', margin: 0, padding: '28px', borderRadius: '24px', background: 'rgba(255, 255, 255, 0.06)',
-            border: '1px solid rgba(226, 196, 122, 0.3)', display: 'flex', flexDirection: 'column', gap: '22px',
-          }}
+          style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: `1px solid ${semanticColors.neutral.heading}` }}
         >
-          {MECHANISMS.map((item) => (
-            <li key={item.title} style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-              <span
-                aria-hidden="true"
-                style={{
-                  width: '44px', height: '44px', flexShrink: 0, borderRadius: '12px', display: 'inline-flex', alignItems: 'center',
-                  justifyContent: 'center', background: 'rgba(196, 154, 44, 0.2)', color: '#E2C47A',
-                }}
-              >
-                <Icon name={item.icon} size={22} />
+          {MECHANISMS.map((item, index) => (
+            <li
+              key={item.title}
+              style={{
+                display: 'grid', gridTemplateColumns: '32px 1fr', gap: '12px', padding: '18px 0',
+                borderBottom: `1px solid ${semanticColors.neutral.border}`,
+              }}
+            >
+              <span aria-hidden="true" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.textMuted }}>
+                {String(index + 1).padStart(2, '0')}
               </span>
               <span>
-                <strong style={{ display: 'block', fontSize: '16px' }}>{item.title}</strong>
-                <span style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.72)' }}>{item.text}</span>
+                <strong style={{ display: 'block', fontSize: '16px', color: semanticColors.neutral.heading }}>{item.title}</strong>
+                <span style={{ fontSize: '15px', color: semanticColors.neutral.text }}>{item.text}</span>
               </span>
             </li>
           ))}
-        </ul>
+        </ol>
       </div>
     </section>
   );
@@ -193,14 +189,15 @@ function heroButton(primary: boolean) {
   return {
     display: 'inline-flex',
     alignItems: 'center',
-    minHeight: '52px',
-    padding: '0 24px',
-    borderRadius: '14px',
+    minHeight: '44px',
+    padding: '0 20px',
+    borderRadius: '4px',
     fontWeight: 700,
-    fontSize: '16px',
+    fontSize: '15px',
+    textDecoration: 'none',
     background: primary ? brandColors.gold : 'transparent',
-    color: primary ? brandColors.navy : '#FFFFFF',
-    border: primary ? 'none' : '1px solid rgba(255, 255, 255, 0.4)',
+    color: primary ? brandColors.navy : semanticColors.neutral.heading,
+    border: primary ? 'none' : `1px solid ${semanticColors.neutral.border}`,
   } as const;
 }
 
@@ -211,25 +208,18 @@ function ProgramCard({ program, navigate }: { program: PublicProgram; navigate: 
       data-testid="public-program"
       aria-label={program.name}
       style={{
-        display: 'flex', flexDirection: 'column', borderRadius: '24px', overflow: 'hidden', background: semanticColors.neutral.surface,
-        border: `1px solid ${semanticColors.neutral.border}`, boxShadow: 'var(--keya-shadow-md)',
+        display: 'flex', flexDirection: 'column', borderRadius: '6px', overflow: 'hidden', background: semanticColors.neutral.surface,
+        border: `1px solid ${semanticColors.neutral.border}`,
       }}
     >
-      <div
-        aria-hidden="true"
-        style={{
-          height: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: `linear-gradient(135deg, ${brandColors.navy}, #1C3563)`, color: '#E2C47A',
-        }}
-      >
-        <Icon name="building" size={56} />
-      </div>
+      {/* PO-2026-09-27-20 (V07) : plus d'icône d'immeuble générique ; les
+          biens sont montrés par la façade et le plan au trait ci-dessus. */}
       <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '10px', flexGrow: 1 }}>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <Pill tone={soldOut ? 'neutral' : 'success'}>
             {soldOut ? 'Complet' : `${program.available_lots} lot${program.available_lots > 1 ? 's' : ''} disponible${program.available_lots > 1 ? 's' : ''}`}
           </Pill>
-          <span style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>{`${program.total_lots} lot(s) au total`}</span>
+          <span style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>{`${program.total_lots} lot${program.total_lots > 1 ? 's' : ''} au total`}</span>
         </div>
         <h3 style={{ margin: 0, fontSize: '24px' }}>{program.name}</h3>
         <span style={{ color: semanticColors.neutral.textMuted }}>
@@ -237,7 +227,7 @@ function ProgramCard({ program, navigate }: { program: PublicProgram; navigate: 
         </span>
         <span style={{ fontSize: '15px' }}>
           {soldOut ? 'Prix constatés à partir de ' : 'À partir de '}
-          <strong style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', color: semanticColors.neutral.heading }}>
+          <strong style={{ fontSize: '20px', fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
             {formatXof(program.price_from)}
           </strong>
         </span>
@@ -271,7 +261,7 @@ function ProgramCard({ program, navigate }: { program: PublicProgram; navigate: 
 
 const STATUS_COLOR: Record<string, string> = {
   accepted: semanticColors.progress.fill,
-  awaiting_control: semanticColors.accent.solid,
+  awaiting_control: semanticColors.info.text,
   under_reserve: semanticColors.danger.border,
   awaiting_documents: semanticColors.alert.border,
   not_declared: semanticColors.neutral.border,
@@ -285,7 +275,7 @@ function WorksiteCard({ worksite }: { worksite: PublicWorksite }) {
       data-testid="public-worksite"
       aria-label={`${worksite.program} — ${worksite.lot}`}
       style={{
-        borderRadius: '20px', padding: '20px 22px', background: semanticColors.neutral.surface,
+        borderRadius: '6px', padding: '20px 22px', background: semanticColors.neutral.surface,
         border: `1px solid ${semanticColors.neutral.border}`, display: 'flex', flexDirection: 'column', gap: '12px',
       }}
     >
@@ -336,7 +326,7 @@ function Simulator({ programs }: { programs: PublicProgram[] }) {
     >
       <div
         style={{
-          borderRadius: '24px', padding: '24px', background: semanticColors.neutral.surface,
+          borderRadius: '6px', padding: '24px', background: semanticColors.neutral.surface,
           border: `1px solid ${semanticColors.neutral.border}`, display: 'flex', flexDirection: 'column', gap: '16px',
         }}
       >
@@ -372,7 +362,7 @@ function Simulator({ programs }: { programs: PublicProgram[] }) {
               placeholder={Number(program.price_from).toLocaleString('fr-FR')}
               onChange={(event) => setCustomPrice(event.target.value)}
               style={{
-                minHeight: '44px', padding: '0 14px', borderRadius: '12px', border: `1px solid ${semanticColors.neutral.border}`,
+                minHeight: '44px', padding: '0 14px', borderRadius: '6px', border: `1px solid ${semanticColors.neutral.border}`,
                 fontSize: '15px', background: semanticColors.neutral.surface, color: semanticColors.neutral.text,
               }}
             />
@@ -385,13 +375,13 @@ function Simulator({ programs }: { programs: PublicProgram[] }) {
       </div>
       <div
         style={{
-          borderRadius: '24px', padding: '24px', background: semanticColors.neutral.surface,
-          border: `2px solid ${semanticColors.accent.solid}`,
+          borderRadius: '6px', padding: '24px', background: semanticColors.neutral.surface,
+          border: `1px solid ${semanticColors.neutral.border}`,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
           <span style={{ color: semanticColors.neutral.textMuted }}>Prix simulé</span>
-          <strong data-testid="simulated-price" style={{ fontFamily: typography.headingFontFamily, fontSize: '28px', color: semanticColors.neutral.heading }}>
+          <strong data-testid="simulated-price" style={{ fontSize: '24px', fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
             {formatXof(price)}
           </strong>
         </div>
@@ -435,7 +425,6 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
 
       <Section
         id="programmes"
-        eyebrow="Programmes"
         title="Programmes de démonstration"
         subtitle="Programmes, biens et prix fictifs. Un bien réservé n’apparaît plus comme disponible."
       >
@@ -456,25 +445,24 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         </div>
       </Section>
 
-      <Section id="etapes" eyebrow="Le parcours" title="Le parcours acquéreur en trois étapes" tinted>
+      <Section id="etapes" title="Le parcours acquéreur en trois étapes" tinted>
         <ol
           style={{
             listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: '24px',
           }}
         >
           {STEPS.map((step, index) => (
-            <li key={step.title} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <span
-                aria-hidden="true"
-                style={{
-                  width: '48px', height: '48px', borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  background: semanticColors.primary.background, color: semanticColors.primary.text, fontFamily: typography.headingFontFamily,
-                  fontSize: '20px', fontWeight: 600,
-                }}
-              >
-                {index + 1}
+            <li
+              key={step.title}
+              style={{
+                display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '16px',
+                borderTop: `1px solid ${semanticColors.neutral.heading}`,
+              }}
+            >
+              <span aria-hidden="true" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.textMuted }}>
+                {`Étape ${index + 1}`}
               </span>
-              <h3 style={{ margin: 0, fontSize: '21px' }}>{step.title}</h3>
+              <h3 style={{ margin: 0, fontSize: '20px' }}>{step.title}</h3>
               <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>{step.text}</p>
             </li>
           ))}
@@ -483,7 +471,6 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
 
       <Section
         id="fonctionnement"
-        eyebrow="Comment ça marche"
         title="Trois rôles distincts"
         subtitle="Ce que la démonstration applique, sur des données fictives : qui encaisse, qui examine, qui décaisse."
       >
@@ -504,8 +491,9 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         {worksites.length > 0 && (
           <p style={{ margin: '20px 0 0', display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '14px', color: semanticColors.neutral.textMuted }}>
             {[
-              ['accepted', 'Acceptée'], ['awaiting_control', 'En contrôle'], ['under_reserve', 'Sous réserve'],
-              ['awaiting_documents', 'Pièces attendues'], ['not_declared', 'À venir'],
+              ['accepted', 'Accepté techniquement'], ['awaiting_control', 'Soumis ou en examen'],
+              ['under_reserve', 'Corrections demandées ou resoumis'], ['awaiting_documents', 'Brouillon — pièce attendue'],
+              ['not_declared', 'Pas encore déclaré'],
             ].map(([status, label]) => (
               <span key={status} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <span aria-hidden="true" style={{ width: '10px', height: '10px', borderRadius: '50%', background: STATUS_COLOR[status] }} />
@@ -518,20 +506,19 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
 
       <Section
         id="simulateur"
-        eyebrow="Simulateur"
         title="Combien verser, et quand ?"
         subtitle="Choisissez un lot ou saisissez un prix : l’échéancier suit le barème de démonstration du programme."
       >
         {offerState.status === 'success' && <Simulator programs={programs} />}
       </Section>
 
-      <Section id="faq" eyebrow="Questions fréquentes" title="Tout ce qu’il faut savoir" tinted>
+      <Section id="faq" title="Tout ce qu’il faut savoir" tinted>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '860px' }}>
           {FAQ.map((item) => (
             <details
               key={item.q}
               style={{
-                borderRadius: '16px', padding: '18px 22px', border: `1px solid ${semanticColors.neutral.border}`,
+                borderRadius: '6px', padding: '18px 22px', border: `1px solid ${semanticColors.neutral.border}`,
                 background: semanticColors.neutral.background,
               }}
             >
@@ -542,20 +529,20 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         </div>
       </Section>
 
-      <section style={{ background: `linear-gradient(160deg, ${brandColors.navy} 0%, #071527 100%)`, color: '#FFFFFF' }}>
+      <section style={{ borderTop: `1px solid ${semanticColors.neutral.border}` }}>
         <div
           style={{
-            ...CONTAINER_STYLE, padding: 'clamp(40px, 6vw, 72px) clamp(16px, 4vw, 40px)', display: 'flex', flexWrap: 'wrap',
+            ...CONTAINER_STYLE, padding: 'clamp(32px, 5vw, 56px) clamp(16px, 4vw, 40px)', display: 'flex', flexWrap: 'wrap',
             gap: '24px', alignItems: 'center', justifyContent: 'space-between',
           }}
         >
           <div>
-            <h2 style={{ margin: 0, color: '#FFFFFF', fontSize: 'clamp(26px, 3vw, 34px)' }}>Participer à la démonstration</h2>
-            <p style={{ margin: '8px 0 0', color: 'rgba(255, 255, 255, 0.75)' }}>
+            <h2 style={{ margin: 0, fontSize: 'clamp(22px, 2.6vw, 28px)' }}>Participer à la démonstration</h2>
+            <p style={{ margin: '8px 0 0', color: semanticColors.neutral.textMuted }}>
               L’accès se fait sur invitation, avec des comptes de démonstration fictifs.
             </p>
           </div>
-          <Button type="button" variant="accent" onClick={() => navigate('/acces')} style={{ minHeight: '52px', padding: '0 26px' }}>
+          <Button type="button" variant="accent" onClick={() => navigate('/acces')}>
             Accès sur invitation
           </Button>
         </div>

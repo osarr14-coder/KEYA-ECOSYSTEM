@@ -47,8 +47,7 @@ function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }
       style={{
         padding: '12px',
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '14px',
-        boxShadow: 'var(--keya-shadow-sm)',
+        borderRadius: '6px',
       }}
     >
       <strong>{task.label}</strong>
@@ -68,7 +67,7 @@ export function TasksView() {
 
   return (
     <section aria-label="Tâches">
-      <PageHeader eyebrow="Boîte de réception" title="Tâches" />
+      <PageHeader title="Tâches" />
 
       {state.status === 'loading' && <p>Chargement…</p>}
       {state.status === 'error' && (

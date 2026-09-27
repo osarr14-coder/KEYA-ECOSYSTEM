@@ -27,7 +27,7 @@ export function BrandMark({ light = false }: { light?: boolean }) {
       <span
         aria-hidden="true"
         style={{
-          width: '36px', height: '36px', borderRadius: '10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: '36px', height: '36px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           background: brandColors.gold, color: brandColors.navy, fontFamily: typography.headingFontFamily, fontWeight: 600,
         }}
       >
@@ -70,6 +70,7 @@ export function PublicLayout({
             href="/"
             onClick={(event) => { event.preventDefault(); navigate('/'); }}
             aria-label="KEYIMMO AFRIC — accueil"
+            style={{ flexShrink: 0, whiteSpace: 'nowrap', textDecoration: 'none' }}
           >
             <BrandMark />
           </a>
@@ -80,19 +81,19 @@ export function PublicLayout({
                   key={href}
                   href={href}
                   className="keya-tab"
-                  style={{ padding: '8px 12px', borderRadius: '10px', fontWeight: 600, fontSize: '15px' }}
+                  style={{ padding: '8px 10px', borderRadius: '4px', fontWeight: 600, fontSize: '15px', whiteSpace: 'nowrap' }}
                 >
                   {label}
                 </a>
               ))}
             </nav>
           )}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', flexShrink: 0 }}>
             {path !== '/connexion' && (
-              <Button type="button" variant="secondary" onClick={() => navigate('/connexion')}>Se connecter</Button>
+              <Button type="button" variant="secondary" onClick={() => navigate('/connexion')} style={{ whiteSpace: 'nowrap' }}>Se connecter</Button>
             )}
             {path !== '/acces' && !isMobile && (
-              <Button type="button" variant="accent" onClick={() => navigate('/acces')}>Accès sur invitation</Button>
+              <Button type="button" variant="accent" onClick={() => navigate('/acces')} style={{ whiteSpace: 'nowrap' }}>Accès sur invitation</Button>
             )}
           </div>
         </div>

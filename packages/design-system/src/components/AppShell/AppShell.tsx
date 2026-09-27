@@ -132,6 +132,13 @@ export interface AppShellProps {
   /** Ticket F-073 — titre optionnel affiché dans la barre du haut (jamais
    * dérivé automatiquement du module actif : le libellé figurerait deux
    * fois dans la page). */
+  /**
+   * PO-2026-09-27-20 (DESIGN_SYSTEM §11, X05) : `topbar` remplace la barre
+   * latérale par une barre supérieure simple — espaces client et
+   * constructeur, mobile d'abord, peu d'entrées. `sidebar` (défaut) : barre
+   * latérale regroupée par métier (gestionnaire, Finance, contrôle).
+   */
+  navigation?: 'sidebar' | 'topbar';
   title?: string;
   children?: ReactNode;
 }
@@ -147,7 +154,9 @@ function isModuleVisible(module: AppModule, userRoles: string[]): boolean {
  * les tests et pour les rares surfaces de marque hors AppShell (bandeau
  * CONTROL, écran de connexion, carte programme HOME).
  */
-export const BRAND_GRADIENT = `linear-gradient(180deg, ${brandColors.navy} 0%, #071527 100%)`;
+// PO-2026-09-27-20 (DESIGN_SYSTEM §3.3) : plus aucun dégradé — aplat bleu nuit.
+// Nom conservé pour les appelants existants.
+export const BRAND_GRADIENT = brandColors.navy;
 
 /** Ticket F-073 — or translucide de l'entrée active (≈ 18 % d'opacité). */
 const ACTIVE_ITEM_BACKGROUND = 'rgba(196, 154, 44, 0.18)';
@@ -161,7 +170,7 @@ const chipStyle = {
   gap: '6px',
   minHeight: '40px',
   padding: '0 12px',
-  borderRadius: '12px',
+  borderRadius: '6px',
   background: semanticColors.neutral.subtle,
   color: semanticColors.neutral.text,
   font: 'inherit',
@@ -192,6 +201,7 @@ export function AppShell({
   activeModuleId,
   onModuleSelect,
   title,
+  navigation = 'sidebar',
   children,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
@@ -203,6 +213,206 @@ export function AppShell({
   const tokens = densityTokens[density];
   const visibleModules = modules.filter((module) => isModuleVisible(module, userRoles));
   const headerTitle = title;
+
+  const headerControls = (
+    <>
+      {organizationOptions.length > 0 && (
+        <select
+          aria-label="Organisation active"
+          className="keya-select"
+          value={activeOrganizationId}
+          onChange={(event) => onOrganizationChange?.(event.target.value)}
+          style={{ ...chipStyle, border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface, maxWidth: '260px' }}
+        >
+          {organizationOptions.map((option) => (
+            <option key={option.id} value={option.id}>{option.label}</option>
+          ))}
+        </select>
+      )}
+
+      {programOptions.length > 0 && (
+        <select
+          aria-label="Programme actif"
+          className="keya-select"
+          value={activeProgramId}
+          onChange={(event) => onProgramChange?.(event.target.value)}
+          style={{ ...chipStyle, border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface, maxWidth: '260px' }}
+        >
+          {programOptions.map((option) => (
+            <option key={option.id} value={option.id}>{option.label}</option>
+          ))}
+        </select>
+      )}
+
+      {showTaskInbox && (
+        <a
+          href="/tasks"
+          onClick={onTaskInboxClick && ((event) => {
+            event.preventDefault();
+            onTaskInboxClick();
+          })}
+          aria-label={`Task Inbox — ${taskInboxCount} en attente`}
+          style={chipStyle}
+        >
+          <Icon name="bell" size={18} />
+          {/* PO-2026-09-27-20 (V10) : compteur affiché seulement s'il y a
+              des actions en attente ; jamais doré. */}
+          {taskInboxCount > 0 && (
+            <span
+              data-testid="task-inbox-count"
+              style={{
+                minWidth: '20px',
+                padding: '0 6px',
+                borderRadius: '4px',
+                background: semanticColors.neutral.heading,
+                color: semanticColors.neutral.surface,
+                fontSize: '12px',
+                fontWeight: 700,
+                lineHeight: '20px',
+                textAlign: 'center',
+              }}
+            >
+              {taskInboxCount}
+            </span>
+          )}
+        </a>
+      )}
+
+      {user && (
+        <span
+          aria-label={`Connecté comme ${user.name}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            background: semanticColors.primary.background,
+            color: semanticColors.primary.text,
+            fontWeight: 700,
+          }}
+        >
+          {user.avatarUrl ? (
+            <img src={user.avatarUrl} alt={user.name} width={36} height={36} style={{ borderRadius: '50%' }} />
+          ) : (
+            <span aria-hidden="true">{user.name.slice(0, 1).toUpperCase()}</span>
+          )}
+        </span>
+      )}
+
+      {/* Ticket F-051 — bascule binaire clair/sombre. */}
+      <button
+        type="button"
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        aria-pressed={theme === 'dark'}
+        aria-label={theme === 'dark' ? 'Désactiver le mode sombre' : 'Activer le mode sombre'}
+        style={{ ...chipStyle, padding: '0 10px' }}
+      >
+        <Icon name="moon" size={18} />
+      </button>
+
+      {onLogout && (
+        <button type="button" onClick={onLogout} style={chipStyle}>
+          <Icon name="log-out" size={18} />
+          {!isMobile && 'Se déconnecter'}
+          {isMobile && <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Se déconnecter</span>}
+        </button>
+      )}
+    </>
+  );
+
+  if (navigation === 'topbar') {
+    return (
+      <div data-testid="app-shell" data-density={density} data-navigation="topbar" style={{ minHeight: 'calc(100vh - var(--keya-demo-banner-height, 0px))', fontSize: tokens.fontSize }}>
+        <header
+          data-testid="app-shell-header"
+          style={{
+            position: 'sticky',
+            top: 'var(--keya-demo-banner-height, 0px)',
+            zIndex: 10,
+            background: semanticColors.neutral.surface,
+            borderBottom: `1px solid ${semanticColors.neutral.border}`,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: isMobile ? '6px' : '10px', flexWrap: 'nowrap', minHeight: '56px',
+              maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '8px 16px' : '8px 40px', boxSizing: 'border-box',
+            }}
+          >
+            <span data-testid="topbar-brand" style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', minWidth: 0, overflow: 'hidden' }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px',
+                  borderRadius: '4px', background: brandColors.gold, color: brandColors.navy, fontWeight: 600, fontSize: '14px',
+                  fontFamily: typography.headingFontFamily, flexShrink: 0,
+                }}
+              >
+                K+
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.15 }}>
+                <span style={{ fontFamily: typography.headingFontFamily, fontSize: isMobile ? '14px' : '16px', fontWeight: 600, color: semanticColors.neutral.heading, whiteSpace: 'nowrap' }}>
+                  KEYIMMO AFRIC
+                </span>
+                {appLabel && <span style={{ fontSize: '12px', color: semanticColors.neutral.textMuted }}>{appLabel}</span>}
+              </span>
+            </span>
+            <span style={{ marginLeft: 'auto' }} />
+            {headerControls}
+          </div>
+          <nav aria-label="Navigation des modules" style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '0 8px' : '0 32px', boxSizing: 'border-box' }}>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', gap: '4px', overflowX: 'auto' }}>
+              {visibleModules.map((module) => {
+                const isActive = module.id === activeModuleId;
+                const badge = module.badge && module.badge > 0 ? module.badge : undefined;
+                return (
+                  <li key={module.id} style={{ flexShrink: 0 }}>
+                    <a
+                      href={module.href}
+                      aria-current={isActive ? 'page' : undefined}
+                      className="keya-tab"
+                      onClick={onModuleSelect && ((event) => {
+                        event.preventDefault();
+                        onModuleSelect(module.id);
+                      })}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '8px', minHeight: '44px', padding: '0 12px',
+                        fontSize: '15px', textDecoration: 'none', whiteSpace: 'nowrap',
+                        // Actif : trait encre 2 px + graisse, jamais la couleur seule.
+                        fontWeight: isActive ? 700 : 500,
+                        color: isActive ? semanticColors.neutral.heading : semanticColors.neutral.text,
+                        borderBottom: `2px solid ${isActive ? semanticColors.neutral.heading : 'transparent'}`,
+                      }}
+                    >
+                      {module.icon && <Icon name={module.icon} size={18} />}
+                      {module.label}
+                      {badge !== undefined && (
+                        <span
+                          data-testid={`module-badge-${module.id}`}
+                          aria-label={`${badge} en attente`}
+                          style={{
+                            minWidth: '20px', padding: '0 6px', borderRadius: '4px', background: semanticColors.neutral.heading,
+                            color: semanticColors.neutral.surface, fontSize: '12px', fontWeight: 700, lineHeight: '20px', textAlign: 'center',
+                          }}
+                        >
+                          {badge}
+                        </span>
+                      )}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        </header>
+        <main style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '16px' : '32px 40px 48px', minWidth: 0, boxSizing: 'border-box' }}>
+          {children}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -223,187 +433,191 @@ export function AppShell({
           doctrine 17.3/F-048 validée par l'utilisateur) : la barre latérale
           ENTIÈRE est navy, pleine hauteur, sur les 4 apps et dans les deux
           thèmes — c'est le repère d'identité unique de KEYA. */}
-      <aside
-        aria-label="Navigation des modules"
-        data-testid="app-shell-sidebar"
-        style={{
-          gridRow: '1 / span 2',
-          background: BRAND_GRADIENT,
-          color: SIDEBAR_TEXT,
-          position: 'sticky',
-          // Audit UI R1 (M01) : sous le bandeau de démonstration permanent.
-          top: 'var(--keya-demo-banner-height, 0px)',
-          height: 'calc(100vh - var(--keya-demo-banner-height, 0px))',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: spacing.md,
-          paddingBottom: spacing.lg,
-        }}
-      >
-        <div
-          data-testid="sidebar-brand-block"
+      {/* Colonne de fond navy sur toute la hauteur de la page ; la barre
+          latérale reste collante à l'intérieur. */}
+      <div style={{ gridRow: '1 / span 2', gridColumn: 1, background: brandColors.navy }}>
+        <aside
+          aria-label="Navigation des modules"
+          data-testid="app-shell-sidebar"
           style={{
-            color: '#FFFFFF',
+            background: BRAND_GRADIENT,
+            color: SIDEBAR_TEXT,
+            position: 'sticky',
+            // Audit UI R1 (M01) : sous le bandeau de démonstration permanent.
+            top: 'var(--keya-demo-banner-height, 0px)',
+            height: 'calc(100vh - var(--keya-demo-banner-height, 0px))',
+            overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
-            gap: '2px',
-            padding: effectiveCollapsed ? '20px 8px 8px' : '24px 20px 8px',
+            gap: spacing.md,
+            paddingBottom: spacing.lg,
           }}
         >
           <div
+            data-testid="sidebar-brand-block"
             style={{
+              color: '#FFFFFF',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
-              gap: '12px',
+              flexDirection: 'column',
+              gap: '2px',
+              padding: effectiveCollapsed ? '20px 8px 8px' : '24px 20px 8px',
             }}
           >
-            <span
+            <div
               style={{
-                display: 'inline-flex',
+                display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                background: brandColors.gold,
-                color: brandColors.navy,
-                fontWeight: 600,
-                fontSize: '15px',
-                fontFamily: typography.headingFontFamily,
-                flexShrink: 0,
+                justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
+                gap: '12px',
               }}
             >
-              K+
-            </span>
-            {!effectiveCollapsed && (
-              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                <span style={{ fontFamily: typography.headingFontFamily, fontSize: '18px', fontWeight: 600, lineHeight: 1.2 }}>
-                  KEYIMMO AFRIC
-                </span>
-                {appLabel && (
-                  <span style={{ fontSize: '12px', color: SIDEBAR_TEXT_MUTED, fontWeight: 500 }}>{appLabel}</span>
-                )}
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '6px',
+                  background: brandColors.gold,
+                  color: brandColors.navy,
+                  fontWeight: 600,
+                  fontSize: '15px',
+                  fontFamily: typography.headingFontFamily,
+                  flexShrink: 0,
+                }}
+              >
+                K+
               </span>
-            )}
-          </div>
-        </div>
-
-        <nav style={{ padding: effectiveCollapsed ? '0 8px' : '0 12px' }}>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            {visibleModules.map((module, index) => {
-              const isActive = module.id === activeModuleId;
-              // Ticket F-051 — en-tête de groupe rendu une fois, à la
-              // transition vers un `group` différent ; jamais en mode replié.
-              const previousGroup = index > 0 ? visibleModules[index - 1].group : undefined;
-              const showGroupHeader = Boolean(module.group) && module.group !== previousGroup && !effectiveCollapsed;
-              const badge = module.badge && module.badge > 0 ? module.badge : undefined;
-              return (
-                <Fragment key={module.id}>
-                  {/* Ticket F-051 — PAS aria-hidden : repère de section pour
-                      tous, lecteurs d'écran compris. */}
-                  {showGroupHeader && (
-                    <li
-                      style={{
-                        padding: '16px 12px 6px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.1em',
-                        color: SIDEBAR_TEXT_MUTED,
-                      }}
-                    >
-                      {module.group}
-                    </li>
+              {!effectiveCollapsed && (
+                <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <span style={{ fontFamily: typography.headingFontFamily, fontSize: '18px', fontWeight: 600, lineHeight: 1.2 }}>
+                    KEYIMMO AFRIC
+                  </span>
+                  {appLabel && (
+                    <span style={{ fontSize: '12px', color: SIDEBAR_TEXT_MUTED, fontWeight: 500 }}>{appLabel}</span>
                   )}
-                  <li>
-                    <a
-                      href={module.href}
-                      aria-current={isActive ? 'page' : undefined}
-                      aria-label={effectiveCollapsed ? module.label : undefined}
-                      title={effectiveCollapsed ? module.label : undefined}
-                      className="keya-nav-link"
-                      onClick={onModuleSelect && ((event) => {
-                        event.preventDefault();
-                        onModuleSelect(module.id);
-                      })}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
-                        gap: '12px',
-                        minHeight: '44px',
-                        padding: effectiveCollapsed ? '0' : '0 12px',
-                        borderRadius: '12px',
-                        fontSize: '15px',
-                        // Ticket F-073 — entrée active : fond or translucide,
-                        // texte blanc en gras ET repère or à gauche (jamais la
-                        // couleur seule, principe d'accessibilité du projet).
-                        borderLeft: isActive ? `3px solid ${brandColors.gold}` : '3px solid transparent',
-                        fontWeight: isActive ? 700 : 500,
-                        background: isActive ? ACTIVE_ITEM_BACKGROUND : 'transparent',
-                        color: isActive ? '#FFFFFF' : SIDEBAR_TEXT,
-                        position: 'relative',
-                      }}
-                    >
-                      {module.icon && <Icon name={module.icon} size={20} />}
-                      {!effectiveCollapsed && <span style={{ flexGrow: 1, minWidth: 0 }}>{module.label}</span>}
-                      {effectiveCollapsed && !module.icon && module.label.slice(0, 1)}
-                      {badge !== undefined && (
-                        <span
-                          data-testid={`module-badge-${module.id}`}
-                          aria-label={`${badge} en attente`}
-                          style={{
-                            ...(effectiveCollapsed ? { position: 'absolute', top: '4px', right: '4px' } : {}),
-                            minWidth: '22px',
-                            padding: '0 7px',
-                            borderRadius: '999px',
-                            background: brandColors.gold,
-                            color: brandColors.navy,
-                            fontSize: '12px',
-                            fontWeight: 800,
-                            lineHeight: '22px',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {badge}
-                        </span>
-                      )}
-                    </a>
-                  </li>
-                </Fragment>
-              );
-            })}
-          </ul>
-        </nav>
+                </span>
+              )}
+            </div>
+          </div>
 
-        {/* Ticket F-050 — rien à basculer sous le seuil mobile. */}
-        {!isMobile && (
-          <button
-            type="button"
-            onClick={() => setCollapsed((current) => !current)}
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? 'Déplier la navigation' : 'Replier la navigation'}
-            style={{
-              marginTop: 'auto',
-              alignSelf: effectiveCollapsed ? 'center' : 'flex-start',
-              marginInline: effectiveCollapsed ? 0 : '16px',
-              width: '36px',
-              height: '36px',
-              border: 'none',
-              borderRadius: '10px',
-              background: 'rgba(255, 255, 255, 0.06)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: SIDEBAR_TEXT,
-            }}
-          >
-            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
-          </button>
-        )}
-      </aside>
+          <nav style={{ padding: effectiveCollapsed ? '0 8px' : '0 12px' }}>
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {visibleModules.map((module, index) => {
+                const isActive = module.id === activeModuleId;
+                // Ticket F-051 — en-tête de groupe rendu une fois, à la
+                // transition vers un `group` différent ; jamais en mode replié.
+                const previousGroup = index > 0 ? visibleModules[index - 1].group : undefined;
+                const showGroupHeader = Boolean(module.group) && module.group !== previousGroup && !effectiveCollapsed;
+                const badge = module.badge && module.badge > 0 ? module.badge : undefined;
+                return (
+                  <Fragment key={module.id}>
+                    {/* Ticket F-051 — PAS aria-hidden : repère de section pour
+                        tous, lecteurs d'écran compris. */}
+                    {showGroupHeader && (
+                      <li
+                        style={{
+                          padding: '16px 12px 6px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.1em',
+                          color: SIDEBAR_TEXT_MUTED,
+                        }}
+                      >
+                        {module.group}
+                      </li>
+                    )}
+                    <li>
+                      <a
+                        href={module.href}
+                        aria-current={isActive ? 'page' : undefined}
+                        aria-label={effectiveCollapsed ? module.label : undefined}
+                        title={effectiveCollapsed ? module.label : undefined}
+                        className="keya-nav-link"
+                        onClick={onModuleSelect && ((event) => {
+                          event.preventDefault();
+                          onModuleSelect(module.id);
+                        })}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: effectiveCollapsed ? 'center' : 'flex-start',
+                          gap: '12px',
+                          minHeight: '44px',
+                          padding: effectiveCollapsed ? '0' : '0 12px',
+                          borderRadius: '6px',
+                          fontSize: '15px',
+                          // PO-2026-09-27-20 (DESIGN_SYSTEM §3.1, V05, V06) : entrée
+                          // active = fond translucide, texte doré en gras (seul
+                          // usage du texte doré) ; plus de liseré à gauche. Jamais
+                          // la couleur seule : graisse et fond changent aussi.
+                          fontWeight: isActive ? 700 : 500,
+                          background: isActive ? ACTIVE_ITEM_BACKGROUND : 'transparent',
+                          color: isActive ? '#E2C47A' : SIDEBAR_TEXT,
+                          position: 'relative',
+                        }}
+                      >
+                        {module.icon && <Icon name={module.icon} size={20} />}
+                        {!effectiveCollapsed && <span style={{ flexGrow: 1, minWidth: 0 }}>{module.label}</span>}
+                        {effectiveCollapsed && !module.icon && module.label.slice(0, 1)}
+                        {badge !== undefined && (
+                          <span
+                            data-testid={`module-badge-${module.id}`}
+                            aria-label={`${badge} en attente`}
+                            style={{
+                              ...(effectiveCollapsed ? { position: 'absolute', top: '4px', right: '4px' } : {}),
+                              minWidth: '22px',
+                              padding: '0 7px',
+                              borderRadius: '4px',
+                              // §3.3 : le doré n'est pas un compteur.
+                              background: 'rgba(255, 255, 255, 0.16)',
+                              color: '#FFFFFF',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              lineHeight: '22px',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {badge}
+                          </span>
+                        )}
+                      </a>
+                    </li>
+                  </Fragment>
+                );
+              })}
+            </ul>
+          </nav>
+
+          {/* Ticket F-050 — rien à basculer sous le seuil mobile. */}
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={() => setCollapsed((current) => !current)}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? 'Déplier la navigation' : 'Replier la navigation'}
+              style={{
+                marginTop: 'auto',
+                alignSelf: effectiveCollapsed ? 'center' : 'flex-start',
+                marginInline: effectiveCollapsed ? 0 : '16px',
+                width: '36px',
+                height: '36px',
+                border: 'none',
+                borderRadius: '6px',
+                background: 'rgba(255, 255, 255, 0.06)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: SIDEBAR_TEXT,
+              }}
+            >
+              <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
+            </button>
+          )}
+        </aside>
+      </div>
 
       <header
         data-testid="app-shell-header"
@@ -416,8 +630,8 @@ export function AppShell({
           gap: '10px',
           minHeight: '64px',
           padding: isMobile ? '10px 16px' : '10px 40px',
-          // Ticket F-039 — `brand` (HOME) : filet or sous la barre.
-          borderBottom: brand ? `2px solid ${brandColors.gold}` : `1px solid ${semanticColors.neutral.border}`,
+          // PO-2026-09-27-20 (§5.3) : séparateur 1 px, jamais un filet doré.
+          borderBottom: `1px solid ${semanticColors.neutral.border}`,
           background: semanticColors.neutral.surface,
         }}
       >
@@ -453,106 +667,7 @@ export function AppShell({
         )}
 
         <span style={{ marginLeft: 'auto' }} />
-
-        {organizationOptions.length > 0 && (
-          <select
-            aria-label="Organisation active"
-            className="keya-select"
-            value={activeOrganizationId}
-            onChange={(event) => onOrganizationChange?.(event.target.value)}
-            style={{ ...chipStyle, border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface, maxWidth: '260px' }}
-          >
-            {organizationOptions.map((option) => (
-              <option key={option.id} value={option.id}>{option.label}</option>
-            ))}
-          </select>
-        )}
-
-        {programOptions.length > 0 && (
-          <select
-            aria-label="Programme actif"
-            className="keya-select"
-            value={activeProgramId}
-            onChange={(event) => onProgramChange?.(event.target.value)}
-            style={{ ...chipStyle, border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface, maxWidth: '260px' }}
-          >
-            {programOptions.map((option) => (
-              <option key={option.id} value={option.id}>{option.label}</option>
-            ))}
-          </select>
-        )}
-
-        {showTaskInbox && (
-          <a
-            href="/tasks"
-            onClick={onTaskInboxClick && ((event) => {
-              event.preventDefault();
-              onTaskInboxClick();
-            })}
-            aria-label={`Task Inbox — ${taskInboxCount} en attente`}
-            style={chipStyle}
-          >
-            <Icon name="bell" size={18} />
-            <span
-              data-testid="task-inbox-count"
-              style={taskInboxCount > 0 ? {
-                minWidth: '20px',
-                padding: '0 6px',
-                borderRadius: '999px',
-                background: semanticColors.accent.solid,
-                color: semanticColors.accent.onSolid,
-                fontSize: '12px',
-                fontWeight: 800,
-                lineHeight: '20px',
-                textAlign: 'center',
-              } : undefined}
-            >
-              {taskInboxCount}
-            </span>
-          </a>
-        )}
-
-        {user && (
-          <span
-            aria-label={`Connecté comme ${user.name}`}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '36px',
-              height: '36px',
-              borderRadius: '50%',
-              background: semanticColors.primary.background,
-              color: semanticColors.primary.text,
-              fontWeight: 700,
-            }}
-          >
-            {user.avatarUrl ? (
-              <img src={user.avatarUrl} alt={user.name} width={36} height={36} style={{ borderRadius: '50%' }} />
-            ) : (
-              <span aria-hidden="true">{user.name.slice(0, 1).toUpperCase()}</span>
-            )}
-          </span>
-        )}
-
-        {/* Ticket F-051 — bascule binaire clair/sombre. */}
-        <button
-          type="button"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          aria-pressed={theme === 'dark'}
-          aria-label={theme === 'dark' ? 'Désactiver le mode sombre' : 'Activer le mode sombre'}
-          style={{ ...chipStyle, padding: '0 10px' }}
-        >
-          <Icon name="moon" size={18} />
-        </button>
-
-        {onLogout && (
-          <button type="button" onClick={onLogout} style={chipStyle}>
-            <Icon name="log-out" size={18} />
-            {!isMobile && 'Se déconnecter'}
-            {isMobile && <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Se déconnecter</span>}
-          </button>
-        )}
+        {headerControls}
       </header>
 
       <main style={{ padding: isMobile ? '16px' : '32px 40px 48px', minWidth: 0 }}>

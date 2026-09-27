@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, KeyFigure, PageHeader, Pill, type PillTone, semanticColors, typography,
+  AlertBanner, ApiErrorBanner, Button, Card, KeyFigure, PageHeader, Pill, type PillTone, formatServerDateTime, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -34,17 +34,12 @@ export function taskTarget(task: Task): NavigationTarget | null {
 }
 
 const TYPE_LABELS: Record<Task['type'], { label: string; tone: PillTone }> = {
-  task: { label: 'À traiter', tone: 'accent' },
-  notification: { label: 'Information', tone: 'primary' },
-  alert: { label: 'Alerte', tone: 'alert' },
+  task: { label: 'À traiter', tone: 'alert' },
+  notification: { label: 'Information', tone: 'info' },
+  alert: { label: 'Alerte', tone: 'danger' },
   exception: { label: 'Exception', tone: 'danger' },
 };
 
-function formatDay(iso: string) {
-  return new Date(iso).toLocaleString('fr-FR', {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Abidjan',
-  });
-}
 
 function todayLabel() {
   const label = new Date().toLocaleDateString('fr-FR', {
@@ -82,26 +77,18 @@ function TaskCard({
         display: 'flex',
         alignItems: 'stretch',
         gap: '16px',
-        padding: '16px 20px 16px 0',
+        padding: '16px 20px',
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '18px',
+        borderRadius: '6px',
         background: semanticColors.neutral.surface,
         overflow: 'hidden',
       }}
     >
-      <span
-        aria-hidden="true"
-        style={{
-          width: '5px',
-          flexShrink: 0,
-          background: task.priority === 'high' ? semanticColors.accent.solid : semanticColors.neutral.border,
-        }}
-      />
       <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <Pill tone={meta.tone}>{meta.label}</Pill>
           {task.priority === 'high' && <Pill tone="danger">Prioritaire</Pill>}
-          <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{formatDay(task.created_at)}</span>
+          <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{formatServerDateTime(task.created_at)}</span>
         </div>
         <strong style={{ fontSize: '16px' }}>{task.label}</strong>
         {error && <AlertBanner title={error} />}
@@ -112,7 +99,7 @@ function TaskCard({
             Ouvrir
           </Button>
         )}
-        <Button type="button" variant="secondary" onClick={() => { void handleComplete(); }} disabled={completing}>
+        <Button type="button" variant="secondary" onClick={() => { void handleComplete(); }} disabled={completing} style={{ whiteSpace: 'nowrap' }}>
           {completing ? 'Marquage…' : 'Marquer comme traité'}
         </Button>
       </div>
@@ -122,7 +109,7 @@ function TaskCard({
 
 function SalesPipeline({ reservations }: { reservations: AdminReservation[] }) {
   const columns = [
-    { label: 'Bloquées', count: reservations.filter((r) => r.status === 'held').length },
+    { label: 'Biens bloqués', count: reservations.filter((r) => r.status === 'held').length },
     { label: 'Réservées', count: reservations.filter((r) => r.status === 'reserved').length },
     { label: 'Concrétisées', count: reservations.filter((r) => r.status === 'committed').length },
     { label: 'Expirées / annulées', count: reservations.filter((r) => r.status === 'expired' || r.status === 'cancelled').length },
@@ -137,13 +124,13 @@ function SalesPipeline({ reservations }: { reservations: AdminReservation[] }) {
             <span aria-hidden="true" style={{ height: '8px', borderRadius: '4px', background: semanticColors.progress.track, overflow: 'hidden' }}>
               <span
                 style={{
-                  display: 'block', height: '100%', width: `${(column.count / max) * 100}%`, background: semanticColors.accent.solid,
+                  display: 'block', height: '100%', width: `${(column.count / max) * 100}%`, background: semanticColors.neutral.heading,
                 }}
               />
             </span>
-            <span style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+            <span style={{ fontSize: '22px', fontWeight: column.count ? 700 : 500, fontVariantNumeric: 'tabular-nums', color: column.count ? semanticColors.neutral.heading : semanticColors.neutral.textMuted }}>
               {column.count}
-              <span style={{ fontFamily: typography.fontFamily, fontSize: '14px', fontWeight: 500, color: semanticColors.neutral.textMuted }}>
+              <span style={{ fontSize: '14px', fontWeight: 500, color: semanticColors.neutral.textMuted }}>
                 {column.count > 1 ? ' dossiers' : ' dossier'}
               </span>
             </span>

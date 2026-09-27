@@ -421,7 +421,7 @@ function PlanViewer({ onClose }: { onClose: () => void }) {
         onPointerCancel={handlePointerEnd}
         onDoubleClick={handleDoubleClick}
         style={{
-          flex: '1 1 auto', margin: '0 12px 12px', borderRadius: '12px', overflow: 'hidden', touchAction: 'none',
+          flex: '1 1 auto', margin: '0 12px 12px', borderRadius: '6px', overflow: 'hidden', touchAction: 'none',
           background: semanticColors.neutral.surface, cursor: view.scale > 1 ? 'grab' : 'zoom-in', userSelect: 'none',
         }}
       >
@@ -454,7 +454,7 @@ export function LotPlanA1() {
       data-testid="lot-plan-a1"
       style={{
         margin: 0, height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '14px',
-        padding: 'clamp(16px, 3vw, 24px)', borderRadius: '24px', background: semanticColors.neutral.surface,
+        padding: 'clamp(16px, 3vw, 24px)', borderRadius: '6px', background: semanticColors.neutral.surface,
         border: `1px solid ${semanticColors.neutral.border}`,
       }}
     >
@@ -466,7 +466,7 @@ export function LotPlanA1() {
         aria-haspopup="dialog"
         className="keya-light-surface"
         style={{
-          position: 'relative', display: 'block', width: '100%', aspectRatio: '698 / 659', padding: '8px', borderRadius: '16px',
+          position: 'relative', display: 'block', width: '100%', aspectRatio: '698 / 659', padding: '8px', borderRadius: '6px',
           border: `1px solid ${semanticColors.neutral.border}`, background: semanticColors.neutral.surface, cursor: 'zoom-in',
         }}
       >
@@ -477,7 +477,7 @@ export function LotPlanA1() {
           aria-hidden="true"
           style={{
             position: 'absolute', right: '10px', bottom: '10px', display: 'inline-flex', alignItems: 'center', gap: '6px',
-            padding: '6px 10px', borderRadius: '999px', fontSize: '13px', fontWeight: 700,
+            padding: '6px 10px', borderRadius: '4px', fontSize: '13px', fontWeight: 700,
             background: semanticColors.primary.background, color: semanticColors.primary.text,
           }}
         >

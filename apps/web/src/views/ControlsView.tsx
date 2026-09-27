@@ -50,7 +50,7 @@ function ControlCard({
       title={`${control.program.name} — ${control.lot.name} — ${control.milestone.label}`}
       icon="clipboard-check"
       action={(
-        <Pill tone={control.status === 'under_reserve' ? 'danger' : 'accent'} data-testid="control-status">
+        <Pill tone={control.status === 'under_reserve' ? 'danger' : 'info'} data-testid="control-status">
           {control.status_label}
         </Pill>
       )}
@@ -72,7 +72,7 @@ function ControlCard({
       {control.pending_mission ? (
         <p
           style={{
-            margin: '16px 0 0', padding: '12px 14px', borderRadius: '12px', background: semanticColors.neutral.subtle,
+            margin: '16px 0 0', padding: '12px 14px', borderRadius: '6px', background: semanticColors.neutral.subtle,
             display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap',
           }}
         >
@@ -119,7 +119,6 @@ export function ControlsView() {
   return (
     <section aria-label="Contrôles à affecter">
       <PageHeader
-        eyebrow="Chantier"
         title="Contrôles à affecter"
         subtitle="Déclarations documentées en attente de contrôle ou sous réserve. KEYIMMO missionne le contrôleur ; le constructeur ne le choisit jamais."
       />

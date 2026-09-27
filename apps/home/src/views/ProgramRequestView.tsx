@@ -95,7 +95,7 @@ function CreateProgramRequestForm({ onCreated }: { onCreated: () => void }) {
               width: '100%',
               marginTop: '4px',
               padding: '8px 12px',
-              borderRadius: '8px',
+              borderRadius: '6px',
               border: `1px solid ${semanticColors.neutral.border}`,
               fontSize: '14px',
               fontFamily: 'inherit',
@@ -131,8 +131,7 @@ function ProgramRequestNotifications() {
             style={{
               padding: '12px',
               border: `1px solid ${semanticColors.neutral.border}`,
-              borderRadius: '14px',
-              boxShadow: 'var(--keya-shadow-sm)',
+              borderRadius: '6px',
             }}
           >
             {task.label}
@@ -165,8 +164,7 @@ export function ProgramRequestView() {
                 style={{
                   padding: '12px',
                   border: `1px solid ${semanticColors.neutral.border}`,
-                  borderRadius: '14px',
-                  boxShadow: 'var(--keya-shadow-sm)',
+                  borderRadius: '6px',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>

@@ -44,10 +44,9 @@ export function ProgramHeroCard({
       data-testid="hero"
       style={{
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '18px',
+        borderRadius: '6px',
         overflow: 'hidden',
         background: semanticColors.neutral.surface,
-        boxShadow: 'var(--keya-shadow-md)',
       }}
     >
       <div
@@ -68,8 +67,8 @@ export function ProgramHeroCard({
             justifyContent: 'center',
             width: '30px',
             height: '30px',
-            borderRadius: '9px',
-            background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
+            borderRadius: '6px',
+            background: brandColors.gold,
             color: brandColors.navy,
             fontWeight: 700,
             fontFamily: typography.headingFontFamily,

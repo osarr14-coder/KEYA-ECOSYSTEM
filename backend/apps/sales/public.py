@@ -114,11 +114,13 @@ def public_worksites():
                 milestones = []
                 for milestone in lot.milestones.order_by('order'):
                     milestone.lot = lot
-                    status = inspections_services.milestone_control_state(milestone)['status']
+                    state = inspections_services.milestone_control_state(milestone)
+                    cdc_state, cdc_label, _hint = inspections_services.milestone_cdc_state(state)
                     milestones.append({
                         'label': milestone.label,
-                        'status': status,
-                        'status_label': inspections_services.CONTROL_STATUS_LABELS[status],
+                        'status': state['status'],
+                        'status_label': cdc_label,
+                        'cdc_state': cdc_state,
                     })
                 worksites.append({
                     'program': lot.asset.program.name,

@@ -30,11 +30,10 @@ export interface InspectionFormViewProps {
 // aérées sur fond ivoire, légendes en petites capitales.
 const FIELDSET_STYLE = {
   border: `1px solid ${semanticColors.neutral.border}`,
-  borderRadius: '18px',
+  borderRadius: '6px',
   padding: '12px 16px 16px',
   margin: 0,
   background: semanticColors.neutral.surface,
-  boxShadow: 'var(--keya-shadow-sm)',
 };
 // Ticket F-045 — icône de repère devant chaque légende de section, même
 // famille visuelle que `Card` (icône + titre), sans introduire `Card` ici :
@@ -64,7 +63,7 @@ function decisionTileStyle(selected: boolean, tone: 'primary' | 'danger') {
     alignItems: 'center',
     justifyContent: 'center',
     gap: '10px',
-    borderRadius: '14px',
+    borderRadius: '6px',
     border: `2px solid ${selected ? fill : semanticColors.neutral.border}`,
     background: selected ? fill : semanticColors.neutral.surface,
     color: selected ? text : semanticColors.neutral.text,
@@ -564,7 +563,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
             gap: '8px',
             minHeight: '72px',
             marginTop: '4px',
-            borderRadius: '14px',
+            borderRadius: '6px',
             border: `2px dashed ${semanticColors.neutral.border}`,
             color: semanticColors.neutral.heading,
             fontWeight: 700,
@@ -605,7 +604,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
           onBlur={handleCommentBlur}
           rows={3}
           style={{
-            display: 'block', width: '100%', marginTop: '6px', resize: 'vertical', padding: '12px 14px', borderRadius: '14px',
+            display: 'block', width: '100%', marginTop: '6px', resize: 'vertical', padding: '12px 14px', borderRadius: '6px',
             border: `1px solid ${semanticColors.neutral.border}`, font: 'inherit', fontWeight: 400,
           }}
         />
@@ -619,7 +618,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
               type="radio" name="decision" value="conforme"
               checked={draft.decision === 'conforme'}
               onChange={() => handleDecisionChange('conforme')}
-              style={{ width: '20px', height: '20px', accentColor: semanticColors.accent.solid }}
+              style={{ width: '20px', height: '20px', accentColor: semanticColors.neutral.heading }}
             />
             Conforme
           </label>
@@ -628,7 +627,7 @@ export function InspectionFormView({ missionId, onBack }: InspectionFormViewProp
               type="radio" name="decision" value="reserve"
               checked={draft.decision === 'reserve'}
               onChange={() => handleDecisionChange('reserve')}
-              style={{ width: '20px', height: '20px', accentColor: semanticColors.accent.solid }}
+              style={{ width: '20px', height: '20px', accentColor: semanticColors.neutral.heading }}
             />
             Réserve
           </label>

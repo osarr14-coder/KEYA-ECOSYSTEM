@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, Icon, PageHeader, Pill, semanticColors, typography,
+  AlertBanner, ApiErrorBanner, Button, Card, PageHeader, Pill, formatSurface, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -75,34 +75,21 @@ function CatalogLotCard({ lot, onReserved }: { lot: CatalogLot; onReserved: () =
         display: 'flex',
         flexDirection: 'column',
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '20px',
+        borderRadius: '6px',
         overflow: 'hidden',
         background: semanticColors.neutral.surface,
       }}
     >
-      <div
-        aria-hidden="true"
-        style={{
-          height: '120px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'linear-gradient(135deg, #0B1D3A, #1C3563)',
-          color: '#E2C47A',
-        }}
-      >
-        <Icon name="building" size={44} />
-      </div>
       <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
-        <strong style={{ fontFamily: typography.headingFontFamily, fontSize: '19px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+        <strong style={{ fontSize: '17px', fontWeight: 700, color: semanticColors.neutral.heading }}>
           {lot.program.name} — {lot.name}
         </strong>
         <span style={{ color: semanticColors.neutral.textMuted }}>
           {lot.asset.name}
           {lot.asset.location ? ` · ${lot.asset.location}` : ''}
-          {lot.surface ? ` · ${lot.surface} m²` : ''}
+          {lot.surface ? ` · ${formatSurface(lot.surface)}` : ''}
         </span>
-        <span style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+        <span style={{ fontSize: '20px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
           {formatAmount(lot.sale_price, lot.currency)}
         </span>
         <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{`Programme lancé par KEYIMMO AFRIC · constructeur : ${lot.organization.name}`}</span>
@@ -134,7 +121,6 @@ export function ClientSalesView() {
   return (
     <section aria-label="Mon acquisition" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
       <PageHeader
-        eyebrow="Espace acquéreur"
         title="Mon acquisition"
         subtitle={active.length > 0
           ? 'Suivez chaque étape de votre achat : une seule action vous est demandée à la fois.'
@@ -159,7 +145,7 @@ export function ClientSalesView() {
         <AcquisitionJourney key={reservation.id} reservation={reservation} onChanged={refreshAll} />
       ))}
 
-      <Card title="Biens disponibles" icon="building" eyebrow="Catalogue">
+      <Card title="Biens disponibles" icon="building">
         {catalogState.status === 'loading' && <p>Chargement…</p>}
         {catalogState.status === 'error' && (
           <ApiErrorBanner error={catalogState.error} title="Impossible de charger le catalogue." onRetry={catalogState.refetch} />

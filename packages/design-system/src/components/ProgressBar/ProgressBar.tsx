@@ -55,7 +55,7 @@ export function ProgressBar({
       style={{
         background: semanticColors.progress.track,
         border: `1px solid ${semanticColors.neutral.textMuted}`,
-        borderRadius: 999,
+        borderRadius: '4px',
         overflow: 'hidden',
         height: 8,
         width,

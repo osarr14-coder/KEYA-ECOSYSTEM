@@ -30,7 +30,7 @@ export interface SalesPermissions {
 }
 
 const STATUS_OPTIONS: { value: ReservationStatus | ''; label: string }[] = [
-  { value: 'held', label: 'Bloquées' },
+  { value: 'held', label: 'Biens bloqués' },
   { value: 'reserved', label: 'Réservées' },
   { value: 'committed', label: 'Concrétisées' },
   { value: 'expired', label: 'Expirées' },
@@ -137,8 +137,8 @@ function clientLabel(reservation: AdminReservation) {
 export function reservationTone(status: ReservationStatus): PillTone {
   switch (status) {
     case 'committed': return 'success';
-    case 'reserved': return 'primary';
-    case 'held': return 'accent';
+    case 'reserved': return 'info';
+    case 'held': return 'alert';
     case 'cancelled': return 'danger';
     default: return 'neutral';
   }
@@ -209,7 +209,7 @@ function ReservationDossier({
         <KeyFigure
           label="Examen du dossier"
           textual
-          tone={reservation.validated_at ? 'success' : needsValidation ? 'accent' : 'neutral'}
+          tone={reservation.validated_at ? 'success' : needsValidation ? 'alert' : 'neutral'}
           value={(
             <span data-testid="reservation-validation">
               {reservation.validated_at
@@ -235,8 +235,8 @@ function ReservationDossier({
         <section
           aria-label="Prochaine action"
           style={{
-            border: `2px solid ${needsValidation ? semanticColors.accent.solid : semanticColors.neutral.border}`,
-            borderRadius: '20px',
+            border: `1px solid ${needsValidation ? semanticColors.neutral.heading : semanticColors.neutral.border}`,
+            borderRadius: '6px',
             background: semanticColors.neutral.surface,
             padding: 'clamp(16px, 3vw, 24px)',
             display: 'flex',
@@ -244,10 +244,10 @@ function ReservationDossier({
             gap: '12px',
           }}
         >
-          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: semanticColors.accent.text }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: semanticColors.neutral.textMuted }}>
             Prochaine action
           </span>
-          <h3 style={{ margin: 0, fontSize: '22px' }}>
+          <h3 style={{ margin: 0, fontSize: '20px' }}>
             {needsValidation ? 'Examiner le dossier et appeler les frais de réservation' : 'Suivre le paiement des frais de réservation'}
           </h3>
           <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
@@ -360,13 +360,12 @@ export function ReservationsView({
     <section aria-label="Réservations" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {mode === 'finance' ? (
         <PageHeader
-          eyebrow="Finance · lecture seule"
+          eyebrow="Lecture seule — Finance"
           title="Appels et encaissements"
           subtitle="Par dossier : appels de fonds, encaissements simulés et leurs affectations. Les encaissements s’enregistrent depuis « Virements déclarés »."
         />
       ) : (
         <PageHeader
-          eyebrow="Ventes"
           title="Dossiers clients"
           subtitle="Chaque réservation est un dossier : examen, contrat, appels de fonds et encaissements."
         />

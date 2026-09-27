@@ -191,10 +191,12 @@ describe('AppShell — prop brand (ticket F-039, révisé F-073)', () => {
     expect(screen.getByTestId('app-shell-header').style.borderBottom).toBe(`1px solid ${semanticColors.neutral.border}`);
   });
 
-  it('avec brand : filet or sous la barre du haut, mais plus de bandeau navy ni de logo en double', () => {
+  // Adapté selon PO-2026-09-27-20 (DESIGN_SYSTEM §3.1, V05) : l'or ne sert plus
+  // de filet décoratif ; la barre du haut porte une bordure neutre de 1 px.
+  it('avec brand : bordure neutre sous la barre du haut, plus de bandeau navy ni de logo en double', () => {
     render(<AppShell density="confortable" brand modules={MODULES} userRoles={[]} />);
     const header = screen.getByTestId('app-shell-header');
-    expect(header).toHaveStyle({ borderBottom: `2px solid ${brandColors.gold}` });
+    expect(header).toHaveStyle({ borderBottom: `1px solid ${semanticColors.neutral.border}` });
     expect(header).not.toHaveStyle({ background: BRAND_GRADIENT });
     expect(screen.queryByTestId('brand-mark')).not.toBeInTheDocument();
     expect(screen.getAllByText('KEYIMMO AFRIC')).toHaveLength(1);
@@ -240,15 +242,19 @@ describe('AppShell — barre latérale navy pleine hauteur (ticket F-073)', () =
     expect(within(block).queryByText('BUILD')).not.toBeInTheDocument();
   });
 
-  it('entrée active : repère or à gauche, fond or translucide, texte blanc en gras', () => {
+  // Adapté selon PO-2026-09-27-20 (DESIGN_SYSTEM §3.1, V06) : plus de liseré
+  // or à gauche ; l'entrée active se distingue par le fond, la graisse et le
+  // texte doré (seul usage du texte doré), jamais par la couleur seule.
+  it('entrée active : fond or translucide, texte doré en gras, sans liseré à gauche', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} activeModuleId="home" />);
     const active = screen.getByText('Accueil').closest('a');
     expect(active).toHaveStyle({
-      borderLeft: `3px solid ${brandColors.gold}`,
       background: 'rgba(196, 154, 44, 0.18)',
-      color: '#FFFFFF',
+      color: '#E2C47A',
       fontWeight: '700',
     });
+    expect(active).toHaveAttribute('aria-current', 'page');
+    expect(active).not.toHaveStyle({ borderLeft: `3px solid ${brandColors.gold}` });
   });
 
   it('entrée inactive : ni repère or, ni fond, texte clair lisible sur navy', () => {
@@ -477,5 +483,46 @@ describe('AppShell — déconnexion volontaire (ticket F-070)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Se déconnecter/ }));
 
     expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * PO-2026-09-27-20 (DESIGN_SYSTEM §11, X05) : barre supérieure simple pour
+ * les espaces client — aucune barre latérale, navigation horizontale,
+ * entrée active marquée par un trait encre et la graisse.
+ */
+describe('AppShell — navigation en barre supérieure (X05)', () => {
+  it('rend une barre supérieure avec la marque et les modules, sans barre latérale', () => {
+    render(<AppShell density="confortable" navigation="topbar" appLabel="Espace client" modules={MODULES} userRoles={[]} activeModuleId="home" />);
+    expect(screen.queryByTestId('app-shell-sidebar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-navigation', 'topbar');
+    expect(within(screen.getByTestId('topbar-brand')).getByText('KEYIMMO AFRIC')).toBeInTheDocument();
+    expect(within(screen.getByTestId('topbar-brand')).getByText('Espace client')).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Navigation des modules' });
+    const active = within(nav).getByText('Accueil').closest('a');
+    expect(active).toHaveAttribute('aria-current', 'page');
+    const style = active?.getAttribute('style') ?? '';
+    expect(style).toContain('font-weight: 700');
+    expect(style).toContain(`border-bottom: 2px solid ${semanticColors.neutral.heading}`);
+    expect(within(nav).getByText('Tâches').closest('a')).not.toHaveAttribute('aria-current');
+  });
+
+  it('garde la cloche (compteur seulement si non nul) et la déconnexion', () => {
+    const onLogout = vi.fn();
+    const { rerender } = render(
+      <AppShell density="confortable" navigation="topbar" modules={MODULES} userRoles={[]} taskInboxCount={0} onLogout={onLogout} />,
+    );
+    expect(screen.queryByTestId('task-inbox-count')).not.toBeInTheDocument();
+    rerender(<AppShell density="confortable" navigation="topbar" modules={MODULES} userRoles={[]} taskInboxCount={2} onLogout={onLogout} />);
+    expect(screen.getByTestId('task-inbox-count')).toHaveTextContent('2');
+    fireEvent.click(screen.getByRole('button', { name: /Se déconnecter/ }));
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('un clic sur un module appelle onModuleSelect', () => {
+    const onModuleSelect = vi.fn();
+    render(<AppShell density="confortable" navigation="topbar" modules={MODULES} userRoles={[]} onModuleSelect={onModuleSelect} />);
+    fireEvent.click(screen.getByText('Tâches'));
+    expect(onModuleSelect).toHaveBeenCalledWith(expect.any(String));
   });
 });

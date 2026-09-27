@@ -20,7 +20,7 @@ class ReservationStatus(models.TextChoices):
     """
 
     REQUESTED = 'requested', 'Demandée'
-    HELD = 'held', 'Bloquée'
+    HELD = 'held', 'Bien bloqué'
     RESERVED = 'reserved', 'Réservée'
     COMMITTED = 'committed', 'Concrétisée'
     EXPIRED = 'expired', 'Expirée'
@@ -102,7 +102,7 @@ class ContractStatus(models.TextChoices):
     DRAFT = 'draft', 'Brouillon'
     REVIEW = 'review', 'En revue'
     APPROVED = 'approved', 'Approuvé'
-    SIGNED_SIMULATED = 'signed_simulated', 'Signé (simulation)'
+    SIGNED_SIMULATED = 'signed_simulated', 'Signé (simulé)'
 
 
 IN_PROGRESS_CONTRACT_STATUSES = (ContractStatus.DRAFT, ContractStatus.REVIEW)
@@ -233,7 +233,7 @@ class FlowStatus(models.TextChoices):
     deux flux (ticket B-051). Pour un encaissement, l'état « prévu » est
     l'appel de fonds lui-même : un encaissement naît donc exécuté."""
 
-    BANK_EXECUTED_SIM = 'bank_executed_sim', 'Reçu en banque (simulé)'
+    BANK_EXECUTED_SIM = 'bank_executed_sim', 'Exécuté par la banque (simulé)'
     RECONCILED_SIM = 'reconciled_sim', 'Rapproché (simulé)'
 
 
@@ -394,7 +394,7 @@ class DisbursementStatus(models.TextChoices):
     (trigger, migration 0010)."""
 
     DRAFT = 'draft', 'Brouillon'
-    ELIGIBLE = 'eligible', 'Éligible (montant réservé)'
+    ELIGIBLE = 'eligible', 'Éligible'
     EXECUTED_SIM = 'executed_sim', 'Exécuté (simulé)'
     CANCELLED = 'cancelled', 'Annulé'
 
@@ -408,8 +408,8 @@ class DisbursementFlowStatus(models.TextChoices):
     `BENEFICIARY_CONFIRMED_SIM` possible entre les deux. La confirmation du
     prestataire n'est pas une preuve bancaire."""
 
-    PLANNED = 'planned', 'Prévu'
-    BANK_EXECUTED_SIM = 'bank_executed_sim', 'Exécuté en banque (simulé)'
+    PLANNED = 'planned', 'Planifié'
+    BANK_EXECUTED_SIM = 'bank_executed_sim', 'Exécuté par la banque (simulé)'
     BENEFICIARY_CONFIRMED_SIM = 'beneficiary_confirmed_sim', 'Confirmé par le bénéficiaire (simulé)'
     RECONCILED_SIM = 'reconciled_sim', 'Rapproché (simulé)'
 

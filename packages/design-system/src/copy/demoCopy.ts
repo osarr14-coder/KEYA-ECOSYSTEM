@@ -16,3 +16,6 @@ export const SIMULATION_MARKING = 'SIMULÉ — SANS VALEUR OPÉRATIONNELLE';
 
 /** Audit M05 (A01) : nom affiché dans toutes les interfaces. */
 export const BRAND_NAME = 'KEYIMMO AFRIC';
+
+/** CDC R1 §3.1 (T14) : marquage d'une instance archivée. */
+export const ARCHIVE_MARKING = 'ARCHIVE — LECTURE SEULE';

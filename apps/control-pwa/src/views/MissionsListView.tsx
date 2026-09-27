@@ -218,9 +218,7 @@ export function MissionsListView({ onSelectMission, loadMissions }: MissionsList
                   // cette carte cliquable en a plus besoin qu'un bouton
                   // secondaire ordinaire (aucun autre repère visuel de
                   // "carte" ici, contrairement à Card qui a déjà sa bordure).
-                  borderRadius: '18px',
-                  borderLeft: `5px solid ${mission.reserveId ? semanticColors.alert.border : semanticColors.accent.solid}`,
-                  boxShadow: 'var(--keya-shadow-sm)',
+                  borderRadius: '6px',
                 }}
               >
                 <MissionSummary mission={mission} />
@@ -246,7 +244,7 @@ export function MissionsListView({ onSelectMission, loadMissions }: MissionsList
                 data-testid="completed-mission"
                 style={{
                   padding: '14px 16px',
-                  borderRadius: '18px',
+                  borderRadius: '6px',
                   border: `1px solid ${semanticColors.neutral.border}`,
                   background: semanticColors.neutral.subtle,
                   display: 'flex',

@@ -19,3 +19,12 @@ describe('KeyFigure — chiffre clé (ticket F-075)', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('KeyFigure — zéro discret (PO-2026-09-27-20, V03)', () => {
+  it('un zéro, même formaté en montant, est affiché en texte secondaire', () => {
+    render(<KeyFigure label="Réservé" value="0 XOF" tone="alert" data-testid="kf-zero" />);
+    expect(screen.getByTestId('kf-zero-value')).toHaveStyle({ fontWeight: '500' });
+    render(<KeyFigure label="Réservé" value="1 000 XOF" tone="alert" data-testid="kf-nonzero" />);
+    expect(screen.getByTestId('kf-nonzero-value')).toHaveStyle({ fontWeight: '700' });
+  });
+});

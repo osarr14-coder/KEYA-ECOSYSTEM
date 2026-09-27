@@ -1,8 +1,8 @@
 import { useState } from 'react';
 
 import {
-  ApiErrorBanner, BRAND_GRADIENT, Button, Card, Icon, Pill, type PillTone, ProgressBar, SimulatedMark, Stepper,
-  type StepperStep, semanticColors, typography,
+  ApiErrorBanner, Button, Card, Pill, type PillTone, ProgressBar, SimulatedMark, Stepper,
+  type StepperStep, formatSurface, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -56,8 +56,8 @@ export function reservationMessage(reservation: Reservation) {
 export function reservationTone(reservation: Reservation): PillTone {
   switch (reservation.status) {
     case 'committed': return 'success';
-    case 'reserved': return 'primary';
-    case 'held': return 'accent';
+    case 'reserved': return 'info';
+    case 'held': return 'alert';
     case 'cancelled': return 'danger';
     default: return 'neutral';
   }
@@ -168,10 +168,15 @@ function errorDetail(caught: unknown, fallback: string) {
   return fallback;
 }
 
+/**
+ * PO-2026-09-27-20 (V04, V07, X01) : en-tête du bien sur panneau clair —
+ * plus d'aplat navy ni d'icône d'immeuble générique ; programme, lot,
+ * surface sans décimales, prix en chiffres tabulaires.
+ */
 function PropertyHero({ reservation }: { reservation: Reservation }) {
   const facts = [
     reservation.lot.name,
-    reservation.lot.surface ? `${Number(reservation.lot.surface).toLocaleString('fr-FR')} m²` : null,
+    formatSurface(reservation.lot.surface),
     `Constructeur : ${reservation.organization.name}`,
   ].filter(Boolean);
   return (
@@ -179,43 +184,29 @@ function PropertyHero({ reservation }: { reservation: Reservation }) {
       aria-label="Mon bien"
       style={{
         display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'stretch',
-        borderRadius: '24px',
-        overflow: 'hidden',
-        background: BRAND_GRADIENT,
-        color: '#FFFFFF',
+        flexDirection: 'column',
+        gap: '10px',
+        padding: '20px',
+        borderRadius: '6px',
+        border: `1px solid ${semanticColors.neutral.border}`,
+        background: semanticColors.neutral.surface,
       }}
     >
-      <div
-        aria-hidden="true"
-        style={{
-          flex: '0 0 220px',
-          minHeight: '160px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'linear-gradient(135deg, rgba(196, 154, 44, 0.35), rgba(196, 154, 44, 0.08))',
-          color: '#E2C47A',
-        }}
-      >
-        <Icon name="building" size={56} />
+      <h2 style={{ margin: 0, fontSize: 'clamp(22px, 3vw, 28px)' }}>{reservation.program.name}</h2>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '6px 16px', color: semanticColors.neutral.textMuted }}>
+        {facts.map((fact) => <span key={fact}>{fact}</span>)}
       </div>
-      <div style={{ flex: '1 1 320px', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
-        <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#E2C47A' }}>
-          Mon acquisition · démonstration
-        </span>
-        <h2 style={{ margin: 0, color: '#FFFFFF', fontSize: 'clamp(24px, 3vw, 32px)' }}>{reservation.program.name}</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 18px', color: '#D5DCE8' }}>
-          {facts.map((fact) => <span key={fact}>{fact}</span>)}
-          <span style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', fontWeight: 600, color: '#FFFFFF' }}>
-            {formatAmount(reservation.price_amount, reservation.currency)}
-          </span>
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-          <Pill tone={reservationTone(reservation)} data-testid="reservation-status">{reservation.status_label}</Pill>
-          <SimulatedMark detail="Paiements et signature" />
-        </div>
+      <span style={{ fontSize: '22px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
+        {formatAmount(reservation.price_amount, reservation.currency)}
+      </span>
+      {/* Audit UI R1 (X03) : date complète dans l'en-tête du dossier. */}
+      <p data-testid="reservation-dates" style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
+        {`Réservation du ${formatDateTime(reservation.created_at)}`}
+        {reservation.status === 'held' && ` · bien bloqué jusqu'au ${formatDateTime(reservation.held_until)}`}
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+        <Pill tone={reservationTone(reservation)} data-testid="reservation-status">{reservation.status_label}</Pill>
+        <SimulatedMark detail="Paiements et signature" />
       </div>
     </section>
   );
@@ -245,18 +236,19 @@ function NextActionCard({
       data-kind={action.kind}
       style={{
         background: semanticColors.neutral.surface,
-        border: `2px solid ${action.kind === 'pay' || action.kind === 'sign' ? semanticColors.accent.solid : semanticColors.neutral.border}`,
-        borderRadius: '20px',
+        // PO-2026-09-27-20 (V05, V06) : cadre encre 1 px quand une action est
+        // attendue, jamais doré ; aucune ombre.
+        border: `1px solid ${action.kind === 'pay' || action.kind === 'sign' ? semanticColors.neutral.heading : semanticColors.neutral.border}`,
+        borderRadius: '6px',
         padding: 'clamp(18px, 3vw, 28px)',
         display: 'flex',
         flexDirection: 'column',
         gap: '18px',
-        boxShadow: 'var(--keya-shadow-md)',
       }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: semanticColors.accent.text }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: semanticColors.neutral.textMuted }}>
             Votre prochaine action
           </span>
           <h3 style={{ margin: 0, fontSize: '24px' }}>{title}</h3>
@@ -266,7 +258,7 @@ function NextActionCard({
         {amount && (
           <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
             <div style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>Montant</div>
-            <div style={{ fontFamily: typography.headingFontFamily, fontSize: '28px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+            <div style={{ fontSize: '24px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
               {formatCallAmount(amount.amount, amount.currency)}
             </div>
           </div>
@@ -297,7 +289,7 @@ function FinancialSummary({ reservation, calls }: { reservation: Reservation; ca
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
         <span style={{ color: semanticColors.neutral.textMuted, fontSize: '14px' }}>Premier versement — encaissé et rapproché (simulé)</span>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-          <span data-testid="settled-total" style={{ fontFamily: typography.headingFontFamily, fontSize: '22px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+          <span data-testid="settled-total" style={{ fontSize: '22px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
             {formatAmount(String(received), reservation.currency)}
           </span>
           {total !== null && (
@@ -365,7 +357,7 @@ export function PaymentScheduleCard({ schedule, currency }: { schedule: PaymentS
 
 function AdvisorCard() {
   return (
-    <Card eyebrow="Votre conseiller KEYIMMO" aria-label="Votre conseiller">
+    <Card title="Votre conseiller" aria-label="Votre conseiller">
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
         <span
           aria-hidden="true"
@@ -479,10 +471,6 @@ export function AcquisitionJourney({ reservation, onChanged }: { reservation: Re
           )}
           <AdvisorCard />
           {reservation.status === 'held' && <CancelReservation reservation={reservation} onChanged={onChanged} />}
-          <p style={{ margin: 0, fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-            {`Réservation du ${formatDateTime(reservation.created_at)}`}
-            {reservation.status === 'held' && ` · bien bloqué jusqu'au ${formatDateTime(reservation.held_until)}`}
-          </p>
         </aside>
       </div>
     </article>

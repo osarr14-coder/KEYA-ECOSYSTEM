@@ -337,13 +337,16 @@ def lot_milestone_rows(organization, lot_id):
         milestone.lot = lot
         state = inspections_services.milestone_control_state(milestone)
         reserve = state['reserve']
+        cdc_state, cdc_label, cdc_hint = inspections_services.milestone_cdc_state(state)
         rows.append({
             'id': str(milestone.id),
             'order': milestone.order,
             'code': milestone.code,
             'label': milestone.label,
             'status': state['status'],
-            'status_label': inspections_services.CONTROL_STATUS_LABELS[state['status']],
+            'status_label': cdc_label,
+            'cdc_state': cdc_state,
+            'status_hint': cdc_hint,
             'work_declaration_id': str(state['declaration'].id) if state['declaration'] else None,
             'evidence_count': state['evidence_count'],
             'latest_outcome': state['latest_outcome'],

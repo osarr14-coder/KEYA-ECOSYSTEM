@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, BRAND_GRADIENT, Button, PageHeader, Pill, semanticColors, typography, SimulatedMark,
+  AlertBanner, ApiErrorBanner, Button, formatCalendarDate, PageHeader, Pill, semanticColors, typography, SimulatedMark,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -49,33 +49,31 @@ function DisbursementCard({
       aria-label={`Paiement ${disbursement.lot.name} — ${disbursement.milestone.label}`}
       style={{
         listStyle: 'none',
-        padding: '22px 24px',
-        borderRadius: '20px',
+        padding: '20px',
+        borderRadius: '6px',
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
-        ...(confirmed
-          ? { background: semanticColors.neutral.surface, border: `1px solid ${semanticColors.neutral.border}` }
-          : { background: BRAND_GRADIENT, color: '#FFFFFF' }),
+        // PO-2026-09-27-20 (V04, V06) : panneau clair bordé ; une réception
+        // à confirmer est signalée par un cadre encre, pas par un aplat navy.
+        background: semanticColors.neutral.surface,
+        border: `1px solid ${confirmed ? semanticColors.neutral.border : semanticColors.neutral.heading}`,
       }}
     >
-      <span
-        style={{
-          fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
-          color: confirmed ? semanticColors.accent.text : '#E2C47A',
-        }}
-      >
+      <span style={{ fontSize: '13px', fontWeight: 600, color: semanticColors.neutral.textMuted }}>
         {`Paiement reçu · simulé · ${disbursement.milestone.label}`}
       </span>
-      <span style={{ fontFamily: typography.headingFontFamily, fontSize: '32px', fontWeight: 600, color: confirmed ? semanticColors.neutral.heading : '#FFFFFF' }}>
+      <span style={{ fontSize: '24px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
         {formatAmount(disbursement.amount, disbursement.currency)}
       </span>
       <strong>{`${disbursement.program.name} — ${disbursement.lot.name} — ${disbursement.milestone.label}`}</strong>
-      <p style={{ margin: 0, color: confirmed ? semanticColors.neutral.textMuted : '#D5DCE8' }}>
-        {`${formatAmount(disbursement.amount, disbursement.currency)} · référence ${disbursement.bank_reference ?? '—'} du ${disbursement.executed_on ?? '—'}`}
+      <p data-testid="disbursement-execution" style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
+        {`${formatAmount(disbursement.amount, disbursement.currency)} · référence `}
+        <span style={{ fontFamily: typography.monoFontFamily }}>{disbursement.bank_reference ?? '—'}</span>
+        {` du ${disbursement.executed_on ? formatCalendarDate(disbursement.executed_on) : '—'}`}
       </p>
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <Pill tone={confirmed ? 'success' : 'accent'} data-testid="disbursement-flow">{disbursement.flow_status_label}</Pill>
+        <Pill tone={confirmed ? 'success' : 'alert'} data-testid="disbursement-flow">{disbursement.flow_status_label}</Pill>
         {confirmed && <span>Réception confirmée.</span>}
       </div>
       {!confirmed && (
@@ -97,7 +95,6 @@ export function DisbursementsView() {
   return (
     <section aria-label="Paiements reçus">
       <PageHeader
-        eyebrow="Finance du chantier"
         title="Paiements reçus"
         subtitle="Versés par KEYIMMO après acceptation technique de chaque jalon. Confirmez leur réception."
       />

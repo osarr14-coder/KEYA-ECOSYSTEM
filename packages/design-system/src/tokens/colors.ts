@@ -146,6 +146,7 @@ export const semanticColors: {
   primary: PrimaryColorTokens;
   accent: AccentColorTokens;
   success: SuccessColorTokens;
+  info: SuccessColorTokens;
 } = {
   alert: {
     background: 'var(--keya-alert-background)',
@@ -196,5 +197,10 @@ export const semanticColors: {
   success: {
     background: 'var(--keya-success-background)',
     text: 'var(--keya-success-text)',
+  },
+  // PO-2026-09-27-20 (A-DS-5) — états en cours sans action attendue.
+  info: {
+    background: 'var(--keya-info-background)',
+    text: 'var(--keya-info-text)',
   },
 };

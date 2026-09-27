@@ -143,7 +143,8 @@ describe('TodayView — accès direct et chiffres (ticket F-075)', () => {
     expect(screen.getByTestId('kf-active-value')).toHaveTextContent('3');
     expect(api.listPaymentNotices).toHaveBeenCalledWith('declared');
     const columns = screen.getAllByTestId('pipeline-column').map((column) => column.textContent);
-    expect(columns).toEqual(['Bloquées2 dossiers', 'Réservées1 dossier', 'Concrétisées0 dossier', 'Expirées / annulées1 dossier']);
+    // Adapté selon PO-2026-09-27-20 (A-DS-6) : « Bien bloqué ».
+    expect(columns).toEqual(['Biens bloqués2 dossiers', 'Réservées1 dossier', 'Concrétisées0 dossier', 'Expirées / annulées1 dossier']);
 
     fireEvent.click(screen.getByTestId('kf-to-validate'));
     expect(onNavigate).toHaveBeenCalledWith({ tab: 'reservations' });

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import { DEMO_MARKING } from '../../copy/demoCopy';
+import { ArchiveBanner } from '../ArchiveBanner/ArchiveBanner';
 import { semanticColors } from '../../tokens/colors';
+import { typography } from '../../tokens/typography';
 
 /**
  * Audit UI R1 (M01, M02) — bandeau de démonstration PERMANENT, monté une
@@ -21,6 +23,8 @@ export interface DemoInstanceInfo {
   code: string;
   dataset_version: string;
   environment: string;
+  /** `ACTIVE` ou `ARCHIVED` (T14) : une instance archivée ajoute le bandeau d'archive. */
+  status?: string;
 }
 
 let pending: Promise<DemoInstanceInfo | null> | null = null;
@@ -56,27 +60,36 @@ export function DemoBanner({ apiBaseUrl }: DemoBannerProps) {
     return () => { active = false; };
   }, [apiBaseUrl]);
 
+  const archived = instance?.status === 'ARCHIVED';
   return (
-    <div
-      role="note"
-      aria-label={`${DEMO_MARKING}${instance ? `, instance ${instance.code}` : ''}`}
-      data-testid="demo-banner"
-      className="keya-demo-banner"
-      style={{
-        position: 'sticky', top: 0, zIndex: 1000, boxSizing: 'border-box', minHeight: 'var(--keya-demo-banner-height)',
-        display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', columnGap: '10px',
-        padding: '2px 12px', textAlign: 'center', lineHeight: 1.25,
-        color: semanticColors.neutral.surface,
-        background: `repeating-linear-gradient(-45deg, transparent 0 8px, rgba(128, 128, 128, 0.22) 8px 16px), ${semanticColors.neutral.heading}`,
-        fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em',
-      }}
-    >
-      <span aria-hidden="true">{DEMO_MARKING}</span>
-      {instance && (
-        <span aria-hidden="true" data-testid="demo-banner-instance" style={{ fontWeight: 600, letterSpacing: '0.02em' }}>
-          {`Instance ${instance.code}`}
-        </span>
-      )}
+    <div style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
+      <div
+        role="note"
+        aria-label={`${DEMO_MARKING}${instance ? `, instance ${instance.code}` : ''}`}
+        data-testid="demo-banner"
+        className="keya-demo-banner"
+        style={{
+          boxSizing: 'border-box', minHeight: 'var(--keya-demo-banner-height)',
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', columnGap: '10px',
+          padding: '2px 12px', textAlign: 'center', lineHeight: 1.25,
+          color: semanticColors.neutral.surface,
+          background: `repeating-linear-gradient(-45deg, transparent 0 8px, rgba(128, 128, 128, 0.22) 8px 16px), ${semanticColors.neutral.heading}`,
+          fontSize: '12px', fontWeight: 800, letterSpacing: '0.06em',
+        }}
+      >
+        <span aria-hidden="true">{DEMO_MARKING}</span>
+        {instance && (
+          <span
+            aria-hidden="true"
+            data-testid="demo-banner-instance"
+            // PO-2026-09-27-20 (DESIGN_SYSTEM §7) : identifiant d'instance en IBM Plex Mono.
+            style={{ fontFamily: typography.monoFontFamily, fontWeight: 500, letterSpacing: 0 }}
+          >
+            {`Instance ${instance.code}`}
+          </span>
+        )}
+      </div>
+      {archived && <ArchiveBanner instanceCode={instance?.code} />}
     </div>
   );
 }

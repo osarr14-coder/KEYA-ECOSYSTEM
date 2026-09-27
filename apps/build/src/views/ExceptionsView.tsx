@@ -25,11 +25,11 @@ export interface ExceptionsViewProps {
 // ouverte, document manquant), jamais redéfinie séparément à chaque fois.
 // Ticket F-054 (refonte visuelle, suite de F-053) — ombre + rayon 8px→14px,
 // même traitement que `Card` (packages/design-system).
+// PO-2026-09-27-20 (V04) : plus de carte dans la carte — lignes séparées
+// par un filet.
 const ROW_STYLE = {
-  padding: '12px',
-  border: `1px solid ${semanticColors.neutral.border}`,
-  borderRadius: '14px',
-  boxShadow: 'var(--keya-shadow-sm)',
+  padding: '12px 0',
+  borderTop: `1px solid ${semanticColors.neutral.border}`,
 };
 
 function LotRowList({
@@ -265,7 +265,6 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
   return (
     <section aria-label="Exceptions" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <PageHeader
-        eyebrow="Pilotage du chantier"
         title="À traiter en priorité"
         subtitle="Lots en retard, contrôles à planifier, capacités manquantes et réserves ouvertes : ce qui demande votre attention."
       />

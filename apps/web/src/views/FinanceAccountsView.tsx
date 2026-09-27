@@ -24,15 +24,15 @@ import { formatAmount, today } from './FinancialFilePanel';
 export const NO_CONFIRMATION_REASON = 'Confirmation bénéficiaire non reçue';
 
 const blockStyle = {
-  border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '16px', padding: '16px 18px', marginTop: '10px',
+  border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '6px', padding: '16px 18px', marginTop: '10px',
   display: 'flex', flexDirection: 'column', gap: '8px',
 } as const;
 
 // Ticket F-078 (direction « Confiance premium ») — états en pastilles.
 const DISBURSEMENT_TONE: Record<Disbursement['status'], PillTone> = {
   draft: 'neutral',
-  eligible: 'accent',
-  executed_sim: 'primary',
+  eligible: 'alert',
+  executed_sim: 'info',
   cancelled: 'danger',
 };
 
@@ -103,7 +103,7 @@ function BalanceBlock({ account }: { account: ProgramAccount }) {
         ))}
       </div>
       {open && (
-        <section aria-label="Détail du montant" data-testid="balance-detail" style={{ border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px 16px' }}>
+        <section aria-label="Détail du montant" data-testid="balance-detail" style={{ border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '6px', padding: '12px 16px' }}>
           {open === 'received' && (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {receipts.length === 0 && <li>Aucun encaissement rapproché.</li>}
@@ -427,7 +427,6 @@ export function FinanceAccountsView({ canAct }: { canAct: boolean }) {
   return (
     <section aria-label="Comptes et décaissements">
       <PageHeader
-        eyebrow="Finance"
         title="Comptes & décaissements"
         subtitle="Solde simulé de chaque programme, jalons décaissables après acceptation technique, et suivi des sorties jusqu’au rapprochement."
       />

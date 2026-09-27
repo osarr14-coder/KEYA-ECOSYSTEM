@@ -1,5 +1,5 @@
 import {
-  AlertBanner, ApiErrorBanner, Card, ProgressBar, StatusBadge, brandColors,
+  AlertBanner, ApiErrorBanner, Card, ProgressBar, StatusBadge,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -68,7 +68,7 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
           "progression" différents pour la même section — icône neutre,
           l'accent or reste porté par la seule barre. */}
       <Card aria-label="Progression" data-testid="progress" title="Progression" icon="building">
-        <ProgressBar percentage={overview.progress_percentage} width="200px" fillColor={brandColors.gold} />
+        <ProgressBar percentage={overview.progress_percentage} width="200px" />
         {/* Le pourcentage affiché est EXACTEMENT `progress_percentage` reçu
             de l'API — aucune opération arithmétique n'est faite ici. */}
         <p style={{ marginBottom: 0, marginTop: '8px' }}>{overview.progress_percentage}% d'avancement</p>

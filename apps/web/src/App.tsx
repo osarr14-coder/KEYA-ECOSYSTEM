@@ -33,6 +33,7 @@ import { PublicHome } from './public/PublicHome';
 import { PublicLayout } from './public/PublicLayout';
 import { AccessView } from './public/AccessView';
 import { type PublicPath, usePublicPath } from './public/usePublicPath';
+import { DesignSystemGalleryRoute } from './gallery/DesignSystemGallery';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
@@ -93,29 +94,29 @@ const TAB_DEFINITIONS: {
 }[] = [
   // Ticket F-075 — reprend l'ancien écran « Tâches » (F-061/F-063).
   {
-    id: 'todo', label: 'À faire', path: '/', icon: 'bell', roles: KEYIMMO_TEAM,
+    id: 'todo', label: 'À faire', path: '/', icon: 'list-checks', roles: KEYIMMO_TEAM,
   },
   // Ticket F-067 — cycle de réservation (backend B-048), présenté en
   // dossiers clients (F-075).
   {
-    id: 'reservations', label: 'Dossiers clients', path: '/reservations', icon: 'clipboard-check', group: 'Ventes', roles: ADV_ONLY,
+    id: 'reservations', label: 'Dossiers clients', path: '/reservations', icon: 'folder', group: 'Ventes', roles: ADV_ONLY,
   },
   // Ticket F-071 — virements déclarés par les clients, confirmés par
   // Finance (backend B-056).
   {
-    id: 'payment-notices', label: 'Virements déclarés', path: '/virements', icon: 'wallet', group: 'Finance', roles: FINANCE_ONLY,
+    id: 'payment-notices', label: 'Virements déclarés', path: '/virements', icon: 'arrow-down-to-line', group: 'Finance', roles: FINANCE_ONLY,
   },
   // Audit UI R1 (R03, PO-2026-09-27-10) — vue Finance en lecture seule.
   {
-    id: 'receipts', label: 'Appels et encaissements', path: '/encaissements', icon: 'clipboard-check', group: 'Finance', roles: FINANCE_ONLY,
+    id: 'receipts', label: 'Appels et encaissements', path: '/encaissements', icon: 'receipt', group: 'Finance', roles: FINANCE_ONLY,
   },
   // Ticket F-064 — prix et statut commercial des lots existants.
   {
-    id: 'lots', label: 'Lots — prix & statut', path: '/lots', icon: 'wallet', group: 'Ventes', roles: ADV_ONLY,
+    id: 'lots', label: 'Lots — prix & statut', path: '/lots', icon: 'tag', group: 'Ventes', roles: ADV_ONLY,
   },
   // Ticket F-068 — comptes simulés et décaissements (backend B-052).
   {
-    id: 'finance', label: 'Comptes & décaissements', path: '/finance', icon: 'wallet', group: 'Finance', roles: FINANCE_ONLY,
+    id: 'finance', label: 'Comptes & décaissements', path: '/finance', icon: 'landmark', group: 'Finance', roles: FINANCE_ONLY,
   },
   // Ticket F-069 — affectation des contrôles de chantier (backend B-054),
   // admin seul comme `POST /api/backoffice/missions/` (ticket 012).
@@ -130,10 +131,10 @@ const TAB_DEFINITIONS: {
     id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', group: 'Programmes', roles: ADV_ONLY, deferred: true,
   },
   {
-    id: 'backoffice', label: 'Utilisateurs', path: '/back-office', icon: 'shield-check', group: 'Administration', roles: ADMIN_ONLY,
+    id: 'backoffice', label: 'Utilisateurs', path: '/back-office', icon: 'users', group: 'Administration', roles: ADMIN_ONLY,
   },
   {
-    id: 'journal', label: 'Journal', path: '/journal', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY,
+    id: 'journal', label: 'Journal', path: '/journal', icon: 'history', group: 'Administration', roles: ADMIN_ONLY,
   },
   {
     id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY, deferred: true,
@@ -219,7 +220,10 @@ export function App({ redirect = defaultRedirect }: AppProps) {
           </AlertBanner>
         </div>
       )}
-      {storedAccessToken ? <AuthenticatedApp /> : <PublicSite redirect={redirect} />}
+      {/* PO-2026-09-27-20 (A-DS-3) : galerie interne, environnement DÉMO seulement. */}
+      {window.location.pathname === '/design-system'
+        ? <DesignSystemGalleryRoute />
+        : storedAccessToken ? <AuthenticatedApp /> : <PublicSite redirect={redirect} />}
     </>
   );
 }
@@ -446,13 +450,12 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
               justifyContent: 'center',
               width: '40px',
               height: '40px',
-              borderRadius: '11px',
-              background: `linear-gradient(135deg, ${brandColors.gold}, #E4C878)`,
+              borderRadius: '6px',
+              background: brandColors.gold,
               color: brandColors.navy,
               fontWeight: 700,
               fontFamily: typography.headingFontFamily,
               fontSize: '17px',
-              boxShadow: 'var(--keya-shadow-sm)',
             }}
           >
             K+
@@ -461,13 +464,6 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
         </div>
 
         <div style={{ position: 'relative' }}>
-          <div style={{
-            fontSize: '12px', letterSpacing: '0.12em', color: '#E4C878', textTransform: 'uppercase',
-            fontWeight: 600, marginBottom: '16px',
-          }}
-          >
-            Visible Trust
-          </div>
           {/* Ticket F-053 — <p>, pas <h1> : un seul vrai titre de page
               (« Connexion à KEYIMMO AFRIC », dans le formulaire ci-dessous) reste
               nécessaire pour une structure de landmarks correcte, un
@@ -490,16 +486,19 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
         </div>
       </div>
 
+      {/* PO-2026-09-27-20 (V11) : formulaire aligné à gauche, sans carte ni
+          centrage, bouton principal à sa largeur naturelle. */}
       <div style={{
-        flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px',
+        flexGrow: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start',
+        padding: isMobile ? '32px 16px' : '96px 64px',
       }}
       >
         <form
           onSubmit={(event) => { void handleSubmit(event); }}
           aria-label="Connexion"
-          style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '340px' }}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '16px', width: '100%', maxWidth: '380px' }}
         >
-          <h1 style={{ marginBottom: '4px' }}>Connexion à KEYIMMO AFRIC</h1>
+          <h1 style={{ margin: '0 0 4px', fontSize: 'clamp(24px, 3vw, 32px)' }}>Connexion à KEYIMMO AFRIC</h1>
 
           {error && <AlertBanner title={error} />}
 
@@ -523,7 +522,7 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
             />
           </Field>
 
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting} style={{ alignSelf: 'flex-start' }}>
             {submitting ? 'Connexion…' : 'Se connecter'}
           </Button>
           {/* Ticket F-079 — un visiteur sans compte n'est jamais bloqué ici. */}

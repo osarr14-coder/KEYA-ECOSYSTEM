@@ -46,11 +46,13 @@ function BrandBar() {
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        marginBottom: '12px',
+        // PO-2026-09-27-20 (V05) : en-tête pleine largeur, plus d'encart
+        // flottant arrondi (les marges négatives compensent le padding de
+        // la racine, verrouillé par le test « interface tactile »).
+        margin: '-12px -12px 12px',
         padding: '10px 12px 10px 14px',
-        borderRadius: '16px',
+        borderRadius: 0,
         background: BRAND_GRADIENT,
-        boxShadow: 'var(--keya-shadow-md)',
       }}
     >
       <span
@@ -60,7 +62,7 @@ function BrandBar() {
           justifyContent: 'center',
           width: '32px',
           height: '32px',
-          borderRadius: '9px',
+          borderRadius: '6px',
           background: brandColors.gold,
           color: brandColors.navy,
           fontWeight: 600,
@@ -75,7 +77,7 @@ function BrandBar() {
       <span style={{ fontFamily: typography.headingFontFamily, fontWeight: 600, fontSize: '16px', color: '#FFFFFF' }}>
         {BRAND_NAME}
       </span>
-      <span style={{ fontSize: '12px', color: brandColors.gold, fontWeight: 600 }}>
+      <span style={{ fontSize: '12px', color: '#D5DCE8', fontWeight: 600 }}>
         Contrôle
       </span>
       <LogoutButton />

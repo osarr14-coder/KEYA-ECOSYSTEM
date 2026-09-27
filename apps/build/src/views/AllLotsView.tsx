@@ -126,7 +126,6 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
   return (
     <section aria-label="Tous les lots" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <PageHeader
-        eyebrow="Pilotage du chantier"
         title="Tous les lots"
       />
       {/* Ticket F-055 (suite F-053/F-054) — filtres + export posés dans un

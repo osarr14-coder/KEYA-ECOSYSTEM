@@ -27,6 +27,7 @@ export { GlobalStyles } from './components/GlobalStyles/GlobalStyles';
 export { Icon } from './components/Icon/Icon';
 export type { IconProps } from './components/Icon/Icon';
 export type { IconName } from './components/Icon/paths';
+export { ICON_PATHS } from './components/Icon/paths';
 
 export { Input } from './components/Input/Input';
 export type { InputProps } from './components/Input/Input';
@@ -83,10 +84,12 @@ export type { SpacingTokens } from './tokens/spacing';
 
 export { typography } from './tokens/typography';
 
+export { radii } from './tokens/radii';
+
 export { MOBILE_BREAKPOINT_PX } from './tokens/breakpoints';
 
 export {
-  BRAND_NAME, CONTROLLER_DESIGNATION, DEMO_MARKING, SIMULATION_MARKING,
+  ARCHIVE_MARKING, BRAND_NAME, CONTROLLER_DESIGNATION, DEMO_MARKING, SIMULATION_MARKING,
 } from './copy/demoCopy';
 
 export { DemoBanner, fetchDemoInstance, resetDemoInstanceCache } from './components/DemoBanner/DemoBanner';
@@ -94,5 +97,31 @@ export { SimulatedMark } from './components/SimulatedMark/SimulatedMark';
 export {
   DISPLAY_TIME_ZONE, TIME_ZONE_SUFFIX, formatCalendarDate, formatServerDateTime,
 } from './format/dates';
+export { formatMoney, formatSurface, pluralize } from './format/numbers';
 export type { SimulatedMarkProps } from './components/SimulatedMark/SimulatedMark';
 export type { DemoBannerProps, DemoInstanceInfo } from './components/DemoBanner/DemoBanner';
+
+// PO-2026-09-27-20 (DESIGN_SYSTEM §7, §9, §10, §12) : traçabilité et états.
+export { ArchiveBanner } from './components/ArchiveBanner/ArchiveBanner';
+export { DateTime } from './components/DateTime/DateTime';
+export type { DateTimeProps } from './components/DateTime/DateTime';
+export { EmptyState } from './components/EmptyState/EmptyState';
+export type { EmptyStateProps } from './components/EmptyState/EmptyState';
+export { Indicator, indicatorValue } from './components/Indicator/Indicator';
+export type { IndicatorProps } from './components/Indicator/Indicator';
+export { MONEY_KIND_LABELS, Money } from './components/Money/Money';
+export type { MoneyKind, MoneyProps } from './components/Money/Money';
+export { ReceiptProof } from './components/ReceiptProof/ReceiptProof';
+export type { ReceiptProofAllocation, ReceiptProofProps } from './components/ReceiptProof/ReceiptProof';
+export { Reference } from './components/Reference/Reference';
+export type { ReferenceProps } from './components/Reference/Reference';
+export { RESERVE_STATE_LABELS, ReserveCard } from './components/ReserveCard/ReserveCard';
+export type { ReserveCardProps, ReserveState } from './components/ReserveCard/ReserveCard';
+export { Skeleton } from './components/Skeleton/Skeleton';
+export type { SkeletonProps } from './components/Skeleton/Skeleton';
+export { Timeline } from './components/Timeline/Timeline';
+export type { TimelineEntry, TimelineProps } from './components/Timeline/Timeline';
+export { TRUST_LEVEL_LABELS, TRUST_LEVEL_ORDER, TrustLevels } from './components/TrustLevels/TrustLevels';
+export type { TrustLevelEvidence, TrustLevelKey, TrustLevelsProps } from './components/TrustLevels/TrustLevels';
+export { VersionHistory } from './components/VersionHistory/VersionHistory';
+export type { VersionEntry, VersionHistoryProps, VersionReview } from './components/VersionHistory/VersionHistory';

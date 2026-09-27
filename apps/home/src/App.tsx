@@ -67,10 +67,10 @@ type ViewId = 'acquisition' | 'overview' | 'evidence' | 'actions' | 'program-req
  */
 const VIEW_MODULES: Record<ViewId, { label: string; icon: IconName }> = {
   // Ticket F-066 — parcours d'achat du client (ex-onglet « Acheter un bien »).
-  acquisition: { label: 'Mon acquisition', icon: 'wallet' },
+  acquisition: { label: 'Mon acquisition', icon: 'key-round' },
   overview: { label: "Vue d'ensemble", icon: 'home' },
   evidence: { label: 'Avancement & preuves', icon: 'file-text' },
-  actions: { label: 'Mes actions', icon: 'clipboard-check' },
+  actions: { label: 'Mes actions', icon: 'list-checks' },
   // Ticket F-057 — réservé au rôle `sponsor` (jamais `client`, qui achète
   // un lot existant plutôt que de faire construire sur mesure).
   'program-request': { label: 'Programme sur mesure', icon: 'building' },
@@ -202,8 +202,9 @@ export function App() {
       // Ticket F-070 — déconnexion volontaire, vers l'écran de connexion.
       onLogout={() => logoutToLoginScreen()}
       density="confortable"
-      // Ticket F-039/F-073 — filet or sous la barre du haut (espace client).
-      brand
+      // PO-2026-09-27-20 (DESIGN_SYSTEM §11, X05) : barre supérieure simple
+      // pour l'espace client, plus de barre latérale.
+      navigation="topbar"
       appLabel="Espace client"
       modules={modules}
       userRoles={userRoles}

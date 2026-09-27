@@ -33,7 +33,8 @@ export function Icon({
       viewBox="0 0 24 24"
       fill="none"
       stroke={color}
-      strokeWidth={1.75}
+      // PO-2026-09-27-20 (A-DS-2) : trait 1,5 (Lucide).
+      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}

@@ -25,7 +25,7 @@ const textareaStyle = {
   width: '100%',
   minHeight: '120px',
   padding: '8px 12px',
-  borderRadius: '8px',
+  borderRadius: '6px',
   border: `1px solid ${semanticColors.neutral.border}`,
   font: 'inherit',
   marginTop: '4px',
@@ -104,7 +104,7 @@ function VersionBlock({
     <article
       aria-label={`Version ${contract.version}`}
       style={{
-        border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', padding: '12px', marginTop: '8px',
+        border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '6px', padding: '12px', marginTop: '8px',
       }}
     >
       <SimulatedMark detail={`Signature du contrat · ${DEMO_MARKING}`} />

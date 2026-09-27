@@ -59,7 +59,7 @@ function ContractVersionBlock({ contract, onSigned }: { contract: ContractVersio
       aria-label={`Contrat version ${contract.version}`}
       style={{
         border: `1px solid ${semanticColors.neutral.border}`,
-        borderRadius: '16px',
+        borderRadius: '6px',
         padding: '18px 20px',
         display: 'flex',
         flexDirection: 'column',
@@ -69,7 +69,7 @@ function ContractVersionBlock({ contract, onSigned }: { contract: ContractVersio
       <SimulatedMark detail={`Signature du contrat · ${DEMO_MARKING}`} />
       <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         <strong>Version {contract.version}</strong>
-        <Pill tone={contract.status === 'signed_simulated' ? 'success' : 'accent'} data-testid="contract-status">
+        <Pill tone={contract.status === 'signed_simulated' ? 'success' : 'alert'} data-testid="contract-status">
           {contract.status_label}
         </Pill>
         <span style={{ color: semanticColors.neutral.textMuted, fontSize: '14px' }}>
@@ -83,7 +83,7 @@ function ContractVersionBlock({ contract, onSigned }: { contract: ContractVersio
           fontFamily: 'inherit',
           margin: 0,
           padding: '14px 16px',
-          borderRadius: '12px',
+          borderRadius: '6px',
           background: semanticColors.neutral.subtle,
           maxHeight: '240px',
           overflowY: 'auto',

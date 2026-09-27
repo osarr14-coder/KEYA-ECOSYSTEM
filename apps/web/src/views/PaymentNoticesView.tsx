@@ -1,8 +1,8 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, Select, semanticColors, typography, SimulatedMark,
-  formatCalendarDate, formatServerDateTime,
+  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, ReceiptProof, Select, semanticColors, typography,
+  SimulatedMark, formatCalendarDate, formatServerDateTime,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -29,10 +29,10 @@ import { FinancialFilePanel, formatAmount } from './FinancialFilePanel';
  * montant non affecté. Dates au format unique, fuseau indiqué.
  */
 
-const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+const MONO = typography.monoFontFamily;
 
 const NOTICE_TONE: Record<PaymentNotice['status'], PillTone> = {
-  declared: 'accent',
+  declared: 'alert',
   confirmed: 'success',
   rejected: 'danger',
 };
@@ -147,47 +147,25 @@ function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () =
 }
 
 /** Justificatif bancaire FICTIF de l'encaissement : ce qui fait foi. */
-function ReceiptProof({ receipt }: { receipt: PaymentNoticeReceipt }) {
-  const unallocated = Number(receipt.unallocated_amount);
+function ReceiptProofBlock({ receipt }: { receipt: PaymentNoticeReceipt }) {
+  // PO-2026-09-27-20 (DESIGN_SYSTEM §10) : justificatif unique du design system.
   return (
-    <section
-      aria-label={`Justificatif bancaire fictif ${receipt.bank_reference}`}
-      data-testid="receipt-proof"
-      style={{
-        display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px', padding: '14px 16px',
-        border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '8px', background: semanticColors.neutral.subtle,
-      }}
-    >
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <strong>Justificatif bancaire fictif</strong>
-        <Pill tone={receipt.status === 'reconciled_sim' ? 'success' : 'primary'} data-testid="receipt-status">{receipt.status_label}</Pill>
-        <SimulatedMark detail="Encaissement" />
-      </div>
-      <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '6px 20px', margin: 0 }}>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Référence bancaire simulée</dt>
-        <dd style={{ margin: 0, fontFamily: MONO }} data-testid="receipt-bank-reference">{receipt.bank_reference}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Montant reçu</dt>
-        <dd style={{ margin: 0 }}>{formatAmount(receipt.amount, receipt.currency)}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Reçu le</dt>
-        <dd style={{ margin: 0 }}>{formatCalendarDate(receipt.received_on)}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Enregistré par</dt>
-        <dd style={{ margin: 0 }}>{`${receipt.recorded_by}, le ${formatServerDateTime(receipt.recorded_at)}`}</dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Affectations</dt>
-        <dd style={{ margin: 0 }}>
-          {receipt.allocations.length === 0 ? 'Aucune' : (
-            <ul style={{ margin: 0, paddingLeft: '18px' }}>
-              {receipt.allocations.map((allocation) => (
-                <li key={allocation.id}>{`${formatAmount(allocation.amount, receipt.currency)} → ${allocation.payment_call}`}</li>
-              ))}
-            </ul>
-          )}
-        </dd>
-        <dt style={{ color: semanticColors.neutral.textMuted }}>Non affecté</dt>
-        <dd style={{ margin: 0, fontWeight: unallocated > 0 ? 700 : 400 }} data-testid="receipt-unallocated">
-          {formatAmount(receipt.unallocated_amount, receipt.currency)}
-        </dd>
-      </dl>
-    </section>
+    <div style={{ marginTop: '16px' }}>
+      <ReceiptProof
+        bankReference={receipt.bank_reference}
+        amount={receipt.amount}
+        currency={receipt.currency}
+        receivedOn={receipt.received_on}
+        recordedBy={receipt.recorded_by}
+        recordedAt={receipt.recorded_at}
+        statusLabel={receipt.status_label}
+        reconciled={receipt.status === 'reconciled_sim'}
+        allocations={receipt.allocations.map((allocation) => ({
+          id: allocation.id, label: allocation.payment_call, amount: allocation.amount,
+        }))}
+        unallocatedAmount={receipt.unallocated_amount}
+      />
+    </div>
   );
 }
 
@@ -202,7 +180,7 @@ function NoticeCard({ notice, canAct, onDone }: { notice: PaymentNotice; canAct:
       action={<Pill tone={NOTICE_TONE[notice.status]} data-testid="notice-status">{notice.status_label}</Pill>}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
-        <span style={{ fontFamily: typography.headingFontFamily, fontSize: '30px', fontWeight: 600, color: semanticColors.neutral.heading }}>
+        <span style={{ fontSize: '24px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
           {formatAmount(notice.amount, notice.currency)}
         </span>
         <span style={{ color: semanticColors.neutral.textMuted }}>{`signalé pour : ${callLabel}`}</span>
@@ -229,7 +207,7 @@ function NoticeCard({ notice, canAct, onDone }: { notice: PaymentNotice; canAct:
           </>
         )}
       </dl>
-      {notice.receipt && <ReceiptProof receipt={notice.receipt} />}
+      {notice.receipt && <ReceiptProofBlock receipt={notice.receipt} />}
       {canAct && notice.status === 'declared' && <NoticeActions notice={notice} onDone={onDone} />}
     </Card>
   );
@@ -299,7 +277,6 @@ export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
   return (
     <section aria-label="Virements déclarés">
       <PageHeader
-        eyebrow="Finance"
         title="Virements déclarés et encaissements"
         subtitle={canAct
           ? 'Enregistrez chaque virement du relevé fictif. Un signalement du client n’est pas un encaissement : cherchez-le au relevé, puis enregistrez-le ou indiquez qu’il est introuvable.'

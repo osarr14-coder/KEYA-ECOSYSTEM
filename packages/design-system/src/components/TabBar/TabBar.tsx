@@ -60,9 +60,9 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
               flexShrink: 0,
               whiteSpace: 'nowrap',
               border: 'none',
-              // Ticket F-073 — repère actif en or (token sémantique
-              // `accent`, thémé) + graisse ; texte principal pour tous.
-              borderBottom: isActive ? `3px solid ${semanticColors.accent.solid}` : '3px solid transparent',
+              // PO-2026-09-27-20 (V06) : repère actif à l'encre forte (plus
+              // d'or) + graisse ; texte principal pour tous.
+              borderBottom: isActive ? `2px solid ${semanticColors.neutral.heading}` : '2px solid transparent',
               background: 'transparent',
               fontSize: '15px',
               fontWeight: isActive ? 700 : 500,

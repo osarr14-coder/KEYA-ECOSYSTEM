@@ -42,19 +42,17 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 /**
- * Ticket F-053 — `boxShadow` ajouté à `primary`/`danger` uniquement (jamais
- * `secondary`, qui reste sobre/outlined — un bouton secondaire surélevé se
- * confondrait visuellement avec l'action principale de l'écran).
+ * PO-2026-09-27-20 (DESIGN_SYSTEM §5.3) : aucune ombre sur les boutons ; la
+ * seule ombre du système est réservée aux menus et modales.
  */
 const VARIANT_STYLE: Record<
   NonNullable<ButtonProps['variant']>,
-  { background: string; color: string; border: string; boxShadow?: string }
+  { background: string; color: string; border: string }
 > = {
   primary: {
     background: semanticColors.primary.background,
     color: semanticColors.primary.text,
     border: 'none',
-    boxShadow: 'var(--keya-shadow-sm)',
   },
   secondary: {
     background: 'transparent',
@@ -65,13 +63,11 @@ const VARIANT_STYLE: Record<
     background: semanticColors.accent.solid,
     color: semanticColors.accent.onSolid,
     border: 'none',
-    boxShadow: 'var(--keya-shadow-sm)',
   },
   danger: {
     background: semanticColors.danger.solid!,
     color: '#FFFFFF',
     border: 'none',
-    boxShadow: 'var(--keya-shadow-sm)',
   },
 };
 
@@ -88,7 +84,7 @@ export function Button({ variant = 'primary', style, className, ...rest }: Butto
         gap: '8px',
         minHeight: '44px',
         padding: '0 18px',
-        borderRadius: '12px',
+        borderRadius: '4px',
         fontSize: '15px',
         fontWeight: 700,
         ...variantStyle,

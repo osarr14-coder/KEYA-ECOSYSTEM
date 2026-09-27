@@ -64,7 +64,9 @@ describe('ClientSalesView — catalogue et réservation (ticket F-066)', () => {
     const item = await screen.findByTestId('catalog-lot');
     expect(item).toHaveTextContent('Résidence Démonstration Abidjan — Lot A12');
     expect(item).toHaveTextContent('Cocody');
-    expect(item).toHaveTextContent('82.00 m²');
+    // Adapté selon PO-2026-09-27-20 (DESIGN_SYSTEM §9, X01) : surface sans décimales inutiles.
+    expect(item).toHaveTextContent('82 m²');
+    expect(item).not.toHaveTextContent('82.00');
     expect(item.textContent!.replace(/\s/g, ' ')).toContain('30 000 000 XOF');
     expect(screen.getByText("Vous n'avez encore réservé aucun bien.")).toBeInTheDocument();
   });

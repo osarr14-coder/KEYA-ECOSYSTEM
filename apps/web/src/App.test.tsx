@@ -553,10 +553,15 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
     expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('1');
   });
 
-  it('affiche 0 en l\'absence de tâche en attente', async () => {
-    renderAuthenticated({ getMyInboxTasks: async () => [] });
+  // Adapté selon PO-2026-09-27-20 (DESIGN_SYSTEM §12, V10) : la cloche
+  // n'affiche un compteur que s'il y a des actions en attente.
+  it('n\'affiche aucun compteur en l\'absence de tâche en attente', async () => {
+    const getMyInboxTasks = vi.fn(async () => []);
+    renderAuthenticated({ getMyInboxTasks });
 
-    expect(await screen.findByTestId('task-inbox-count')).toHaveTextContent('0');
+    await waitFor(() => expect(getMyInboxTasks).toHaveBeenCalled());
+    expect(await screen.findByLabelText('Task Inbox — 0 en attente')).toBeInTheDocument();
+    expect(screen.queryByTestId('task-inbox-count')).not.toBeInTheDocument();
   });
 });
 

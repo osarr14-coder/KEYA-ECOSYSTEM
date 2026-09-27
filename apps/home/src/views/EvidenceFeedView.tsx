@@ -36,8 +36,7 @@ export function EvidenceFeedView({ lotId }: EvidenceFeedViewProps) {
             style={{
               padding: '12px',
               border: `1px solid ${semanticColors.neutral.border}`,
-              borderRadius: '14px',
-              boxShadow: 'var(--keya-shadow-sm)',
+              borderRadius: '6px',
             }}
           >
             <div>

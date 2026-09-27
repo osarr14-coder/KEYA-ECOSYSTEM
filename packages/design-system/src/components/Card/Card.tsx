@@ -47,7 +47,8 @@ export interface CardProps {
    * perdu silencieusement. */
   'aria-label'?: string;
   'data-testid'?: string;
-  /** Ticket F-073 — surtitre en petites capitales or, au-dessus du titre. */
+  /** Contexte court au-dessus du titre, en texte secondaire (PO-2026-09-27-20,
+   * V01 : plus de sur-titre doré en majuscules). */
   eyebrow?: string;
   /** Ticket F-073 — action(s) alignée(s) à droite du titre (bouton, lien). */
   action?: ReactNode;
@@ -56,7 +57,8 @@ export interface CardProps {
 export function Card({
   icon, title, children, tone = 'neutral', className, 'aria-label': ariaLabel, 'data-testid': testId, eyebrow, action,
 }: CardProps) {
-  const iconColor = tone === 'accent' ? semanticColors.progress.fill : semanticColors.accent.text;
+  // PO-2026-09-27-20 (V06) : le texte doré est réservé à la navigation active.
+  const iconColor = tone === 'accent' ? semanticColors.progress.fill : semanticColors.neutral.textMuted;
   const hasHeader = Boolean(title || eyebrow || action);
 
   return (
@@ -66,27 +68,17 @@ export function Card({
       data-testid={testId}
       style={{
         border: `1px solid ${semanticColors.neutral.border}`,
-        // Ticket F-073 — cartes plus généreuses (rayon 20, marge interne
-        // 24px, réduite sur petit écran) et ombre plus douce.
-        borderRadius: '20px',
+        // PO-2026-09-27-20 (§5.2, §5.3) : rayon 6 px, bordure 1 px, aucune ombre.
+        borderRadius: '6px',
         background: semanticColors.neutral.surface,
         padding: 'clamp(16px, 3vw, 24px)',
-        boxShadow: 'var(--keya-shadow-sm)',
       }}
     >
       {hasHeader && (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexGrow: 1, minWidth: 0 }}>
             {eyebrow && (
-              <span
-                style={{
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                  color: semanticColors.accent.text,
-                }}
-              >
+              <span style={{ fontSize: '13px', fontWeight: 500, color: semanticColors.neutral.textMuted }}>
                 {eyebrow}
               </span>
             )}
@@ -97,7 +89,7 @@ export function Card({
                   alignItems: 'center',
                   gap: '10px',
                   margin: 0,
-                  fontSize: '20px',
+                  fontSize: '18px',
                 }}
               >
                 {icon && <Icon name={icon} size={20} color={iconColor} />}

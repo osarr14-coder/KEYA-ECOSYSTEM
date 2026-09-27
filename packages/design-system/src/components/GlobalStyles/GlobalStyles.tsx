@@ -72,6 +72,9 @@ const LIGHT_COLOR_DECLARATIONS = `
     --keya-accent-soft: #F4ECD6;
     --keya-success-background: #E3F2EA;
     --keya-success-text: #1E5E42;
+    /* PO-2026-09-27-20 (A-DS-5) : rôle Information — états en cours sans action attendue. */
+    --keya-info-background: #E8F0F6;
+    --keya-info-text: #23577F;
 
 `;
 
@@ -82,9 +85,16 @@ ${LIGHT_COLOR_DECLARATIONS}
        blocs sombres : une ombre représente un éclairage ambiant, quasi
        toujours sombre même sur une surface sombre. Ticket F-073 : teinte
        navy (11, 29, 58) plutôt que gris ardoise, plus douce sur l'ivoire. */
-    --keya-shadow-sm: 0 1px 2px rgba(11, 29, 58, 0.05);
-    --keya-shadow-md: 0 8px 24px rgba(11, 29, 58, 0.06), 0 1px 3px rgba(11, 29, 58, 0.04);
-    --keya-shadow-lg: 0 20px 44px rgba(11, 29, 58, 0.16), 0 4px 10px rgba(11, 29, 58, 0.06);
+    /* PO-2026-09-27-20 (DESIGN_SYSTEM §5.3) : bordures plutôt qu'ombres. Une
+       seule ombre légère, réservée aux menus déroulants et modales ; les
+       anciens jetons de carte ne projettent plus rien. */
+    --keya-shadow-sm: none;
+    --keya-shadow-md: none;
+    --keya-shadow-lg: none;
+    --keya-shadow-overlay: 0 8px 24px rgba(11, 29, 58, 0.10), 0 1px 3px rgba(11, 29, 58, 0.06);
+    /* §5.2 : deux rayons seulement. */
+    --keya-radius-control: 4px;
+    --keya-radius-panel: 6px;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -116,6 +126,8 @@ ${LIGHT_COLOR_DECLARATIONS}
       --keya-accent-soft: #3A3016;
       --keya-success-background: #12352A;
       --keya-success-text: #8FD9B6;
+      --keya-info-background: #10263D;
+      --keya-info-text: #9CC3E4;
     }
   }
 
@@ -147,6 +159,8 @@ ${LIGHT_COLOR_DECLARATIONS}
     --keya-accent-soft: #3A3016;
     --keya-success-background: #12352A;
     --keya-success-text: #8FD9B6;
+    --keya-info-background: #10263D;
+    --keya-info-text: #9CC3E4;
   }
 
   /* Surface forcée en CLAIR, quel que soit le thème (ex. : plan d'un lot,
@@ -212,6 +226,14 @@ const GLOBAL_CSS = `
   .keya-btn:hover:not(:disabled) {
     opacity: 0.85;
   }
+  /* PO-2026-09-27-20 (DESIGN_SYSTEM §5.5) : transitions de 150 ms sur les
+     états d'interaction uniquement ; aucune animation d'entrée. */
+  .keya-btn, .keya-nav-link, .keya-tab, .keya-input, .keya-select {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .keya-btn, .keya-nav-link, .keya-tab, .keya-input, .keya-select { transition: none; }
+  }
   /* Ticket F-072 — survol visible des entrées de navigation (barre latérale,
      onglets) : sans lui, rien n'indiquait qu'une entrée est cliquable. */
   /* Ticket F-073 — la barre latérale est désormais navy dans les deux
@@ -223,8 +245,10 @@ const GLOBAL_CSS = `
   .keya-tab:hover:not([aria-current="page"]) {
     background: rgba(var(--keya-focus-ring-rgb), 0.06);
   }
+  /* PO-2026-09-27-20 (DESIGN_SYSTEM §12) : anneau de focus 2 px, jamais
+     doré. Sur la barre latérale bleu nuit, l'anneau est blanc. */
   .keya-nav-link:focus-visible {
-    outline: 2px solid ${semanticColors.accent.solid};
+    outline: 2px solid #FFFFFF;
     outline-offset: -2px;
   }
   .keya-tab:focus-visible {
@@ -234,23 +258,25 @@ const GLOBAL_CSS = `
   /* Ticket F-073 — liens de contenu : navy souligné au survol, jamais le
      bleu par défaut du navigateur. */
   main a:not(.keya-btn):hover {
-    color: ${semanticColors.accent.text};
+    color: ${semanticColors.neutral.heading};
+    text-decoration-thickness: 2px;
   }
   .keya-btn:focus-visible,
   .keya-input:focus-visible,
   .keya-select:focus-visible {
-    outline: none;
+    outline: 2px solid ${semanticColors.neutral.heading};
+    outline-offset: 2px;
     border-color: ${semanticColors.neutral.text};
     /* Ticket F-051 — triplet R,G,B en variable CSS (--keya-focus-ring-rgb,
        défini dans ROOT_COLOR_VARIABLES ci-dessus), jamais un hex figé :
        l'anneau de focus doit rester lisible en mode sombre aussi, vérifié
        en navigateur réel (technique rgba(var(--x), alpha) confirmée). */
-    box-shadow: 0 0 0 3px rgba(var(--keya-focus-ring-rgb), 0.12);
+    box-shadow: none;
   }
   /* Ticket F-076 — tuile de dépôt de fichier (champ natif transparent
      posé dessus) : focus clavier visible sur la tuile entière. */
   .keya-file-drop:focus-within {
-    outline: 2px solid ${semanticColors.accent.solid};
+    outline: 2px solid ${semanticColors.neutral.heading};
     outline-offset: 2px;
   }
   .keya-btn:disabled {
@@ -359,8 +385,10 @@ const GLOBAL_CSS = `
   /* Ticket F-073 — Fraunces se lit mieux en graisse 600 qu'en 700 ; titres
      en couleur « heading » (navy en clair). */
   h1 { font-size: 1.75em; font-weight: 600; line-height: 1.2; text-wrap: balance; font-family: ${typography.headingFontFamily}; color: ${semanticColors.neutral.heading}; letter-spacing: -0.01em; }
-  h2 { font-size: 1.35em; font-weight: 600; line-height: 1.3; text-wrap: balance; font-family: ${typography.headingFontFamily}; color: ${semanticColors.neutral.heading}; }
-  h3 { font-size: 1.1em; font-weight: 600; line-height: 1.35; text-wrap: balance; font-family: ${typography.headingFontFamily}; color: ${semanticColors.neutral.heading}; }
+  /* PO-2026-09-27-20 (DESIGN_SYSTEM §4) : Fraunces réservée au titre de page
+     (h1) ; les titres de section restent dans la police d'interface. */
+  h2 { font-size: 1.35em; font-weight: 700; line-height: 1.3; text-wrap: balance; font-family: ${typography.fontFamily}; color: ${semanticColors.neutral.heading}; }
+  h3 { font-size: 1.1em; font-weight: 700; line-height: 1.35; text-wrap: balance; font-family: ${typography.fontFamily}; color: ${semanticColors.neutral.heading}; }
   h4 { font-size: 1em; font-weight: 600; line-height: 1.4; text-wrap: balance; }
 
   /*
@@ -396,7 +424,8 @@ const GLOBAL_CSS = `
 // « rend une balise <style> unique » (GlobalStyles.test.tsx) cible
 // `getByTestId('global-styles')`, qui doit continuer à résoudre le
 // <style> lui-même sans ambiguïté.
-const GOOGLE_FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap';
+// PO-2026-09-27-20 (A-DS-1) : IBM Plex Mono ajoutée pour les références.
+const GOOGLE_FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap';
 
 export function GlobalStyles() {
   return (

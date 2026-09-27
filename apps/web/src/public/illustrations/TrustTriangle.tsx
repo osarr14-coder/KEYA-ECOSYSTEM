@@ -102,9 +102,9 @@ function Pole({ pole, headingId }: { pole: TrustPole; headingId: string }) {
       <article
         aria-labelledby={headingId}
         style={{
-          height: '100%', boxSizing: 'border-box', padding: '40px 24px 24px', borderRadius: '20px', textAlign: 'left',
+          height: '100%', boxSizing: 'border-box', padding: '40px 24px 24px', borderRadius: '6px', textAlign: 'left',
           background: semanticColors.neutral.surface, border: `1px solid ${semanticColors.neutral.border}`,
-          boxShadow: 'var(--keya-shadow-md)', display: 'flex', flexDirection: 'column', gap: '12px',
+         display: 'flex', flexDirection: 'column', gap: '12px',
         }}
       >
         <span
@@ -121,7 +121,7 @@ function Pole({ pole, headingId }: { pole: TrustPole; headingId: string }) {
         <h3 id={headingId} style={{ margin: 0, textAlign: 'center', fontSize: '21px' }}>{pole.title}</h3>
         <span
           style={{
-            alignSelf: 'center', padding: '3px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: 700,
+            alignSelf: 'center', padding: '3px 12px', borderRadius: '4px', fontSize: '12px', fontWeight: 700,
             letterSpacing: '0.06em', textTransform: 'uppercase', background: semanticColors.neutral.subtle,
             color: semanticColors.neutral.textMuted,
           }}

@@ -97,7 +97,7 @@ export function FacadeIllustration() {
     <figure
       data-testid="facade-illustration"
       style={{
-        margin: 0, display: 'flex', flexDirection: 'column', gap: '14px', padding: 'clamp(16px, 3vw, 32px)', borderRadius: '24px',
+        margin: 0, display: 'flex', flexDirection: 'column', gap: '14px', padding: 'clamp(16px, 3vw, 32px)', borderRadius: '6px',
         background: semanticColors.neutral.surface, border: `1px solid ${semanticColors.neutral.border}`,
       }}
     >

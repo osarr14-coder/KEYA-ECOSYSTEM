@@ -147,6 +147,10 @@ export interface LotMilestone {
   code: string;
   label: string;
   status: MilestoneControlStatus;
+  /** Audit UI R1, étape 3 (A-DS-4) : état d'affichage du CDC §7.1, dérivé
+   * côté serveur ; `status_label` porte son libellé. */
+  cdc_state?: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'CHANGES_REQUESTED' | 'RESUBMITTED' | 'TECHNICALLY_ACCEPTED';
+  status_hint?: string;
   status_label: string;
   work_declaration_id: string | null;
   evidence_count: number;

@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Input, Pill, Select, semanticColors, SimulatedMark, formatCalendarDate, formatServerDateTime,
+  ApiErrorBanner, Button, Input, Pill, ReceiptProof, Select, semanticColors, SimulatedMark,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -41,10 +41,6 @@ export function today() {
 function callLabel(call: PaymentCall | PaymentCallCandidate) {
   return call.tier_label ? `${call.kind_label} — ${call.tier_label}` : call.kind_label;
 }
-
-const blockStyle = {
-  border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '14px', padding: '14px 16px', marginTop: '10px',
-} as const;
 
 function useAction() {
   const [pending, setPending] = useState(false);
@@ -139,8 +135,6 @@ function ReceiptForm({ reservation, onRecorded }: { reservation: AdminReservatio
   );
 }
 
-const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
-
 /**
  * Audit UI R1 (F02, PO-2026-09-27-19, CDC §8.1, T12) — un encaissement
  * simulé présenté comme son justificatif bancaire FICTIF : référence
@@ -163,42 +157,22 @@ function ReceiptBlock({
   const muted = { color: semanticColors.neutral.textMuted } as const;
 
   return (
-    <article
-      aria-label={`Justificatif bancaire fictif ${receipt.bank_reference}`}
-      data-testid="receipt-block"
-      style={{ ...blockStyle, display: 'flex', flexDirection: 'column', gap: '8px' }}
-    >
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <strong>Justificatif bancaire fictif</strong>
-        <Pill tone={receipt.status === 'reconciled_sim' ? 'success' : 'primary'} data-testid="receipt-status">{receipt.status_label}</Pill>
-        <SimulatedMark detail="Encaissement" />
-      </div>
-      <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 16px', margin: 0 }}>
-        <dt style={muted}>Référence bancaire simulée</dt>
-        <dd style={{ margin: 0, fontFamily: MONO }}>{receipt.bank_reference}</dd>
-        <dt style={muted}>Montant reçu</dt>
-        <dd style={{ margin: 0 }}>{formatAmount(receipt.amount, receipt.currency)}</dd>
-        <dt style={muted}>Reçu le</dt>
-        <dd style={{ margin: 0 }}>{formatCalendarDate(receipt.received_on)}</dd>
-        <dt style={muted}>Enregistré par</dt>
-        <dd style={{ margin: 0 }}>{`${receipt.recorded_by}, le ${formatServerDateTime(receipt.recorded_at)}`}</dd>
-        <dt style={muted}>Affectations</dt>
-        <dd style={{ margin: 0 }}>
-          {receipt.allocations.length === 0 ? 'Aucune' : (
-            <ul style={{ margin: 0, paddingLeft: '18px' }} data-testid="receipt-allocations">
-              {receipt.allocations.map((allocation) => (
-                <li key={allocation.id}>
-                  {`${formatAmount(allocation.amount, receipt.currency)} → ${callLabels.get(allocation.payment_call) ?? 'un appel'}`}
-                </li>
-              ))}
-            </ul>
-          )}
-        </dd>
-        <dt style={muted}>Non affecté</dt>
-        <dd style={{ margin: 0, fontWeight: unallocated > 0 ? 700 : 400 }} data-testid="receipt-unallocated">
-          {formatAmount(receipt.unallocated_amount, receipt.currency)}
-        </dd>
-      </dl>
+    <article data-testid="receipt-block" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* PO-2026-09-27-20 (DESIGN_SYSTEM §10) : justificatif unique du design system. */}
+      <ReceiptProof
+        bankReference={receipt.bank_reference}
+        amount={receipt.amount}
+        currency={receipt.currency}
+        receivedOn={receipt.received_on}
+        recordedBy={receipt.recorded_by}
+        recordedAt={receipt.recorded_at}
+        statusLabel={receipt.status_label}
+        reconciled={receipt.status === 'reconciled_sim'}
+        allocations={receipt.allocations.map((allocation) => ({
+          id: allocation.id, label: callLabels.get(allocation.payment_call) ?? 'un appel', amount: allocation.amount,
+        }))}
+        unallocatedAmount={receipt.unallocated_amount ?? '0'}
+      />
       {canAct && unallocated > 0 && openCalls.length > 0 && (
         <form
           onSubmit={(event) => {
@@ -305,7 +279,7 @@ export function FinancialFilePanel({
                 <td style={{ textAlign: 'right' }}>{formatAmount(call.settled_amount, call.currency)}</td>
                 <td style={{ paddingLeft: '12px' }}>
                   <Pill
-                    tone={call.settlement === 'settled' ? 'success' : call.settlement === 'partial' ? 'alert' : 'accent'}
+                    tone={call.settlement === 'settled' ? 'success' : call.settlement === 'partial' ? 'alert' : 'neutral'}
                     data-testid="call-settlement"
                   >
                     {call.settlement ? SETTLEMENT_LABELS[call.settlement] : '—'}

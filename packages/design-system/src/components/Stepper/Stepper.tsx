@@ -45,7 +45,7 @@ export function Stepper({ steps, 'aria-label': ariaLabel }: StepperProps) {
       {steps.map((step, index) => {
         const barColor = step.state === 'done'
           ? semanticColors.progress.fill
-          : step.state === 'current' ? semanticColors.accent.solid : semanticColors.neutral.border;
+          : step.state === 'current' ? semanticColors.neutral.heading : semanticColors.neutral.border;
         return (
           <li
             key={step.id}
@@ -54,17 +54,15 @@ export function Stepper({ steps, 'aria-label': ariaLabel }: StepperProps) {
             aria-current={step.state === 'current' ? 'step' : undefined}
             style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}
           >
-            <span aria-hidden="true" style={{ height: '6px', borderRadius: '3px', background: barColor }} />
+            <span aria-hidden="true" style={{ height: '4px', borderRadius: '2px', background: barColor }} />
             <span
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
                 fontSize: '12px',
-                fontWeight: 700,
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                color: step.state === 'current' ? semanticColors.accent.text : semanticColors.neutral.textMuted,
+                fontWeight: step.state === 'current' ? 700 : 500,
+                color: step.state === 'current' ? semanticColors.neutral.heading : semanticColors.neutral.textMuted,
               }}
             >
               {step.state === 'done' && <Icon name="check-circle" size={14} color={semanticColors.progress.fill} />}

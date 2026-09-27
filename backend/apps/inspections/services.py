@@ -773,6 +773,52 @@ CONTROL_STATUS_LABELS = {
     ACCEPTED: 'Accepté techniquement',
 }
 
+# Audit UI R1, étape 3 (PO-2026-09-27-20, A-DS-4) — états d'affichage du
+# CDC §7.1, DÉRIVÉS de l'état de contrôle ci-dessus sans changer le modèle :
+#   aucune déclaration ou déclaration sans pièce → Brouillon
+#   déclaration avec pièce, aucun contrôle programmé → Soumis
+#   contrôle programmé (mission affectée, pas encore d'avis) → En examen
+#   réserve ouverte sans correction déposée → Corrections demandées
+#   réserve ouverte avec correction déposée → Resoumis
+#   acceptation technique → Accepté techniquement
+CDC_DRAFT = 'DRAFT'
+CDC_SUBMITTED = 'SUBMITTED'
+CDC_UNDER_REVIEW = 'UNDER_REVIEW'
+CDC_CHANGES_REQUESTED = 'CHANGES_REQUESTED'
+CDC_RESUBMITTED = 'RESUBMITTED'
+CDC_TECHNICALLY_ACCEPTED = 'TECHNICALLY_ACCEPTED'
+
+CDC_STATE_LABELS = {
+    CDC_DRAFT: 'Brouillon',
+    CDC_SUBMITTED: 'Soumis',
+    CDC_UNDER_REVIEW: 'En examen',
+    CDC_CHANGES_REQUESTED: 'Corrections demandées',
+    CDC_RESUBMITTED: 'Resoumis',
+    CDC_TECHNICALLY_ACCEPTED: 'Accepté techniquement',
+}
+
+# Précision affichée sous l'état quand le libellé du CDC seul ne dit pas ce
+# qui est attendu.
+CDC_STATE_HINTS = {
+    NOT_DECLARED: 'Jalon pas encore déclaré',
+    AWAITING_DOCUMENTS: 'Déclaré — pièce à joindre',
+}
+
+
+def milestone_cdc_state(state):
+    """État CDC §7.1 `(code, libellé, précision)` d'un état de contrôle
+    retourné par `milestone_control_state`."""
+    status = state['status']
+    if status in (NOT_DECLARED, AWAITING_DOCUMENTS):
+        code = CDC_DRAFT
+    elif status == ACCEPTED:
+        code = CDC_TECHNICALLY_ACCEPTED
+    elif status == UNDER_RESERVE:
+        code = CDC_RESUBMITTED if state['correction_submitted'] else CDC_CHANGES_REQUESTED
+    else:
+        code = CDC_UNDER_REVIEW if state['pending_mission'] is not None else CDC_SUBMITTED
+    return code, CDC_STATE_LABELS[code], CDC_STATE_HINTS.get(status, '')
+
 
 def _declaration_inspections(declaration):
     return Inspection.objects.filter(Q(work_declaration=declaration) | Q(evidence__work_declaration=declaration))
@@ -857,7 +903,8 @@ def list_controls_to_assign(*, caller_organization_id):
                     'work_declaration_id': str(state['declaration'].id),
                     'declared_at': state['declaration'].created_at,
                     'status': state['status'],
-                    'status_label': CONTROL_STATUS_LABELS[state['status']],
+                    'status_label': milestone_cdc_state(state)[1],
+                    'cdc_state': milestone_cdc_state(state)[0],
                     'evidence_count': state['evidence_count'],
                     'latest_outcome': state['latest_outcome'],
                     'correction_submitted': state['correction_submitted'],

@@ -1,18 +1,20 @@
 /**
- * Ticket F-045 — bibliothèque d'icônes minimale, dessinée à la main plutôt
- * que via une dépendance externe (Phosphor/Heroicons) : ce monorepo n'a
- * jamais eu de dépendance d'icônes (voir `AlertBanner::WarningIcon`, seul
- * précédent, déjà inline) — ajouter un paquet npm pour ~15 tracés aurait
- * été disproportionné, et casserait la discipline « 100% inline React »
- * du projet (voir CLAUDE.md, ticket F-038). Style delibérément uniforme :
- * grille 24x24, trait seul (`fill="none"`, `stroke="currentColor"`),
- * `strokeWidth={1.75}`, extrémités/jonctions arrondies — même famille
- * visuelle que les icônes outline (Phosphor/Feather), jamais mélangée à
- * un style rempli (`fill`) ou à un emoji (voir remplacement de 🔔 dans
- * `AppShell`, même ticket).
+ * Audit UI R1, étape 3 — PO-2026-09-27-20 (A-DS-2) : tracés des icônes
+ * **Lucide** (https://lucide.dev), repris en ligne sans dépendance npm, grille
+ * 24x24, trait seul. Formes `rect`, `circle`, `line` et `poly*` converties en
+ * chemins `d` équivalents.
  *
- * Un seul fichier de tracés bruts, séparé de `Icon.tsx` (le composant) —
- * ajouter une icône ne touche jamais au rendu/à l'API du composant.
+ * Lucide — licence ISC : Copyright (c) for portions of Lucide are held by
+ * Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for
+ * Lucide are held by Lucide Contributors 2022. Permission to use, copy,
+ * modify, and/or distribute this software for any purpose with or without fee
+ * is hereby granted, provided that the above copyright notice and this
+ * permission notice appear in all copies.
+ *
+ * DESIGN_SYSTEM §5.4 : une icône par concept (portefeuille = encaissements
+ * du client, balance = paliers, bouclier = contrôle, repère bancaire = comptes
+ * du programme, reçu = appels et encaissements, dossier = dossiers clients,
+ * étiquette = lots et prix, historique = journal, liste cochée = À faire).
  */
 
 export type IconName =
@@ -27,71 +29,154 @@ export type IconName =
   | 'chevron-left'
   | 'chevron-right'
   | 'alert-triangle'
+  | 'check'
   | 'check-circle'
   | 'users'
   | 'camera'
   | 'scale'
   | 'moon'
-  | 'log-out';
+  | 'log-out'
+  | 'folder'
+  | 'tag'
+  | 'landmark'
+  | 'receipt'
+  | 'arrow-down-to-line'
+  | 'history'
+  | 'list-checks'
+  | 'key-round'
+  | 'copy'
+  | 'lock';
 
-/** Un `<path>` (ou plusieurs) par icône, déjà dans le repère 24x24 — le
- * composant `Icon` ne fait qu'entourer ces tracés d'un `<svg>` commun.
- */
 export const ICON_PATHS: Record<IconName, string[]> = {
-  home: ['M3 11.5 12 4l9 7.5', 'M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9', 'M9.5 20v-6h5v6'],
-  building: [
-    'M4 20V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v15',
-    'M15 20v-8h4a1 1 0 0 1 1 1v7',
-    'M7.5 7.5h1.5M11 7.5h1.5M7.5 11h1.5M11 11h1.5M7.5 14.5h1.5M11 14.5h1.5',
+  'home': [
+    'M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8',
+    'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  ],
+  'building': [
+    'M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z',
+    'M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2',
+    'M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2',
+    'M10 6h4',
+    'M10 10h4',
+    'M10 14h4',
+    'M10 18h4',
   ],
   'clipboard-check': [
-    'M9 4.5h6a1 1 0 0 1 1 1V6h1.5a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1H8v-.5a1 1 0 0 1 1-1Z',
-    'M9.5 13.5 11.5 15.5 15 11.5',
+    'M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1Z',
+    'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2',
+    'm9 14 2 2 4-4',
   ],
   'file-text': [
-    'M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z',
-    'M14 3.5V8h4',
-    'M9 13h6M9 16.5h6',
+    'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z',
+    'M14 2v4a2 2 0 0 0 2 2h4',
+    'M10 9H8',
+    'M16 13H8',
+    'M16 17H8',
   ],
-  wallet: [
-    'M3.5 7.5a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-10Z',
-    'M15.5 12.5h3v2.5h-3a1.25 1.25 0 0 1 0-2.5Z',
-    'M3.5 8.5 12 5l5 2.5',
+  'wallet': [
+    'M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1',
+    'M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4',
   ],
   'shield-check': [
-    'M12 3.5 19 6.3v5.4c0 4.4-3 7.9-7 8.8-4-.9-7-4.4-7-8.8V6.3L12 3.5Z',
-    'M9 12l2.2 2.2L15.5 9.7',
+    'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z',
+    'm9 12 2 2 4-4',
   ],
-  bell: [
-    'M6.5 10.5a5.5 5.5 0 0 1 11 0v3.3l1.4 2.4a.8.8 0 0 1-.7 1.2H5.8a.8.8 0 0 1-.7-1.2l1.4-2.4v-3.3Z',
-    'M10 19.5a2 2 0 0 0 4 0',
+  'bell': [
+    'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9',
+    'M10.3 21a1.94 1.94 0 0 0 3.4 0',
   ],
-  search: ['M11 4.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Z', 'M16 16l4.5 4.5'],
-  'chevron-left': ['M14.5 5 8 12l6.5 7'],
-  'chevron-right': ['M9.5 5 16 12l-6.5 7'],
-  'alert-triangle': ['M12 3.5 21.5 20h-19L12 3.5Z', 'M12 9.5v4.5', 'M12 17v.01'],
-  'check-circle': ['M20.5 12a8.5 8.5 0 1 1-17 0 8.5 8.5 0 0 1 17 0Z', 'M8.5 12.3l2.4 2.4 4.6-5.4'],
-  users: [
-    'M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
-    'M3.5 19.5c.6-3 2.6-4.8 5-4.8s4.4 1.8 5 4.8',
-    'M16 5.3a3 3 0 0 1 0 5.8',
-    'M15.5 14.7c1.9.4 3.3 2 3.8 4.3',
+  'search': [
+    'M3 11a8 8 0 1 0 16 0a8 8 0 1 0 -16 0',
+    'm21 21-4.3-4.3',
   ],
-  camera: [
-    'M4 8.5a1 1 0 0 1 1-1h2.2l1-1.6a1 1 0 0 1 .86-.4h5.9a1 1 0 0 1 .85.4l1 1.6H19a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8.5Z',
-    'M12 16a3.3 3.3 0 1 0 0-6.6 3.3 3.3 0 0 0 0 6.6Z',
+  'chevron-left': [
+    'm15 18-6-6 6-6',
   ],
-  scale: [
-    'M12 3.5v17M8 3.5h8',
-    'M12 6 5 8l3.4 6.8a3.2 3.2 0 0 0 5.2 0L17 8l-7-2Z',
-    'M4 20.5h16',
+  'chevron-right': [
+    'm9 18 6-6-6-6',
   ],
-  // Ticket F-051 — bascule de thème (voir AppShell.tsx, useTheme). Croissant
-  // formé par un seul tracé (différence de deux arcs), vérifié rendu en
-  // navigateur réel (Chromium, script jetable) avant intégration — même
-  // discipline que le reste de ce fichier (grille 24x24, trait seul,
-  // extrémités arrondies).
-  moon: ['M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5 7 7 0 0 0 20.5 14.5Z'],
-  // Ticket F-070 — déconnexion : porte ouverte + flèche sortante.
-  'log-out': ['M9 20H5.5A1.5 1.5 0 0 1 4 18.5v-13A1.5 1.5 0 0 1 5.5 4H9', 'M15.5 16.5 20 12l-4.5-4.5', 'M20 12H9'],
+  'alert-triangle': [
+    'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3',
+    'M12 9v4',
+    'M12 17h.01',
+  ],
+  check: ['M20 6 9 17l-5-5'],
+  'check-circle': [
+    'M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0',
+    'm9 12 2 2 4-4',
+  ],
+  'users': [
+    'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2',
+    'M5 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0',
+    'M22 21v-2a4 4 0 0 0-3-3.87',
+    'M16 3.13a4 4 0 0 1 0 7.75',
+  ],
+  'camera': [
+    'M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z',
+    'M9 13a3 3 0 1 0 6 0a3 3 0 1 0 -6 0',
+  ],
+  'scale': [
+    'm16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z',
+    'm2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z',
+    'M7 21h10',
+    'M12 3v18',
+    'M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2',
+  ],
+  'moon': [
+    'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z',
+  ],
+  'log-out': [
+    'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4',
+    'M16 17L21 12L16 7',
+    'M21 12L9 12',
+  ],
+  'folder': [
+    'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z',
+  ],
+  'tag': [
+    'M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z',
+    'M7.0 7.5a0.5 0.5 0 1 0 1.0 0a0.5 0.5 0 1 0 -1.0 0',
+  ],
+  'landmark': [
+    'M3 22L21 22',
+    'M6 18L6 11',
+    'M10 18L10 11',
+    'M14 18L14 11',
+    'M18 18L18 11',
+    'M12 2L20 7L4 7Z',
+  ],
+  'receipt': [
+    'M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z',
+    'M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8',
+    'M12 17.5v-11',
+  ],
+  'arrow-down-to-line': [
+    'M12 17V3',
+    'm6 11 6 6 6-6',
+    'M19 21H5',
+  ],
+  'history': [
+    'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8',
+    'M3 3v5h5',
+    'M12 7v5l4 2',
+  ],
+  'list-checks': [
+    'm3 17 2 2 4-4',
+    'm3 7 2 2 4-4',
+    'M13 6h8',
+    'M13 12h8',
+    'M13 18h8',
+  ],
+  'key-round': [
+    'M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z',
+    'M16.0 7.5a0.5 0.5 0 1 0 1.0 0a0.5 0.5 0 1 0 -1.0 0',
+  ],
+  'copy': [
+    'M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2Z',
+    'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2',
+  ],
+  'lock': [
+    'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2Z',
+    'M7 11V7a5 5 0 0 1 10 0v4',
+  ],
 };
