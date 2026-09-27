@@ -34,8 +34,9 @@ import { typography } from '../../tokens/typography';
  * media ci-dessous exclut le cas où l'utilisateur a explicitement choisi
  * clair alors que son OS est en sombre).
  */
-const ROOT_COLOR_VARIABLES = `
-  :root {
+/** Palette CLAIRE (déclarations seules) : posée sur `:root` et réutilisée
+ * par `.keya-light-surface` — une seule source, aucune valeur recopiée. */
+const LIGHT_COLOR_DECLARATIONS = `
     --keya-neutral-border: #E4DCCB;
     --keya-neutral-background: #F7F3EA;
     --keya-neutral-surface: #FFFFFF;
@@ -72,6 +73,11 @@ const ROOT_COLOR_VARIABLES = `
     --keya-success-background: #E3F2EA;
     --keya-success-text: #1E5E42;
 
+`;
+
+const ROOT_COLOR_VARIABLES = `
+  :root {
+${LIGHT_COLOR_DECLARATIONS}
     /* Ticket F-053 — ombres portées. Valeur UNIQUE, non redéfinie dans les
        blocs sombres : une ombre représente un éclairage ambiant, quasi
        toujours sombre même sur une surface sombre. Ticket F-073 : teinte
@@ -141,6 +147,15 @@ const ROOT_COLOR_VARIABLES = `
     --keya-accent-soft: #3A3016;
     --keya-success-background: #12352A;
     --keya-success-text: #8FD9B6;
+  }
+
+  /* Surface forcée en CLAIR, quel que soit le thème (ex. : plan d'un lot,
+     document technique à lire sur fond clair même en mode sombre). Les
+     variables redéclarées sur l'élément l'emportent sur celles héritées de
+     :root, pour tout son contenu. */
+  .keya-light-surface {
+${LIGHT_COLOR_DECLARATIONS}
+    color: var(--keya-neutral-text);
   }
 `;
 

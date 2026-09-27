@@ -1,13 +1,15 @@
 import { useState } from 'react';
 
 import {
-  Button, Icon, type IconName, Pill, Select, brandColors, semanticColors, typography,
+  Button, Icon, type IconName, Pill, Select, brandColors, semanticColors, typography, useIsMobile,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { PublicProgram, PublicWorksite } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { FacadeIllustration } from './illustrations/FacadeIllustration';
+import { LotPlanA1 } from './illustrations/LotPlanA1';
+import { TrustTriangle } from './illustrations/TrustTriangle';
 import { paymentBreakdown } from './paymentBreakdown';
 import { CONTAINER_STYLE } from './PublicLayout';
 import type { PublicPath } from './usePublicPath';
@@ -415,6 +417,7 @@ function Simulator({ programs }: { programs: PublicProgram[] }) {
 
 export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void }) {
   const api = useApiClient();
+  const isMobile = useIsMobile();
   const offerState = useApiResource(() => api.getPublicOffer(), []);
   const worksitesState = useApiResource(() => api.getPublicWorksites(), []);
   // Programmes avec des lots disponibles d'abord (aussi le choix par défaut
@@ -434,8 +437,14 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         title="Des logements neufs, un prix figé à la réservation"
         subtitle="Le prix du lot est figé dès votre réservation. Les lots réservés disparaissent de la liste en temps réel."
       >
-        <div style={{ maxWidth: '1040px', marginBottom: '32px' }}>
+        <div
+          style={{
+            display: 'grid', gap: '24px', marginBottom: '32px', alignItems: 'stretch',
+            gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 2fr) minmax(0, 1fr)',
+          }}
+        >
           <FacadeIllustration />
+          <LotPlanA1 />
         </div>
         {offerState.status === 'loading' && <p>Chargement des programmes…</p>}
         {offerState.status === 'error' && <p role="alert">Les programmes sont momentanément indisponibles. Réessayez dans un instant.</p>}
@@ -476,6 +485,9 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         title="Votre argent ne part qu’avec la preuve des travaux"
         subtitle="Les mécanismes ci-dessous sont appliqués par la plateforme elle-même, à chaque paiement — pas seulement promis."
       >
+        <div style={{ marginBottom: '48px' }}>
+          <TrustTriangle />
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '24px' }}>
           {GUARANTEES.map((item) => (
             <article
