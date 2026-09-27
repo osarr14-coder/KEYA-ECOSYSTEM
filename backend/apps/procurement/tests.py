@@ -847,6 +847,9 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
 
         actual = walk(get_resolver())
         expected = {
+            # Ticket B-055 — `/` du backend : redirection vers l'application
+            # web ou JSON statique, aucune donnée.
+            'backend-root',
             'api-root',
             'register', 'login', 'login-refresh', 'me',
             'program-list', 'program-detail', 'program-hierarchy',

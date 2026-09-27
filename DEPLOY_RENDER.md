@@ -56,7 +56,9 @@ d'associer et d'écraser la configuration de ce service existant.
 ## Se connecter une fois déployé
 
 1. Ouvrez `https://keya-ecosystem-web.onrender.com` (ou le nom réel choisi à
-   l'étape 4) — écran de connexion.
+   l'étape 4) — écran de connexion. **Pas** `keya-ecosystem-backend…` : c'est
+   l'API (sa racine redirige vers l'application depuis le ticket B-055 ; avant,
+   elle affichait « Not Found »).
 2. Email : celui saisi à l'étape 5.
 3. Mot de passe : généré automatiquement par Render (`ADMIN_PASSWORD`,
    `generateValue: true`, jamais choisi ni vu par personne d'autre que

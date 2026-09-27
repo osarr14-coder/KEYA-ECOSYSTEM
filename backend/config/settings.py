@@ -205,6 +205,13 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
+
+# Ticket B-055 — la racine du backend (`/`) n'avait aucune page : ouverte par
+# erreur à la place de l'application, elle affichait le 404 brut de Django
+# (retour utilisateur). Si défini, `/` redirige vers l'application web
+# (écran de connexion) ; sinon, une courte réponse JSON indique que c'est
+# l'API.
+WEB_APP_URL = config('WEB_APP_URL', default='')
 # Trouvé en marge du ticket 020 (première vérification RÉELLE en navigateur
 # du header X-Organization-Id, ticket 019 — les tests unitaires mockent
 # `fetch`, donc n'exercent jamais un vrai préflight CORS) : django-cors-

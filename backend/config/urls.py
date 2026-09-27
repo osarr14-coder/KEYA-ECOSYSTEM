@@ -1,9 +1,25 @@
+from django.conf import settings
 from django.contrib import admin
+from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import include, path
 
 from apps.accounts.views import MeView
 
+
+def backend_root(request):
+    """Ticket B-055 — `/` du backend : redirection vers l'application web
+    (`WEB_APP_URL`) plutôt que le 404 brut de Django ; sans configuration,
+    une réponse JSON explicite. Aucune donnée exposée."""
+    if settings.WEB_APP_URL:
+        return HttpResponseRedirect(settings.WEB_APP_URL)
+    return JsonResponse({
+        'service': 'API KEYA ECOSYSTEM',
+        'detail': "Ceci est l'API. Ouvrez l'application web pour vous connecter.",
+    })
+
+
 urlpatterns = [
+    path('', backend_root, name='backend-root'),
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.accounts.urls')),
     path('api/me/', MeView.as_view(), name='me'),

@@ -66,6 +66,10 @@ services:
         fromDatabase: { name: keya-ecosystem-db, property: port }
       - key: CORS_ALLOWED_ORIGINS
         value: https://keya-ecosystem-home.onrender.com,https://keya-ecosystem-build.onrender.com,https://keya-ecosystem-control.onrender.com,https://keya-ecosystem-web.onrender.com
+      # Ticket B-055 — `/` du backend redirige vers l'application (au lieu du
+      # 404 brut de Django quand on ouvre l'URL de l'API par erreur).
+      - key: WEB_APP_URL
+        value: https://keya-ecosystem-web.onrender.com
       # Simplification assumée pour ce premier déploiement (voir
       # DEPLOY_RENDER.md, section "Limites connues") : évite un service
       # Redis + worker Celery séparés (coût, complexité) pour un besoin
