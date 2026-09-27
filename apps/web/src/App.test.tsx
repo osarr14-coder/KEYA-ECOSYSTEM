@@ -513,3 +513,62 @@ describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
     expect(window.location.pathname).toBe('/tasks');
   });
 });
+
+describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', () => {
+  const ME_ADV: Me = {
+    id: 'adv-1', email: 'adv@example.com', full_name: 'ADV',
+    memberships: [
+      { organization_id: 'org-keyimmo', organization_name: 'KEYIMMO', role_code: 'gestionnaire_adv', role_label: 'Gestionnaire ADV' },
+    ],
+  };
+
+  function renderAsAdv(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
+    localStorage.setItem('keya_access_token', 'stored-adv-token');
+    const getAdminTasks = vi.fn().mockResolvedValue([]);
+    const api = createMockApiClient({ getMe: vi.fn().mockResolvedValue(ME_ADV), getAdminTasks, ...overrides });
+    render(withApiClient(api, <App />));
+    return { api, getAdminTasks };
+  }
+
+  it('entre dans apps/web et ne voit que Lots, Programmes et Demandes de programme', async () => {
+    renderAsAdv();
+
+    const tabBar = await screen.findByRole('navigation', { name: 'Sections back-office' });
+    const tabLabels = Array.from(tabBar.querySelectorAll('button')).map((button) => button.textContent);
+    expect(tabLabels).toEqual(['Lots — prix & statut', 'Programmes', 'Demandes de programme']);
+    expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
+  });
+
+  it('arrive sur « Lots — prix & statut », jamais sur le Back-office (admin seul)', async () => {
+    renderAsAdv();
+
+    expect(await screen.findByRole('heading', { name: 'Lots — prix & statut' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Rechercher un utilisateur par email')).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe('/lots');
+  });
+
+  it('un lien direct vers un onglet admin (/tarifs) retombe sur son premier onglet', async () => {
+    window.history.replaceState(null, '', '/tarifs');
+    renderAsAdv();
+
+    expect(await screen.findByRole('heading', { name: 'Lots — prix & statut' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/lots');
+  });
+
+  it('cloche masquée et boîte de tâches admin jamais appelée (403 pour l\'ADV)', async () => {
+    const { getAdminTasks } = renderAsAdv();
+
+    await screen.findByTestId('app-shell');
+    expect(screen.queryByRole('link', { name: /Task Inbox/ })).not.toBeInTheDocument();
+    expect(getAdminTasks).not.toHaveBeenCalled();
+  });
+
+  it('une connexion ADV redirige vers apps/web', async () => {
+    const login = vi.fn().mockResolvedValue({ access: 'tok', refresh: 'ref' });
+    const { redirect } = renderApp({ login, getMe: vi.fn().mockResolvedValue(ME_ADV) });
+
+    await fillAndSubmit();
+
+    await waitFor(() => expect(redirect).toHaveBeenCalledWith(expect.stringContaining('localhost:5176')));
+  });
+});

@@ -150,7 +150,30 @@ export interface Lot {
   asset: string;
   assigned_organization: string | null;
   surface: string | null;
+  commercial_status: LotCommercialStatus;
+  sale_price: string | null;
   created_at: string;
+}
+
+/** Miroir de `apps.programs.models.LotCommercialStatus` (ticket B-042) —
+ * disponibilité commerciale, distincte de l'avancement de chantier
+ * (`TrustLevel`), jamais affichée avec `StatusBadge`. */
+export type LotCommercialStatus = 'disponible' | 'reserve' | 'vendu';
+
+/** Miroir de `apps.programs.serializers.CommercialLotSearchResultSerializer`
+ * (`GET /api/programs/admin/lots/?q=`, ticket F-064) — contrairement à
+ * `LotSearchResult` (recherche des devis), inclut les lots dont le devis est
+ * verrouillé, et porte l'état commercial courant. `sale_price`/`surface`
+ * restent des chaînes (format `DecimalField` DRF), jamais converties. */
+export interface CommercialLot {
+  id: string;
+  name: string;
+  surface: string | null;
+  commercial_status: LotCommercialStatus;
+  sale_price: string | null;
+  organization: { id: string; name: string };
+  program: { id: string; name: string };
+  asset: { id: string; name: string };
 }
 
 /** Miroir de `apps.programs.serializers.ProgramRequestSerializer`

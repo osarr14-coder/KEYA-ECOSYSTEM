@@ -1440,7 +1440,6 @@ class TestGestionnaireADVRole:
             ('post', reverse('backoffice-mission-create')),
             ('get', reverse('backoffice-litige-list')),
             ('get', reverse('procurement-admin-lot-search') + '?q=a'),
-            ('get', reverse('procurement-admin-organization-search') + '?q=a'),
             ('get', reverse('task-admin-inbox')),
         ]
         for method, url in calls:
@@ -1516,3 +1515,57 @@ class TestGestionnaireADVRole:
             {'status': 'acceptee'}, format='json',
         )
         assert decision.status_code == 200
+
+
+@pytest.mark.django_db
+class TestGestionnaireADVBackofficeScreens:
+    """Tickets F-064/F-065 — ce dont les écrans d'apps/web ouverts à l'ADV
+    ont besoin côté API : recherche d'organisation (assistant Programmes)
+    et recherche commerciale des lots (écran « Lots — prix & statut »)."""
+
+    def test_gestionnaire_adv_can_search_organizations_for_the_program_wizard(self):
+        Organization.objects.create(
+            name='Org Recherche ADV Cible', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        adv_client, _adv_org, _adv_user = _register_gestionnaire_adv(
+            'adv-org-search@example.com', 'Org ADV Org Search',
+        )
+
+        response = adv_client.get(reverse('procurement-admin-organization-search'), {'q': 'Recherche ADV'})
+
+        assert response.status_code == 200
+        assert [row['name'] for row in response.data] == ['Org Recherche ADV Cible']
+        assert set(response.data[0].keys()) == {'id', 'name'}
+
+    def test_gestionnaire_adv_finds_a_lot_of_another_organization_with_its_commercial_state(self):
+        target_organization = Organization.objects.create(
+            name='Org Cible ADV Commerciale', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        admin_client = _any_admin_client()
+        program = _create_program(admin_client, target_organization.id, 'Programme Commercial')
+        asset = _create_asset(admin_client, target_organization.id, program['id'], 'Bien Commercial')
+        lot = _create_lot(
+            admin_client, target_organization.id, asset['id'], 'Lot Commercial Unique', surface=Decimal('70.00'),
+        )
+        admin_client.patch(
+            reverse('lot-detail', args=[lot['id']]) + f'?organization_id={target_organization.id}',
+            {'sale_price': '52000000.00', 'commercial_status': 'reserve'}, format='json',
+        )
+        adv_client, _adv_org, _adv_user = _register_gestionnaire_adv(
+            'adv-commercial-search@example.com', 'Org ADV Commercial Search',
+        )
+
+        response = adv_client.get(reverse('program-commercial-lot-search'), {'q': 'Commercial Unique'})
+
+        assert response.status_code == 200
+        assert len(response.data) == 1
+        row = response.data[0]
+        assert row['organization']['id'] == str(target_organization.id)
+        assert row['surface'] == '70.00'
+        assert row['commercial_status'] == 'reserve'
+        assert row['sale_price'] == '52000000.00'
+
+    def test_an_ordinary_member_cannot_search_lots_commercially(self):
+        member_client = _register_and_authenticate('adv-search-member@example.com', 'Org ADV Search Member')
+        response = member_client.get(reverse('program-commercial-lot-search'), {'q': 'Lot'})
+        assert response.status_code == 403

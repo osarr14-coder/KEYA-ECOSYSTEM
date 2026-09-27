@@ -19,6 +19,15 @@ export function deriveAllRoleCodes(me: Me): string[] {
   return Array.from(new Set(me.memberships.map((membership) => membership.role_code)));
 }
 
-export function hasAdminKeyimmoAccess(me: Me): boolean {
-  return deriveAllRoleCodes(me).includes('admin_keyimmo');
+export const ADMIN_KEYIMMO_ROLE = 'admin_keyimmo';
+export const GESTIONNAIRE_ADV_ROLE = 'gestionnaire_adv';
+
+/** Ticket F-065 — l'ADV fait partie de l'équipe KEYIMMO (décision
+ * utilisateur, ticket B-047) : il entre dans `apps/web`, mais n'y voit que
+ * ses onglets (`App.tsx`, `TAB_DEFINITIONS[].roles`). Même sémantique
+ * « rôle dans N'IMPORTE LAQUELLE des memberships » que ci-dessus, et que
+ * `IsAdminKeyimmoOrGestionnaireADV` côté backend. */
+export function hasBackofficeAccess(me: Me): boolean {
+  const roles = deriveAllRoleCodes(me);
+  return roles.includes(ADMIN_KEYIMMO_ROLE) || roles.includes(GESTIONNAIRE_ADV_ROLE);
 }

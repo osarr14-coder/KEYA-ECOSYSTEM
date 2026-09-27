@@ -115,6 +115,12 @@ describe('AppShell — topbar (recherche, sélecteurs, Task Inbox, avatar)', () 
     expect(screen.getByTestId('task-inbox-count')).toHaveTextContent('7');
   });
 
+  it('ticket F-065 : showTaskInbox={false} masque entièrement la cloche', () => {
+    render(<AppShell density="dense" modules={MODULES} userRoles={[]} showTaskInbox={false} />);
+    expect(screen.queryByRole('link', { name: /Task Inbox/ })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('task-inbox-count')).not.toBeInTheDocument();
+  });
+
   it(
     'ticket F-061 : sans onTaskInboxClick, la cloche garde son href /tasks (rétrocompatible)',
     () => {

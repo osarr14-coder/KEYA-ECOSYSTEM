@@ -10,7 +10,14 @@ const ORGANIZATION: OrganizationSearchResult = { id: 'org-1', name: 'Promoteur B
 const PROGRAM: Program = { id: 'program-1', name: 'Résidence Test', created_at: '2026-08-23T10:00:00Z' };
 const ASSET: Asset = { id: 'asset-1', name: 'Bâtiment A', program: PROGRAM.id, created_at: '2026-08-23T10:05:00Z' };
 const LOT: Lot = {
-  id: 'lot-1', name: 'Lot 101', asset: ASSET.id, assigned_organization: null, surface: '45.50', created_at: '2026-08-23T10:10:00Z',
+  id: 'lot-1',
+  name: 'Lot 101',
+  asset: ASSET.id,
+  assigned_organization: null,
+  surface: '45.50',
+  commercial_status: 'disponible',
+  sale_price: null,
+  created_at: '2026-08-23T10:10:00Z',
 };
 
 function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}) {

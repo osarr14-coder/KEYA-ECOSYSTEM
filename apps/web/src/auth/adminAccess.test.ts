@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Me } from '../api/types';
-import { deriveAllRoleCodes, hasAdminKeyimmoAccess } from './adminAccess';
+import { deriveAllRoleCodes, hasBackofficeAccess } from './adminAccess';
 
 function makeMe(roleCodes: string[]): Me {
   return {
@@ -34,27 +34,35 @@ describe('deriveAllRoleCodes — ticket 021', () => {
 });
 
 describe(
-  'hasAdminKeyimmoAccess — capacité TRANSVERSE, jamais limitée à la première membership '
+  'hasBackofficeAccess — capacité TRANSVERSE, jamais limitée à la première membership '
   + '(même raisonnement que IsAdminKeyimmo côté backend, ticket 011)',
   () => {
     it('accès accordé si admin_keyimmo est la SEULE membership', () => {
-      expect(hasAdminKeyimmoAccess(makeMe(['admin_keyimmo']))).toBe(true);
+      expect(hasBackofficeAccess(makeMe(['admin_keyimmo']))).toBe(true);
     });
 
     it(
       'accès accordé même si admin_keyimmo n\'est PAS la première membership — '
       + 'contrairement à resolveRedirectApp, qui ne regarde que la première',
       () => {
-        expect(hasAdminKeyimmoAccess(makeMe(['constructeur', 'admin_keyimmo']))).toBe(true);
+        expect(hasBackofficeAccess(makeMe(['constructeur', 'admin_keyimmo']))).toBe(true);
       },
     );
 
-    it('accès refusé sans aucune membership admin_keyimmo', () => {
-      expect(hasAdminKeyimmoAccess(makeMe(['constructeur', 'sponsor']))).toBe(false);
+    it('ticket F-065 — accès accordé à gestionnaire_adv seul (équipe KEYIMMO)', () => {
+      expect(hasBackofficeAccess(makeMe(['gestionnaire_adv']))).toBe(true);
+    });
+
+    it('ticket F-065 — gestionnaire_adv hors première membership : accès accordé aussi', () => {
+      expect(hasBackofficeAccess(makeMe(['sponsor', 'gestionnaire_adv']))).toBe(true);
+    });
+
+    it('accès refusé sans aucune membership admin_keyimmo ni gestionnaire_adv', () => {
+      expect(hasBackofficeAccess(makeMe(['constructeur', 'sponsor']))).toBe(false);
     });
 
     it('accès refusé sans aucune membership du tout', () => {
-      expect(hasAdminKeyimmoAccess(makeMe([]))).toBe(false);
+      expect(hasBackofficeAccess(makeMe([]))).toBe(false);
     });
   },
 );

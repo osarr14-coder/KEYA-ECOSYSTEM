@@ -102,6 +102,12 @@ export interface AppShellProps {
    * mécanisme de routage recodé ici).
    */
   onTaskInboxClick?: () => void;
+  /** Ticket F-065 — `false` masque la cloche pour un utilisateur qui n'a
+   * aucune boîte de tâches dans cette app (ex. `gestionnaire_adv` dans
+   * `apps/web`, dont la boîte transverse est réservée à `admin_keyimmo`) :
+   * un compteur toujours à 0 menant vers un onglet interdit serait trompeur.
+   * Défaut `true` : aucune app existante n'est modifiée. */
+  showTaskInbox?: boolean;
   user?: AppShellUser;
   organizationOptions?: AppShellOrganizationOption[];
   activeOrganizationId?: string;
@@ -140,6 +146,7 @@ export function AppShell({
   breadcrumbs = [],
   taskInboxCount = 0,
   onTaskInboxClick,
+  showTaskInbox = true,
   user,
   organizationOptions = [],
   activeOrganizationId,
@@ -433,36 +440,41 @@ export function AppShell({
           </select>
         )}
 
-        <a
-          href="/tasks"
-          onClick={onTaskInboxClick && ((event) => {
-            event.preventDefault();
-            onTaskInboxClick();
-          })}
-          aria-label={`Task Inbox — ${taskInboxCount} en attente`}
-          style={{
-            marginLeft: 'auto',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
-            // Ticket F-055 — chip discret (fond + rayon), jamais posé
-            // directement sur le fond de topbar déjà uni (`neutral.surface`)
-            // : seul repère de clic sur ce bouton avant ce ticket, en plus
-            // de l'icône elle-même. Fond/couleur SEULEMENT hors `brand`
-            // (topbar HOME dégradé navy) : sur fond navy, un chip clair et
-            // du texte gris `textMuted` deviendraient illisibles — l'en-tête
-            // `brand` garde son héritage `color: '#FFFFFF'` existant.
-            padding: '6px 8px',
-            borderRadius: '8px',
-            background: brand ? 'transparent' : semanticColors.neutral.background,
-            color: brand ? undefined : semanticColors.neutral.textMuted,
-          }}
-        >
-          {/* Ticket F-045 — remplace l'emoji 🔔 (seul emoji du projet, jamais
-              une icône) par l'icône trait maison, même famille que le reste. */}
-          <Icon name="bell" size={18} />
-          <span data-testid="task-inbox-count">{taskInboxCount}</span>
-        </a>
+        {/* Sans cloche, un espaceur garde le reste de la barre calé à droite
+            (c'est la cloche qui porte `marginLeft: 'auto'`). */}
+        {!showTaskInbox && <span style={{ marginLeft: 'auto' }} />}
+        {showTaskInbox && (
+          <a
+            href="/tasks"
+            onClick={onTaskInboxClick && ((event) => {
+              event.preventDefault();
+              onTaskInboxClick();
+            })}
+            aria-label={`Task Inbox — ${taskInboxCount} en attente`}
+            style={{
+              marginLeft: 'auto',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              // Ticket F-055 — chip discret (fond + rayon), jamais posé
+              // directement sur le fond de topbar déjà uni (`neutral.surface`)
+              // : seul repère de clic sur ce bouton avant ce ticket, en plus
+              // de l'icône elle-même. Fond/couleur SEULEMENT hors `brand`
+              // (topbar HOME dégradé navy) : sur fond navy, un chip clair et
+              // du texte gris `textMuted` deviendraient illisibles — l'en-tête
+              // `brand` garde son héritage `color: '#FFFFFF'` existant.
+              padding: '6px 8px',
+              borderRadius: '8px',
+              background: brand ? 'transparent' : semanticColors.neutral.background,
+              color: brand ? undefined : semanticColors.neutral.textMuted,
+            }}
+          >
+            {/* Ticket F-045 — remplace l'emoji 🔔 (seul emoji du projet, jamais
+                une icône) par l'icône trait maison, même famille que le reste. */}
+            <Icon name="bell" size={18} />
+            <span data-testid="task-inbox-count">{taskInboxCount}</span>
+          </a>
+        )}
 
         {user && (
           <span aria-label={`Connecté comme ${user.name}`}>

@@ -9,12 +9,14 @@ from apps.backoffice.permissions import IsAdminKeyimmo, IsAdminKeyimmoOrGestionn
 from apps.core.viewsets import OrganizationScopedMixin
 from apps.messaging.mixins import MessageThreadMixin
 from apps.organizations.models import Organization
+from apps.procurement.services import search_lots_for_commercial_as_admin
 
 from . import services
 from .models import Asset, Lot, Program, ProgramRequest
 from .serializers import (
     AssetAdminCreateSerializer,
     AssetSerializer,
+    CommercialLotSearchResultSerializer,
     LotAdminCreateSerializer,
     LotRepartitionSerializer,
     LotSerializer,
@@ -300,6 +302,26 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
     # apps/messaging/mixins.py. Aucune surcharge nécessaire ici :
     # `get_object()` du ViewSet ci-dessus EST le filtre de permission
     # complet pour un Lot (organisation active).
+
+
+class CommercialLotSearchView(APIView):
+    """`GET /api/programs/admin/lots/?q=<nom>` — ticket F-064. Lots de
+    toutes les organisations avec leur état commercial, pour l'écran
+    « Lots — prix & statut » (apps/web). Même population que la
+    modification d'un lot (`LotViewSet.update`) : admin_keyimmo et
+    gestionnaire_adv. Voir `apps.procurement.services.
+    search_lots_for_commercial_as_admin` pour le mécanisme (bascule RLS
+    par organisation) et son coût.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
+
+    def get(self, request):
+        lots = search_lots_for_commercial_as_admin(
+            admin_organization_id=request.organization.id if request.organization else None,
+            query=request.query_params.get('q', '').strip(),
+        )
+        return Response(CommercialLotSearchResultSerializer(lots, many=True).data)
 
 
 class ProgramCostCreateView(APIView):

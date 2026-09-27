@@ -65,6 +65,34 @@ class AssetAdminCreateSerializer(serializers.Serializer):
     location = serializers.CharField(required=False, allow_blank=True, default='')
 
 
+class CommercialLotSearchResultSerializer(serializers.Serializer):
+    """Réponse de `GET /api/programs/admin/lots/?q=` — ticket F-064. Le lot
+    avec son état commercial et de quoi l'identifier sans ambiguïté
+    (organisation/programme/bien) ; `organization.id` est aussi l'
+    `organization_id` qu'attend `PATCH /api/lots/{id}/`. Tout est déjà chargé
+    par le `select_related` de la recherche : aucune requête (donc aucun
+    contexte RLS) nécessaire ici.
+    """
+
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    surface = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
+    commercial_status = serializers.CharField()
+    sale_price = serializers.DecimalField(max_digits=16, decimal_places=2, allow_null=True)
+    organization = serializers.SerializerMethodField()
+    program = serializers.SerializerMethodField()
+    asset = serializers.SerializerMethodField()
+
+    def get_organization(self, lot):
+        return {'id': str(lot.organization_id), 'name': lot.organization.name}
+
+    def get_program(self, lot):
+        return {'id': str(lot.asset.program_id), 'name': lot.asset.program.name}
+
+    def get_asset(self, lot):
+        return {'id': str(lot.asset_id), 'name': lot.asset.name}
+
+
 class LotSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lot

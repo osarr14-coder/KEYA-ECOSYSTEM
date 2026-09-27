@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, AppShell, BRAND_GRADIENT, Button, Field, Input, TabBar, brandColors, typography,
@@ -8,7 +8,9 @@ import {
 import { useApiClient } from './api/ApiClientContext';
 import { ApiError } from './api/client';
 import { useApiResource } from './api/useApiResource';
-import { deriveAllRoleCodes, hasAdminKeyimmoAccess } from './auth/adminAccess';
+import {
+  ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE, deriveAllRoleCodes, hasBackofficeAccess,
+} from './auth/adminAccess';
 import {
   buildRedirectUrl, isSameOriginRedirect, resolveAppOrigins, resolveRedirectApp,
 } from './auth/redirectTarget';
@@ -17,12 +19,14 @@ import { useUrlSyncedTab } from './navigation/useUrlSyncedTab';
 import { BackofficeView } from './views/BackofficeView';
 import { DevisView } from './views/DevisView';
 import { LegalPaymentTiersView } from './views/LegalPaymentTiersView';
+import { LotsCommercialView } from './views/LotsCommercialView';
 import { PricingView } from './views/PricingView';
 import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
 import { TasksView } from './views/TasksView';
 
-type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'programs' | 'program-requests' | 'tasks';
+type AuthenticatedTabId =
+  'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'programs' | 'program-requests' | 'tasks';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -45,46 +49,67 @@ type AuthenticatedTabId = 'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | '
  * ailleurs) — Back-office et Programmes restent des entrées de premier
  * niveau, chacune un domaine distinct. `TABS`/`TAB_ROUTES` ci-dessous
  * n'en ont pas besoin (TabBar reste plate, jamais concernée par ce champ).
+ *
+ * Ticket F-065 — `roles` : l'ADV (équipe KEYIMMO) n'y voit que la
+ * préparation et la commercialisation des programmes (Programmes, Demandes,
+ * Lots). Même périmètre que `IsAdminKeyimmoOrGestionnaireADV` côté backend,
+ * qui reste la vraie garde : ce filtre n'évite que des écrans en 403.
  */
-const TAB_DEFINITIONS: { id: AuthenticatedTabId; label: string; path: string; icon: IconName; group?: string }[] = [
-  { id: 'backoffice', label: 'Back-office', path: '/', icon: 'shield-check' },
+const ADMIN_ONLY = [ADMIN_KEYIMMO_ROLE];
+const ADMIN_AND_ADV = [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE];
+
+const TAB_DEFINITIONS: {
+  id: AuthenticatedTabId; label: string; path: string; icon: IconName; group?: string; roles: string[];
+}[] = [
   {
-    id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Ventes & tarification',
+    id: 'backoffice', label: 'Back-office', path: '/', icon: 'shield-check', roles: ADMIN_ONLY,
   },
   {
-    id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet', group: 'Ventes & tarification',
+    id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Ventes & tarification', roles: ADMIN_ONLY,
   },
   {
-    id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale', group: 'Ventes & tarification',
+    id: 'pricing', label: 'Tarifs', path: '/tarifs', icon: 'wallet', group: 'Ventes & tarification', roles: ADMIN_ONLY,
   },
-  { id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building' },
+  {
+    id: 'legal-tiers', label: 'Paliers légaux', path: '/paliers-legaux', icon: 'scale', group: 'Ventes & tarification', roles: ADMIN_ONLY,
+  },
+  // Ticket F-064 — prix et statut commercial des lots existants.
+  {
+    id: 'lots',
+    label: 'Lots — prix & statut',
+    path: '/lots',
+    icon: 'wallet',
+    group: 'Ventes & tarification',
+    roles: ADMIN_AND_ADV,
+  },
+  {
+    id: 'programs', label: 'Programmes', path: '/programmes', icon: 'building', roles: ADMIN_AND_ADV,
+  },
   // Ticket F-058 — pendant admin de ProgramRequestView.tsx (apps/home,
   // ticket F-057). Entrée de premier niveau, comme "Programmes" (pas
   // dans le groupe "Ventes & tarification" : une demande sur mesure
   // n'est ni un devis, ni un tarif, ni un palier légal).
   {
-    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check',
+    id: 'program-requests', label: 'Demandes de programme', path: '/demandes-programme', icon: 'clipboard-check', roles: ADMIN_AND_ADV,
   },
   // Ticket F-061 — destination réelle de la cloche AppShell (jusqu'ici un
   // lien mort `href="/tasks"`, ticket F-045). Entrée de premier niveau,
   // comme "Programmes"/"Demandes de programme" : une tâche n'appartient à
   // aucun des groupes existants.
-  { id: 'tasks', label: 'Tâches', path: '/tasks', icon: 'bell' },
+  {
+    id: 'tasks', label: 'Tâches', path: '/tasks', icon: 'bell', roles: ADMIN_ONLY,
+  },
 ];
 
 const MODULES: AppModule[] = TAB_DEFINITIONS.map(({
-  id, label, path, icon, group,
+  id, label, path, icon, group, roles,
 }) => ({
-  id, label, href: path, requiredRoles: ['admin_keyimmo'], icon, group,
+  id, label, href: path, requiredRoles: roles, icon, group,
 }));
 
-const TABS: { id: AuthenticatedTabId; label: string; icon: IconName }[] = TAB_DEFINITIONS.map(
-  ({ id, label, icon }) => ({ id, label, icon }),
-);
-
-const TAB_ROUTES: TabRoute<AuthenticatedTabId>[] = TAB_DEFINITIONS.map(
-  ({ id, path }) => ({ id, path }),
-);
+function visibleTabDefinitions(userRoles: string[]) {
+  return TAB_DEFINITIONS.filter((tab) => tab.roles.some((role) => userRoles.includes(role)));
+}
 
 export interface AppProps {
   redirect?: (url: string) => void;
@@ -170,11 +195,11 @@ function AuthenticatedApp() {
   // regarde TOUTES les memberships, pas seulement la première. S'applique
   // aussi à la maquette Devis (ticket 025) — même garde, jamais un second
   // mécanisme d'accès parallèle.
-  if (!hasAdminKeyimmoAccess(me)) {
+  if (!hasBackofficeAccess(me)) {
     return (
       <main style={{ padding: '24px' }}>
         <AlertBanner title="Accès refusé">
-          Cet écran est réservé aux membres du rôle admin_keyimmo.
+          Cet écran est réservé à l&apos;équipe KEYIMMO (rôles admin_keyimmo et gestionnaire_adv).
         </AlertBanner>
       </main>
     );
@@ -196,13 +221,25 @@ function AuthenticatedApp() {
  */
 function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   const api = useApiClient();
-  const [activeTab, setActiveTab] = useUrlSyncedTab(TAB_ROUTES, 'backoffice');
+  const isAdmin = userRoles.includes(ADMIN_KEYIMMO_ROLE);
+  // Ticket F-065 — onglets du rôle courant (les rôles ne changent pas en
+  // cours de session). Premier onglet visible = repli : un ADV qui arrive
+  // sur `/` (Back-office, admin seul) ou un lien vers un onglet admin est
+  // ramené sur « Lots — prix & statut ».
+  const visibleTabs = useMemo(() => visibleTabDefinitions(userRoles), [userRoles.join(',')]);
+  const tabs = visibleTabs.map(({ id, label, icon }) => ({ id, label, icon }));
+  const tabRoutes: TabRoute<AuthenticatedTabId>[] = visibleTabs.map(({ id, path }) => ({ id, path }));
+  const [activeTab, setActiveTab] = useUrlSyncedTab(tabRoutes, visibleTabs[0].id);
   // Ticket F-060/F-063 — câble le compteur de la cloche AppShell.
-  // `getAdminTasks` (ticket B-044), pas `getMyTasks` : cette app est
-  // réservée à `admin_keyimmo`, dont les tâches `devis_ajustement_refuse`/
-  // `lot_ledger_margin_negative` ont l'organisation CIBLE, jamais celle
-  // de KEIMMO — invisibles via l'endpoint mono-organisation.
-  const taskInboxState = useApiResource(() => api.getAdminTasks({ status: 'pending' }), []);
+  // `getAdminTasks` (ticket B-044), pas `getMyTasks` : les tâches
+  // `devis_ajustement_refuse`/`lot_ledger_margin_negative` ont
+  // l'organisation CIBLE, jamais celle de KEIMMO — invisibles via
+  // l'endpoint mono-organisation. Ticket F-065 : boîte réservée à
+  // admin_keyimmo (403 pour l'ADV) — jamais appelée, cloche masquée.
+  const taskInboxState = useApiResource(
+    () => (isAdmin ? api.getAdminTasks({ status: 'pending' }) : Promise.resolve([])),
+    [isAdmin],
+  );
 
   return (
     <AppShell
@@ -220,7 +257,8 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       modules={MODULES}
       userRoles={userRoles}
       activeModuleId={activeTab}
-      breadcrumbs={[{ label: TABS.find((tab) => tab.id === activeTab)!.label }]}
+      breadcrumbs={[{ label: tabs.find((tab) => tab.id === activeTab)!.label }]}
+      showTaskInbox={isAdmin}
       taskInboxCount={taskInboxState.status === 'success' ? taskInboxState.data.length : 0}
       // Ticket F-061 — bascule vers le nouvel onglet « Tâches » (même
       // endpoint que le compteur ci-dessus), URL synchronisée comme
@@ -228,12 +266,13 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       // navigation `<a href>` classique, qui aurait rechargé toute la page.
       onTaskInboxClick={() => setActiveTab('tasks')}
     >
-      <TabBar tabs={TABS} activeTabId={activeTab} onChange={(id) => setActiveTab(id as AuthenticatedTabId)} aria-label="Sections back-office" />
+      <TabBar tabs={tabs} activeTabId={activeTab} onChange={(id) => setActiveTab(id as AuthenticatedTabId)} aria-label="Sections back-office" />
 
       {activeTab === 'backoffice' && <BackofficeView />}
       {activeTab === 'devis' && <DevisView />}
       {activeTab === 'pricing' && <PricingView />}
       {activeTab === 'legal-tiers' && <LegalPaymentTiersView />}
+      {activeTab === 'lots' && <LotsCommercialView canEditPrice={isAdmin} />}
       {activeTab === 'programs' && <ProgramsView />}
       {activeTab === 'program-requests' && <ProgramRequestsView />}
       {activeTab === 'tasks' && <TasksView />}

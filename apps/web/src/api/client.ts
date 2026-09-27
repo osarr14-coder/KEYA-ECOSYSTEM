@@ -1,7 +1,7 @@
 import type {
-  Asset, BackofficeUserDetail, BackofficeUserSummary, CountryPackSummary,
+  Asset, BackofficeUserDetail, BackofficeUserSummary, CommercialLot, CountryPackSummary,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
-  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot,
+  LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
   OrganizationSearchResult, PricingCanal, PricingConfig, Program, ProgramRequest, Task,
 } from './types';
@@ -427,6 +427,29 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
      */
     createLot: (payload: { organization: string; asset: string; name: string; surface?: string }) =>
       request<Lot>('/api/lots/', { method: 'POST', json: payload }),
+
+    /**
+     * `GET /api/programs/admin/lots/?q=...` (ticket F-064) — lots de toutes
+     * les organisations avec leur état commercial. Distincte de `searchLots`
+     * (devis), qui exclut les lots au devis verrouillé.
+     */
+    searchLotsForCommercial: (query: string) =>
+      request<CommercialLot[]>(`/api/programs/admin/lots/${toQueryString({ q: query })}`),
+
+    /**
+     * `PATCH /api/lots/{id}/?organization_id=<id>` (tickets B-042/B-047) —
+     * n'envoyer que les champs modifiés : un champ absent reste inchangé
+     * côté backend. `sale_price` est réservé à `admin_keyimmo` (403 sinon,
+     * requête refusée en bloc).
+     */
+    updateLotCommercial: (
+      lotId: string,
+      organizationId: string,
+      payload: { commercial_status?: LotCommercialStatus; sale_price?: string },
+    ) => request<Lot>(
+      `/api/lots/${lotId}/${toQueryString({ organization_id: organizationId })}`,
+      { method: 'PATCH', json: payload },
+    ),
 
     /**
      * `GET /api/programs/requests/` (ticket B-042/F-058) — TOUTES les

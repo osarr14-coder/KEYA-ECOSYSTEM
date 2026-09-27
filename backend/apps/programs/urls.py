@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AssetViewSet,
+    CommercialLotSearchView,
     LotViewSet,
     MyProgramRequestsView,
     ProgramCostCreateView,
@@ -46,6 +47,11 @@ urlpatterns = [
     path(
         'programs/requests/<uuid:request_id>/decide/',
         ProgramRequestDecisionView.as_view(), name='program-request-decide',
+    ),
+    # Ticket F-064 — même précaution que ci-dessus : listée avant le router.
+    path(
+        'programs/admin/lots/',
+        CommercialLotSearchView.as_view(), name='program-commercial-lot-search',
     ),
 ] + router.urls + [
     path(

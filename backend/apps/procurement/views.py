@@ -4,7 +4,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.backoffice.permissions import IsAdminKeyimmo
+from apps.backoffice.permissions import IsAdminKeyimmo, IsAdminKeyimmoOrGestionnaireADV
 from apps.evidence.permissions import IsConstructeur
 from apps.programs import services as programs_services
 
@@ -395,9 +395,15 @@ class AdminOrganizationSearchView(APIView):
     pour résoudre `candidate_organization` avant
     `POST /api/procurement/devis/` — voir
     `apps.procurement.services.search_organizations_as_admin`.
+
+    Ticket F-065 — ouverte aussi à `gestionnaire_adv` : l'assistant de
+    création de programme (`apps/web`, `ProgramsView.tsx`) en a besoin pour
+    désigner l'organisation cible, action déjà permise à l'ADV
+    (B-046). Ne renvoie que `id`/`name` (table sans RLS, aucune donnée
+    sensible) — le reste du procurement reste `admin_keyimmo` strict.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
 
     def get(self, request):
         query = request.query_params.get('q', '').strip()

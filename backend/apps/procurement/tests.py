@@ -948,6 +948,11 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # ici (`description` est un texte libre du demandeur lui-même,
             # jamais une donnée KEYIMMO sensible comme `Devis.amount`).
             'program-request-list-create', 'program-request-mine', 'program-request-decide',
+            # Ticket F-064 — ajout conscient : recherche de lots avec leur
+            # état commercial (statut, prix de vente), toutes organisations,
+            # réservée à admin_keyimmo/gestionnaire_adv — jamais accessible
+            # au rôle constructeur/sponsor. Aucun montant de devis exposé.
+            'program-commercial-lot-search',
         }
         assert actual == expected
 
@@ -2765,3 +2770,51 @@ class TestAdminLotEligibleForLedgerSearch:
         )
         assert response.status_code == 200
         assert len(response.data) == services.MAX_SEARCH_RESULTS
+
+
+@pytest.mark.django_db
+class TestCommercialLotSearch:
+    """Ticket F-064 — `GET /api/programs/admin/lots/?q=` réutilise le
+    mécanisme partagé de recherche (`_search_lots_by_name_as_admin`), SANS
+    le critère propre aux devis : un lot dont le devis est verrouillé reste
+    à commercialiser et doit rester trouvable."""
+
+    def test_a_lot_with_a_locked_devis_is_found_with_its_commercial_state(self):
+        admin_client, admin_org, admin_user, sponsor_org, lot, candidate_a, _candidate_b = (
+            _setup_lot_up_for_bid('commercial-locked')
+        )
+        _candidate_a_client, candidate_a_org = candidate_a
+        _create_and_lock_devis(
+            admin_user=admin_user, admin_org=admin_org, sponsor_org=sponsor_org,
+            lot=lot, candidate_org=candidate_a_org, amount=AMOUNT_A,
+        )
+
+        devis_search = admin_client.get(reverse('procurement-admin-lot-search'), {'q': 'mis en concurrence'})
+        commercial_search = admin_client.get(
+            reverse('program-commercial-lot-search'), {'q': 'mis en concurrence'},
+        )
+
+        assert all(row['id'] != str(lot.id) for row in devis_search.data)
+        assert commercial_search.status_code == 200
+        row = next(row for row in commercial_search.data if row['id'] == str(lot.id))
+        assert row['organization'] == {'id': str(sponsor_org.id), 'name': sponsor_org.name}
+        assert row['program']['name'] == 'Programme'
+        assert row['asset']['name'] == 'Bien'
+        assert row['commercial_status'] == 'disponible'
+        assert row['sale_price'] is None
+        # Aucun montant de devis dans cette réponse.
+        assert str(AMOUNT_A) not in commercial_search.content.decode()
+
+    def test_an_empty_query_returns_nothing_never_a_full_dump(self):
+        admin_client, _admin_org, _admin_user, _sponsor_org, _lot, _a, _b = _setup_lot_up_for_bid('commercial-empty')
+        response = admin_client.get(reverse('program-commercial-lot-search'))
+        assert response.status_code == 200
+        assert response.data == []
+
+    def test_a_constructeur_gets_403(self):
+        _admin_client, _admin_org, _admin_user, _sponsor_org, _lot, candidate_a, _b = (
+            _setup_lot_up_for_bid('commercial-forbidden')
+        )
+        candidate_a_client, _candidate_a_org = candidate_a
+        response = candidate_a_client.get(reverse('program-commercial-lot-search'), {'q': 'Lot'})
+        assert response.status_code == 403

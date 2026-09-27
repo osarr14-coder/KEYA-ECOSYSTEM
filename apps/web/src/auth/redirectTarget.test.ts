@@ -38,6 +38,10 @@ describe('resolveRedirectApp — mapping rôle → app (ticket 020)', () => {
     },
   );
 
+  it('gestionnaire_adv -> web (ticket F-065 : équipe KEYIMMO, onglets restreints)', () => {
+    expect(resolveRedirectApp(makeMe('gestionnaire_adv'))).toBe('web');
+  });
+
   it('aucune membership -> home (fallback sûr, jamais une erreur bloquante)', () => {
     expect(resolveRedirectApp(makeMe(null))).toBe('home');
   });

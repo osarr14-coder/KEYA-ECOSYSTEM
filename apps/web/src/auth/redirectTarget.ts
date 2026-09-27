@@ -39,12 +39,16 @@ export type { AppOrigins };
  * « Évolution ticket 021 », pour la note explicite côté ticket d'origine.
  * « TOUT AUTRE RÔLE → HOME » reste vrai pour chaque rôle SAUF
  * `admin_keyimmo` désormais.
+ *
+ * **Ticket F-065** : `gestionnaire_adv` → `web` aussi (équipe KEYIMMO,
+ * onglets restreints dans `App.tsx`) — sans cette branche, il retombait sur
+ * HOME, l'app client, sans aucun de ses écrans.
  */
 export function resolveRedirectApp(me: Me): keyof AppOrigins {
   const primaryRole = me.memberships[0]?.role_code;
   if (primaryRole === 'inspecteur') return 'control';
   if (primaryRole === 'constructeur') return 'build';
-  if (primaryRole === 'admin_keyimmo') return 'web';
+  if (primaryRole === 'admin_keyimmo' || primaryRole === 'gestionnaire_adv') return 'web';
   return 'home';
 }
 

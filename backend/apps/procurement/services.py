@@ -996,3 +996,16 @@ def search_lots_eligible_for_ledger_as_admin(*, admin, admin_organization_id, qu
         admin_organization_id=admin_organization_id, query=query,
         include_lot=lambda lot: is_lot_locked(lot.id) and not LotLedger.objects.filter(lot=lot).exists(),
     )
+
+
+def search_lots_for_commercial_as_admin(*, admin_organization_id, query):
+    """`GET /api/programs/admin/lots/?q=` — ticket F-064, gestion du prix et
+    du statut commercial. TOUS les lots correspondants, sans critère lié aux
+    devis : un lot au devis verrouillé (exclu par `search_lots_as_admin`)
+    reste à commercialiser. Même mécanisme partagé (boucle de bascule RLS),
+    même coût au pire cas documenté plus haut.
+    """
+    return _search_lots_by_name_as_admin(
+        admin_organization_id=admin_organization_id, query=query,
+        include_lot=lambda lot: True,
+    )
