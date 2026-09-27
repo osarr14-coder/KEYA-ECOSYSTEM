@@ -1,10 +1,27 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from apps.organizations.models import Membership
 
 from .serializers import MeSerializer, RegisterSerializer
+
+
+class ThrottledLoginView(TokenObtainPairView):
+    """Ticket B-046 (CDC §10) — `/api/auth/login/` n'avait aucune protection
+    contre le bourrage d'identifiants (confirmé absent de `settings.py`
+    avant ce ticket). `ScopedRateThrottle` limite par IP pour un endpoint
+    anonyme (comportement standard DRF), taux fixé dans
+    `DEFAULT_THROTTLE_RATES['login']` (config/settings.py) — désactivé pour
+    la suite de tests (config/settings_test.py), voir ce fichier pour la
+    justification. Même route/nom `login` que `TokenObtainPairView` :
+    aucun changement de contrat pour les appelants.
+    """
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
 
 
 class RegisterView(generics.CreateAPIView):

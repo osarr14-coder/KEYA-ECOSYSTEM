@@ -1,6 +1,8 @@
 import pytest
+from django.core.cache import cache
 from django.urls import reverse
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
 
 from apps.organizations.models import Membership, Organization
 
@@ -166,3 +168,65 @@ class TestMeEndpoint:
 
         organization_names = [m['organization_name'] for m in response.data['memberships']]
         assert organization_names == ['Org A']
+
+
+@pytest.mark.django_db
+class TestLoginThrottling:
+    """Ticket B-046 (CDC §10) — désactivé par défaut pour toute la suite
+    (`config/settings_test.py`, `DEFAULT_THROTTLE_RATES['login'] = None`).
+
+    `override_settings(REST_FRAMEWORK=...)` seul NE SUFFIT PAS ici : DRF fige
+    `SimpleRateThrottle.THROTTLE_RATES` en attribut de CLASSE au moment de
+    l'import du module `rest_framework.throttling` (`THROTTLE_RATES =
+    api_settings.DEFAULT_THROTTLE_RATES`, lu une seule fois) — un
+    `override_settings` en cours de test change `django.conf.settings` mais
+    jamais cet attribut déjà figé. Reproduit RÉELLEMENT en écrivant ce test
+    (`override_settings` seul laissait passer la 6e tentative en 200). Le
+    taux est donc réactivé en patchant directement l'attribut de classe.
+    `cache.clear()` est nécessaire en plus : `ScopedRateThrottle` compte via
+    le cache Django (clé dérivée de l'IP pour un appelant anonyme), jamais
+    réinitialisé automatiquement entre tests.
+    """
+
+    def setup_method(self):
+        cache.clear()
+        self._original_rates = ScopedRateThrottle.THROTTLE_RATES
+        ScopedRateThrottle.THROTTLE_RATES = {'login': '5/min'}
+
+    def teardown_method(self):
+        ScopedRateThrottle.THROTTLE_RATES = self._original_rates
+        cache.clear()
+
+    def test_sixth_login_attempt_within_a_minute_is_throttled(self):
+        client = APIClient()
+        _register(client, 'throttle@example.com', 'Org Throttle')
+
+        for _ in range(5):
+            response = _login(client, 'throttle@example.com')
+            assert response.status_code == 200
+
+        response = _login(client, 'throttle@example.com')
+        assert response.status_code == 429
+
+    def test_throttle_counts_failed_attempts_too(self):
+        """Un bourrage d'identifiants échoue systématiquement — le throttle
+        doit compter CHAQUE tentative, pas seulement les connexions
+        réussies, sinon il ne protège rien contre son vrai scénario
+        d'attaque."""
+        client = APIClient()
+        _register(client, 'throttle-fail@example.com', 'Org Throttle Fail')
+
+        for _ in range(5):
+            response = client.post(
+                reverse('login'),
+                {'email': 'throttle-fail@example.com', 'password': 'wrong'},
+                format='json',
+            )
+            assert response.status_code == 401
+
+        response = client.post(
+            reverse('login'),
+            {'email': 'throttle-fail@example.com', 'password': 'wrong'},
+            format='json',
+        )
+        assert response.status_code == 429

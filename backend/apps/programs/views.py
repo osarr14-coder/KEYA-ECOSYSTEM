@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.backoffice.permissions import IsAdminKeyimmo
+from apps.backoffice.permissions import IsAdminKeyimmo, IsAdminKeyimmoOrGestionnaireADV
 from apps.core.viewsets import OrganizationScopedMixin
 from apps.messaging.mixins import MessageThreadMixin
 from apps.organizations.models import Organization
@@ -46,7 +46,9 @@ class ProgramViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+            # Ticket B-046 — préparer le scénario métier (programme/bien/
+            # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
+            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -121,7 +123,9 @@ class AssetViewSet(OrganizationScopedMixin, viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+            # Ticket B-046 — préparer le scénario métier (programme/bien/
+            # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
+            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -187,7 +191,9 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
 
     def get_permissions(self):
         if self.action in ('create', 'update', 'partial_update', 'destroy'):
-            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+            # Ticket B-046 — préparer le scénario métier (programme/bien/
+            # lot) est une capacité ADV, pas réservée à admin_keyimmo seul.
+            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -390,14 +396,15 @@ class ProgramRequestListCreateView(APIView):
     (voir `services.create_program_request`).
 
     `GET /api/programs/requests/` — TOUTES les demandes, toutes
-    organisations confondues, réservé à `admin_keyimmo` (permission
-    conditionnée à la méthode, même principe que `get_permissions` par
-    action des `ViewSet` ci-dessus, appliqué ici à un `APIView`).
+    organisations confondues, réservé à `admin_keyimmo`/`gestionnaire_adv`
+    (ticket B-046 ; permission conditionnée à la méthode, même principe que
+    `get_permissions` par action des `ViewSet` ci-dessus, appliqué ici à un
+    `APIView`).
     """
 
     def get_permissions(self):
         if self.request.method == 'GET':
-            return [permissions.IsAuthenticated(), IsAdminKeyimmo()]
+            return [permissions.IsAuthenticated(), IsAdminKeyimmoOrGestionnaireADV()]
         return [permissions.IsAuthenticated()]
 
     def post(self, request):
@@ -443,12 +450,12 @@ class MyProgramRequestsView(generics.ListAPIView):
 
 class ProgramRequestDecisionView(APIView):
     """`POST /api/programs/requests/{id}/decide/?organization_id=<id>` —
-    accepte/refuse une demande, réservé à `admin_keyimmo`. Ne crée JAMAIS
-    de `Program` (verrou B-039 intact) — voir `services.
-    decide_program_request`.
+    accepte/refuse une demande, réservé à `admin_keyimmo`/`gestionnaire_adv`
+    (ticket B-046). Ne crée JAMAIS de `Program` (verrou B-039 intact) — voir
+    `services.decide_program_request`.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmo]
+    permission_classes = [permissions.IsAuthenticated, IsAdminKeyimmoOrGestionnaireADV]
 
     def post(self, request, request_id):
         organization_id = request.query_params.get('organization_id')

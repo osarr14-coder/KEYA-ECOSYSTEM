@@ -68,6 +68,31 @@ def _register_admin(email, organization_name):
     return client, organization, user
 
 
+def _register_gestionnaire_adv(email, organization_name):
+    """Ticket B-046 — même mécanique que `_register_admin` ci-dessus,
+    rôle `gestionnaire_adv` seul (jamais `admin_keyimmo` en plus) : ces
+    tests doivent prouver que ce SECOND chemin d'accès suffit par
+    lui-même, pas qu'il s'ajoute à des pouvoirs déjà admin.
+    """
+    client = APIClient()
+    client.post(
+        reverse('register'),
+        {'email': email, 'password': PASSWORD, 'organization_name': organization_name},
+        format='json',
+    )
+    token = client.post(reverse('login'), {'email': email, 'password': PASSWORD}, format='json').data['access']
+    client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+
+    user = User.objects.get(email=email)
+    organization = Organization.objects.get(name=organization_name)
+
+    set_rls_context(user_id=user.id, organization_id=organization.id)
+    role, _ = Role.objects.get_or_create(code='gestionnaire_adv', defaults={'label': 'Gestionnaire ADV'})
+    Membership.objects.filter(user=user, organization=organization).update(role=role)
+
+    return client, organization, user
+
+
 _admin_client_sequence = 0
 
 
@@ -1300,3 +1325,124 @@ class TestProgramRequest:
         assert task.type == TaskType.NOTIFICATION
         assert task.assignee_id == requester.id
         assert 'refusée' in task.label
+
+
+@pytest.mark.django_db
+class TestGestionnaireADVRole:
+    """Ticket B-046 (Phase 1 de `docs/audit-cdc-v3-mvp-ecart-vefa.md`) —
+    `IsAdminKeyimmoOrGestionnaireADV` ouvre un SECOND chemin d'accès, additif
+    à `admin_keyimmo`, pour préparer le scénario métier (programme/bien/lot,
+    décision sur les demandes de programme). Chaque test ci-dessous utilise
+    un compte `gestionnaire_adv` SEUL (jamais `admin_keyimmo` en plus) pour
+    prouver que ce chemin suffit par lui-même.
+    """
+
+    def test_gestionnaire_adv_alone_can_create_a_program_asset_and_lot(self):
+        target_organization = Organization.objects.create(
+            name='Org Cible ADV', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        adv_client, _adv_org, adv_user = _register_gestionnaire_adv(
+            'adv-create@example.com', 'Org ADV Create',
+        )
+        assert not Membership.objects.filter(user=adv_user, organization=target_organization).exists()
+
+        program = _create_program(adv_client, target_organization.id, 'Programme ADV')
+        assert 'id' in program, program
+        asset = _create_asset(adv_client, target_organization.id, program['id'], 'Bien ADV')
+        assert 'id' in asset, asset
+        lot = _create_lot(adv_client, target_organization.id, asset['id'], 'Lot ADV', surface=Decimal('60.00'))
+        assert 'id' in lot, lot
+
+        set_rls_context(organization_id=target_organization.id)
+        assert Program.objects.filter(id=program['id']).exists()
+        assert Asset.objects.filter(id=asset['id']).exists()
+        assert Lot.objects.filter(id=lot['id']).exists()
+
+    def test_gestionnaire_adv_alone_can_update_and_destroy(self):
+        target_organization = Organization.objects.create(
+            name='Org Cible ADV MAJ', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        adv_client, _adv_org, _adv_user = _register_gestionnaire_adv(
+            'adv-update@example.com', 'Org ADV Update',
+        )
+        program = _create_program(adv_client, target_organization.id, 'Programme ADV MAJ')
+        query = f'?organization_id={target_organization.id}'
+
+        response = adv_client.patch(
+            reverse('program-detail', args=[program['id']]) + query,
+            {'name': 'Programme ADV Renommé'}, format='json',
+        )
+        assert response.status_code == 200
+
+        response = adv_client.delete(reverse('program-detail', args=[program['id']]) + query)
+        assert response.status_code == 204
+
+    def test_gestionnaire_adv_alone_can_list_and_decide_program_requests(self):
+        requester_client = _register_and_authenticate(
+            'adv-decide-requester@example.com', 'Org ADV Decide Requester',
+        )
+        organization = Organization.objects.get(name='Org ADV Decide Requester')
+        created = requester_client.post(
+            reverse('program-request-list-create'), {'description': 'Demande pour ADV'}, format='json',
+        ).data
+        adv_client, _adv_org, adv_user = _register_gestionnaire_adv(
+            'adv-decide@example.com', 'Org ADV Decide',
+        )
+        assert not Membership.objects.filter(user=adv_user, organization=organization).exists()
+
+        listing = adv_client.get(reverse('program-request-list-create'))
+        assert listing.status_code == 200
+        assert any(row['id'] == created['id'] for row in listing.data)
+
+        decision = adv_client.post(
+            reverse('program-request-decide', args=[created['id']]) + f'?organization_id={organization.id}',
+            {'status': 'acceptee'}, format='json',
+        )
+        assert decision.status_code == 200
+        assert decision.data['status'] == 'acceptee'
+        # Verrou B-039 intact, même pour ce nouveau chemin d'accès.
+        assert decision.data['program'] is None
+
+    def test_an_ordinary_member_still_gets_403_gestionnaire_adv_did_not_widen_general_access(self):
+        member_client = _register_and_authenticate(
+            'adv-member-still-403@example.com', 'Org ADV Member Still 403',
+        )
+        organization = Organization.objects.get(name='Org ADV Member Still 403')
+
+        assert member_client.post(
+            reverse('program-list'), {'organization': str(organization.id), 'name': 'Intrus ADV'}, format='json',
+        ).status_code == 403
+        assert member_client.get(reverse('program-request-list-create')).status_code == 403
+
+    def test_admin_keyimmo_keeps_every_power_unaffected_by_the_new_adv_permission(self):
+        """Non-régression explicite, critère d'acceptation B-046 :
+        `admin_keyimmo` fait exactement ce qu'il faisait avant ce ticket."""
+        target_organization = Organization.objects.create(
+            name='Org Cible Non Regression Admin', country_pack=CountryPack.objects.get(code='SN'),
+        )
+        admin_client, _admin_org, admin_user = _register_admin(
+            'adv-nonregression-admin@example.com', 'Org ADV Non Regression Admin',
+        )
+        assert not Membership.objects.filter(user=admin_user, organization=target_organization).exists()
+
+        program = _create_program(admin_client, target_organization.id, 'Programme Non Régression')
+        assert 'id' in program, program
+        asset = _create_asset(admin_client, target_organization.id, program['id'], 'Bien Non Régression')
+        lot = _create_lot(admin_client, target_organization.id, asset['id'], 'Lot Non Régression')
+        assert 'id' in lot, lot
+
+        requester_client = _register_and_authenticate(
+            'adv-nonregression-requester@example.com', 'Org ADV Non Regression Requester',
+        )
+        requester_organization = Organization.objects.get(name='Org ADV Non Regression Requester')
+        created = requester_client.post(
+            reverse('program-request-list-create'), {'description': 'Non régression admin'}, format='json',
+        ).data
+
+        assert admin_client.get(reverse('program-request-list-create')).status_code == 200
+        decision = admin_client.post(
+            reverse('program-request-decide', args=[created['id']])
+            + f'?organization_id={requester_organization.id}',
+            {'status': 'acceptee'}, format='json',
+        )
+        assert decision.status_code == 200

@@ -143,6 +143,14 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    # Ticket B-046 (CDC §10) — bourrage d'identifiants sur /api/auth/login/
+    # confirmé sans aucune protection avant ce ticket. `login` est le scope
+    # utilisé par apps.accounts.views.ThrottledLoginView (ScopedRateThrottle,
+    # par IP pour cet endpoint anonyme). Désactivé en tests, voir
+    # config/settings_test.py.
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '5/min',
+    },
 }
 
 SIMPLE_JWT = {

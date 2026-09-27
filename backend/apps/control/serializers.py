@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.evidence.validators import validate_document_file
 from apps.inspections.models import InspectionOutcome
 
 
@@ -11,7 +12,10 @@ class SyncDocumentSerializer(serializers.Serializer):
     """
 
     organization = serializers.UUIDField()
-    file = serializers.FileField()
+    # Ticket B-046 — même validateur que `DocumentUploadSerializer` : ce
+    # chemin alimente le même `create_document`, sans lui ce serait un
+    # contournement direct de la validation d'upload.
+    file = serializers.FileField(validators=[validate_document_file])
     category = serializers.CharField(max_length=100)
     source = serializers.CharField(max_length=100)
     captured_at = serializers.DateTimeField(required=False, allow_null=True)

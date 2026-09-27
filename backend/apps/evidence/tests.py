@@ -348,9 +348,13 @@ class TestPhotoProvenanceSurvivesAsyncProcessing:
         client, _organization, _user, _milestone = _setup_org(
             'provenance-nonimage@example.com', 'Org Provenance Non Image',
         )
-        text_file = SimpleUploadedFile('rapport.txt', b'contenu texte', content_type='text/plain')
+        # PDF, plus `.txt` depuis le ticket B-046 : le texte brut n'est plus
+        # un format accepté à l'upload (CDC §10) — l'intention du test
+        # (document non-image accepté SANS traitement miniature) est
+        # inchangée, un PDF est le document non-image légitime type.
+        pdf_file = _make_pdf_file('rapport.pdf')
 
-        response = _upload_document(client, source='document_upload', upload_file=text_file)
+        response = _upload_document(client, source='document_upload', upload_file=pdf_file)
 
         assert response.status_code == 201
         document = Document.objects.get(id=response.data['id'])
@@ -456,3 +460,62 @@ class TestDuplicateDocumentDetection:
 
         assert response_b.status_code == 201
         assert response_b.data['duplicate_of'] is None
+
+
+def _make_pdf_file(name='piece.pdf', body=b'%PDF-1.4\n%fake pdf body for tests\n'):
+    return SimpleUploadedFile(name, body, content_type='application/pdf')
+
+
+@pytest.mark.django_db
+class TestDocumentUploadValidation:
+    """Ticket B-046 (CDC §10) — aucune validation de type/taille n'existait
+    avant ce ticket (confirmé absent de `Document`/`DocumentUploadSerializer`).
+    Vérifie que le CONTENU réel du fichier est examiné, jamais seulement le
+    `Content-Type` déclaré par le client ni l'extension du nom de fichier.
+    """
+
+    def test_a_real_pdf_is_accepted(self):
+        client, _organization, _user, _milestone = _setup_org('upload-pdf@example.com', 'Org Upload PDF')
+        response = _upload_document(client, upload_file=_make_pdf_file())
+        assert response.status_code == 201
+
+    def test_a_real_png_is_accepted(self):
+        client, _organization, _user, _milestone = _setup_org('upload-png@example.com', 'Org Upload PNG')
+        buffer = io.BytesIO()
+        Image.new('RGB', (20, 20), (0, 255, 0)).save(buffer, format='PNG')
+        buffer.seek(0)
+        png_file = SimpleUploadedFile('photo.png', buffer.read(), content_type='image/png')
+        response = _upload_document(client, upload_file=png_file)
+        assert response.status_code == 201
+
+    def test_a_text_file_disguised_as_pdf_by_extension_and_content_type_is_rejected(self):
+        """Le nom et le Content-Type déclarés mentent tous les deux ici — la
+        vérification doit reposer uniquement sur le contenu réel."""
+        client, _organization, _user, _milestone = _setup_org('upload-fake@example.com', 'Org Upload Fake')
+        fake_pdf = SimpleUploadedFile(
+            'faux.pdf', b'ceci nest pas un pdf du tout', content_type='application/pdf',
+        )
+        response = _upload_document(client, upload_file=fake_pdf)
+        assert response.status_code == 400
+
+    def test_a_corrupted_image_is_rejected(self):
+        client, _organization, _user, _milestone = _setup_org('upload-corrupt@example.com', 'Org Upload Corrupt')
+        corrupted = SimpleUploadedFile(
+            'photo.jpg', b'\xff\xd8\xff\xe0not-actually-a-jpeg', content_type='image/jpeg',
+        )
+        response = _upload_document(client, upload_file=corrupted)
+        assert response.status_code == 400
+
+    def test_a_file_over_the_size_limit_is_rejected(self):
+        client, _organization, _user, _milestone = _setup_org('upload-toobig@example.com', 'Org Upload Too Big')
+        oversized = _make_pdf_file(body=b'%PDF-1.4\n' + b'0' * (10 * 1024 * 1024 + 1))
+        response = _upload_document(client, upload_file=oversized)
+        assert response.status_code == 400
+
+    def test_rejected_upload_creates_no_document(self):
+        """Critère d'acceptation B-046 : rejeté avant toute écriture."""
+        client, _organization, _user, _milestone = _setup_org('upload-noop@example.com', 'Org Upload Noop')
+        before = Document.objects.count()
+        fake_pdf = SimpleUploadedFile('faux.pdf', b'pas un pdf', content_type='application/pdf')
+        _upload_document(client, upload_file=fake_pdf)
+        assert Document.objects.count() == before

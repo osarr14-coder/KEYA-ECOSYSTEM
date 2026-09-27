@@ -498,6 +498,36 @@ class TestSyncMediaQueue:
         # une chaîne — même piège déjà rencontré aux tickets 008/009.
         assert evidence_response.data['work_declaration'] == declaration.id
 
+    def test_a_file_that_is_not_really_an_image_is_rejected_before_any_write(self):
+        """Ticket B-046 — ce chemin appelle le même `create_document` que
+        `/api/documents/` ; sans le validateur, il contournerait la
+        validation d'upload (CDC §10)."""
+        _constructeur_client, constructeur_organization, _c_user, _lot, _declaration = _setup_constructeur_org(
+            'sync-media-reject-constructeur@example.com', 'Org Sync Media Reject Constructeur',
+        )
+        inspecteur_client, _inspecteur_organization, _i_user = _setup_inspecteur(
+            'sync-media-reject-inspecteur@example.com', 'Org Sync Media Reject Inspecteur',
+        )
+        set_rls_context(organization_id=constructeur_organization.id)
+        before = Document.objects.filter(organization=constructeur_organization).count()
+
+        response = inspecteur_client.post(
+            reverse('control-sync-document'),
+            {
+                'organization': str(constructeur_organization.id),
+                'file': SimpleUploadedFile('facade.jpg', b'MZ executable deguise', content_type='image/jpeg'),
+                'category': 'photo_inspection',
+                'source': 'mobile_app_photo',
+                'correlation_id': '55555555-5555-5555-5555-555555555599',
+            },
+            format='multipart',
+        )
+
+        assert response.status_code == 400
+        assert 'file' in response.data
+        set_rls_context(organization_id=constructeur_organization.id)
+        assert Document.objects.filter(organization=constructeur_organization).count() == before
+
     def test_a_failed_or_missing_photo_does_not_block_the_inspection_data_sync(self):
         """La checklist/le commentaire/la décision se synchronisent
         indépendamment de la file média — cible toujours `work_declaration`,

@@ -4,6 +4,7 @@ from apps.programs.models import Milestone
 
 from . import services
 from .models import Document, DocumentVisibility, Evidence, SensitivityLevel, WorkDeclaration
+from .validators import validate_document_file
 
 
 class DocumentSerializer(serializers.ModelSerializer):
@@ -22,7 +23,10 @@ class DocumentUploadSerializer(serializers.Serializer):
     du traitement asynchrone), jamais par un simple `.save()` d'ORM.
     """
 
-    file = serializers.FileField()
+    # Ticket B-046 — vérifie le contenu réel du fichier (magic bytes/
+    # décodage Pillow, jamais le Content-Type déclaré par le client) avant
+    # tout appel à services.create_document, donc avant toute écriture.
+    file = serializers.FileField(validators=[validate_document_file])
     category = serializers.CharField(max_length=100)
     source = serializers.CharField(max_length=100)
     visibility = serializers.ChoiceField(
