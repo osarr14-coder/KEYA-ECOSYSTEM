@@ -38,6 +38,9 @@ export function TabBar({ tabs, activeTabId, onChange, 'aria-label': ariaLabel }:
         // barre, jamais un élargissement de la page ni des libellés cassés
         // sur 4 lignes.
         overflowX: 'auto',
+        // Barre de défilement fine : sous Windows, celle par défaut
+        // (épaisse, avec flèches) écrasait visuellement les onglets.
+        scrollbarWidth: 'thin',
       }}
     >
       {tabs.map((tab) => {
