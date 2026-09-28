@@ -217,6 +217,10 @@ PUBLIC_REGISTRATION_ENABLED = config('PUBLIC_REGISTRATION_ENABLED', default=Fals
 # Audit UI R1 (R04, PO-2026-09-27-03) : Devis / Appels d'offres, Demandes de
 # programme et Tarifs (CDC §3, différé) masqués — voir apps/core/deferred.py.
 KEYA_DEFERRED_MODULES_ENABLED = config('KEYA_DEFERRED_MODULES_ENABLED', default=False, cast=bool)
+# PO-2026-09-28-30 (K04) : synchronisation hors ligne de l'app Contrôle
+# (`/api/control/sync/…`) coupée dans le MVP — « introuvable » tant que ce
+# réglage est faux. Code conservé pour le Projet 1, jamais supprimé.
+KEYA_OFFLINE_SYNC_ENABLED = config('KEYA_OFFLINE_SYNC_ENABLED', default=False, cast=bool)
 
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 

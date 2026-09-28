@@ -483,7 +483,9 @@ class TestLitigeManagerTransverseVisibility:
         assert response.status_code == 200, response.data
         assert response.data['status'] == 'resolu'
         assert response.data['resolution_note'] == 'Appelé le client, malentendu clarifié.'
-        assert response.data['resolved_by_email'] == 'litige-resolve-admin@example.com'
+        # Adapté selon PO-2026-09-28-36 : « organisation · rôle », jamais l'e-mail.
+        assert response.data['resolved_by_label'] == 'Org Litige Resolve Admin · Gestionnaire'
+        assert 'resolved_by_email' not in response.data
 
     def test_non_admin_cannot_resolve_a_litige(self):
         constructeur_client, organization, _c_user, lot, _declaration = _setup_constructeur_org(

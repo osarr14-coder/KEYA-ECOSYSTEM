@@ -442,7 +442,8 @@ export const RESERVE_PLAIN_SENTENCE =
 function milestoneLine(milestone: WorksiteMilestone) {
   const declared = milestone.trust_levels.declared?.at;
   const controlled = milestone.trust_levels.controlled?.at;
-  if (!declared) return milestone.status_hint || 'Pas encore déclaré par le constructeur.';
+  // PO-2026-09-28-31 : « Pas encore déclaré » est déjà l'état affiché.
+  if (!declared) return milestone.status_hint || null;
   return `Déclaré par le constructeur le ${formatCalendarDate(declared)}`
     + (controlled ? `, examiné par le bureau de contrôle le ${formatCalendarDate(controlled)}.` : '.');
 }
@@ -478,6 +479,7 @@ function WorksiteSection({ reservation }: { reservation: Reservation }) {
           <FacadeGauge
             states={{ fondations: byCode.fondations.cdc_state, elevation: byCode.elevation.cdc_state }}
             labels={{ fondations: byCode.fondations.label, elevation: byCode.elevation.label }}
+            audience="client"
           />
           <span style={{ fontSize: '12px', color: semanticColors.neutral.textMuted }}>{FACADE_CAPTION}</span>
         </div>
@@ -530,7 +532,9 @@ function WorksiteSection({ reservation }: { reservation: Reservation }) {
                         {`${milestone.order}. ${milestone.label}`}
                         <Pill tone={known ? MILESTONE_STATE_TONES[known] : 'danger'}>{milestone.status_label}</Pill>
                       </h3>
-                      <p style={{ margin: 0, fontSize: '13px', color: semanticColors.neutral.textMuted }}>{milestoneLine(milestone)}</p>
+                      {milestoneLine(milestone) && (
+                        <p style={{ margin: 0, fontSize: '13px', color: semanticColors.neutral.textMuted }}>{milestoneLine(milestone)}</p>
+                      )}
                       {(milestone.reserves ?? []).length > 0 && (
                         <ul aria-label={`Réserves — ${milestone.label}`} style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           {(milestone.reserves ?? []).map((reserve, reserveIndex) => (

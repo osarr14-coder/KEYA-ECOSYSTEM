@@ -163,6 +163,9 @@ Libellés cibles du prompt ; la colonne « Actuel » montre l'existant et les é
 | Contrat | `draft` / `review` / `approved` | Brouillon / En revue / Approuvé | identique |
 | | `signed_simulated` | **Signé (simulé)** | Signé (simulation) |
 | Jalon | `DRAFT` … `TECHNICALLY_ACCEPTED` (CDC §7.1) | Brouillon · Soumis · En examen · Corrections demandées · Resoumis · Accepté techniquement | Non déclaré · Déclaré — pièce à joindre · En attente de contrôle · Sous réserve · Accepté techniquement (voir A-DS-4) |
+| Jalon — correspondance serveur / CDC (PO-2026-09-28-31) | `CHANGES_REQUESTED` (serveur, seul code accepté par les composants) | = `CHANGES_REQUIRED` du CDC §7.1 · « Corrections demandées » | un seul état, nommé comme le serveur |
+| | `REVIEW_REQUIRED` (T07) | **Nouvelle revue nécessaire** (vocabulaire CDC §7.1) | état **calculé pour l'affichage** (pièce ajoutée après un avis conforme, sans réserve ouverte) : aucune transition ni champ de modèle ; bloque tout nouveau décaissement |
+| | `DRAFT` | **Brouillon** dans les espaces de travail (BUILD, Contrôle, back-office) · **Pas encore déclaré** pour le client et la page publique | libellé choisi par le serveur selon l'espace |
 | Décaissement (demande) | `draft` / `eligible` / `executed_sim` / `cancelled` | Brouillon · **Éligible** · Exécuté (simulé) · Annulé | « Éligible (montant réservé) » |
 | Mouvement financier | `planned` | **Planifié** | Prévu |
 | | `bank_executed_sim` | **Exécuté par la banque (simulé)** | Reçu en banque (simulé) / Exécuté en banque (simulé) |

@@ -16,7 +16,7 @@ from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
 from apps.inspections import services as inspection_services
-from apps.inspections.testing import designated_pieces, submit_evidence
+from apps.inspections.testing import assign_mission, designated_pieces, submit_evidence
 from apps.inspections.models import InspectionOutcome, Reserve
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
@@ -82,6 +82,8 @@ def _register_admin(email, organization_name):
 
 
 def _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration):
+    # Adapté selon PO-2026-09-28-30 : mission affectée au contrôleur avant l'avis.
+    assign_mission(constructeur_organization.id, declaration.id, inspector_client=inspecteur_client)
     response = inspecteur_client.post(
         reverse('inspection-list'),
         {
@@ -142,6 +144,8 @@ class TestReserveOpenedCreatesTaskForConstructeur:
             'reservetask-mock-inspecteur@example.com', 'Org Reserve Task Mock Inspecteur',
         )
 
+        # Adapté selon PO-2026-09-28-30 : mission affectée au contrôleur avant l'avis.
+        assign_mission(constructeur_organization.id, declaration.id, inspector_client=inspecteur_client)
         with mock.patch('apps.tasks.tasks.process_reserve_opened.delay') as mocked_delay:
             response = inspecteur_client.post(
                 reverse('inspection-list'),

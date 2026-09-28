@@ -11,6 +11,7 @@ from . import public, services
 from .models import ReservationStatus
 from .permissions import IsClient
 from .serializers import (
+    client_label,
     AdminCancelSerializer,
     AllocationCreateSerializer,
     AdminReservationSerializer,
@@ -552,7 +553,7 @@ class ProgramAccountView(APIView):
                     'id': str(receipt.id), 'bank_reference': receipt.bank_reference,
                     'amount': str(receipt.amount), 'currency': receipt.currency,
                     'received_on': receipt.received_on.isoformat(), 'status_label': receipt.get_status_display(),
-                    'lot': receipt.reservation.lot.name, 'client': receipt.client.full_name or 'Client',  # PO-2026-09-28-22
+                    'lot': receipt.reservation.lot.name, 'client': client_label(receipt.client),  # PO-2026-09-28-22, -34
                 }
                 for receipt in account['receipts']
             ],

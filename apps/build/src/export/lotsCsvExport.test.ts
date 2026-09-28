@@ -20,7 +20,17 @@ describe('buildLotsCsv', () => {
     const csv = buildLotsCsv([]);
 
     // Adapté selon PO-2026-09-28-14 : « Avancement (%) » devient un compte de jalons acceptés.
-    expect(csv).toBe('Nom,Bien,Programme,Organisation constructrice,Jalons déclarés,Jalons acceptés techniquement,Réserves ouvertes');
+    // Adapté selon PO-2026-09-28-35 : « Prochaine étape » et « Qui agit », comme à l'écran.
+    expect(csv).toBe(
+      'Nom,Bien,Programme,Organisation constructrice,Jalons déclarés,Jalons acceptés techniquement,Réserves ouvertes,'
+      + 'Prochaine étape,Qui agit',
+    );
+  });
+
+  it('PO-2026-09-28-35 : exporte la prochaine étape et qui agit, calculées par le serveur', () => {
+    const csv = buildLotsCsv([makeRow({ next_step: 'Recontrôle de «\u00a0Fondations\u00a0»', next_actor: 'Gestionnaire (affectation du contrôle)' })]);
+
+    expect(csv.split('\n')[1]).toMatch(/,0,Recontrôle de «\u00a0Fondations\u00a0»,Gestionnaire \(affectation du contrôle\)$/);
   });
 
   it('formate une ligne exactement comme le tableau à l\'écran (fraction jalons, %, tirets)', () => {

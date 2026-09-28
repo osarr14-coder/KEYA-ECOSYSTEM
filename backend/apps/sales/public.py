@@ -115,7 +115,7 @@ def public_worksites():
                 for milestone in lot.milestones.order_by('order'):
                     milestone.lot = lot
                     state = inspections_services.milestone_control_state(milestone)
-                    cdc_state, cdc_label, _hint = inspections_services.milestone_cdc_state(state)
+                    cdc_state, cdc_label, _hint = inspections_services.milestone_cdc_state(state, audience='client')
                     milestones.append({
                         'label': milestone.label,
                         'status': state['status'],

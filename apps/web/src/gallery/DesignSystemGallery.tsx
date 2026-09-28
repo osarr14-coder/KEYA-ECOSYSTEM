@@ -110,6 +110,17 @@ const GLOSSARY: { object: string; states: [string, string, PillTone][] }[] = [
       ['DRAFT', 'Brouillon', 'neutral'], ['SUBMITTED', 'Soumis', 'alert'], ['UNDER_REVIEW', 'En examen', 'info'],
       ['CHANGES_REQUESTED', 'Corrections demandées', 'alert'], ['RESUBMITTED', 'Resoumis', 'info'],
       ['TECHNICALLY_ACCEPTED', 'Accepté techniquement', 'success'],
+      // PO-2026-09-28-31 : état calculé pour l'affichage (T07), vocabulaire du CDC.
+      ['REVIEW_REQUIRED', 'Nouvelle revue nécessaire', 'alert'],
+    ],
+  },
+  {
+    // PO-2026-09-28-31 : correspondances serveur / CDC et libellés du client.
+    object: 'Jalon — correspondances',
+    states: [
+      ['CHANGES_REQUESTED = CHANGES_REQUIRED (CDC §7.1)', 'Corrections demandées', 'alert'],
+      ['DRAFT — espaces de travail', 'Brouillon', 'neutral'],
+      ['DRAFT — client et page publique', 'Pas encore déclaré', 'neutral'],
     ],
   },
   {

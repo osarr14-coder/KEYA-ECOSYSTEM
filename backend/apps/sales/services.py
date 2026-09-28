@@ -890,7 +890,7 @@ def client_worksite(*, client, caller_organization_id, reservation_id):
         for milestone in reservation.lot.milestones.order_by('order'):
             milestone.lot = reservation.lot
             state = inspections_services.milestone_control_state(milestone)
-            cdc_state, cdc_label, cdc_hint = inspections_services.milestone_cdc_state(state)
+            cdc_state, cdc_label, cdc_hint = inspections_services.milestone_cdc_state(state, audience='client')
             rows.append({
                 'id': str(milestone.id), 'order': milestone.order, 'code': milestone.code, 'label': milestone.label,
                 'cdc_state': cdc_state, 'status_label': cdc_label, 'status_hint': cdc_hint,

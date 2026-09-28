@@ -15,10 +15,21 @@ def _person(user, expected_role=''):
     return actor_label(user, expected_role) if user else None
 
 
+CLIENT_ROLE = 'Client(e)'
+
+
+def client_label(client):
+    """PO-2026-09-28-34 : « Nom fictif · Client(e) », jamais l'e-mail."""
+    return f'{client.full_name} · {CLIENT_ROLE}' if client.full_name else CLIENT_ROLE
+
+
 def _client(client):
     """Client d'un dossier : compte personnel, sans organisation affichable.
-    Son nom fictif l'identifie, jamais son e-mail (PO-2026-09-28-22)."""
-    return {'id': str(client.id), 'full_name': client.full_name or 'Client', 'role': 'Client'}
+    Son nom fictif l'identifie, jamais son e-mail (PO-2026-09-28-22, -34)."""
+    return {
+        'id': str(client.id), 'full_name': client.full_name or 'Client', 'role': CLIENT_ROLE,
+        'label': client_label(client),
+    }
 
 
 def _money(value):

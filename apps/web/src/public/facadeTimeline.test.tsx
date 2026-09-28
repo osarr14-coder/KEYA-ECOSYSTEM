@@ -13,7 +13,9 @@ import { PublicLayout } from './PublicLayout';
  * « illustration — programme fictif » ; la page publique n'appelle aucune
  * donnée de dossier (seuls les deux points d'accès anonymes de la vitrine).
  */
-const PUBLIC_CALLS = new Set<keyof ApiClient>(['getPublicOffer', 'getPublicWorksites']);
+// Adapté selon PO-2026-09-28-32 : la section « Chantiers » est retirée, la
+// page n'appelle plus que l'offre anonyme.
+const PUBLIC_CALLS = new Set<keyof ApiClient>(['getPublicOffer']);
 
 function renderPublicHome() {
   const api = createMockApiClient({
@@ -38,11 +40,16 @@ describe('Page publique — frise de la façade (D3)', () => {
     expect(steps.map((step) => within(step).getByRole('heading', { level: 3 }).textContent)).toEqual([
       'Fondations en examen', 'Réserve ouverte', 'Fondations acceptées', 'Élévation en examen',
     ]);
+    // Adapté selon PO-2026-09-28-31 : « pas encore déclaré » sur la page publique.
     expect(steps.map((step) => within(step).getByRole('img').getAttribute('aria-label'))).toEqual([
-      'Façade de la résidence : fondations en examen, élévation brouillon',
-      'Façade de la résidence : fondations corrections demandées, élévation brouillon',
-      'Façade de la résidence : fondations accepté techniquement, élévation brouillon',
+      'Façade de la résidence : fondations en examen, élévation pas encore déclaré',
+      'Façade de la résidence : fondations corrections demandées, élévation pas encore déclaré',
+      'Façade de la résidence : fondations accepté techniquement, élévation pas encore déclaré',
       'Façade de la résidence : fondations accepté techniquement, élévation en examen',
+    ]);
+    // PO-2026-09-28-32 : repères de la frise.
+    expect(steps.map((step) => within(step).getByText(/^\d · /).textContent)).toEqual([
+      '1 · Déclaration', '2 · Réserve', '3 · Acceptation', '4 · Jalon suivant',
     ]);
     // États figés : aucune donnée de l'API n'alimente la frise.
     expect(FACADE_TIMELINE_STEPS.map((step) => step.states)).toEqual([

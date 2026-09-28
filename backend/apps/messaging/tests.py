@@ -12,7 +12,7 @@ from apps.core.rls import set_rls_context
 from apps.evidence.models import Document, SensitivityLevel
 from apps.evidence.services import create_document, create_work_declaration
 from apps.inspections.models import InspectionOutcome
-from apps.inspections.testing import designated_pieces, submit_evidence
+from apps.inspections.testing import assign_mission, designated_pieces, submit_evidence
 from apps.messaging.models import Message
 from apps.messaging.services import create_message
 from apps.organizations.models import Membership, Organization, Role
@@ -64,6 +64,8 @@ def _setup_inspecteur(email, organization_name):
 
 
 def _open_reserve(inspecteur_client, constructeur_organization, declaration):
+    # Adapté selon PO-2026-09-28-30 : mission affectée au contrôleur avant l'avis.
+    assign_mission(constructeur_organization.id, declaration.id, inspector_client=inspecteur_client)
     response = inspecteur_client.post(
         reverse('inspection-list'),
         {

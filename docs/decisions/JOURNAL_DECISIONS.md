@@ -76,6 +76,18 @@ remplacée n'est jamais effacée : elle est marquée « REMPLACÉE PAR » avec l
 | PO-2026-09-28-28 | Façade-jauge | Composant `FacadeGauge` : dessin de référence découpé par jalon, mêmes états que `MilestoneGauge` ; **une partie n'est tracée en trait plein que si son jalon est accepté techniquement**. Espace client « Suivi du chantier » (façade, « n / N », liste des jalons, phrase fixe sur la réserve, lien vers l'échelle des niveaux). Page publique : frise figée en 4 étapes, « illustration — programme fictif », aucune donnée de dossier. Couleurs par variables du thème, dessin sur surface claire en sombre, libellé SVG, la liste fait foi. | Product Owner | Design system, espace client, page publique. |
 | PO-2026-09-28-29 | Galerie et gardes | Galerie : `MilestoneGauge` (7 états, carte et compacte) et `FacadeGauge` (tous états, par partie). Gardes : aucun « % » ni calcul de ratio dans ces composants ; chaque état CDC rendu ; état inconnu = erreur visible en développement, jamais « accepté » par défaut. | Product Owner | Design system. |
 
+## 28 septembre 2026 — arbitrages du Product Owner après l'étape 6
+
+| ID | Sujet | Décision | Auteur | Portée |
+|---|---|---|---|---|
+| PO-2026-09-28-30 | Synchronisation hors ligne (K04, suite de PO-2026-09-28-23) | Les routes `/api/control/sync/…` sont **coupées dans le MVP**, derrière un réglage désactivé par défaut (comme les modules masqués) : le serveur répond « introuvable ». Test exigé : un contrôleur n'agit que sur une mission qui lui est affectée, par toutes les routes restantes. Réexaminer ensuite l'utilité du test instable. | Product Owner | API Contrôle, app Contrôle. |
+| PO-2026-09-28-31 | États du jalon | Le composant n'accepte que `CHANGES_REQUESTED` (nom serveur) ; correspondance avec `CHANGES_REQUIRED` (CDC §7.1) notée au glossaire. L'état d'acceptation caduque se libelle **« Nouvelle revue nécessaire »** (vocabulaire CDC §7.1) : état **calculé pour l'affichage**, sans nouvelle transition ni changement du modèle, qui bloque tout nouveau décaissement (T07). Brouillon : « Brouillon » dans les espaces de travail, **« Pas encore déclaré »** pour le client et la page publique ; correspondance au glossaire. | Product Owner | Serveur, design system, toutes apps. |
+| PO-2026-09-28-32 | Page publique | La section « Chantiers » (état réel des lots) est **retirée** ; seule la frise figée reste. Repères de la frise : « 1 · Déclaration », « 2 · Réserve », « 3 · Acceptation », « 4 · Jalon suivant ». | Product Owner | Page publique. |
+| PO-2026-09-28-33 | « Qui agit » | Règle confirmée : pour Resoumis et Nouvelle revue nécessaire, le **Contrôleur** si une mission est programmée, sinon **« Gestionnaire (affectation du contrôle) »**. | Product Owner | Serveur, BUILD, back-office. |
+| PO-2026-09-28-34 | Client dans les listes du back-office | Affiché **« Nom fictif · Client(e) »**. | Product Owner | Back-office, API. |
+| PO-2026-09-28-35 | Export CSV « Tous les lots » (BUILD) | Ajouter les colonnes « Prochaine étape » et « Qui agit ». | Product Owner | BUILD. |
+| PO-2026-09-28-36 | E-mails (suite de PO-2026-09-28-22) | La règle « organisation · rôle » s'applique aussi à la **messagerie** et au **support**. Les journaux techniques non affichés gardent l'e-mail ; vérifier qu'ils ne contiennent **ni secret ni mot de passe** (CDC §10). | Product Owner | Messagerie, support, journaux. |
+
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
 | Sujet | Question au PO |

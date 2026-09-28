@@ -52,10 +52,11 @@ def _xof(amount):
 
 
 def _who(user):
-    # PO-2026-09-28-22 : jamais l'e-mail dans un libellé du back-office.
+    # PO-2026-09-28-22 / -34 : jamais l'e-mail dans un libellé du back-office ;
+    # un client s'y lit « Nom fictif · Client(e) ».
     from apps.organizations.identity import actor_label
 
-    return user.full_name or actor_label(user) or 'Client'
+    return actor_label(user) or user.full_name or 'Client(e)'
 
 
 def _call_label(call):

@@ -48,7 +48,6 @@ export function BrandMark({ light = false }: { light?: boolean }) {
 const NAV_ANCHORS: [string, string][] = [
   ['#programmes', 'Programmes'],
   ['#fonctionnement', 'Comment ça marche'],
-  ['#chantiers', 'Chantiers'],
   ['#simulateur', 'Simulateur'],
   ['#faq', 'Questions'],
 ];

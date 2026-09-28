@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FacadeGauge } from '../FacadeGauge/FacadeGauge';
 import { MilestoneGauge } from './MilestoneGauge';
-import { MILESTONE_STATES } from './milestoneStates';
+import { MILESTONE_STATES, milestoneStateLabel } from './milestoneStates';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SOURCES = [
@@ -103,5 +103,23 @@ describe('FacadeGauge (PO-2026-09-28-28)', () => {
     const { container } = render(<FacadeGauge markers={false} states={{ fondations: 'DRAFT', elevation: 'DRAFT' }} />);
     expect(container.querySelector('[data-marker]')).toBeNull();
     expect(container.innerHTML).not.toMatch(/#[0-9a-f]{6}\b/i);
+  });
+});
+
+describe('États et libellés (PO-2026-09-28-31)', () => {
+  it('seul le code serveur CHANGES_REQUESTED est accepté ; CHANGES_REQUIRED (CDC) est un état inconnu visible', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<MilestoneGauge milestones={[{ id: 'x', label: 'Fondations', cdcState: 'CHANGES_REQUIRED' }]} />);
+    expect(screen.getByTestId('gauge-segment')).toHaveAttribute('data-state', 'UNKNOWN');
+    expect(screen.getByText('État inconnu : CHANGES_REQUIRED')).toBeInTheDocument();
+    expect(error).toHaveBeenCalled();
+  });
+
+  it('« Nouvelle revue nécessaire » ; brouillon « Pas encore déclaré » pour le client', () => {
+    expect(milestoneStateLabel('REVIEW_REQUIRED')).toBe('Nouvelle revue nécessaire');
+    expect(milestoneStateLabel('DRAFT')).toBe('Brouillon');
+    expect(milestoneStateLabel('DRAFT', 'client')).toBe('Pas encore déclaré');
+    render(<FacadeGauge audience="client" states={{ fondations: 'UNDER_REVIEW', elevation: 'DRAFT' }} />);
+    expect(screen.getByRole('img')).toHaveAccessibleName('Façade de la résidence : fondations en examen, élévation pas encore déclaré');
   });
 });

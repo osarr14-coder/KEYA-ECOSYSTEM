@@ -80,5 +80,6 @@ class TestMilestoneCdcStateThroughTheApi:
 
         worksites = APIClient().get(reverse('public-worksites')).data
         labels = {milestone['status_label'] for worksite in worksites for milestone in worksite['milestones']}
-        assert labels <= set(inspections_services.CDC_STATE_LABELS.values())
+        # Adapté selon PO-2026-09-28-31 : libellés du client et de la page publique.
+        assert labels <= set(inspections_services.CDC_CLIENT_LABELS.values())
         assert 'En examen' in labels

@@ -39,3 +39,27 @@ def designated_pieces(organization_id, *, declaration_id=None, evidence_id=None)
             work_declaration_id=declaration_id,
         ).order_by('created_at').values_list('id', flat=True)
     ]
+
+
+def assign_mission(organization_id, declaration_id, *, inspector=None, inspector_client=None):
+    """PO-2026-09-28-30 — un contrôleur n'agit que sur une mission qui lui
+    est affectée. Les tests qui simulent un avis direct (`POST
+    /api/inspections/`) affectent d'abord la mission, comme le gestionnaire
+    dans le parcours réel. Le contrôleur est donné, ou retrouvé depuis le
+    jeton du client de test. Laisse posé le contexte RLS de l'organisation."""
+    from rest_framework_simplejwt.tokens import AccessToken
+
+    from apps.accounts.models import User
+    from apps.core.rls import set_rls_context
+
+    from .models import InspectionMission
+
+    if inspector is None:
+        token = inspector_client._credentials['HTTP_AUTHORIZATION'].split()[1]
+        inspector = User.objects.get(id=AccessToken(token)['user_id'])
+    set_rls_context(organization_id=organization_id)
+    mission, _created = InspectionMission.objects.get_or_create(
+        organization_id=organization_id, work_declaration_id=declaration_id, assigned_inspector=inspector,
+        defaults={'assigned_by': inspector},
+    )
+    return mission

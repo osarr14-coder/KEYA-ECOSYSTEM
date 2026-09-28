@@ -6,6 +6,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.deferred import OfflineSyncEnabled
 from apps.evidence.serializers import EvidenceSerializer
 from apps.inspections import services as inspections_services
 from apps.inspections.permissions import IsInspecteur
@@ -27,7 +28,7 @@ class SyncDocumentView(APIView):
     l'organisation cible (voir apps/control/services.py).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+    permission_classes = [OfflineSyncEnabled, permissions.IsAuthenticated, IsInspecteur]
     parser_classes = [MultiPartParser]
 
     def post(self, request):
@@ -61,7 +62,7 @@ class SyncEvidenceView(APIView):
     CLAUDE.md, section CONTROL PWA, addendum passe 2).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+    permission_classes = [OfflineSyncEnabled, permissions.IsAuthenticated, IsInspecteur]
 
     def post(self, request):
         serializer = SyncEvidenceSerializer(data=request.data)
@@ -94,7 +95,7 @@ class SyncInspectionView(APIView):
       (critère d'acceptation le plus important de cette passe, voir ticket).
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsInspecteur]
+    permission_classes = [OfflineSyncEnabled, permissions.IsAuthenticated, IsInspecteur]
 
     def post(self, request):
         serializer = SyncInspectionSerializer(data=request.data)

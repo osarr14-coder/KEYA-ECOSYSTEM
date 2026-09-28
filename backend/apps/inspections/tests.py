@@ -14,7 +14,7 @@ from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
 from apps.trust.models import TrustEvent
-from apps.inspections.testing import designated_pieces, submit_evidence
+from apps.inspections.testing import assign_mission, designated_pieces, submit_evidence
 
 from . import services
 from .models import InspectionOutcome, Reserve
@@ -77,6 +77,8 @@ def _register_admin(email, organization_name):
 
 
 def _open_reserve_via_inspection(inspecteur_client, constructeur_organization, declaration):
+    # Adapté selon PO-2026-09-28-30 : mission affectée au contrôleur avant l'avis.
+    assign_mission(constructeur_organization.id, declaration.id, inspector_client=inspecteur_client)
     response = inspecteur_client.post(
         reverse('inspection-list'),
         {
@@ -136,6 +138,8 @@ class TestIndependenceRule:
             'indep-diff-inspecteur@example.com', 'Org Indep Diff Inspecteur',
         )
 
+        # Adapté selon PO-2026-09-28-30 : mission affectée au contrôleur avant l'avis.
+        assign_mission(constructeur_organization.id, declaration.id, inspector_client=inspecteur_client)
         response = inspecteur_client.post(
             reverse('inspection-list'),
             {

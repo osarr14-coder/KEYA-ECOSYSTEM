@@ -17,3 +17,16 @@ class DeferredModuleEnabled(BasePermission):
         if not deferred_modules_enabled():
             raise NotFound('Module non disponible dans cette démonstration.')
         return True
+
+
+def offline_sync_enabled():
+    return getattr(settings, 'KEYA_OFFLINE_SYNC_ENABLED', False)
+
+
+class OfflineSyncEnabled(BasePermission):
+    """PO-2026-09-28-30 (K04) : synchronisation hors ligne coupée dans le MVP."""
+
+    def has_permission(self, request, view):
+        if not offline_sync_enabled():
+            raise NotFound('Synchronisation hors ligne non disponible dans cette démonstration.')
+        return True

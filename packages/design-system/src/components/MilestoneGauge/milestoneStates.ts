@@ -6,13 +6,14 @@ import type { PillTone } from '../Pill/Pill';
  * PO-2026-09-28-27 — états de travail d'un jalon (CDC §7.1), tels que le
  * SERVEUR les calcule (`cdc_state`, A-DS-4). Le front n'en invente aucun.
  *
- * Écarts signalés au Product Owner, non tranchés ici :
- * - le serveur code « Corrections demandées » `CHANGES_REQUESTED` ; le CDC
- *   §7.1 et les références disent `CHANGES_REQUIRED` : les deux codes
- *   désignent le même état et ont le même rendu ;
- * - « Nouvelle revue requise » (`REVIEW_REQUIRED`, T07) n'est pas dans la
- *   liste d'états du CDC §7.1 : état demandé par le PO, calculé par le
- *   serveur.
+ * PO-2026-09-28-31 :
+ * - seul le code serveur `CHANGES_REQUESTED` est accepté ; il correspond au
+ *   `CHANGES_REQUIRED` du CDC §7.1 (glossaire, DESIGN_SYSTEM §8.3). Un code
+ *   non reconnu reste une erreur visible, jamais un état « accepté » ;
+ * - `REVIEW_REQUIRED` se libelle « Nouvelle revue nécessaire » (vocabulaire
+ *   du CDC §7.1) : état calculé par le serveur pour l'affichage (T07) ;
+ * - brouillon : « Brouillon » dans les espaces de travail, « Pas encore
+ *   déclaré » pour le client et la page publique (`audience`).
  */
 export type MilestoneState =
   | 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'CHANGES_REQUESTED' | 'RESUBMITTED'
@@ -22,8 +23,6 @@ export const MILESTONE_STATES: MilestoneState[] = [
   'DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'CHANGES_REQUESTED', 'RESUBMITTED', 'TECHNICALLY_ACCEPTED', 'REVIEW_REQUIRED',
 ];
 
-const ALIASES: Record<string, MilestoneState> = { CHANGES_REQUIRED: 'CHANGES_REQUESTED' };
-
 export const MILESTONE_STATE_LABELS: Record<MilestoneState, string> = {
   DRAFT: 'Brouillon',
   SUBMITTED: 'Soumis',
@@ -31,8 +30,20 @@ export const MILESTONE_STATE_LABELS: Record<MilestoneState, string> = {
   CHANGES_REQUESTED: 'Corrections demandées',
   RESUBMITTED: 'Resoumis',
   TECHNICALLY_ACCEPTED: 'Accepté techniquement',
-  REVIEW_REQUIRED: 'Nouvelle revue requise',
+  REVIEW_REQUIRED: 'Nouvelle revue nécessaire',
 };
+
+/** Public d'un libellé d'état : espaces de travail, ou client et page publique. */
+export type MilestoneAudience = 'workspace' | 'client';
+
+export const MILESTONE_CLIENT_STATE_LABELS: Record<MilestoneState, string> = {
+  ...MILESTONE_STATE_LABELS,
+  DRAFT: 'Pas encore déclaré',
+};
+
+export function milestoneStateLabel(state: MilestoneState, audience: MilestoneAudience = 'workspace') {
+  return (audience === 'client' ? MILESTONE_CLIENT_STATE_LABELS : MILESTONE_STATE_LABELS)[state];
+}
 
 export const MILESTONE_STATE_TONES: Record<MilestoneState, PillTone> = {
   DRAFT: 'neutral',
@@ -47,8 +58,7 @@ export const MILESTONE_STATE_TONES: Record<MilestoneState, PillTone> = {
 /** `null` si l'état n'est pas connu : jamais « accepté » par défaut. */
 export function resolveMilestoneState(code: string | null | undefined): MilestoneState | null {
   if (!code) return null;
-  if ((MILESTONE_STATES as string[]).includes(code)) return code as MilestoneState;
-  return ALIASES[code] ?? null;
+  return (MILESTONE_STATES as string[]).includes(code) ? code as MilestoneState : null;
 }
 
 /** Erreur visible en développement pour un état inconnu (E). */

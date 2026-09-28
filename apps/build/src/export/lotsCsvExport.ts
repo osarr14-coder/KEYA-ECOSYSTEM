@@ -11,6 +11,8 @@ import { buildCsv } from './csv';
 const HEADERS = [
   'Nom', 'Bien', 'Programme', 'Organisation constructrice',
   'Jalons déclarés', 'Jalons acceptés techniquement', 'Réserves ouvertes',
+  // PO-2026-09-28-35 : mêmes colonnes que l'écran « Tous les lots ».
+  'Prochaine étape', 'Qui agit',
 ];
 
 function formatLotRow(row: LotRow): string[] {
@@ -22,6 +24,8 @@ function formatLotRow(row: LotRow): string[] {
     `${row.declared_milestone_count}/${row.milestone_count}`,
     `${row.accepted_milestone_count}/${row.milestone_count}`,
     String(row.open_reserve_count),
+    row.next_step ?? '',
+    row.next_actor ?? '',
   ];
 }
 

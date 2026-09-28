@@ -140,8 +140,9 @@ export { LotPlan, hasLotPlan } from './illustrations/lotPlans';
 export { MilestoneGauge, MilestoneGaugeLegend, milestoneAccessibleLabel } from './components/MilestoneGauge/MilestoneGauge';
 export type { GaugeMilestone, MilestoneGaugeProps } from './components/MilestoneGauge/MilestoneGauge';
 export {
-  MILESTONE_STATES, MILESTONE_STATE_LABELS, MILESTONE_STATE_TONES, resolveMilestoneState,
+  MILESTONE_CLIENT_STATE_LABELS, MILESTONE_STATES, MILESTONE_STATE_LABELS, MILESTONE_STATE_TONES, milestoneStateLabel,
+  resolveMilestoneState,
 } from './components/MilestoneGauge/milestoneStates';
-export type { MilestoneState } from './components/MilestoneGauge/milestoneStates';
+export type { MilestoneAudience, MilestoneState } from './components/MilestoneGauge/milestoneStates';
 export { FACADE_PARTS, FacadeGauge, facadeAccessibleLabel } from './components/FacadeGauge/FacadeGauge';
 export type { FacadeGaugeProps, FacadePart } from './components/FacadeGauge/FacadeGauge';

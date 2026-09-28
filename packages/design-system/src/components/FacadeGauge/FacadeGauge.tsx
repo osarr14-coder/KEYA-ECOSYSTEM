@@ -1,7 +1,7 @@
 import { useId } from 'react';
 
 import {
-  MILESTONE_STATE_LABELS, type MilestoneState, reportUnknownMilestoneState, resolveMilestoneState,
+  type MilestoneAudience, type MilestoneState, milestoneStateLabel, reportUnknownMilestoneState, resolveMilestoneState,
 } from '../MilestoneGauge/milestoneStates';
 import { FACADE_DRAWING, FACADE_MARKERS, FACADE_VIEWBOX } from './facadeDrawing';
 
@@ -17,7 +17,7 @@ import { FACADE_DRAWING, FACADE_MARKERS, FACADE_VIEWBOX } from './facadeDrawing'
  * - En examen : trait Information et fond rayé ;
  * - Corrections demandées : trait Attention en tirets et fond hachuré ;
  * - Accepté techniquement : trait plein à l'encre ;
- * - Nouvelle revue requise : trait à l'encre, contour Succès pointillé.
+ * - Nouvelle revue nécessaire : trait à l'encre, contour Succès pointillé.
  *
  * Règle clé : une partie n'est tracée en trait plein que si son jalon est
  * accepté techniquement. Couleurs par variables du thème ; le dessin est
@@ -76,18 +76,22 @@ export interface FacadeGaugeProps {
   markers?: boolean;
   /** Libellés des jalons (par défaut « Fondations », « Élévation »). */
   labels?: Partial<Record<FacadePart, string>>;
+  /** PO-2026-09-28-31 : « Pas encore déclaré » pour le client et la page publique. */
+  audience?: MilestoneAudience;
 }
 
-export function facadeAccessibleLabel(states: Record<FacadePart, string>, labels: Partial<Record<FacadePart, string>> = {}) {
+export function facadeAccessibleLabel(
+  states: Record<FacadePart, string>, labels: Partial<Record<FacadePart, string>> = {}, audience: MilestoneAudience = 'workspace',
+) {
   const parts = FACADE_PARTS.map(({ key, label }) => {
     const state = resolveMilestoneState(states[key]);
-    const status = state ? MILESTONE_STATE_LABELS[state].toLowerCase() : `état inconnu (${states[key]})`;
+    const status = state ? milestoneStateLabel(state, audience).toLowerCase() : `état inconnu (${states[key]})`;
     return `${(labels[key] ?? label).toLowerCase()} ${status}`;
   });
   return `Façade de la résidence : ${parts.join(', ')}`;
 }
 
-export function FacadeGauge({ states, markers = true, labels = {} }: FacadeGaugeProps) {
+export function FacadeGauge({ states, markers = true, labels = {}, audience = 'workspace' }: FacadeGaugeProps) {
   const scope = useId().replace(/[^a-zA-Z0-9]/g, '');
   const cls = (part: FacadePart) => {
     const state = resolveMilestoneState(states[part]);
@@ -112,7 +116,7 @@ export function FacadeGauge({ states, markers = true, labels = {} }: FacadeGauge
       <svg
         viewBox={FACADE_VIEWBOX}
         role="img"
-        aria-label={facadeAccessibleLabel(states, labels)}
+        aria-label={facadeAccessibleLabel(states, labels, audience)}
         style={{ display: 'block', flex: '1 1 auto', minWidth: 0, height: 'auto' }}
         // Dessin STATIQUE du dépôt (référence du PO), jamais une donnée
         // saisie : seuls les noms de classe d'état y sont substitués.

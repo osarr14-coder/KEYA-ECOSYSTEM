@@ -20,6 +20,12 @@ class IndependenceRuleViolation(Exception):
     """
 
 
+class MissionNotAssigned(Exception):
+    """PO-2026-09-28-30 — aucune mission affectée à ce contrôleur pour la
+    déclaration visée : la route répond « introuvable », sans indiquer si la
+    déclaration existe."""
+
+
 class SyncConflict(Exception):
     """Levée quand `expected_latest_event_id` est fourni et ne correspond
     plus au dernier `TrustEvent` réel de la cible (Reserve si suivi, sinon
@@ -55,7 +61,7 @@ def create_inspection(
     *, inspector, inspector_organization, target_organization_id,
     work_declaration_id=None, evidence_id=None, outcome, note='', reserve_id=None,
     expected_latest_event_id=_NOT_CHECKING_CONFLICT, client_correlation_id=None,
-    reserves=None, decisions=None, examined_evidence_ids=None,
+    reserves=None, decisions=None, examined_evidence_ids=None, require_assigned_mission=False,
 ):
     """Point d'entrée unique pour créer une `Inspection` — et donc la SEULE
     façon de faire progresser le cycle de vie d'une `Reserve`
@@ -95,6 +101,7 @@ def create_inspection(
                 reserves=reserves,
                 decisions=decisions,
                 examined_evidence_ids=examined_evidence_ids,
+                require_assigned_mission=require_assigned_mission,
             )
         finally:
             # Toujours restaurer le contexte de l'inspecteur avant de rendre
@@ -105,10 +112,19 @@ def create_inspection(
     return inspection
 
 
+def _has_assigned_mission(inspector, *, work_declaration_id):
+    """PO-2026-09-28-30 — sous le contexte RLS de l'organisation cible : une
+    mission de la déclaration visée est-elle affectée à CE contrôleur ?"""
+    return InspectionMission.objects.filter(
+        work_declaration_id=work_declaration_id, assigned_inspector=inspector,
+    ).exists()
+
+
 def _create_inspection_row(*, inspector, target_organization_id, work_declaration_id,
                             evidence_id, outcome, note, reserve_id,
                             expected_latest_event_id=_NOT_CHECKING_CONFLICT, client_correlation_id=None,
-                            reserves=None, decisions=None, examined_evidence_ids=None):
+                            reserves=None, decisions=None, examined_evidence_ids=None,
+                            require_assigned_mission=False):
     target_organization = Organization.objects.filter(id=target_organization_id).first()
     if target_organization is None:
         raise ValidationError("organization cible introuvable.")
@@ -133,6 +149,14 @@ def _create_inspection_row(*, inspector, target_organization_id, work_declaratio
         reserve = Reserve.objects.filter(id=reserve_id, organization=target_organization).first()
         if reserve is None:
             raise ValidationError("reserve introuvable dans l'organisation cible.")
+
+    # PO-2026-09-28-30 : après la résolution de la cible (mêmes refus 400
+    # qu'avant pour un identifiant inconnu), un contrôleur n'agit que sur une
+    # déclaration dont une mission lui est affectée.
+    if require_assigned_mission and not _has_assigned_mission(
+        inspector, work_declaration_id=work_declaration.id if work_declaration else evidence.work_declaration_id,
+    ):
+        raise MissionNotAssigned()
 
     if expected_latest_event_id is not _NOT_CHECKING_CONFLICT:
         # Ticket 010 (CONTROL, passe 2) : la cible du conflit est la Reserve
@@ -804,9 +828,13 @@ CONTROL_STATUS_LABELS = {
 #   réserve ouverte sans correction déposée → Corrections demandées
 #   réserve ouverte avec correction déposée → Resoumis
 #   acceptation technique → Accepté techniquement
-#   PO-2026-09-28-27 (T07) : avis conforme devenu caduc (pièce ajoutée après
-#   l'avis, aucune réserve ouverte) → Nouvelle revue requise. Absent de la
-#   liste du CDC §7.1 : état demandé par le Product Owner, écart signalé.
+#   PO-2026-09-28-27 / -31 (T07) : avis conforme devenu caduc (pièce ajoutée
+#   après l'avis, aucune réserve ouverte) → Nouvelle revue nécessaire
+#   (vocabulaire CDC §7.1). État CALCULÉ pour l'affichage : aucune
+#   transition ni champ de modèle ; `is_milestone_technically_accepted`
+#   renvoie faux, donc tout nouveau décaissement reste bloqué.
+# `CHANGES_REQUESTED` (serveur) = `CHANGES_REQUIRED` du CDC (glossaire,
+# PO-2026-09-28-31).
 CDC_DRAFT = 'DRAFT'
 CDC_SUBMITTED = 'SUBMITTED'
 CDC_UNDER_REVIEW = 'UNDER_REVIEW'
@@ -822,8 +850,12 @@ CDC_STATE_LABELS = {
     CDC_CHANGES_REQUESTED: 'Corrections demandées',
     CDC_RESUBMITTED: 'Resoumis',
     CDC_TECHNICALLY_ACCEPTED: 'Accepté techniquement',
-    CDC_REVIEW_REQUIRED: 'Nouvelle revue requise',
+    CDC_REVIEW_REQUIRED: 'Nouvelle revue nécessaire',
 }
+
+# PO-2026-09-28-31 : le client et la page publique lisent « Pas encore
+# déclaré » là où les espaces de travail lisent « Brouillon ».
+CDC_CLIENT_LABELS = {**CDC_STATE_LABELS, CDC_DRAFT: 'Pas encore déclaré'}
 
 # Précision affichée sous l'état quand le libellé du CDC seul ne dit pas ce
 # qui est attendu.
@@ -833,9 +865,11 @@ CDC_STATE_HINTS = {
 }
 
 
-def milestone_cdc_state(state):
+def milestone_cdc_state(state, audience='workspace'):
     """État CDC §7.1 `(code, libellé, précision)` d'un état de contrôle
-    retourné par `milestone_control_state`."""
+    retourné par `milestone_control_state`. `audience='client'` : libellés
+    du client et de la page publique (PO-2026-09-28-31), sans précision
+    technique pour un brouillon."""
     status = state['status']
     if status in (NOT_DECLARED, AWAITING_DOCUMENTS):
         code = CDC_DRAFT
@@ -847,6 +881,8 @@ def milestone_cdc_state(state):
         code = CDC_REVIEW_REQUIRED
     else:
         code = CDC_UNDER_REVIEW if state['pending_mission'] is not None else CDC_SUBMITTED
+    if audience == 'client':
+        return code, CDC_CLIENT_LABELS[code], '' if code == CDC_DRAFT else CDC_STATE_HINTS.get(status, '')
     return code, CDC_STATE_LABELS[code], CDC_STATE_HINTS.get(status, '')
 
 
@@ -865,7 +901,11 @@ def milestone_next_step(label, cdc_state, control_scheduled):
         return f'Correction de la réserve («\u00a0{label}\u00a0»)', 'Constructeur'
     if cdc_state in (CDC_RESUBMITTED, CDC_REVIEW_REQUIRED):
         verb = 'Recontrôle' if cdc_state == CDC_RESUBMITTED else 'Nouvelle revue'
-        return f'{verb} de «\u00a0{label}\u00a0»', ('Contrôleur' if control_scheduled else 'Gestionnaire')
+        # PO-2026-09-28-33 : sans contrôle programmé, le gestionnaire agit
+        # en affectant le contrôle.
+        return f'{verb} de «\u00a0{label}\u00a0»', (
+            'Contrôleur' if control_scheduled else 'Gestionnaire (affectation du contrôle)'
+        )
     return '', ''
 
 

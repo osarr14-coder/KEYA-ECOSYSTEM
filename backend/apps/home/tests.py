@@ -499,7 +499,9 @@ class TestClientCanOpenALitige:
         assert response.status_code == 201
         assert response.data['status'] == 'ouvert'
         assert str(response.data['lot']) == str(lot.id)
-        assert response.data['opened_by_email'] == client_user.email
+        # Adapté selon PO-2026-09-28-36 : « organisation · rôle », jamais l'e-mail.
+        assert response.data['opened_by_label'].endswith('Client(e)')
+        assert client_user.email not in str(response.data)
         assert response.data['resolved_at'] is None
 
     def test_client_cannot_open_a_litige_on_a_lot_not_assigned_to_them(self):

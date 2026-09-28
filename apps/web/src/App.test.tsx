@@ -717,7 +717,8 @@ describe('App — pages publiques (ticket F-079)', () => {
 
   it('sans session, `/` affiche la page d’accueil publique : programmes, chantiers, simulateur', async () => {
     const getPublicOffer = vi.fn().mockResolvedValue([PROGRAM]);
-    renderApp({ getPublicOffer, getPublicWorksites: vi.fn().mockResolvedValue([WORKSITE]) }, vi.fn(), '/');
+    const getPublicWorksites = vi.fn().mockResolvedValue([WORKSITE]);
+    renderApp({ getPublicOffer, getPublicWorksites }, vi.fn(), '/');
 
     // Audit UI R1 : titre décrivant la démonstration (J02) ; le marquage démo
     // est désormais le bandeau commun à tous les écrans, monté à la racine
@@ -726,8 +727,11 @@ describe('App — pages publiques (ticket F-079)', () => {
     const program = await screen.findByTestId('public-program');
     expect(program).toHaveTextContent('Résidence Démonstration Abidjan');
     expect(program).toHaveTextContent('1 lot disponible');
-    expect(await screen.findByTestId('public-worksite')).toHaveTextContent('1 / 2 étapes acceptées');
-    expect(screen.getByTestId('public-worksite')).toHaveTextContent('En cours : Gros œuvre — En attente de contrôle');
+    // Adapté selon PO-2026-09-28-32 : plus de section « Chantiers » montrant
+    // l'état réel des lots ; seule la frise figée illustre le suivi.
+    expect(screen.queryByTestId('public-worksite')).not.toBeInTheDocument();
+    expect(getPublicWorksites).not.toHaveBeenCalled();
+    expect(screen.getByTestId('facade-timeline')).toBeInTheDocument();
     // Simulateur : prix du lot le moins cher par défaut, échéancier du barème.
     expect(screen.getByTestId('simulated-price').textContent!.replace(/\s/g, ' ')).toBe('30 000 000 XOF');
     expect(screen.getAllByTestId('simulator-row').map((row) => row.textContent!.replace(/\s/g, ' '))).toEqual([

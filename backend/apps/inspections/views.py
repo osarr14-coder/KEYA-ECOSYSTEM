@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import mixins, permissions, viewsets
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from apps.core.viewsets import OrganizationScopedMixin
@@ -63,7 +63,12 @@ class InspectionViewSet(
                 reserves=data.get('reserves') or [],
                 decisions=data.get('decisions') or [],
                 examined_evidence_ids=data.get('examined_evidence_ids'),
+                # PO-2026-09-28-30 : un contrôleur n'agit que sur une mission
+                # qui lui est affectée, par cette route comme par l'app.
+                require_assigned_mission=True,
             )
+        except services.MissionNotAssigned:
+            raise NotFound('Aucune mission affectée pour cette déclaration.')
         except services.IndependenceRuleViolation as exc:
             raise PermissionDenied(str(exc))
         except DjangoValidationError as exc:

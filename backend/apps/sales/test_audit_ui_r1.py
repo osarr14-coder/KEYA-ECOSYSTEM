@@ -275,7 +275,8 @@ class TestR02AdminHasNoBusinessPower:
         client1.post(reverse('reservation-create'), {'lot': str(lot.id), 'organization': str(promoter.id)}, format='json')
         journal = _login(ADMIN).get(reverse('admin-journal')).json()
         # Adapté selon PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
-        assert any(entry['actor'] == 'Client' for entry in journal)
+        # Adapté selon PO-2026-09-28-34 : le client se lit « Nom fictif · Client(e) ».
+        assert any(entry['actor'].endswith(' · Client(e)') for entry in journal)
         assert '@' not in str(journal)
 
 

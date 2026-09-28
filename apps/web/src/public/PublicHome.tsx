@@ -6,7 +6,7 @@ import {
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
-import type { PublicProgram, PublicWorksite } from '../api/types';
+import type { PublicProgram } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { FacadeIllustration } from './illustrations/FacadeIllustration';
 import { FacadeTimeline } from './illustrations/FacadeTimeline';
@@ -270,51 +270,6 @@ function ProgramCard({ program, navigate }: { program: PublicProgram; navigate: 
   );
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  accepted: semanticColors.progress.fill,
-  awaiting_control: semanticColors.info.text,
-  under_reserve: semanticColors.alert.border, // PO-2026-09-28-17 : Attention, jamais rouge
-  awaiting_documents: semanticColors.alert.border,
-  not_declared: semanticColors.neutral.border,
-};
-
-function WorksiteCard({ worksite }: { worksite: PublicWorksite }) {
-  const current = worksite.milestones.find((milestone) => milestone.status !== 'accepted' && milestone.status !== 'not_declared')
-    ?? worksite.milestones.find((milestone) => milestone.status === 'not_declared');
-  return (
-    <article
-      data-testid="public-worksite"
-      aria-label={`${worksite.program} — ${worksite.lot}`}
-      style={{
-        borderRadius: '6px', padding: '20px 22px', background: semanticColors.neutral.surface,
-        border: `1px solid ${semanticColors.neutral.border}`, display: 'flex', flexDirection: 'column', gap: '12px',
-      }}
-    >
-      <div>
-        <strong style={{ fontSize: '17px' }}>{worksite.lot}</strong>
-        <div style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-          {[worksite.program, worksite.location].filter(Boolean).join(' · ')}
-        </div>
-      </div>
-      <div aria-hidden="true" style={{ display: 'flex', gap: '4px' }}>
-        {worksite.milestones.map((milestone) => (
-          <span
-            key={milestone.label}
-            title={`${milestone.label} — ${milestone.status_label}`}
-            style={{ flex: 1, height: '8px', borderRadius: '4px', background: STATUS_COLOR[milestone.status] ?? semanticColors.neutral.border }}
-          />
-        ))}
-      </div>
-      <span style={{ fontWeight: 700 }}>{`${worksite.accepted} / ${worksite.total} étapes acceptées`}</span>
-      {current && (
-        <span style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-          {`En cours : ${current.label} — ${current.status_label}`}
-        </span>
-      )}
-    </article>
-  );
-}
-
 function Simulator({ programs }: { programs: PublicProgram[] }) {
   const [programId, setProgramId] = useState(programs[0]?.id ?? '');
   const program = programs.find((candidate) => candidate.id === programId) ?? programs[0];
@@ -421,13 +376,11 @@ function Simulator({ programs }: { programs: PublicProgram[] }) {
 export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void }) {
   const api = useApiClient();
   const offerState = useApiResource(() => api.getPublicOffer(), []);
-  const worksitesState = useApiResource(() => api.getPublicWorksites(), []);
   // Programmes avec des lots disponibles d'abord (aussi le choix par défaut
   // du simulateur), puis les programmes complets.
   const programs = offerState.status === 'success'
     ? [...offerState.data].sort((a, b) => Number(b.available_lots > 0) - Number(a.available_lots > 0))
     : [];
-  const worksites = worksitesState.status === 'success' ? worksitesState.data : [];
 
   return (
     <>
@@ -488,42 +441,18 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         </div>
       </Section>
 
-      <Section
-        id="chantiers"
-        eyebrow={worksites.length > 0 ? `${worksites.length} chantier${worksites.length > 1 ? 's' : ''} en cours` : 'Chantiers'}
-        title="Des chantiers suivis, jalon par jalon"
-        subtitle="L’avancement des chantiers du programme fictif, sans aucune donnée client : chaque étape est déclarée, documentée puis contrôlée."
-        tinted
-      >
-        {worksitesState.status === 'success' && worksites.length === 0 && <p>Aucun chantier démarré pour le moment.</p>}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
-          {worksites.map((worksite) => <WorksiteCard key={`${worksite.program}-${worksite.lot}`} worksite={worksite} />)}
-        </div>
-        {worksites.length > 0 && (
-          <p style={{ margin: '20px 0 0', display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-            {[
-              ['accepted', 'Accepté techniquement'], ['awaiting_control', 'Soumis ou en examen'],
-              ['under_reserve', 'Corrections demandées ou resoumis'], ['awaiting_documents', 'Brouillon — pièce attendue'],
-              ['not_declared', 'Pas encore déclaré'],
-            ].map(([status, label]) => (
-              <span key={status} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span aria-hidden="true" style={{ width: '10px', height: '10px', borderRadius: '50%', background: STATUS_COLOR[status] }} />
-                {label}
-              </span>
-            ))}
-          </p>
-        )}
-      </Section>
-
+      {/* PO-2026-09-28-32 : plus de section « Chantiers » (état réel des lots) ;
+          seule la frise figée de « Comment ça marche » illustre le suivi. */}
       <Section
         id="simulateur"
+        tinted
         title="Combien verser, et quand ?"
         subtitle="Choisissez un lot ou saisissez un prix : l’échéancier suit le barème de démonstration du programme."
       >
         {offerState.status === 'success' && <Simulator programs={programs} />}
       </Section>
 
-      <Section id="faq" title="Tout ce qu’il faut savoir" tinted>
+      <Section id="faq" title="Tout ce qu’il faut savoir">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '860px' }}>
           {FAQ.map((item) => (
             <details

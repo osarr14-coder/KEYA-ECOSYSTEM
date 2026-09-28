@@ -79,3 +79,7 @@ PUBLIC_REGISTRATION_ENABLED = True
 # Les tests existants des modules différés (R04) continuent d'exercer leur
 # code ; le masquage est testé explicitement (test_audit_ui_r1.py).
 KEYA_DEFERRED_MODULES_ENABLED = True
+# Même principe pour la synchronisation hors ligne (PO-2026-09-28-30) : ses
+# tests existants continuent d'exercer le code ; la coupure est testée
+# explicitement (apps/sales/test_audit_ui_r1_step7.py).
+KEYA_OFFLINE_SYNC_ENABLED = True

@@ -97,9 +97,10 @@ class TestMilestoneNextStep:
         ('SUBMITTED', False, ('Affectation d’un contrôleur («\u00a0Fondations\u00a0»)', 'Gestionnaire')),
         ('UNDER_REVIEW', True, ('Avis sur «\u00a0Fondations\u00a0»', 'Contrôleur')),
         ('CHANGES_REQUESTED', False, ('Correction de la réserve («\u00a0Fondations\u00a0»)', 'Constructeur')),
-        ('RESUBMITTED', False, ('Recontrôle de «\u00a0Fondations\u00a0»', 'Gestionnaire')),
+        # Adapté selon PO-2026-09-28-33 : « Gestionnaire (affectation du contrôle) ».
+        ('RESUBMITTED', False, ('Recontrôle de «\u00a0Fondations\u00a0»', 'Gestionnaire (affectation du contrôle)')),
         ('RESUBMITTED', True, ('Recontrôle de «\u00a0Fondations\u00a0»', 'Contrôleur')),
-        ('REVIEW_REQUIRED', False, ('Nouvelle revue de «\u00a0Fondations\u00a0»', 'Gestionnaire')),
+        ('REVIEW_REQUIRED', False, ('Nouvelle revue de «\u00a0Fondations\u00a0»', 'Gestionnaire (affectation du contrôle)')),
     ])
     def test_each_state_names_the_next_step_and_who_acts(self, cdc_state, scheduled, expected):
         assert inspections_services.milestone_next_step('Fondations', cdc_state, scheduled) == expected
@@ -133,12 +134,13 @@ class TestMilestoneGaugeFromServerState:
         set_rls_context(organization_id=promoter.id)
         fondations = fondations_row()
         assert fondations['cdc_state'] == 'REVIEW_REQUIRED'
-        assert fondations['status_label'] == 'Nouvelle revue requise'
+        # Adapté selon PO-2026-09-28-31 : vocabulaire du CDC §7.1.
+        assert fondations['status_label'] == 'Nouvelle revue nécessaire'
         # Jamais « accepté » : la jauge et les appels de palier suivent le serveur.
         assert inspections_services.is_milestone_technically_accepted(milestone) is False
         assert inspections_services.milestone_next_step(
             fondations['label'], fondations['cdc_state'], fondations['control_scheduled'],
-        ) == (f'Nouvelle revue de «\u00a0{fondations["label"]}\u00a0»', 'Gestionnaire')
+        ) == (f'Nouvelle revue de «\u00a0{fondations["label"]}\u00a0»', 'Gestionnaire (affectation du contrôle)')  # PO-2026-09-28-33
 
     def test_build_and_manager_lists_carry_the_gauge_and_the_next_step(self):
         _reserve_and_examine()

@@ -8,6 +8,8 @@ import { FacadeGauge, type FacadePart, semanticColors } from '@keya/design-syste
  * Les états sont FIGÉS ici : la frise est une illustration, elle ne lit
  * aucune donnée de dossier ni aucun appel d'API. Elle porte la mention
  * « illustration — programme fictif ». Textes repris de la référence.
+ * PO-2026-09-28-32 : repères « 1 · Déclaration » … « 4 · Jalon suivant » ;
+ * PO-2026-09-28-31 : brouillon lu « pas encore déclaré ».
  */
 export const FACADE_TIMELINE_NOTE = 'illustration — programme fictif';
 
@@ -16,28 +18,28 @@ export const FACADE_TIMELINE_STEPS: {
 }[] = [
   {
     key: 'review',
-    stage: 'Étape 5',
+    stage: '1 · Déclaration',
     title: 'Fondations en examen',
     text: 'Le constructeur a déclaré les fondations et déposé ses pièces. Le contrôleur examine.',
     states: { fondations: 'UNDER_REVIEW', elevation: 'DRAFT' },
   },
   {
     key: 'reserve',
-    stage: 'Étape 6',
+    stage: '2 · Réserve',
     title: 'Réserve ouverte',
     text: 'Le contrôleur demande une reprise. Le dessin reste en pointillés : rien n’est acquis.',
     states: { fondations: 'CHANGES_REQUESTED', elevation: 'DRAFT' },
   },
   {
     key: 'accepted',
-    stage: 'Étape 7',
+    stage: '3 · Acceptation',
     title: 'Fondations acceptées',
     text: 'Après correction et recontrôle, les fondations sont dessinées. Le décaissement devient possible.',
     states: { fondations: 'TECHNICALLY_ACCEPTED', elevation: 'DRAFT' },
   },
   {
     key: 'next',
-    stage: 'Suite',
+    stage: '4 · Jalon suivant',
     title: 'Élévation en examen',
     text: 'Le constructeur déclare l’élévation. Le même cycle recommence.',
     states: { fondations: 'TECHNICALLY_ACCEPTED', elevation: 'UNDER_REVIEW' },
@@ -63,7 +65,7 @@ export function FacadeTimeline() {
             style={{ background: semanticColors.neutral.surface, padding: '18px 18px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}
           >
             <div style={{ background: semanticColors.neutral.subtle, borderRadius: '4px', padding: '10px 4px 4px' }}>
-              <FacadeGauge states={step.states} markers={false} />
+              <FacadeGauge states={step.states} markers={false} audience="client" />
             </div>
             <span style={{ fontSize: '11px', fontWeight: 500, color: semanticColors.neutral.textMuted, fontFamily: 'ui-monospace, monospace' }}>
               {step.stage}

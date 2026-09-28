@@ -310,6 +310,29 @@ describe('AcquisitionJourney — suivi du chantier (PO-2026-09-28-04)', () => {
     expect(getMyWorksite).toHaveBeenCalledWith(own.id);
   });
 
+  it('PO-2026-09-28-31 : le client lit « Pas encore déclaré », jamais « Brouillon »', async () => {
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([]), getMyContracts: vi.fn().mockResolvedValue([]),
+      getMyWorksite: vi.fn().mockResolvedValue([
+        {
+          id: 'm1', order: 1, code: 'fondations', label: 'Fondations', cdc_state: 'UNDER_REVIEW',
+          status_label: 'En examen', status_hint: '', trust_levels: {},
+        },
+        {
+          id: 'm2', order: 2, code: 'elevation', label: 'Élévation', cdc_state: 'DRAFT',
+          status_label: 'Pas encore déclaré', status_hint: '', trust_levels: {},
+        },
+      ]),
+    });
+    render(withApiClient(api, <AcquisitionJourney reservation={reservation({ status: 'committed' })} onChanged={() => {}} />));
+
+    const facade = await screen.findByRole('img', { name: /^Façade de la résidence/ });
+    expect(facade).toHaveAccessibleName('Façade de la résidence : fondations en examen, élévation pas encore déclaré');
+    const [, elevation] = screen.getAllByTestId('worksite-milestone');
+    expect(elevation).toHaveTextContent('Pas encore déclaré');
+    expect(screen.getByTestId('worksite-section')).not.toHaveTextContent(/brouillon/i);
+  });
+
   it('pas de suivi du chantier tant que le bien est seulement bloqué', async () => {
     const api = createMockApiClient({
       getMyPaymentCalls: vi.fn().mockResolvedValue([]), getMyContracts: vi.fn().mockResolvedValue([]),
