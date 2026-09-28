@@ -126,7 +126,10 @@ describe('FinanceAccountsView — comptes et décaissements (ticket F-068)', () 
     });
 
     fireEvent.change(await screen.findByLabelText('Référence de sortie'), { target: { value: 'SORTIE-001' } });
-    fireEvent.change(screen.getByLabelText("Date d'exécution"), { target: { value: '2026-10-01' } });
+    // Adapté selon PO-2026-09-28-11 : saisie de date au format F06 (jour · mois · année).
+    fireEvent.change(screen.getByLabelText("Date d'exécution — année"), { target: { value: '2026' } });
+    fireEvent.change(screen.getByLabelText("Date d'exécution — mois"), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText("Date d'exécution — jour"), { target: { value: '1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Exécuter (simulé)' }));
 
     await waitFor(() => expect(executeDisbursement).toHaveBeenCalledWith('disbursement-1', 'org-promoteur', {

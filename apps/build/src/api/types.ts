@@ -5,7 +5,7 @@
  * seulement nommé.
  */
 
-import type { TrustLevel } from '@keya/design-system';
+import type { TrustLevel, TrustLevelEvidence, TrustLevelKey } from '@keya/design-system';
 
 export interface ApiTrustEvent {
   level: TrustLevel;
@@ -37,6 +37,9 @@ export interface LotExceptionRow {
 
 export interface ReserveExceptionRow extends LotExceptionRow {
   reserve_id: string;
+  /** PO-2026-09-28-07 (K02) : motif et action attendue de la réserve. */
+  motif?: string;
+  expected_action?: string;
   status: string;
   event: ApiTrustEvent;
   available_evidence: EvidenceSummary[];
@@ -152,6 +155,9 @@ export interface LotMilestone {
   cdc_state?: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'CHANGES_REQUESTED' | 'RESUBMITTED' | 'TECHNICALLY_ACCEPTED';
   status_hint?: string;
   status_label: string;
+  /** PO-2026-09-28-04 : preuve de chaque niveau atteint (qui, rôle, quand,
+   * version examinée, périmètre) ; un niveau absent n'est pas atteint. */
+  trust_levels?: Partial<Record<TrustLevelKey, TrustLevelEvidence>>;
   work_declaration_id: string | null;
   evidence_count: number;
   latest_outcome: 'conforme' | 'avec_reserve' | null;

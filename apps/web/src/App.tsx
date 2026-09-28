@@ -102,9 +102,10 @@ const TAB_DEFINITIONS: {
     id: 'reservations', label: 'Dossiers clients', path: '/reservations', icon: 'folder', group: 'Ventes', roles: ADV_ONLY,
   },
   // Ticket F-071 — virements déclarés par les clients, confirmés par
-  // Finance (backend B-056).
+  // Finance (backend B-056). PO-2026-09-28-01 : « Encaissements », deux vues
+  // (encaissements enregistrés, signalements clients).
   {
-    id: 'payment-notices', label: 'Virements déclarés', path: '/virements', icon: 'arrow-down-to-line', group: 'Finance', roles: FINANCE_ONLY,
+    id: 'payment-notices', label: 'Encaissements', path: '/virements', icon: 'arrow-down-to-line', group: 'Finance', roles: FINANCE_ONLY,
   },
   // Audit UI R1 (R03, PO-2026-09-27-10) — vue Finance en lecture seule.
   {

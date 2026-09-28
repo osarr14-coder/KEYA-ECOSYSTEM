@@ -75,8 +75,8 @@ describe('App — critère produit 26.1 : les 5 éléments identifiables sans in
     expect(await screen.findByText('Résidence Ker')).toBeInTheDocument();
     // 2. L'avancement
     expect(screen.getByText("45% d'avancement")).toBeInTheDocument();
-    // 3. L'événement récent (StatusBadge)
-    expect(screen.getByText('Documenté')).toBeInTheDocument();
+    // 3. L'événement récent — adapté selon PO-2026-09-28-04 (ligne datée, plus de badge)
+    expect(screen.getByTestId('trust-event')).toHaveTextContent('Niveau atteint : Documenté');
     // 4. Le problème principal — avec le style d'alerte (role="alert" + icône)
     const problem = screen.getByText('Fissure en façade').closest('[data-testid="open-reserve"]');
     expect(problem).not.toBeNull();
@@ -84,7 +84,8 @@ describe('App — critère produit 26.1 : les 5 éléments identifiables sans in
     expect(problem!.querySelector('svg')).not.toBeNull();
     // 5. La prochaine action — désormais visible sans clic supplémentaire
     expect(await screen.findByText('Corriger la fissure signalée')).toBeInTheDocument();
-    expect(screen.getByText('Échéance : 01/04/2026')).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-11 : format unique F06.
+    expect(screen.getByText(/^Échéance : 1 avr\. 2026/)).toBeInTheDocument();
   });
 
   it("« Voir toutes mes actions » depuis le résumé bascule vers l'onglet Mes actions", async () => {

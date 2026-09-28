@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, Input, Select, StatusBadge, semanticColors, PageHeader,
+  AlertBanner, ApiErrorBanner, Button, Card, Input, Select, TrustEventLine, semanticColors, PageHeader, formatServerDateTime,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -144,7 +144,7 @@ function ReserveCorrectionForm({
         >
           {row.available_evidence.map((evidence: EvidenceSummary) => (
             <option key={evidence.id} value={evidence.id}>
-              {evidence.milestone_label} — {evidence.added_by_email} — {new Date(evidence.created_at).toLocaleString('fr-FR')}
+              {evidence.milestone_label} — {evidence.added_by_email} — {formatServerDateTime(evidence.created_at)}
             </option>
           ))}
         </Select>
@@ -159,10 +159,14 @@ function ReserveOuverteRow({ row, onSubmitted }: { row: ReserveExceptionRow; onS
   return (
     <li style={ROW_STYLE}>
       <AlertBanner title="Réserve ouverte">
-        {row.lot_name} — {row.asset_name} ({row.program_name}). {row.label}
+        {`${row.lot_name} — ${row.asset_name} (${row.program_name}). `}
+        {/* PO-2026-09-28-07 (K02) : motif et action attendue structurés. */}
+        <span style={{ display: 'block' }}>{`Motif : ${row.motif ?? row.label}`}</span>
+        {row.expected_action && <span style={{ display: 'block' }}>{`Action attendue : ${row.expected_action}`}</span>}
       </AlertBanner>
       <div style={{ margin: '8px 0' }}>
-        <StatusBadge level={row.event.level} event={{ ...row.event, createdAt: row.event.created_at }} />
+        {/* PO-2026-09-28-04 : niveau atteint en ligne datée, jamais en badge. */}
+        <TrustEventLine event={{ ...row.event, createdAt: row.event.created_at }} />
       </div>
       <ReserveCorrectionForm row={row} onSubmitted={onSubmitted} />
     </li>
@@ -266,7 +270,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
     <section aria-label="Exceptions" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <PageHeader
         title="À traiter en priorité"
-        subtitle="Lots en retard, contrôles à planifier, capacités manquantes et réserves ouvertes : ce qui demande votre attention."
+        subtitle="Lots en retard, déclarations en attente de contrôle, capacités manquantes et réserves ouvertes : ce qui demande votre attention."
       />
       {totalCount === 0 && (
         <p data-testid="no-exceptions">Aucune exception en ce moment — tout est à jour.</p>
@@ -280,12 +284,20 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
         />
       </Card>
 
-      <Card title="Contrôles à planifier" icon="clipboard-check">
+      {/* PO-2026-09-28-08 (J03) : le constructeur n'organise pas son
+          contrôle ; il voit seulement ses déclarations qui attendent l'avis du
+          contrôleur, sans action de planification. */}
+      <Card title="Déclarations en attente de contrôle" icon="clipboard-check">
         <LotRowList
           rows={exceptions.controles_a_planifier}
-          emptyMessage="Aucun contrôle en attente de planification."
+          emptyMessage="Aucune déclaration en attente de contrôle."
           onViewLotInTable={onViewLotInTable}
         />
+        {exceptions.controles_a_planifier.length > 0 && (
+          <p style={{ margin: '8px 0 0', fontSize: '14px', color: semanticColors.neutral.textMuted }}>
+            Le contrôleur est désigné et missionné indépendamment du constructeur.
+          </p>
+        )}
       </Card>
 
       <Card title="Capacités manquantes" icon="users">

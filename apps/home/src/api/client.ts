@@ -1,5 +1,6 @@
 import type {
   CatalogLot, ClientPaymentCall, ContractVersion, EvidenceFeedItem, LotOverview, Me, MyLot, ProgramRequest, Reservation, Task,
+  WorksiteMilestone,
 } from './types';
 
 export class ApiError extends Error {
@@ -149,6 +150,10 @@ export function createApiClient({
     ),
     signContract: (contractId: string) => (
       request<ContractVersion>(`/api/me/contracts/${contractId}/sign/`, { method: 'POST' })
+    ),
+    /** PO-2026-09-28-04 — suivi du chantier du bien du client. */
+    getMyWorksite: (reservationId: string) => (
+      request<WorksiteMilestone[]>(`/api/me/reservations/${reservationId}/worksite/`)
     ),
     // Ticket F-068 — appels de fonds du client (backend B-050/B-051).
     getMyPaymentCalls: (reservationId: string) => (

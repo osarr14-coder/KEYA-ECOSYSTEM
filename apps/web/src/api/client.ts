@@ -1,7 +1,7 @@
 import type {
   AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, JournalEntry, CommercialLot, ContractAction,
   ContractVersion, ControlToAssign, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
-  InspectorSummary, PaymentNotice, PublicProgram, PublicWorksite, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
+  FinanceReceipt, InspectorSummary, PaymentNotice, PublicProgram, PublicWorksite, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
@@ -672,6 +672,15 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
       `/api/finance/payment-notices/${noticeId}/confirm/${toQueryString({ organization_id: organizationId })}`,
       { method: 'POST', json: payload },
     ),
+    /** PO-2026-09-28-02 — rattache un signalement à un encaissement déjà enregistré. */
+    attachPaymentNotice: (noticeId: string, organizationId: string, receiptId: string) => (
+      request<PaymentNotice>(
+        `/api/finance/payment-notices/${noticeId}/attach/${toQueryString({ organization_id: organizationId })}`,
+        { method: 'POST', json: { receipt: receiptId } },
+      )
+    ),
+    /** PO-2026-09-28-01 — encaissements enregistrés (Finance). */
+    listReceipts: () => request<FinanceReceipt[]>('/api/finance/receipts/'),
     rejectPaymentNotice: (noticeId: string, organizationId: string, reason: string) => (
       request<PaymentNotice>(
         `/api/finance/payment-notices/${noticeId}/reject/${toQueryString({ organization_id: organizationId })}`,

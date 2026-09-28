@@ -1,3 +1,4 @@
+import type { TrustLevelEvidence, TrustLevelKey } from '@keya/design-system';
 import type { Mission } from '../db/types';
 
 export class ApiError extends Error {
@@ -60,6 +61,8 @@ export interface MissionDetail {
   declaration: { id: string; declaredBy: string; declaredAt: string; note: string };
   evidences: SubmittedEvidence[];
   openReserves: OpenReserve[];
+  /** PO-2026-09-28-04 : niveaux de confiance atteints du jalon contrôlé. */
+  trustLevels?: Partial<Record<TrustLevelKey, TrustLevelEvidence>>;
 }
 
 export interface OpinionPayload {
@@ -274,6 +277,7 @@ export function createApiClient({ baseUrl, getAccessToken }: ApiClientConfig) {
           submittedAt: correction.submitted_at, submittedBy: correction.submitted_by,
         })),
       })),
+      trustLevels: (data.trust_levels ?? {}) as Partial<Record<TrustLevelKey, TrustLevelEvidence>>,
     };
   }
 

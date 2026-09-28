@@ -39,7 +39,8 @@ describe('PriorityTaskSummary — consomme le même endpoint que Mes actions', (
     render(withApiClient(api, <PriorityTaskSummary onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
     expect(await screen.findByText('Réserve ouverte sur le lot « Lot 12 »')).toBeInTheDocument();
-    expect(screen.getByText('Échéance : 01/04/2026')).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-11 : format unique F06.
+    expect(screen.getByText(/^Échéance : 1 avr\. 2026/)).toBeInTheDocument();
     // La seconde tâche (moins prioritaire) n'est PAS affichée — un simple
     // résumé, pas la liste complète (détail laissé à "Mes actions").
     expect(screen.queryByText('Tâche moins prioritaire')).not.toBeInTheDocument();

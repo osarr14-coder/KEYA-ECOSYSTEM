@@ -361,6 +361,9 @@ export interface LegalPaymentTierStep {
   label: string;
   cumulative_cap_percent: string;
   allows_progressive_payments: boolean;
+  /** PO-2026-09-28-03 : l'appel de ce palier n'est émissible qu'après
+   * acceptation technique du jalon de même code (jamais le premier). */
+  requires_technical_acceptance?: boolean;
 }
 
 /** Un palier en ENTRÉE de `POST /api/pricing/legal-payment-tier-templates/`
@@ -649,6 +652,20 @@ export interface PaymentNotice {
   /** Audit UI R1 (F01, F02) — encaissement simulé qui fait foi, une fois
    * le signalement traité par Finance. */
   receipt: PaymentNoticeReceipt | null;
+  /** PO-2026-09-28-02 — encaissements déjà enregistrés sur le même dossier,
+   * candidats au rattachement (vide une fois le signalement traité). */
+  attachable_receipts?: { id: string; bank_reference: string; amount: string; currency: string; received_on: string }[];
+}
+
+/** PO-2026-09-28-01 — miroir de `apps.sales.serializers.FinanceReceiptSerializer`. */
+export interface FinanceReceipt extends PaymentNoticeReceipt {
+  simulation: boolean;
+  organization_id: string;
+  program: { id: string; name: string };
+  lot: { id: string; name: string };
+  reservation: { id: string; status: ReservationStatus; status_label: string };
+  client: { id: string; email: string; full_name: string };
+  notices: { id: string; client_reference: string; status: PaymentNotice['status']; status_label: string }[];
 }
 
 export interface PaymentNoticeReceipt {

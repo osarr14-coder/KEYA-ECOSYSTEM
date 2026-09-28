@@ -131,7 +131,23 @@ def payment_rejected(notice):
         subject=notice, organization_id=notice.organization_id, assignee=reservation.client,
         source=PAYMENT_NOTICE_REJECTED, program=_program(reservation), priority=TaskPriority.HIGH,
         label=(
-            f'Virement introuvable au relevé (simulé) — {_call_label(notice.payment_call)} : {notice.rejection_reason}. '
+            f'Signalement clôturé sans rattachement — {_call_label(notice.payment_call)} : {notice.rejection_reason}. '
             'Vérifiez votre virement puis signalez-le à nouveau.'
+        ),
+    )
+
+
+def payment_notice_attached(notice):
+    """PO-2026-09-28-02 — le signalement est rattaché à un encaissement
+    déjà enregistré par Finance : le client en est informé, la tâche
+    Finance est close."""
+    reservation = notice.reservation
+    close_tasks(subject=notice, source=PAYMENT_NOTICE_TO_CONFIRM)
+    notify_user(
+        subject=notice, organization_id=notice.organization_id, assignee=reservation.client,
+        source=PAYMENT_RECEIVED, program=_program(reservation), task_type=TaskType.NOTIFICATION,
+        label=(
+            f'Votre signalement ({_call_label(notice.payment_call)}) est rattaché à l\'encaissement '
+            f'{notice.receipt.bank_reference} (simulé).'
         ),
     )

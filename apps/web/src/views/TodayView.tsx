@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, KeyFigure, PageHeader, Pill, type PillTone, formatServerDateTime, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, KeyFigure, PageHeader, Pill, type PillTone, formatServerDateTime, semanticColors, formatCalendarDate,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -41,11 +41,11 @@ const TYPE_LABELS: Record<Task['type'], { label: string; tone: PillTone }> = {
 };
 
 
+// PO-2026-09-28-11 : format unique F06, précédé du jour de la semaine.
 function todayLabel() {
-  const label = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Abidjan',
-  });
-  return label.charAt(0).toUpperCase() + label.slice(1);
+  const now = new Date();
+  const weekday = now.toLocaleDateString('fr-FR', { weekday: 'long', timeZone: 'Africa/Abidjan' });
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${formatCalendarDate(now.toISOString())}`;
 }
 
 function TaskCard({

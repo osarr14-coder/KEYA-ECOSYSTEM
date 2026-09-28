@@ -31,12 +31,18 @@ function notice(overrides: Partial<PaymentNotice> = {}): PaymentNotice {
   };
 }
 
-function renderView(canAct: boolean, overrides: Parameters<typeof createMockApiClient>[0] = {}) {
+function renderView(
+  canAct: boolean, overrides: Parameters<typeof createMockApiClient>[0] = {}, { signals = true }: { signals?: boolean } = {},
+) {
   // PO-2026-09-27-19 : l'écran charge aussi les dossiers (« Enregistrer un encaissement »).
   const api = createMockApiClient({
-    listPaymentNotices: vi.fn().mockResolvedValue([notice()]), listReservations: vi.fn().mockResolvedValue([]), ...overrides,
+    listPaymentNotices: vi.fn().mockResolvedValue([notice()]), listReservations: vi.fn().mockResolvedValue([]),
+    listReceipts: vi.fn().mockResolvedValue([]), ...overrides,
   });
   render(withApiClient(api, <PaymentNoticesView canAct={canAct} />));
+  // Adapté selon PO-2026-09-28-01 : les signalements forment la seconde vue
+  // de « Encaissements ».
+  if (signals) fireEvent.click(screen.getByRole('button', { name: /Signalements clients/ }));
   return { api };
 }
 
@@ -69,13 +75,14 @@ describe('PaymentNoticesView — virements signalés, encaissement par Finance (
     }));
   });
 
-  it('un virement introuvable au relevé exige un motif et l’envoie', async () => {
+  // Adapté selon PO-2026-09-28-02 : « Clôturer sans rattachement », motif obligatoire.
+  it('une clôture sans rattachement exige un motif et l’envoie', async () => {
     const rejectPaymentNotice = vi.fn().mockResolvedValue(notice({ status: 'rejected' }));
     renderView(true, { rejectPaymentNotice });
 
-    const reject = await screen.findByRole('button', { name: 'Introuvable au relevé' });
+    const reject = await screen.findByRole('button', { name: 'Clôturer sans rattachement' });
     expect(reject).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Motif du rejet'), { target: { value: 'Virement introuvable' } });
+    fireEvent.change(screen.getByLabelText('Motif de clôture'), { target: { value: 'Virement introuvable' } });
     fireEvent.click(reject);
 
     await waitFor(() => expect(rejectPaymentNotice).toHaveBeenCalledWith('notice-1', 'org-promoteur', 'Virement introuvable'));
@@ -86,6 +93,8 @@ describe('PaymentNoticesView — virements signalés, encaissement par Finance (
     renderView(true, { confirmPaymentNotice: enregistrer });
 
     fireEvent.change(await screen.findByLabelText('Référence bancaire simulée'), { target: { value: 'VIR-001' } });
+    // Adapté selon PO-2026-09-28-10 : le montant reçu, vide par défaut, est saisi.
+    fireEvent.change(screen.getByLabelText('Montant reçu'), { target: { value: '100000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer l’encaissement' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('celle du relevé');
   });
@@ -159,7 +168,7 @@ describe('PaymentNoticesView — encaissement sans signalement du client (PO-202
       listReservations: vi.fn().mockResolvedValue([DOSSIER]),
       getFinanceFile: vi.fn().mockResolvedValue({ reservation: DOSSIER, calls: [{ ...CALL, allocated_amount: '0.00' }], receipts: [] }),
       recordReceipt,
-    });
+    }, { signals: false });
 
     const entry = await screen.findByRole('region', { name: 'Enregistrer un encaissement' });
     expect(entry).toBeInTheDocument();
@@ -193,7 +202,7 @@ describe('PaymentNoticesView — encaissement sans signalement du client (PO-202
           simulation: true,
         }],
       }),
-    });
+    }, { signals: false });
 
     fireEvent.change(await screen.findByLabelText('Dossier de l’encaissement'), { target: { value: 'reservation-1' } });
     const block = await screen.findByTestId('receipt-block');
@@ -204,5 +213,53 @@ describe('PaymentNoticesView — encaissement sans signalement du client (PO-202
     expect(allocations).toContain('40 000 XOF → Complément du premier versement');
     expect(screen.getByTestId('receipt-unallocated').textContent!.replace(/\s/g, ' ')).toBe('10 000 XOF');
     expect(block).toHaveTextContent('reste visible après rapprochement');
+  });
+});
+
+// PO-2026-09-28-01, -02, -10 : deux vues, rattachement, montant lu au relevé.
+describe('PaymentNoticesView — encaissements et signalements (PO-2026-09-28-01/02/10)', () => {
+  it('s’ouvre sur les encaissements enregistrés, en relevé', async () => {
+    renderView(true, {
+      listReceipts: vi.fn().mockResolvedValue([{
+        ...RECEIPT, simulation: true, organization_id: 'org-promoteur',
+        program: { id: 'program-1', name: 'Résidence Démonstration Abidjan' }, lot: { id: 'lot-1', name: 'Lot A1' },
+        reservation: { id: 'reservation-1', status: 'reserved', status_label: 'Réservée' },
+        client: { id: 'client-1', email: 'client1.demo@keya.test', full_name: 'Awa Koné' },
+        notices: [{ id: 'notice-1', client_reference: 'VIR-001', status: 'confirmed', status_label: 'Traité — encaissement enregistré' }],
+      }]),
+    }, { signals: false });
+    expect(screen.getByRole('heading', { level: 1, name: 'Encaissements' })).toBeInTheDocument();
+    const row = await screen.findByTestId('ledger-receipt');
+    expect(row).toHaveTextContent('SIM-ENC-0009');
+    expect(row).toHaveTextContent('Awa Koné — Lot A1');
+    expect(row).toHaveTextContent('28 sept. 2026');
+    expect(row).toHaveTextContent('VIR-001');
+  });
+
+  it('le montant reçu est vide par défaut : il se lit au relevé', async () => {
+    renderView(true);
+    expect(await screen.findByLabelText('Montant reçu')).toHaveValue('');
+  });
+
+  it('rattache un signalement à un encaissement déjà enregistré et en affiche la référence', async () => {
+    const attachPaymentNotice = vi.fn().mockResolvedValue(notice({ status: 'confirmed', receipt: RECEIPT }));
+    const listPaymentNotices = vi.fn()
+      .mockResolvedValueOnce([notice({
+        attachable_receipts: [{ id: 'receipt-1', bank_reference: 'SIM-ENC-0009', amount: '150000.00', currency: 'XOF', received_on: '2026-09-28' }],
+      })])
+      .mockResolvedValue([notice({ status: 'confirmed', status_label: 'Traité — encaissement enregistré', receipt: RECEIPT })]);
+    renderView(true, { attachPaymentNotice, listPaymentNotices });
+
+    const select = await screen.findByLabelText('Encaissement à rattacher');
+    expect(select.textContent!.replace(/\s/g, ' ')).toContain('SIM-ENC-0009 — 150 000 XOF — reçu le 28 sept. 2026');
+    fireEvent.click(screen.getByRole('button', { name: 'Rattacher' }));
+    await waitFor(() => expect(attachPaymentNotice).toHaveBeenCalledWith('notice-1', 'org-promoteur', 'receipt-1'));
+    expect(await screen.findByTestId('notice-receipt-reference')).toHaveTextContent('SIM-ENC-0009');
+  });
+
+  it('sans encaissement enregistré sur le dossier, le rattachement l’explique', async () => {
+    renderView(true);
+    expect(await screen.findByText(/Aucun encaissement enregistré sur ce dossier/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Rattacher' })).not.toBeInTheDocument();
   });
 });

@@ -39,14 +39,16 @@ describe('EvidenceFeedView', () => {
     expect(milestoneItems[1]).toHaveTextContent('Foncier');
   });
 
-  it('affiche un StatusBadge et la provenance pour chaque preuve', async () => {
+  // Adapté selon PO-2026-09-28-04 : niveau en ligne datée, plus de badge.
+  it('affiche le niveau atteint et la provenance pour chaque preuve', async () => {
     const api = createMockApiClient({ getLotEvidenceFeed: async () => FEED });
 
     render(withApiClient(api, <EvidenceFeedView lotId="lot-1" />));
 
     await screen.findByText('Conception');
-    const badges = screen.getAllByText('Documenté');
-    expect(badges).toHaveLength(2);
+    const lines = screen.getAllByTestId('trust-event');
+    expect(lines).toHaveLength(2);
+    lines.forEach((line) => expect(line).toHaveTextContent('Niveau atteint : Documenté'));
     expect(screen.getByText(/mobile_app_photo/)).toBeInTheDocument();
     expect(screen.getByText(/document_upload/)).toBeInTheDocument();
   });

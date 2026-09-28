@@ -1,5 +1,5 @@
 import {
-  AlertBanner, ApiErrorBanner, Card, ProgressBar, StatusBadge,
+  AlertBanner, ApiErrorBanner, Card, ProgressBar, TrustEventLine,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -76,10 +76,8 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
 
       <Card aria-label="Dernier événement notable" title="Dernier événement" icon="check-circle">
         {overview.latest_notable_event ? (
-          <StatusBadge
-            level={overview.latest_notable_event.level}
-            event={toTrustEventData(overview.latest_notable_event)}
-          />
+          // PO-2026-09-28-04 : niveau en ligne datée et attribuée, jamais en badge.
+          <TrustEventLine event={toTrustEventData(overview.latest_notable_event)} />
         ) : (
           <p>Aucun événement pour le moment.</p>
         )}

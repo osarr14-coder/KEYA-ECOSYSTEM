@@ -820,6 +820,8 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             ('build-lot-milestones', [own_lot.id], {}),
             # Ticket B-056 : SES propres tâches, toutes organisations.
             ('my-task-inbox', [], {}),
+            # PO-2026-09-28-04 : suivi du chantier de SON bien (404 sinon).
+            ('my-worksite', [own_lot.id], {}),
         ]
         for name, args, _kwargs in requests:
             response = own_client.get(reverse(name, args=args))
@@ -1035,6 +1037,12 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # états des jalons des chantiers en cours). Aucune donnée client,
             # aucun montant de devis (ajoutées au balayage ci-dessus).
             'public-offer', 'public-worksites',
+            # Audit UI R1, étape 4 — ajout conscient (PO-2026-09-28-01, -02,
+            # -04) : encaissements enregistrés et rattachement d'un
+            # signalement, Finance seul ; suivi du chantier du bien du client
+            # (SA réservation seulement, 404 sinon — ajouté au balayage
+            # ci-dessus). Aucun montant de devis.
+            'finance-receipt-list', 'finance-payment-notice-attach', 'my-worksite',
         }
         assert actual == expected
 

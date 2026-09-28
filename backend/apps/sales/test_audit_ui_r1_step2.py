@@ -196,7 +196,8 @@ class TestF01F02SignalledTransferAndReceipt:
         finance = _login(FINANCE)
         url = reverse('finance-payment-notice-confirm', args=[notice['id']]) + f'?organization_id={promoter.id}'
         assert finance.post(url, {}, format='json').status_code == 400
-        same = finance.post(url, {'bank_reference': 'VIR-AWA-0001'}, format='json')
+        # Adapté selon PO-2026-09-28-10 : montant reçu fourni (lu au relevé).
+        same = finance.post(url, {'bank_reference': 'VIR-AWA-0001', 'amount': '100000'}, format='json')
         assert same.status_code == 409
         assert 'distincte' in same.data['detail']
 

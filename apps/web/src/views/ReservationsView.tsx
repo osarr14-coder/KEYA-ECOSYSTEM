@@ -362,7 +362,7 @@ export function ReservationsView({
         <PageHeader
           eyebrow="Lecture seule — Finance"
           title="Appels et encaissements"
-          subtitle="Par dossier : appels de fonds, encaissements simulés et leurs affectations. Les encaissements s’enregistrent depuis « Virements déclarés »."
+          subtitle="Par dossier : appels de fonds, encaissements simulés et leurs affectations. Les encaissements s’enregistrent depuis « Encaissements »."
         />
       ) : (
         <PageHeader

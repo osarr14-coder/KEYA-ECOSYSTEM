@@ -329,7 +329,8 @@ class PaymentNoticeStatus(models.TextChoices):
 
     DECLARED = 'declared', 'Signalé par le client — non encaissé'
     CONFIRMED = 'confirmed', 'Traité — encaissement enregistré'
-    REJECTED = 'rejected', 'Introuvable au relevé (simulé)'
+    # PO-2026-09-28-02 : clôture sans rattachement, motif obligatoire.
+    REJECTED = 'rejected', 'Clôturé sans rattachement'
 
 
 class PaymentNotice(models.Model):

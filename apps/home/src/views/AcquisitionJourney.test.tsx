@@ -197,3 +197,60 @@ describe('AcquisitionJourney — rendu du parcours (ticket F-074)', () => {
     expect(screen.getByTestId('settled-total').textContent!.replace(/\s/g, ' ')).toBe('1 100 000 XOF');
   });
 });
+
+describe('AcquisitionJourney — virement signalé (PO-2026-09-28-09)', () => {
+  it('aucune action n’est demandée : Finance vérifie le virement au relevé', async () => {
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([call({
+        notice: {
+          id: 'n1', status: 'declared', status_label: 'Signalé par le client — non encaissé', amount: '100000.00',
+          client_reference: 'VIR-1', paid_on: '2026-09-28', rejection_reason: '',
+        },
+      })]),
+      getMyContracts: vi.fn().mockResolvedValue([]),
+    });
+    render(withApiClient(api, <AcquisitionJourney reservation={reservation({ validated_at: 'x' })} onChanged={() => {}} />));
+
+    const next = await screen.findByTestId('next-action');
+    expect(next).toHaveAttribute('data-kind', 'verifying');
+    expect(next).toHaveTextContent('Aucune action de votre part — Finance vérifie votre virement au relevé');
+    expect(next).not.toHaveTextContent('Votre prochaine action');
+    expect(next).not.toHaveTextContent('Réglez les frais');
+  });
+});
+
+describe('AcquisitionJourney — suivi du chantier (PO-2026-09-28-04)', () => {
+  it('chaque jalon montre son état et l’échelle des niveaux, avec qui, quand, version et périmètre', async () => {
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([call({ settlement: 'settled', settled_amount: '100000.00' })]),
+      getMyContracts: vi.fn().mockResolvedValue([]),
+      getMyWorksite: vi.fn().mockResolvedValue([{
+        id: 'm1', order: 1, code: 'fondations', label: 'Fondations', cdc_state: 'UNDER_REVIEW', status_label: 'En examen',
+        status_hint: '',
+        trust_levels: {
+          declared: { by: 'Constructeur Démo', role: 'Constructeur', at: '2026-09-27T20:10:00Z', version: 'déclaration n° 1', scope: 'Jalon « Fondations », Lot A1' },
+        },
+      }]),
+    });
+    render(withApiClient(api, <AcquisitionJourney reservation={reservation({ status: 'committed' })} onChanged={() => {}} />));
+
+    const item = await screen.findByTestId('worksite-milestone');
+    expect(item).toHaveTextContent('1. Fondations');
+    expect(item).toHaveTextContent('En examen');
+    const declared = within(item).getByTestId('trust-level-declared');
+    expect(declared).toHaveTextContent('Constructeur Démo (Constructeur)');
+    expect(declared).toHaveTextContent('27 sept. 2026, 20:10 (GMT, Abidjan)');
+    expect(declared).toHaveTextContent('déclaration n° 1');
+    expect(within(item).getByTestId('trust-level-validated')).toHaveTextContent('Non atteint');
+    expect(item.textContent).not.toMatch(/%/);
+  });
+
+  it('pas de suivi du chantier tant que le bien est seulement bloqué', async () => {
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([]), getMyContracts: vi.fn().mockResolvedValue([]),
+    });
+    render(withApiClient(api, <AcquisitionJourney reservation={reservation()} onChanged={() => {}} />));
+    await screen.findByTestId('next-action');
+    expect(screen.queryByRole('region', { name: 'Suivi du chantier' })).not.toBeInTheDocument();
+  });
+});

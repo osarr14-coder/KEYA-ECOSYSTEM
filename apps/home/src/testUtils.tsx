@@ -29,6 +29,7 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     signContract: vi.fn(notMocked),
     // Ticket F-068 (appels de fonds, B-050/B-051) :
     getMyPaymentCalls: vi.fn(notMocked),
+    getMyWorksite: vi.fn(async () => []),
     // Ticket F-071 (déclaration de virement, B-056) :
     declarePayment: vi.fn(notMocked),
     ...overrides,

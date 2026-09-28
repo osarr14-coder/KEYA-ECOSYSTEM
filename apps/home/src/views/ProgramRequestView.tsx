@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, semanticColors, formatServerDateTime,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -170,7 +170,7 @@ export function ProgramRequestView() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                   <RequestStatusLabel status={request.status} />
                   <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-                    {new Date(request.created_at).toLocaleDateString('fr-FR')}
+                    {formatServerDateTime(request.created_at)}
                   </span>
                 </div>
                 <p style={{ margin: '8px 0 0' }}>{request.description}</p>

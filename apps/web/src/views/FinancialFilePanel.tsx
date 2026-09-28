@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Input, Pill, ReceiptProof, Select, semanticColors, SimulatedMark,
+  ApiErrorBanner, Button, DateInput, Input, Pill, ReceiptProof, Select, semanticColors, SimulatedMark,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -123,10 +123,11 @@ function ReceiptForm({ reservation, onRecorded }: { reservation: AdminReservatio
         Montant reçu (XOF)
         <Input aria-label="Montant reçu" inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} required style={{ marginTop: '4px', width: '160px' }} />
       </label>
-      <label>
-        Reçu le
-        <Input aria-label="Date de réception" type="date" value={receivedOn} onChange={(event) => setReceivedOn(event.target.value)} required style={{ marginTop: '4px' }} />
-      </label>
+      {/* PO-2026-09-28-11 : saisie au format F06 (jour · mois · année). */}
+      <div>
+        <span style={{ display: 'block', marginBottom: '4px' }}>Reçu le</span>
+        <DateInput label="Date de réception" value={receivedOn} onChange={setReceivedOn} />
+      </div>
       <Button type="submit" disabled={pending || reference.trim() === '' || amount.trim() === ''}>
         {pending ? 'Enregistrement…' : "Enregistrer l'encaissement"}
       </Button>

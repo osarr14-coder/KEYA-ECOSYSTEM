@@ -131,3 +131,19 @@ describe('documentLabel — libellé lisible des pièces soumises', () => {
     expect(documentLabel('photo', 1)).toBe('Pièce 2');
   });
 });
+
+describe('MissionReviewView — niveaux de confiance du jalon (PO-2026-09-28-04)', () => {
+  it('montre l’échelle, chaque niveau atteint avec qui, rôle, quand et version examinée', async () => {
+    renderView({
+      ...FIRST,
+      trustLevels: {
+        declared: { by: 'Constructeur Démo', role: 'Constructeur', at: '2026-09-27T09:00:00Z', version: 'déclaration n° 1', scope: 'Jalon « Fondations », Lot A1' },
+        documented: { by: 'Constructeur Démo', role: 'Constructeur', at: '2026-09-27T09:05:00Z', version: 'pièce v1', scope: 'Jalon « Fondations », Lot A1' },
+      },
+    });
+    const scale = await screen.findByRole('list', { name: 'Niveaux de confiance — Fondations' });
+    expect(within(scale).getByTestId('trust-level-documented')).toHaveTextContent('pièce v1');
+    expect(within(scale).getByTestId('trust-level-controlled')).toHaveTextContent('Non atteint');
+    expect(scale.textContent).not.toMatch(/%|score/i);
+  });
+});

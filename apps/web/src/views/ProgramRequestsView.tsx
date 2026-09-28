@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, Select, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Card, Select, semanticColors, formatServerDateTime,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -71,7 +71,7 @@ function RequestCard({ request, onDecided }: { request: ProgramRequest; onDecide
         </span>
       </div>
       <p data-testid="request-meta" style={{ margin: '4px 0', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-        {request.requested_by_email} — {new Date(request.created_at).toLocaleDateString('fr-FR')}
+        {request.requested_by_email} — {formatServerDateTime(request.created_at)}
       </p>
       <p style={{ margin: '8px 0' }}>{request.description}</p>
 

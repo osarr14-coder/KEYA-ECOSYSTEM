@@ -1,9 +1,9 @@
 import { type ReactNode, useEffect, useState } from 'react';
 
 import {
-  AlertBanner, ArchiveBanner, BRAND_NAME, Button, DateTime, EmptyState, Field, ICON_PATHS, Icon, type IconName, Indicator,
+  AlertBanner, ArchiveBanner, BRAND_NAME, Button, DateInput, DateTime, EmptyState, Field, ICON_PATHS, Icon, type IconName, Indicator,
   Input, KeyFigure, MONEY_KIND_LABELS, Money, type MoneyKind, Pill, type PillTone, ReceiptProof, Reference, ReserveCard,
-  Select, SimulatedMark, Skeleton, Stepper, TabBar, Timeline, TrustLevels, VersionHistory, fetchDemoInstance,
+  Select, SimulatedMark, Skeleton, Stepper, TabBar, Timeline, TrustEventLine, TrustLevels, VersionHistory, fetchDemoInstance,
   semanticColors, typography,
 } from '@keya/design-system';
 
@@ -128,8 +128,8 @@ const GLOSSARY: { object: string; states: [string, string, PillTone][] }[] = [
   {
     object: 'Signalement de virement',
     states: [
-      ['declared', 'Signalé — non encaissé', 'alert'], ['confirmed', 'Traité — encaissement enregistré', 'success'],
-      ['rejected', 'Introuvable au relevé (simulé)', 'danger'],
+      ['declared', 'Signalé par le client — non encaissé', 'alert'], ['confirmed', 'Traité — encaissement enregistré', 'success'],
+      ['rejected', 'Clôturé sans rattachement', 'danger'],
     ],
   },
 ];
@@ -138,6 +138,7 @@ const EVIDENCE = { by: 'Contrôleur Démo (bureau fictif)', at: '2026-09-28T10:1
 
 function DesignSystemGallery() {
   const [tab, setTab] = useState('etats');
+  const [day, setDay] = useState('2026-09-28');
   const iconNames = Object.keys(ICON_PATHS) as IconName[];
 
   return (
@@ -215,6 +216,9 @@ function DesignSystemGallery() {
             </Select>
           </Field>
           <Field label="Montant affecté (erreur)"><Input defaultValue="abc" aria-invalid="true" /></Field>
+          <Specimen label="Date au format F06 (PO-2026-09-28-11)">
+            <DateInput label="Reçu le" value={day} onChange={setDay} />
+          </Specimen>
         </div>
       </Section>
 
@@ -240,6 +244,9 @@ function DesignSystemGallery() {
           <Specimen label="Aucun niveau atteint"><TrustLevels reached={{}} /></Specimen>
           <Specimen label="Déclaré et documenté">
             <TrustLevels reached={{ declared: { ...EVIDENCE, by: 'Constructeur Démo', version: 'v1' }, documented: { ...EVIDENCE, by: 'Constructeur Démo', version: 'v1' } }} />
+          </Specimen>
+          <Specimen label="Événement isolé (ligne datée, jamais un badge)">
+            <TrustEventLine event={{ level: 'documente', actor: 'Constructeur Démo', createdAt: '2026-09-27T20:10:00Z', scope: 'Jalon « Fondations », Lot A1' }} />
           </Specimen>
           <Specimen label="Validé techniquement">
             <TrustLevels

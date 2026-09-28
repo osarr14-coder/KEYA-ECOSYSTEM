@@ -126,7 +126,10 @@ class TestPaymentNoticeCircuit:
         assert notice['client_reference'] == 'VIR-CLIENT-001'
 
         # Audit UI R1 (F02) : référence du relevé bancaire simulé, obligatoire.
-        confirmed = _notice_action(finance, notice['id'], promoter, 'confirm', {'bank_reference': 'SIM-ENC-0001'})
+        # Adapté selon PO-2026-09-28-10 : le montant reçu se lit au relevé.
+        confirmed = _notice_action(
+            finance, notice['id'], promoter, 'confirm', {'bank_reference': 'SIM-ENC-0001', 'amount': '100000'},
+        )
 
         assert confirmed.status_code == 200, confirmed.data
         assert confirmed.data['status'] == 'confirmed'
@@ -156,7 +159,10 @@ class TestPaymentNoticeCircuit:
         assert _client_calls(client, reservation_id)[0]['notice']['rejection_reason'] == 'Virement introuvable sur le relevé'
         assert 'payment_notice_rejected' in _sources(client)
         assert _declare(client, fee_call['id'], reference='VIR-CLIENT-002').status_code == 201
-        assert _notice_action(finance, notice_id, promoter, 'confirm', {'bank_reference': 'SIM-ENC-0001'}).status_code == 409
+        # Adapté selon PO-2026-09-28-10 : montant reçu fourni (lu au relevé).
+        assert _notice_action(
+            finance, notice_id, promoter, 'confirm', {'bank_reference': 'SIM-ENC-0001', 'amount': '100000'},
+        ).status_code == 409
 
     def test_a_declared_payment_suspends_the_hold_expiry(self):
         client, _u, _adv, _finance, promoter, reservation_id, fee_call = self._validated()

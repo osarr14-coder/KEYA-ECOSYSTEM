@@ -27,6 +27,8 @@ from .serializers import (
     PaymentCallCandidateSerializer,
     PaymentCallIssueSerializer,
     PaymentCallSerializer,
+    FinanceReceiptSerializer,
+    PaymentNoticeAttachSerializer,
     PaymentNoticeConfirmSerializer,
     PaymentNoticeDeclareSerializer,
     PaymentNoticeRejectSerializer,
@@ -816,3 +818,53 @@ class PaymentNoticeRejectView(APIView):
         if notice is None:
             raise NotFound()
         return Response(PaymentNoticeSerializer(notice).data)
+
+
+class PaymentNoticeAttachView(APIView):
+    """`POST /api/finance/payment-notices/{id}/attach/?organization_id=` —
+    Finance seul (PO-2026-09-28-02) : rattache le signalement à un
+    encaissement déjà enregistré du même dossier."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def post(self, request, notice_id):
+        serializer = PaymentNoticeAttachSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            notice = services.attach_payment_notice(
+                finance=request.user, caller_organization_id=_caller_organization_id(request),
+                target_organization_id=_target_organization_id(request), notice_id=notice_id,
+                receipt_id=serializer.validated_data['receipt'],
+            )
+        except services.PaymentNoticeError as exc:
+            return _conflict(exc)
+        if notice is None:
+            raise NotFound()
+        return Response(PaymentNoticeSerializer(notice).data)
+
+
+class FinanceReceiptListView(APIView):
+    """`GET /api/finance/receipts/` — Finance seul (PO-2026-09-28-01) :
+    encaissements enregistrés, toutes organisations."""
+
+    permission_classes = [permissions.IsAuthenticated, IsFinance]
+
+    def get(self, request):
+        receipts = services.list_receipts(caller_organization_id=_caller_organization_id(request))
+        return Response(FinanceReceiptSerializer(receipts, many=True).data)
+
+
+class MyWorksiteView(APIView):
+    """`GET /api/me/reservations/{id}/worksite/` — PO-2026-09-28-04 : jalons
+    du bien du client, état CDC §7.1 et niveaux de confiance atteints ; 404
+    pour la réservation d'un autre client."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, reservation_id):
+        rows = services.client_worksite(
+            client=request.user, caller_organization_id=_caller_organization_id(request), reservation_id=reservation_id,
+        )
+        if rows is None:
+            raise NotFound()
+        return Response(rows)

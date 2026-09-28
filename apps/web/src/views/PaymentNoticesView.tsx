@@ -1,13 +1,16 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, ReceiptProof, Select, semanticColors, typography,
-  SimulatedMark, formatCalendarDate, formatServerDateTime,
+  ApiErrorBanner, Button, Card, DateInput, EmptyState, Input, KeyFigure, Money, PageHeader, Pill, type PillTone, ReceiptProof,
+  Reference, Select, SimulatedMark, Skeleton, TabBar, formatCalendarDate, formatMoney, formatServerDateTime, semanticColors,
+  typography,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { formatDrfFieldErrors } from '../api/errors';
-import type { AdminReservation, PaymentNotice, PaymentNoticeReceipt } from '../api/types';
+import type {
+  AdminReservation, FinanceReceipt, PaymentNotice, PaymentNoticeReceipt,
+} from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { FinancialFilePanel, formatAmount } from './FinancialFilePanel';
 
@@ -27,6 +30,13 @@ import { FinancialFilePanel, formatAmount } from './FinancialFilePanel';
  * montant et date reçus. Une fois traité, l'écran montre le justificatif
  * fictif, l'état CDC §8.3 (« Rapproché (simulé) »), les affectations et le
  * montant non affecté. Dates au format unique, fuseau indiqué.
+ *
+ * PO-2026-09-28-01, -02, -10, -11 — menu « Encaissements », deux vues :
+ * encaissements enregistrés (relevé fictif) et « Signalements clients ».
+ * Un signalement se RATTACHE à un encaissement déjà enregistré (référence
+ * affichée), s'enregistre depuis le relevé (montant reçu vide par défaut :
+ * il se lit au relevé), ou se CLÔTURE sans rattachement avec un motif
+ * obligatoire. Tout est tracé côté serveur.
  */
 
 const MONO = typography.monoFontFamily;
@@ -48,9 +58,12 @@ function formatDate(iso: string) {
 
 function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () => void }) {
   const api = useApiClient();
+  const candidates = notice.attachable_receipts ?? [];
+  const [receiptId, setReceiptId] = useState(candidates[0]?.id ?? '');
   const [bankReference, setBankReference] = useState('');
   const [receivedOn, setReceivedOn] = useState(notice.paid_on);
-  const [amount, setAmount] = useState(String(Number(notice.amount)));
+  // PO-2026-09-28-10 : vide par défaut — le montant se lit au relevé.
+  const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +80,11 @@ function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () =
     }
   }
 
+  function attach(event: FormEvent) {
+    event.preventDefault();
+    void run(() => api.attachPaymentNotice(notice.id, notice.organization.id, receiptId), 'Rattachement refusé.');
+  }
+
   function confirm(event: FormEvent) {
     event.preventDefault();
     void run(() => api.confirmPaymentNotice(notice.id, notice.organization.id, {
@@ -76,70 +94,99 @@ function NoticeActions({ notice, onDone }: { notice: PaymentNotice; onDone: () =
 
   function reject(event: FormEvent) {
     event.preventDefault();
-    void run(() => api.rejectPaymentNotice(notice.id, notice.organization.id, reason.trim()), 'Rejet refusé.');
+    void run(() => api.rejectPaymentNotice(notice.id, notice.organization.id, reason.trim()), 'Clôture refusée.');
   }
 
+  const sectionTitle = { margin: 0, fontSize: '15px', fontWeight: 700 } as const;
   return (
     <div
       style={{
-        display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '16px', paddingTop: '16px',
+        display: 'flex', flexDirection: 'column', gap: '18px', marginTop: '16px', paddingTop: '16px',
         borderTop: `1px solid ${semanticColors.neutral.border}`,
       }}
     >
       <form
+        onSubmit={attach}
+        aria-label={`Rattacher le signalement ${notice.client_reference} à un encaissement`}
+        style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
+      >
+        <h3 style={sectionTitle}>Rattacher à un encaissement déjà enregistré</h3>
+        {candidates.length === 0 ? (
+          <p style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
+            Aucun encaissement enregistré sur ce dossier. Enregistrez-le ci-dessous s’il figure au relevé.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <label style={{ ...fieldLabel, flex: '1 1 260px', maxWidth: '440px' }}>
+              Encaissement
+              <Select aria-label="Encaissement à rattacher" value={receiptId} onChange={(event) => setReceiptId(event.target.value)}>
+                {candidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {`${candidate.bank_reference} — ${formatMoney(candidate.amount, candidate.currency)} — reçu le ${formatCalendarDate(candidate.received_on)}`}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <Button type="submit" variant="secondary" disabled={pending || receiptId === ''}>Rattacher</Button>
+          </div>
+        )}
+      </form>
+      <form
         onSubmit={confirm}
         aria-label={`Enregistrer l'encaissement du virement ${notice.client_reference}`}
-        style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}
+        style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
       >
-        <label style={{ ...fieldLabel, flex: '1 1 200px', maxWidth: '280px' }}>
-          Référence bancaire simulée (relevé)
-          <Input
-            aria-label="Référence bancaire simulée"
-            placeholder="ex. SIM-ENC-0003"
-            value={bankReference}
-            onChange={(event) => setBankReference(event.target.value)}
-            required
-            style={{ fontFamily: MONO }}
-          />
-        </label>
-        <label style={{ ...fieldLabel, flex: '0 1 160px' }}>
-          Montant reçu
-          <Input
-            aria-label="Montant reçu"
-            inputMode="numeric"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            required
-          />
-        </label>
-        <label style={fieldLabel}>
-          Reçu le
-          <Input
-            aria-label="Date de réception"
-            type="date"
-            value={receivedOn}
-            onChange={(event) => setReceivedOn(event.target.value)}
-          />
-        </label>
-        <Button type="submit" variant="accent" disabled={pending || bankReference.trim() === '' || amount.trim() === ''}>
-          Enregistrer l’encaissement
-        </Button>
+        <h3 style={sectionTitle}>Enregistrer l’encaissement depuis le relevé</h3>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <label style={{ ...fieldLabel, flex: '1 1 200px', maxWidth: '280px' }}>
+            Référence bancaire simulée (relevé)
+            <Input
+              aria-label="Référence bancaire simulée"
+              placeholder="ex. SIM-ENC-0003"
+              value={bankReference}
+              onChange={(event) => setBankReference(event.target.value)}
+              required
+              style={{ fontFamily: MONO }}
+            />
+          </label>
+          <label style={{ ...fieldLabel, flex: '0 1 160px' }}>
+            Montant reçu (relevé)
+            <Input
+              aria-label="Montant reçu"
+              inputMode="numeric"
+              placeholder="Lu au relevé"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              required
+            />
+          </label>
+          <div style={fieldLabel}>
+            <span>Reçu le</span>
+            <DateInput label="Date de réception" value={receivedOn} onChange={setReceivedOn} />
+          </div>
+          <Button type="submit" variant="accent" disabled={pending || bankReference.trim() === '' || amount.trim() === ''}>
+            Enregistrer l’encaissement
+          </Button>
+        </div>
       </form>
       <form
         onSubmit={reject}
-        aria-label={`Rejeter le virement ${notice.client_reference}`}
-        style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}
+        aria-label={`Clôturer le signalement ${notice.client_reference} sans rattachement`}
+        style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
       >
-        <label style={{ ...fieldLabel, flex: '1 1 260px', maxWidth: '420px' }}>
-          Motif (virement introuvable au relevé)
-          <Input
-            aria-label="Motif du rejet"
-            placeholder="Aucun virement correspondant au relevé du jour"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </label>
-        <Button type="submit" variant="secondary" disabled={pending || reason.trim() === ''}>Introuvable au relevé</Button>
+        <h3 style={sectionTitle}>Clôturer sans rattachement</h3>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <label style={{ ...fieldLabel, flex: '1 1 260px', maxWidth: '420px' }}>
+            Motif (obligatoire)
+            <Input
+              aria-label="Motif de clôture"
+              placeholder="Aucun virement correspondant au relevé du jour"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </label>
+          <Button type="submit" variant="secondary" disabled={pending || reason.trim() === ''}>Clôturer sans rattachement</Button>
+        </div>
       </form>
       {error && <p role="alert" style={{ margin: 0 }}>{error}</p>}
     </div>
@@ -200,9 +247,17 @@ function NoticeCard({ notice, canAct, onDone }: { notice: PaymentNotice; canAct:
         <dd style={{ margin: 0 }}>{formatDate(notice.created_at)}</dd>
         <dt style={{ color: semanticColors.neutral.textMuted }}>Réservation</dt>
         <dd style={{ margin: 0 }}>{notice.reservation.status_label}</dd>
+        {notice.receipt && (
+          <>
+            <dt style={{ color: semanticColors.neutral.textMuted }}>Rattaché à l’encaissement</dt>
+            <dd style={{ margin: 0 }} data-testid="notice-receipt-reference">
+              <Reference value={notice.receipt.bank_reference} label="Référence de l’encaissement" />
+            </dd>
+          </>
+        )}
         {notice.rejection_reason && (
           <>
-            <dt style={{ color: semanticColors.neutral.textMuted }}>Motif du rejet</dt>
+            <dt style={{ color: semanticColors.neutral.textMuted }}>Motif de clôture</dt>
             <dd style={{ margin: 0 }}>{notice.rejection_reason}</dd>
           </>
         )}
@@ -266,54 +321,131 @@ function ReceiptEntry() {
   );
 }
 
-export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
+/** PO-2026-09-28-01 — relevé des encaissements enregistrés (Finance). */
+function ReceiptsLedger() {
+  const api = useApiClient();
+  const state = useApiResource(() => api.listReceipts(), []);
+  if (state.status === 'loading') return <Skeleton lines={4} label="Chargement des encaissements" />;
+  if (state.status === 'error') {
+    return <ApiErrorBanner error={state.error} title="Impossible de charger les encaissements." onRetry={state.refetch} />;
+  }
+  if (state.data.length === 0) {
+    return <EmptyState message="Aucun encaissement enregistré. Enregistrez le premier depuis le relevé fictif, ci-dessus." />;
+  }
+  const receipts: FinanceReceipt[] = state.data;
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table aria-label="Encaissements enregistrés">
+        <thead>
+          <tr>
+            <th>Reçu le</th>
+            <th>Référence (relevé)</th>
+            <th>Dossier</th>
+            <th style={{ textAlign: 'right' }}>Montant</th>
+            <th style={{ textAlign: 'right' }}>Non affecté</th>
+            <th>État</th>
+            <th>Signalement rattaché</th>
+          </tr>
+        </thead>
+        <tbody>
+          {receipts.map((receipt) => (
+            <tr key={receipt.id} data-testid="ledger-receipt">
+              <td style={{ whiteSpace: 'nowrap' }}>{formatCalendarDate(receipt.received_on)}</td>
+              <td><Reference value={receipt.bank_reference} label="Référence bancaire simulée" /></td>
+              <td>
+                {`${receipt.client.full_name || receipt.client.email} — ${receipt.lot.name}`}
+                <span style={{ display: 'block', fontSize: '13px', color: semanticColors.neutral.textMuted }}>{receipt.program.name}</span>
+              </td>
+              <td style={{ textAlign: 'right' }}><Money value={receipt.amount} currency={receipt.currency} kind="received" /></td>
+              <td style={{ textAlign: 'right' }}><Money value={receipt.unallocated_amount} currency={receipt.currency} kind="unallocated" /></td>
+              <td><Pill tone={receipt.status === 'reconciled_sim' ? 'success' : 'info'}>{receipt.status_label}</Pill></td>
+              <td>
+                {receipt.notices.length === 0 ? '—' : receipt.notices.map((linked) => (
+                  <span key={linked.id} style={{ display: 'block' }}>
+                    <Reference value={linked.client_reference} label="Référence indiquée par le client" copyable={false} />
+                  </span>
+                ))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ClientSignals({ canAct }: { canAct: boolean }) {
   const api = useApiClient();
   const [filter, setFilter] = useState<'declared' | 'all'>('declared');
   const state = useApiResource(() => api.listPaymentNotices(filter), [filter]);
   const notices = state.status === 'success' ? state.data : [];
   const toConfirm = notices.filter((notice) => notice.status === 'declared');
   const toConfirmTotal = toConfirm.reduce((sum, notice) => sum + Number(notice.amount), 0);
-
   return (
-    <section aria-label="Virements déclarés">
-      <PageHeader
-        title="Virements déclarés et encaissements"
-        subtitle={canAct
-          ? 'Enregistrez chaque virement du relevé fictif. Un signalement du client n’est pas un encaissement : cherchez-le au relevé, puis enregistrez-le ou indiquez qu’il est introuvable.'
-          : 'Signalements des clients et encaissements enregistrés par Finance.'}
-        actions={(
-          <label style={fieldLabel}>
-            Afficher
-            <Select
-              aria-label="Filtrer les virements"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value as 'declared' | 'all')}
-              style={{ width: '220px' }}
-            >
-              <option value="declared">À traiter</option>
-              <option value="all">Tous</option>
-            </Select>
-          </label>
-        )}
-      />
-      <SimulatedMark detail="Virements et encaissements" style={{ margin: '0 0 16px' }} />
-      {canAct && <div style={{ marginBottom: '24px' }}><ReceiptEntry key={state.status === 'success' ? notices.length : 0} /></div>}
-      <h2 style={{ fontSize: '20px', margin: '0 0 12px' }}>Virements signalés par les clients</h2>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <p style={{ margin: 0, color: semanticColors.neutral.textMuted, maxWidth: '72ch' }}>
+        Un signalement du client n’est pas un encaissement. Rattachez-le à l’encaissement enregistré depuis le relevé, ou
+        clôturez-le sans rattachement avec un motif.
+      </p>
+      <label style={{ ...fieldLabel, maxWidth: '240px' }}>
+        Afficher
+        <Select
+          aria-label="Filtrer les virements"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value as 'declared' | 'all')}
+        >
+          <option value="declared">À traiter</option>
+          <option value="all">Tous</option>
+        </Select>
+      </label>
       {state.status === 'success' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           <KeyFigure label="Signalements à traiter" value={toConfirm.length} tone={toConfirm.length ? 'accent' : 'neutral'} data-testid="kf-to-confirm" />
           <KeyFigure label="Montant signalé, non encaissé" value={formatAmount(String(toConfirmTotal))} data-testid="kf-to-confirm-amount" />
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {state.status === 'loading' && <p>Chargement…</p>}
-        {state.status === 'error' && (
-          <ApiErrorBanner error={state.error} title="Impossible de charger les virements." onRetry={state.refetch} />
+      {state.status === 'loading' && <Skeleton lines={3} label="Chargement des signalements" />}
+      {state.status === 'error' && (
+        <ApiErrorBanner error={state.error} title="Impossible de charger les virements." onRetry={state.refetch} />
+      )}
+      {state.status === 'success' && notices.length === 0 && <p>Aucun signalement à traiter.</p>}
+      {notices.map((notice) => (
+        <NoticeCard key={`${notice.id}-${notice.status}`} notice={notice} canAct={canAct} onDone={state.refetch} />
+      ))}
+    </div>
+  );
+}
+
+export function PaymentNoticesView({ canAct }: { canAct: boolean }) {
+  const [view, setView] = useState<'receipts' | 'signals'>('receipts');
+  return (
+    <section aria-label="Encaissements">
+      <PageHeader
+        title="Encaissements"
+        subtitle="Enregistrez chaque virement du relevé fictif, puis traitez les signalements des clients."
+      />
+      <SimulatedMark detail="Virements et encaissements" style={{ margin: '0 0 16px' }} />
+      <TabBar
+        aria-label="Vues des encaissements"
+        tabs={[
+          { id: 'receipts', label: 'Encaissements enregistrés', icon: 'receipt' },
+          { id: 'signals', label: 'Signalements clients', icon: 'bell' },
+        ]}
+        activeTabId={view}
+        onChange={(id) => setView(id as 'receipts' | 'signals')}
+      />
+      <div style={{ marginTop: '20px' }}>
+        {view === 'receipts' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {canAct && <ReceiptEntry />}
+            <div>
+              <h2 style={{ fontSize: '20px', margin: '0 0 12px' }}>Relevé des encaissements enregistrés</h2>
+              <ReceiptsLedger />
+            </div>
+          </div>
+        ) : (
+          <ClientSignals canAct={canAct} />
         )}
-        {state.status === 'success' && notices.length === 0 && <p>Aucun signalement à traiter.</p>}
-        {notices.map((notice) => (
-          <NoticeCard key={`${notice.id}-${notice.status}`} notice={notice} canAct={canAct} onDone={state.refetch} />
-        ))}
       </div>
     </section>
   );

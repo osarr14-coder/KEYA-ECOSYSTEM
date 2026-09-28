@@ -257,6 +257,8 @@ def mission_detail(*, inspector, caller_organization_id, mission_id):
             },
             'evidences': evidences,
             'open_reserves': open_reserves,
+            # PO-2026-09-28-04 : niveaux atteints du jalon contrôlé.
+            'trust_levels': inspections_services.milestone_trust_levels(declaration.milestone),
         }
     finally:
         set_rls_context(organization_id=caller_organization_id)

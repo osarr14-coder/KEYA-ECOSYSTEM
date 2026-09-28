@@ -45,7 +45,9 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
     expect(hero).toHaveTextContent('Almadies, Dakar');
   });
 
-  it('affiche le dernier événement notable via StatusBadge, avec les données reçues', async () => {
+  // Adapté selon PO-2026-09-28-04 : le niveau s'affiche en ligne datée et
+  // attribuée (plus de badge ni de popover).
+  it('affiche le dernier événement notable en ligne datée, avec les données reçues', async () => {
     const api = createMockApiClient({
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
@@ -62,9 +64,10 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
 
     render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
-    expect(await screen.findByText('Documenté')).toBeInTheDocument();
-    // Popover fermé par défaut — seul le libellé du badge est visible avant clic.
-    expect(screen.queryByText('constructeur@example.com')).not.toBeInTheDocument();
+    const line = await screen.findByTestId('trust-event');
+    expect(line).toHaveTextContent('Niveau atteint : Documenté');
+    expect(line).toHaveTextContent('constructeur@example.com');
+    expect(line).toHaveTextContent('5 mars 2026, 10:30 (GMT, Abidjan)');
   });
 
   it("affiche une réserve ouverte comme problème principal, avec le style d'alerte du design system", async () => {

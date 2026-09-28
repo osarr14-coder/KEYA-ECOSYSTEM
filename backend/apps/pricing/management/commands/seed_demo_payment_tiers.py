@@ -26,11 +26,11 @@ from apps.pricing.services import (
 
 # Ticket B-050 — barème de démonstration du Country Pack Sénégal.
 DEMO_STEPS = [
-    {'order': 1, 'code': 'reservation', 'label': 'Premier versement (réservation)', 'cumulative_cap_percent': Decimal('10'), 'allows_progressive_payments': False},
-    {'order': 2, 'code': 'fondations', 'label': 'Fondations achevées', 'cumulative_cap_percent': Decimal('35'), 'allows_progressive_payments': False},
-    {'order': 3, 'code': 'gros_oeuvre', 'label': 'Gros œuvre (hors d\'eau)', 'cumulative_cap_percent': Decimal('70'), 'allows_progressive_payments': False},
-    {'order': 4, 'code': 'reception', 'label': 'Achèvement (réception)', 'cumulative_cap_percent': Decimal('95'), 'allows_progressive_payments': False},
-    {'order': 5, 'code': 'livraison', 'label': 'Livraison', 'cumulative_cap_percent': Decimal('100'), 'allows_progressive_payments': False},
+    {'order': 1, 'code': 'reservation', 'label': 'Premier versement (réservation)', 'cumulative_cap_percent': Decimal('10'), 'allows_progressive_payments': False, 'requires_technical_acceptance': False},
+    {'order': 2, 'code': 'fondations', 'label': 'Fondations achevées', 'cumulative_cap_percent': Decimal('35'), 'allows_progressive_payments': False, 'requires_technical_acceptance': True},
+    {'order': 3, 'code': 'gros_oeuvre', 'label': 'Gros œuvre (hors d\'eau)', 'cumulative_cap_percent': Decimal('70'), 'allows_progressive_payments': False, 'requires_technical_acceptance': True},
+    {'order': 4, 'code': 'reception', 'label': 'Achèvement (réception)', 'cumulative_cap_percent': Decimal('95'), 'allows_progressive_payments': False, 'requires_technical_acceptance': True},
+    {'order': 5, 'code': 'livraison', 'label': 'Livraison', 'cumulative_cap_percent': Decimal('100'), 'allows_progressive_payments': False, 'requires_technical_acceptance': True},
 ]
 
 
@@ -40,9 +40,9 @@ DEMO_STEPS = [
 # template CI (Fondations, Élévation). Pourcentages suivants FICTIFS, non
 # validés juridiquement ni par le PO (A09) — données de présentation.
 CI_DEMO_STEPS = [
-    {'order': 1, 'code': 'reservation', 'label': 'Premier versement (réservation)', 'cumulative_cap_percent': Decimal('10'), 'allows_progressive_payments': False},
-    {'order': 2, 'code': 'fondations', 'label': 'Fondations', 'cumulative_cap_percent': Decimal('50'), 'allows_progressive_payments': False},
-    {'order': 3, 'code': 'elevation', 'label': 'Élévation', 'cumulative_cap_percent': Decimal('100'), 'allows_progressive_payments': False},
+    {'order': 1, 'code': 'reservation', 'label': 'Premier versement (réservation)', 'cumulative_cap_percent': Decimal('10'), 'allows_progressive_payments': False, 'requires_technical_acceptance': False},
+    {'order': 2, 'code': 'fondations', 'label': 'Fondations', 'cumulative_cap_percent': Decimal('50'), 'allows_progressive_payments': False, 'requires_technical_acceptance': True},
+    {'order': 3, 'code': 'elevation', 'label': 'Élévation', 'cumulative_cap_percent': Decimal('100'), 'allows_progressive_payments': False, 'requires_technical_acceptance': True},
 ]
 
 STEPS_BY_COUNTRY = {'SN': DEMO_STEPS, 'CI': CI_DEMO_STEPS}
@@ -56,13 +56,19 @@ class Command(BaseCommand):
         parser.add_argument(
             '--country', default='SN', choices=sorted(STEPS_BY_COUNTRY), help='Code du Country Pack (défaut : SN).',
         )
+        # Audit UI R1, PO-2026-09-28-03 : publier le barème courant en
+        # NOUVELLE version (les paliers d'une version ne sont jamais réécrits).
+        parser.add_argument(
+            '--new-version', action='store_true',
+            help='Crée et active une nouvelle version même si un barème est déjà actif.',
+        )
 
     def handle(self, *args, **options):
         code = options.get('country') or 'SN'
         country_pack = CountryPack.objects.filter(code=code).first()
         if country_pack is None:
             raise CommandError(f"CountryPack '{code}' introuvable — lancer `manage.py migrate` d'abord.")
-        if get_active_legal_payment_tier_template(country_pack.id) is not None:
+        if get_active_legal_payment_tier_template(country_pack.id) is not None and not options.get('new_version'):
             self.stdout.write(self.style.WARNING(f'Un barème est déjà actif pour {code} : rien à faire.'))
             return
         admin = get_user_model().objects.filter(email=options['admin_email']).first()

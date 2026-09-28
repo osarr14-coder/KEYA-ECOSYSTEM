@@ -8,6 +8,8 @@ import { useApiResource } from '../api/useApiResource';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { ContractVersions } from './ClientContractPanel';
 
+// Libellés « Signer (simulé) » / « signée (simulé) » : adaptés selon PO-2026-09-28-06.
+
 /** Ticket F-074 — même flux de données que `AcquisitionJourney` : chargement
  * des versions, rendu présentationnel, rechargement après signature. */
 function ClientContractPanel({ reservationId }: { reservationId: string }) {
@@ -69,15 +71,15 @@ describe('ClientContractPanel — contrat fictif côté client (ticket F-066, pa
       })]);
     renderPanel({ signContract, getMyContracts });
 
-    const button = await screen.findByRole('button', { name: 'Signer (simulation)' });
+    const button = await screen.findByRole('button', { name: 'Signer (simulé)' });
     expect(button).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(button);
 
     await waitFor(() => expect(signContract).toHaveBeenCalledWith('contract-1'));
     // Audit UI R1 (F06) : format de date unique.
-    expect(await screen.findByText(/signée \(simulation\) le 27 sept\. 2026, 12:00 \(GMT, Abidjan\)/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Signer (simulation)' })).not.toBeInTheDocument();
+    expect(await screen.findByText(/signée \(simulé\) le 27 sept\. 2026, 12:00 \(GMT, Abidjan\)/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Signer (simulé)' })).not.toBeInTheDocument();
   });
 
   it('les versions sont listées de la plus récente à la plus ancienne', async () => {
@@ -99,7 +101,7 @@ describe('ClientContractPanel — contrat fictif côté client (ticket F-066, pa
     renderPanel({ signContract });
 
     fireEvent.click(await screen.findByRole('checkbox'));
-    fireEvent.click(screen.getByRole('button', { name: 'Signer (simulation)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Signer (simulé)' }));
 
     expect(await screen.findByText(/seule la dernière version peut être signée/)).toBeInTheDocument();
   });

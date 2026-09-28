@@ -166,6 +166,7 @@ def create_legal_payment_tier_template(*, admin, country_pack_id, version, steps
         raise ValidationError({'steps': 'Au moins un palier est requis.'})
 
     _validate_cumulative_caps_are_strictly_increasing_and_end_at_100(steps)
+    steps = _with_acceptance_requirement(steps)
 
     with transaction.atomic():
         template = LegalPaymentTierTemplate.objects.create(
@@ -175,6 +176,28 @@ def create_legal_payment_tier_template(*, admin, country_pack_id, version, steps
             LegalPaymentTierStep(template=template, **step) for step in steps
         ])
     return template
+
+
+def _with_acceptance_requirement(steps):
+    """Audit UI R1, PO-2026-09-28-03 — `requires_technical_acceptance` par
+    palier : absent, il vaut `False` pour le premier palier (frais + premier
+    versement, jamais conditionnés) et `True` pour les suivants. Le premier
+    palier ne peut pas l'exiger."""
+    first_order = min(step['order'] for step in steps)
+    result = []
+    for step in steps:
+        required = step.get('requires_technical_acceptance')
+        if step['order'] == first_order:
+            if required:
+                raise ValidationError({
+                    'steps': 'Le premier palier (frais et premier versement) n\'est jamais conditionné '
+                             'à une acceptation technique.',
+                })
+            required = False
+        elif required is None:
+            required = True
+        result.append({**step, 'requires_technical_acceptance': required})
+    return result
 
 
 def _validate_cumulative_caps_are_strictly_increasing_and_end_at_100(steps):

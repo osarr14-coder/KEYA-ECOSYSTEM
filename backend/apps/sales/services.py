@@ -641,6 +641,9 @@ def compute_payment_call_candidates(reservation):
         milestone = reservation.lot.milestones.filter(code=next_step.code).first()
         if reservation.status != ReservationStatus.COMMITTED:
             reason = 'Les versements de palier ne s\'appellent qu\'après concrétisation de la réservation.'
+        elif not next_step.requires_technical_acceptance:
+            # PO-2026-09-28-03 : palier non conditionné par le barème.
+            reason = None
         elif milestone is None:
             reason = f'Aucun jalon « {next_step.code} » sur ce lot : ce palier ne peut pas être débloqué.'
         elif not is_milestone_technically_accepted(milestone):
@@ -694,11 +697,18 @@ def payment_schedule(reservation):
         rows.append({
             'code': step.code, 'label': f'Palier « {step.label} »', 'amount': amount, 'fee_included': None,
             'cumulative_cap_percent': step.cumulative_cap_percent,
-            'condition': f'Appel émis par le gestionnaire, après acceptation technique du jalon « {step.label} ».',
+            # PO-2026-09-28-03 : l'acceptation autorise l'appel, le gestionnaire l'émet.
+            'condition': (
+                f'Appel émis par le gestionnaire, après acceptation technique du jalon « {step.label} ».'
+                if step.requires_technical_acceptance
+                else 'Appel émis par le gestionnaire selon le calendrier du contrat.'
+            ),
+            'requires_technical_acceptance': step.requires_technical_acceptance,
             'planned_on': planned_on,
         })
     return {
         'version': template.version,
+        'legally_validated': template.legally_validated,
         'country_pack': reservation.organization.country_pack.code if reservation.organization.country_pack_id else '',
         'first_payment_amount': rows[0]['amount'],
         'rows': rows,
@@ -831,6 +841,36 @@ def list_client_payment_calls(*, client, caller_organization_id, reservation_id)
         for call in calls:
             call.latest_notice = call.payment_notices.order_by('-created_at').first()
         return calls
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def client_worksite(*, client, caller_organization_id, reservation_id):
+    """PO-2026-09-28-04 — suivi du chantier de SON bien : jalons du lot,
+    état CDC §7.1 et preuve de chaque niveau de confiance atteint. Lecture
+    seule, sous le contexte RLS de l'organisation du lot ; `None` si la
+    réservation n'est pas la sienne."""
+    from apps.inspections import services as inspections_services
+
+    organization_ids = _client_reservation_organization_ids(client, reservation_id)
+    if not organization_ids:
+        return None
+    try:
+        set_rls_context(organization_id=organization_ids.pop())
+        reservation = Reservation.objects.select_related('lot').filter(id=reservation_id, client=client).first()
+        if reservation is None:
+            return None
+        rows = []
+        for milestone in reservation.lot.milestones.order_by('order'):
+            milestone.lot = reservation.lot
+            state = inspections_services.milestone_control_state(milestone)
+            cdc_state, cdc_label, cdc_hint = inspections_services.milestone_cdc_state(state)
+            rows.append({
+                'id': str(milestone.id), 'order': milestone.order, 'code': milestone.code, 'label': milestone.label,
+                'cdc_state': cdc_state, 'status_label': cdc_label, 'status_hint': cdc_hint,
+                'trust_levels': inspections_services.milestone_trust_levels(milestone),
+            })
+        return rows
     finally:
         set_rls_context(organization_id=caller_organization_id)
 
@@ -1622,7 +1662,7 @@ _NOTICE_RELATIONS = (
 )
 # Audit UI R1 (F02) : affectations de l'encaissement, lues sous le contexte
 # RLS du lot (jamais depuis celui de Finance, qui les masquerait).
-_NOTICE_PREFETCH = ('receipt__allocations__payment_call',)
+_NOTICE_PREFETCH = ('receipt__allocations__payment_call', 'reservation__receipts')
 
 
 def list_payment_notices(*, caller_organization_id, status=PaymentNoticeStatus.DECLARED):
@@ -1676,7 +1716,11 @@ def confirm_payment_notice(*, finance, caller_organization_id, target_organizati
             raise PaymentNoticeError(
                 'La référence bancaire simulée doit être celle du relevé, distincte de la référence indiquée par le client.'
             )
-        received = notice.amount if amount is None else amount
+        # PO-2026-09-28-10 : le montant se lit au relevé, il ne se recopie
+        # jamais du signalement.
+        if amount is None:
+            raise PaymentNoticeError('Le montant reçu (lu au relevé) est obligatoire.')
+        received = amount
         try:
             receipt, _created = record_receipt(
                 finance=finance, caller_organization_id=target_organization_id,
@@ -1717,11 +1761,63 @@ def confirm_payment_notice(*, finance, caller_organization_id, target_organizati
         set_rls_context(organization_id=caller_organization_id)
 
 
+def attach_payment_notice(*, finance, caller_organization_id, target_organization_id, notice_id, receipt_id):
+    """PO-2026-09-28-02 — rattache le signalement à un encaissement déjà
+    enregistré (même dossier). Le signalement ne crée ni ne modifie aucun
+    mouvement : il est seulement clos, avec la référence de l'encaissement.
+    Tracé au journal d'audit ; le client est informé."""
+    try:
+        set_rls_context(organization_id=target_organization_id)
+        notice = PaymentNotice.objects.select_for_update(of=('self',)).filter(id=notice_id).first()
+        if notice is None:
+            return None
+        if notice.status != PaymentNoticeStatus.DECLARED:
+            raise PaymentNoticeError(f'Avis déjà traité ({notice.get_status_display().lower()}).')
+        receipt = CustomerReceipt.objects.filter(id=receipt_id).first()
+        if receipt is None or receipt.reservation_id != notice.reservation_id:
+            raise PaymentNoticeError('L\'encaissement à rattacher doit appartenir au même dossier.')
+        notice.status = PaymentNoticeStatus.CONFIRMED
+        notice.processed_by = finance
+        notice.processed_at = timezone.now()
+        notice.receipt = receipt
+        notice.save(update_fields=['status', 'processed_by', 'processed_at', 'receipt'])
+        audit.record(
+            organization_id=notice.organization_id, actor=finance, action='payment_notice.attached', obj=notice,
+            payload={'receipt_id': str(receipt.id), 'bank_reference': receipt.bank_reference},
+        )
+        notice = _load_notice(notice.id)
+        notifications.payment_notice_attached(notice)
+        return notice
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+
+
+def list_receipts(*, caller_organization_id):
+    """PO-2026-09-28-01 — encaissements enregistrés, toutes organisations
+    (Finance) : justificatif, dossier, affectations, non affecté et
+    signalements rattachés. Boucle de bascule RLS habituelle ; tout est
+    évalué sous le contexte du lot."""
+    receipts = []
+    organization_ids = list(Organization.objects.values_list('id', flat=True))
+    try:
+        for organization_id in organization_ids:
+            set_rls_context(organization_id=organization_id)
+            queryset = CustomerReceipt.objects.filter(
+                demo_scope('reservation__lot__asset__program__'), organization_id=organization_id,
+            ).select_related(
+                'reservation', 'reservation__lot', 'reservation__lot__asset__program', 'client', 'recorded_by',
+            ).prefetch_related('allocations__payment_call', 'payment_notices')
+            receipts.extend(queryset)
+    finally:
+        set_rls_context(organization_id=caller_organization_id)
+    return sorted(receipts, key=lambda receipt: (receipt.received_on, receipt.recorded_at), reverse=True)
+
+
 def reject_payment_notice(*, finance, caller_organization_id, target_organization_id, notice_id, reason):
-    """Virement introuvable sur le relevé : avis rejeté avec motif, client
-    notifié ; il peut déclarer à nouveau."""
+    """PO-2026-09-28-02 — clôture SANS rattachement, motif obligatoire,
+    tracée ; le client est notifié et peut signaler à nouveau."""
     if not reason or not reason.strip():
-        raise PaymentNoticeError('Le motif du rejet est obligatoire.')
+        raise PaymentNoticeError('Le motif de clôture est obligatoire.')
     try:
         set_rls_context(organization_id=target_organization_id)
         notice = PaymentNotice.objects.select_for_update(of=('self',)).filter(id=notice_id).first()

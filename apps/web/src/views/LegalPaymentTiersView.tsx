@@ -49,6 +49,7 @@ function TemplateStepsTable({ steps }: { steps: LegalPaymentTierStep[] }) {
           <th>Libellé</th>
           <th>Plafond cumulé</th>
           <th>Paiements progressifs</th>
+          <th>Appel après acceptation technique</th>
         </tr>
       </thead>
       <tbody>
@@ -59,6 +60,8 @@ function TemplateStepsTable({ steps }: { steps: LegalPaymentTierStep[] }) {
             <td>{step.label}</td>
             <td>{step.cumulative_cap_percent} %</td>
             <td>{step.allows_progressive_payments ? 'Oui' : 'Non'}</td>
+            {/* PO-2026-09-28-03 : le premier palier n'est jamais conditionné. */}
+            <td>{step.order > 1 && step.requires_technical_acceptance !== false ? 'Oui' : 'Non'}</td>
           </tr>
         ))}
       </tbody>

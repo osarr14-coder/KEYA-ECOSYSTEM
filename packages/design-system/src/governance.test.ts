@@ -73,9 +73,13 @@ function findBadgeComponentDefinitions(dir: string): BadgeMatch[] {
 }
 
 describe('Gouvernance — une seule source de vérité pour le badge de statut', () => {
-  it('packages/design-system ne définit qu\'un seul composant de badge (StatusBadge)', () => {
+  // Révisé selon PO-2026-09-28-04 : les niveaux de confiance ne s'affichent
+  // plus en badge ; `StatusBadge` est retiré au profit de l'échelle
+  // `TrustLevels`. La garde reste : aucun composant de badge ne doit
+  // réapparaître (le badge d'état compact est `Pill`).
+  it('packages/design-system ne définit aucun composant de badge (niveaux de confiance en échelle)', () => {
     const found = findBadgeComponentDefinitions(designSystemSrcDir);
-    expect(found.map((m) => m.name)).toEqual(['StatusBadge']);
+    expect(found.map((m) => m.name)).toEqual([]);
   });
 
   it('/apps (une fois créé par un ticket futur) ne redéfinit aucun composant de badge', () => {

@@ -25,9 +25,41 @@ export const TRUST_LEVEL_ORDER: TrustLevelKey[] = ['declared', 'documented', 'co
 
 export interface TrustLevelEvidence {
   by: string;
+  /** PO-2026-09-28-04 : rôle de l'acteur (« Constructeur », « Contrôleur »). */
+  role?: string;
   at: string;
   version: string;
   scope: string;
+}
+
+/** Vocabulaire des niveaux côté serveur (`apps/trust/models.py::TrustLevel`). */
+export type TrustLevel = 'declare' | 'documente' | 'controle' | 'verifie' | 'valide';
+
+export const TRUST_LEVEL_FROM_API: Record<TrustLevel, TrustLevelKey> = {
+  declare: 'declared', documente: 'documented', controle: 'controlled', verifie: 'verified', valide: 'validated',
+};
+
+/** Événement de confiance isolé (dernier événement, provenance d'une
+ * pièce) : une LIGNE de texte datée et attribuée, jamais un badge. */
+export interface TrustEventData {
+  level: TrustLevel;
+  /** Provenance technique de l'événement (non affichée par la ligne). */
+  source?: string;
+  actor: string;
+  createdAt: string;
+  scope?: string;
+}
+
+export function TrustEventLine({ event, 'data-testid': testId = 'trust-event' }: { event: TrustEventData; 'data-testid'?: string }) {
+  const key = TRUST_LEVEL_FROM_API[event.level];
+  return (
+    <span data-testid={testId} data-level={event.level} style={{ fontSize: '14px', color: semanticColors.neutral.text }}>
+      <strong style={{ color: semanticColors.neutral.heading }}>{`Niveau atteint : ${TRUST_LEVEL_LABELS[key]}`}</strong>
+      {` · ${event.actor} · `}
+      <DateTime value={event.createdAt} />
+      {event.scope ? ` · périmètre : ${event.scope}` : ''}
+    </span>
+  );
 }
 
 export interface TrustLevelsProps {
@@ -68,10 +100,12 @@ export function TrustLevels({ reached, 'aria-label': ariaLabel = 'Niveaux de con
               </span>
               {evidence ? (
                 <span style={{ fontSize: '13px', color: semanticColors.neutral.text }}>
-                  {`${key === 'validated' ? 'Contrôleur : ' : ''}${evidence.by} · `}
+                  {key === 'validated'
+                    ? `Contrôleur : ${evidence.by} · `
+                    : `${evidence.by}${evidence.role ? ` (${evidence.role})` : ''} · `}
                   <DateTime value={evidence.at} />
-                  {' · version '}
-                  <Reference value={evidence.version} label="Version" copyable={false} />
+                  {' · version examinée : '}
+                  <Reference value={evidence.version} label="Version examinée" copyable={false} />
                   {` · périmètre : ${evidence.scope}`}
                 </span>
               ) : (

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Pill, type PillTone, ProgressBar, SimulatedMark, Stepper,
+  ApiErrorBanner, Button, Card, Pill, type PillTone, ProgressBar, SimulatedMark, Skeleton, Stepper, TrustLevels,
   type StepperStep, formatSurface, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { ApiError } from '../api/client';
 import type {
-  ClientPaymentCall, ContractVersion, PaymentSchedule, Reservation,
+  ClientPaymentCall, ContractVersion, PaymentSchedule, Reservation, WorksiteMilestone,
 } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { formatAmount, formatDate, formatDateTime } from '../format';
@@ -223,7 +223,8 @@ function NextActionCard({
   } else if (action.kind === 'sign') {
     title = `Signer votre contrat (version ${action.contract.version})`;
   } else if (action.kind === 'verifying') {
-    title = 'Virement signalé : en attente d’encaissement (simulé)';
+    // PO-2026-09-28-09 : rien n'est demandé au client pendant la vérification.
+    title = 'Aucune action de votre part — Finance vérifie votre virement au relevé';
     amount = action.call;
   } else {
     title = 'Aucune action de votre part pour le moment';
@@ -249,11 +250,17 @@ function NextActionCard({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <span style={{ fontSize: '13px', fontWeight: 600, color: semanticColors.neutral.textMuted }}>
-            Votre prochaine action
+            {action.kind === 'pay' || action.kind === 'sign' ? 'Votre prochaine action' : 'Où en est votre dossier'}
           </span>
           <h3 style={{ margin: 0, fontSize: '24px' }}>{title}</h3>
           {action.kind === 'wait' && <p style={{ margin: 0, fontWeight: 600 }} data-testid="next-step">{action.next}</p>}
-          <p style={{ margin: 0, color: semanticColors.neutral.text }}>{reservationMessage(reservation)}</p>
+          <p style={{ margin: 0, color: semanticColors.neutral.text }}>
+            {/* PO-2026-09-28-09 : pendant la vérification, aucune consigne de paiement. */}
+            {action.kind === 'verifying' && reservation.status === 'held'
+              ? `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. Votre virement est signalé : `
+                + 'il sera pris en compte une fois encaissé et rapproché (simulé). Vous serez prévenu.'
+              : reservationMessage(reservation)}
+          </p>
         </div>
         {amount && (
           <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
@@ -348,7 +355,7 @@ export function PaymentScheduleCard({ schedule, currency }: { schedule: PaymentS
         ))}
       </ol>
       <p style={{ margin: '12px 0 0', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-        {`Barème Country Pack ${schedule.country_pack}, version ${schedule.version} — valeurs de démonstration, non validées juridiquement. `}
+        {`Barème Country Pack ${schedule.country_pack}, version ${schedule.version} — valeurs de démonstration${schedule.legally_validated ? '' : ', non validées juridiquement'}. `}
         Dates prévisionnelles, sans valeur d’échéance : chaque appel est émis par votre conseiller.
       </p>
     </Card>
@@ -419,6 +426,53 @@ function CancelReservation({ reservation, onChanged }: { reservation: Reservatio
   );
 }
 
+const WORKSITE_TONE: Record<WorksiteMilestone['cdc_state'], PillTone> = {
+  DRAFT: 'neutral', SUBMITTED: 'alert', UNDER_REVIEW: 'info', CHANGES_REQUESTED: 'alert', RESUBMITTED: 'info',
+  TECHNICALLY_ACCEPTED: 'success',
+};
+
+/**
+ * PO-2026-09-28-04 — suivi du chantier du bien : chaque jalon avec son état
+ * (CDC §7.1) et l'échelle des niveaux de confiance, chaque niveau atteint
+ * disant qui, quand, sur quelle version et dans quel périmètre. Jamais un
+ * score ni un pourcentage.
+ */
+function WorksiteCard({ reservationId }: { reservationId: string }) {
+  const api = useApiClient();
+  const state = useApiResource(() => api.getMyWorksite(reservationId), [reservationId]);
+  return (
+    <Card title="Suivi du chantier" icon="building" aria-label="Suivi du chantier">
+      {state.status === 'loading' && <Skeleton lines={3} label="Chargement du chantier" />}
+      {state.status === 'error' && (
+        <ApiErrorBanner error={state.error} title="Impossible de charger le suivi du chantier." onRetry={state.refetch} />
+      )}
+      {state.status === 'success' && state.data.length === 0 && (
+        <p style={{ margin: 0 }}>Aucun jalon n’est encore défini pour votre bien.</p>
+      )}
+      {state.status === 'success' && state.data.length > 0 && (
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {state.data.map((milestone) => (
+            <li
+              key={milestone.id}
+              data-testid="worksite-milestone"
+              style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '12px', borderTop: `1px solid ${semanticColors.neutral.border}` }}
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                <strong>{`${milestone.order}. ${milestone.label}`}</strong>
+                <Pill tone={WORKSITE_TONE[milestone.cdc_state]}>{milestone.status_label}</Pill>
+              </div>
+              {milestone.status_hint && (
+                <span style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>{milestone.status_hint}</span>
+              )}
+              <TrustLevels reached={milestone.trust_levels} aria-label={`Niveaux de confiance — ${milestone.label}`} />
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  );
+}
+
 export function AcquisitionJourney({ reservation, onChanged }: { reservation: Reservation; onChanged: () => void }) {
   const api = useApiClient();
   const callsState = useApiResource(() => api.getMyPaymentCalls(reservation.id), [reservation.id, reservation.status]);
@@ -462,6 +516,9 @@ export function AcquisitionJourney({ reservation, onChanged }: { reservation: Re
             <Card title="Mon contrat" icon="file-text" aria-label="Mon contrat">
               <ContractVersions contracts={contracts} onSigned={refreshAll} />
             </Card>
+          )}
+          {(reservation.status === 'reserved' || reservation.status === 'committed') && (
+            <WorksiteCard reservationId={reservation.id} />
           )}
         </div>
         <aside style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>

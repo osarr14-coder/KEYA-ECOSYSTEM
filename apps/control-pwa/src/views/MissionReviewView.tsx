@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 
 import {
-  AlertBanner, Button, Icon, Pill, semanticColors, formatServerDateTime,
+  AlertBanner, Button, Icon, Pill, TrustLevels, semanticColors, formatServerDateTime,
 } from '@keya/design-system';
 
 import type {
@@ -218,6 +218,13 @@ export function MissionReviewView({ missionId, api, onBack }: MissionReviewViewP
         <span style={{ color: semanticColors.neutral.textMuted }}>{`${detail.programName} · ${detail.assetName}`}</span>
         <span>{detail.followUp ? <Pill tone="alert">Recontrôle</Pill> : <Pill tone="primary">Première inspection</Pill>}</span>
       </header>
+
+      {/* PO-2026-09-28-04 : niveaux déjà atteints par ce jalon, chacun avec
+          sa preuve (qui, rôle, quand, version examinée, périmètre). */}
+      <section aria-labelledby="levels-title" style={sectionStyle}>
+        <h2 id="levels-title" style={{ margin: 0, fontSize: '18px' }}>Niveaux de confiance du jalon</h2>
+        <TrustLevels reached={detail.trustLevels ?? {}} aria-label={`Niveaux de confiance — ${detail.milestoneLabel}`} />
+      </section>
 
       <section aria-labelledby="submitted-title" style={sectionStyle}>
         <h2 id="submitted-title" style={{ margin: 0, fontSize: '18px' }}>Pièces soumises</h2>

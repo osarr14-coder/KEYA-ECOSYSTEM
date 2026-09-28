@@ -47,7 +47,8 @@ describe('ExceptionsView — état vide explicite (critère d\'acceptation)', ()
     });
 
     await screen.findByText('Lot 12');
-    expect(screen.getByText('Aucun contrôle en attente de planification.')).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-08 : « Déclarations en attente de contrôle ».
+    expect(screen.getByText('Aucune déclaration en attente de contrôle.')).toBeInTheDocument();
     expect(screen.getByText('Tous les lots ont une organisation constructrice affectée.')).toBeInTheDocument();
     expect(screen.getByText('Aucune réserve ouverte.')).toBeInTheDocument();
     expect(screen.getByText('Aucun document manquant.')).toBeInTheDocument();
@@ -123,7 +124,8 @@ describe('ExceptionsView — réserves ouvertes : StatusBadge + AlertBanner + ac
     await screen.findByText('Lot Réserve', { exact: false });
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(document.querySelector('[role="alert"] svg')).not.toBeNull();
-    expect(screen.getByText('Contrôlé')).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-04 : niveau en ligne datée, plus de badge.
+    expect(screen.getByTestId('trust-event')).toHaveTextContent('Niveau atteint : Contrôlé');
   });
 
   it('soumet une correction avec la preuve sélectionnée', async () => {

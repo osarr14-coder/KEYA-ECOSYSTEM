@@ -145,6 +145,10 @@ class LegalPaymentTierTemplate(models.Model):
         related_name='legal_payment_tier_templates_activated',
     )
     activated_at = models.DateTimeField(null=True, blank=True)
+    # Audit UI R1, PO-2026-09-28-03 — validation JURIDIQUE (hors plateforme)
+    # : tant qu'elle n'est pas établie, le barème s'affiche « non validé
+    # juridiquement ». Aucun barème de démonstration ne l'est.
+    legally_validated = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'pricing_legal_payment_tier_template'
@@ -182,6 +186,11 @@ class LegalPaymentTierStep(models.Model):
     label = models.CharField(max_length=100)
     cumulative_cap_percent = models.DecimalField(max_digits=5, decimal_places=2)
     allows_progressive_payments = models.BooleanField()
+    # Audit UI R1, PO-2026-09-28-03 (écart CDC §8.1 assumé) — l'appel de ce
+    # palier n'est émissible qu'après acceptation technique du jalon de même
+    # code. Le premier palier (frais + premier versement) ne l'exige jamais.
+    # L'acceptation AUTORISE l'appel ; le gestionnaire l'ÉMET.
+    requires_technical_acceptance = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'pricing_legal_payment_tier_step'

@@ -1,5 +1,5 @@
 import {
-  ApiErrorBanner, Button, Card,
+  ApiErrorBanner, Button, Card, formatCalendarDate,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -18,9 +18,8 @@ export interface PriorityTaskSummaryProps {
 
 function formatDueDate(dueDate: string | null): string {
   if (!dueDate) return 'Aucune échéance';
-  return new Date(dueDate).toLocaleDateString('fr-FR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-  });
+  // PO-2026-09-28-11 : format unique F06.
+  return formatCalendarDate(dueDate);
 }
 
 /**

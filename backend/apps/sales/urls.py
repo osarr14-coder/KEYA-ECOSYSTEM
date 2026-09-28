@@ -21,9 +21,12 @@ from .views import (
     MyContractListView,
     MyContractSignView,
     MyPaymentCallListView,
+    MyWorksiteView,
     MyPaymentNoticeCreateView,
     MyReservationCancelView,
     MyReservationListView,
+    FinanceReceiptListView,
+    PaymentNoticeAttachView,
     PaymentNoticeConfirmView,
     PaymentNoticeListView,
     PaymentNoticeRejectView,
@@ -76,6 +79,8 @@ urlpatterns = [
         'me/reservations/<uuid:reservation_id>/payment-calls/',
         MyPaymentCallListView.as_view(), name='my-payment-calls',
     ),
+    # PO-2026-09-28-04 — suivi du chantier du bien du client.
+    path('me/reservations/<uuid:reservation_id>/worksite/', MyWorksiteView.as_view(), name='my-worksite'),
     # Ticket B-051 — encaissements simulés.
     path('finance/reservations/<uuid:reservation_id>/', FinanceFileView.as_view(), name='finance-file'),
     path(
@@ -133,4 +138,10 @@ urlpatterns = [
         'finance/payment-notices/<uuid:notice_id>/reject/',
         PaymentNoticeRejectView.as_view(), name='finance-payment-notice-reject',
     ),
+    # PO-2026-09-28-01, PO-2026-09-28-02.
+    path(
+        'finance/payment-notices/<uuid:notice_id>/attach/',
+        PaymentNoticeAttachView.as_view(), name='finance-payment-notice-attach',
+    ),
+    path('finance/receipts/', FinanceReceiptListView.as_view(), name='finance-receipt-list'),
 ]

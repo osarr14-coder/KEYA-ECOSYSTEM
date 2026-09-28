@@ -131,7 +131,10 @@ describe('FinancialFilePanel — dossier financier (ticket F-068)', () => {
 
     fireEvent.change(await screen.findByLabelText('Référence bancaire simulée'), { target: { value: ' SIM-001 ' } });
     fireEvent.change(screen.getByLabelText('Montant reçu'), { target: { value: '100000' } });
-    fireEvent.change(screen.getByLabelText('Date de réception'), { target: { value: '2026-09-28' } });
+    // Adapté selon PO-2026-09-28-11 : saisie de date au format F06 (jour · mois · année).
+    fireEvent.change(screen.getByLabelText('Date de réception — année'), { target: { value: '2026' } });
+    fireEvent.change(screen.getByLabelText('Date de réception — mois'), { target: { value: '9' } });
+    fireEvent.change(screen.getByLabelText('Date de réception — jour'), { target: { value: '28' } });
     fireEvent.click(screen.getByRole('button', { name: "Enregistrer l'encaissement" }));
 
     await waitFor(() => expect(recordReceipt).toHaveBeenCalledWith('reservation-1', 'org-promoteur', {

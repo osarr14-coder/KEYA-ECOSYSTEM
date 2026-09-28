@@ -44,6 +44,8 @@ class LegalPaymentTierStepInputSerializer(serializers.Serializer):
     label = serializers.CharField(max_length=100)
     cumulative_cap_percent = serializers.DecimalField(max_digits=5, decimal_places=2)
     allows_progressive_payments = serializers.BooleanField()
+    # PO-2026-09-28-03 : facultatif (défaut : premier palier non, suivants oui).
+    requires_technical_acceptance = serializers.BooleanField(required=False, allow_null=True, default=None)
 
 
 class LegalPaymentTierTemplateCreateSerializer(serializers.Serializer):
@@ -60,7 +62,10 @@ class LegalPaymentTierTemplateCreateSerializer(serializers.Serializer):
 class LegalPaymentTierStepSerializer(serializers.ModelSerializer):
     class Meta:
         model = LegalPaymentTierStep
-        fields = ['id', 'order', 'code', 'label', 'cumulative_cap_percent', 'allows_progressive_payments']
+        fields = [
+            'id', 'order', 'code', 'label', 'cumulative_cap_percent', 'allows_progressive_payments',
+            'requires_technical_acceptance',
+        ]
         read_only_fields = fields
 
 
@@ -75,7 +80,7 @@ class LegalPaymentTierTemplateSerializer(serializers.ModelSerializer):
         model = LegalPaymentTierTemplate
         fields = [
             'id', 'country_pack', 'version', 'created_by', 'created_at',
-            'activated_by', 'activated_at', 'steps',
+            'activated_by', 'activated_at', 'legally_validated', 'steps',
         ]
         read_only_fields = fields
 

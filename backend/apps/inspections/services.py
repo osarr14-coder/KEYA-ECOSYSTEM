@@ -820,6 +820,73 @@ def milestone_cdc_state(state):
     return code, CDC_STATE_LABELS[code], CDC_STATE_HINTS.get(status, '')
 
 
+# ─── Niveaux de confiance d'un jalon — PO-2026-09-28-04 (CDC §7) ──────────────
+
+TRUST_LEVEL_KEYS = ('declared', 'documented', 'controlled', 'verified', 'validated')
+
+
+def _person(user):
+    return (user.full_name or user.email) if user else ''
+
+
+def _role_label(user, fallback):
+    """Rôle de l'acteur : son rattachement visible sous le contexte RLS
+    courant (organisation du lot) ; à défaut, le rôle de l'étape
+    (« Constructeur », « Contrôleur »)."""
+    membership = Membership.objects.filter(user=user).select_related('role').first() if user else None
+    label = (membership.role.label or '') if membership else ''
+    return f'{label[:1].upper()}{label[1:]}' if label else fallback
+
+
+def _level(user, fallback_role, at, version, scope):
+    return {
+        'by': _person(user), 'role': _role_label(user, fallback_role), 'at': at.isoformat(),
+        'version': version, 'scope': scope,
+    }
+
+
+def milestone_trust_levels(milestone):
+    """Pour chaque niveau ATTEINT de la dernière déclaration du jalon :
+    auteur, rôle, date serveur, version examinée et périmètre. Un niveau non
+    atteint est absent (l'échelle l'affiche vide). Jamais un score : chaque
+    niveau est un fait daté et attribué. Dérivé des objets métier qui portent
+    les `TrustEvent` (déclaration → Déclaré, pièce → Documenté, avis →
+    Contrôlé, avis conforme → Vérifié), plus l'acceptation technique
+    (`is_milestone_technically_accepted`) pour « Validé techniquement —
+    démonstration ». Sous contexte RLS de l'organisation du lot."""
+    lot = milestone.lot
+    scope = f'Jalon « {milestone.label} », {lot.name}'
+    declarations = list(
+        WorkDeclaration.objects.filter(milestone=milestone).select_related('declared_by').order_by('created_at'),
+    )
+    if not declarations:
+        return {}
+    declaration = declarations[-1]
+    levels = {'declared': _level(
+        declaration.declared_by, 'Constructeur', declaration.created_at, f'déclaration n° {len(declarations)}', scope,
+    )}
+    evidences = list(Evidence.objects.filter(work_declaration=declaration).select_related('added_by').order_by('created_at'))
+    version_of = {str(evidence.id): index for index, evidence in enumerate(evidences, start=1)}
+    if evidences:
+        latest = evidences[-1]
+        levels['documented'] = _level(latest.added_by, 'Constructeur', latest.created_at, f'pièce v{len(evidences)}', scope)
+    inspections = list(_declaration_inspections(declaration).select_related('inspector').order_by('created_at'))
+    if inspections:
+        last = inspections[-1]
+        examined = [f'v{version_of[item]}' for item in (last.examined_evidence_ids or []) if item in version_of]
+        version = (
+            f"pièce{'s' if len(examined) > 1 else ''} {', '.join(examined)}" if examined
+            else 'aucune pièce désignée par le contrôleur'
+        )
+        controlled = _level(last.inspector, 'Contrôleur', last.created_at, version, scope)
+        levels['controlled'] = controlled
+        if last.outcome == InspectionOutcome.CONFORME:
+            levels['verified'] = controlled
+            if is_milestone_technically_accepted(milestone):
+                levels['validated'] = controlled
+    return levels
+
+
 def _declaration_inspections(declaration):
     return Inspection.objects.filter(Q(work_declaration=declaration) | Q(evidence__work_declaration=declaration))
 

@@ -185,7 +185,10 @@ def build_lot_overview(lot):
         'open_reserve': {
             'id': str(open_reserve.id),
             'status': get_reserve_status(open_reserve),
-            'description': open_reserve.description,
+            # PO-2026-09-28-07 (K02) : motif et action attendue structurés.
+            'description': open_reserve.motif or open_reserve.description,
+            'motif': open_reserve.motif or open_reserve.description,
+            'expected_action': open_reserve.expected_action,
         } if open_reserve else None,
     }
 

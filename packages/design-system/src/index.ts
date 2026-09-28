@@ -61,8 +61,6 @@ export type { ProgressBarProps } from './components/ProgressBar/ProgressBar';
 export { Select } from './components/Select/Select';
 export type { SelectProps } from './components/Select/Select';
 
-export { ALL_TRUST_LEVELS, LEVEL_META, StatusBadge } from './components/StatusBadge/StatusBadge';
-export type { StatusBadgeProps, TrustEventData, TrustLevel } from './components/StatusBadge/StatusBadge';
 
 export { Stepper } from './components/Stepper/Stepper';
 export type { StepState, StepperProps, StepperStep } from './components/Stepper/Stepper';
@@ -121,7 +119,15 @@ export { Skeleton } from './components/Skeleton/Skeleton';
 export type { SkeletonProps } from './components/Skeleton/Skeleton';
 export { Timeline } from './components/Timeline/Timeline';
 export type { TimelineEntry, TimelineProps } from './components/Timeline/Timeline';
-export { TRUST_LEVEL_LABELS, TRUST_LEVEL_ORDER, TrustLevels } from './components/TrustLevels/TrustLevels';
-export type { TrustLevelEvidence, TrustLevelKey, TrustLevelsProps } from './components/TrustLevels/TrustLevels';
+// PO-2026-09-28-04 : les niveaux de confiance ne s'affichent plus en badge
+// (`StatusBadge` retiré) mais en échelle (`TrustLevels`) ou en ligne datée.
+export {
+  TRUST_LEVEL_FROM_API, TRUST_LEVEL_LABELS, TRUST_LEVEL_ORDER, TrustEventLine, TrustLevels,
+} from './components/TrustLevels/TrustLevels';
+export type {
+  TrustEventData, TrustLevel, TrustLevelEvidence, TrustLevelKey, TrustLevelsProps,
+} from './components/TrustLevels/TrustLevels';
 export { VersionHistory } from './components/VersionHistory/VersionHistory';
 export type { VersionEntry, VersionHistoryProps, VersionReview } from './components/VersionHistory/VersionHistory';
+export { DateInput, MONTHS_SHORT } from './components/DateInput/DateInput';
+export type { DateInputProps } from './components/DateInput/DateInput';

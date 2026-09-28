@@ -227,8 +227,12 @@ def get_exceptions(organization):
         {
             **_lot_base_row(
                 reserve.lot,
-                label=f"Réserve ouverte — {reserve.description or 'sans description'}",
+                # PO-2026-09-28-07 (K02) : motif et action attendue structurés ;
+                # l'ancien champ libre `description` n'est plus alimenté.
+                label=f"Réserve ouverte — {reserve.motif or reserve.description}",
             ),
+            'motif': reserve.motif or reserve.description,
+            'expected_action': reserve.expected_action,
             'reserve_id': str(reserve.id),
             'status': event.source,
             'event': _serialize_trust_event(event),
@@ -347,6 +351,8 @@ def lot_milestone_rows(organization, lot_id):
             'status_label': cdc_label,
             'cdc_state': cdc_state,
             'status_hint': cdc_hint,
+            # PO-2026-09-28-04 : preuve de chaque niveau atteint.
+            'trust_levels': inspections_services.milestone_trust_levels(milestone),
             'work_declaration_id': str(state['declaration'].id) if state['declaration'] else None,
             'evidence_count': state['evidence_count'],
             'latest_outcome': state['latest_outcome'],

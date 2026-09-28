@@ -7,7 +7,9 @@
  * 008 : « aucun calcul de pourcentage ou de statut dans le frontend »).
  */
 
-import type { TrustEventData, TrustLevel } from '@keya/design-system';
+import type {
+  TrustEventData, TrustLevel, TrustLevelEvidence, TrustLevelKey,
+} from '@keya/design-system';
 
 export interface ApiTrustEvent {
   level: TrustLevel;
@@ -190,6 +192,8 @@ export interface PaymentScheduleRow {
 }
 
 export interface PaymentSchedule {
+  /** PO-2026-09-28-03 : faux pour tout barème de démonstration. */
+  legally_validated?: boolean;
   version: number;
   country_pack: string;
   first_payment_amount: string;
@@ -246,4 +250,17 @@ export interface ClientPaymentCall {
     paid_on: string;
     rejection_reason: string;
   } | null;
+}
+
+/** PO-2026-09-28-04 — miroir de `apps.sales.services.client_worksite` :
+ * jalons du bien, état CDC §7.1 et preuve de chaque niveau atteint. */
+export interface WorksiteMilestone {
+  id: string;
+  order: number;
+  code: string;
+  label: string;
+  cdc_state: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'CHANGES_REQUESTED' | 'RESUBMITTED' | 'TECHNICALLY_ACCEPTED';
+  status_label: string;
+  status_hint: string;
+  trust_levels: Partial<Record<TrustLevelKey, TrustLevelEvidence>>;
 }

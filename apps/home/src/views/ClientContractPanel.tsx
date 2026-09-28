@@ -74,7 +74,7 @@ function ContractVersionBlock({ contract, onSigned }: { contract: ContractVersio
         </Pill>
         <span style={{ color: semanticColors.neutral.textMuted, fontSize: '14px' }}>
           {contract.approved_at && `approuvée le ${formatDate(contract.approved_at)}`}
-          {contract.signed_at && ` · signée (simulation) le ${formatDate(contract.signed_at)}`}
+          {contract.signed_at && ` · signée (simulé) le ${formatDate(contract.signed_at)}`}
         </span>
       </p>
       <pre
@@ -104,7 +104,7 @@ function ContractVersionBlock({ contract, onSigned }: { contract: ContractVersio
             J&apos;ai lu cette version du contrat et je comprends que sa signature est simulée.
           </label>
           <Button type="button" variant="accent" onClick={() => { void sign(); }} disabled={!acknowledged || signing}>
-            {signing ? 'Signature…' : 'Signer (simulation)'}
+            {signing ? 'Signature…' : 'Signer (simulé)'}
           </Button>
         </div>
       )}

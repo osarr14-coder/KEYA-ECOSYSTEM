@@ -92,7 +92,10 @@ describe('ClientPaymentCallsPanel — paiement par le client (ticket F-071)', ()
 
     expect(await screen.findByTestId('payment-reference')).toHaveTextContent('KEYA-1A2B3C4D');
     fireEvent.change(screen.getByLabelText('Référence de mon virement'), { target: { value: 'VIR-001' } });
-    fireEvent.change(screen.getByLabelText('Date du virement'), { target: { value: '2026-09-28' } });
+    // Adapté selon PO-2026-09-28-11 : saisie de date au format F06 (jour · mois · année).
+    fireEvent.change(screen.getByLabelText('Date du virement — année'), { target: { value: '2026' } });
+    fireEvent.change(screen.getByLabelText('Date du virement — mois'), { target: { value: '9' } });
+    fireEvent.change(screen.getByLabelText('Date du virement — jour'), { target: { value: '28' } });
     fireEvent.click(screen.getByRole('button', { name: 'Signaler mon virement' }));
 
     await waitFor(() => expect(declarePayment).toHaveBeenCalledWith('call-1', { client_reference: 'VIR-001', paid_on: '2026-09-28' }));

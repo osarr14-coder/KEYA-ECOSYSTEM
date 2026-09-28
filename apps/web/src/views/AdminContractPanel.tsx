@@ -115,7 +115,7 @@ function VersionBlock({
         {' · rédigée par '}
         {contract.authored_by}
         {contract.approved_at && ` · approuvée le ${formatDate(contract.approved_at)} par ${contract.approved_by}`}
-        {contract.signed_at && ` · signée par le client (simulation) le ${formatDate(contract.signed_at)}`}
+        {contract.signed_at && ` · signée par le client (simulé) le ${formatDate(contract.signed_at)}`}
       </p>
 
       {contract.status === 'draft' ? (

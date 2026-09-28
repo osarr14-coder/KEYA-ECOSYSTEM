@@ -50,6 +50,10 @@ describe('Gouvernance du design system (PO-2026-09-27-20)', () => {
     expect(offenders(/(?<!repeating-)linear-gradient\(|radial-gradient\(|conic-gradient\(/)).toEqual([]);
   });
 
+  it('aucun champ de date natif : il affiche le format du navigateur (PO-2026-09-28-11, DateInput)', () => {
+    expect(offenders(/type="date"|type="datetime-local"/)).toEqual([]);
+  });
+
   it('aucun flou ni effet de verre', () => {
     expect(offenders(/backdrop-?filter|backdropFilter|\bblur\(/)).toEqual([]);
   });

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { LotMilestone, LotRow } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
-import { MilestonesView, focusMilestone, trustSteps } from './MilestonesView';
+import { MilestonesView, focusMilestone } from './MilestonesView';
 
 const LOT: LotRow = {
   id: 'lot-1',
@@ -121,12 +121,16 @@ describe('MilestonesView — lecture de l\'avancement (ticket F-076)', () => {
     expect(focusMilestone([foncier, fondations, grosOeuvre])?.id).toBe('m4');
   });
 
-  it('niveau de confiance : Déclaré → Documenté → Contrôlé → Validé, dérivé de l\'état serveur', () => {
-    const states = (m: LotMilestone) => trustSteps(m).map((step) => step.state);
-    expect(states(grosOeuvre)).toEqual(['current', 'upcoming', 'upcoming', 'upcoming']);
-    expect(states(milestone({ status: 'awaiting_documents' }))).toEqual(['done', 'current', 'upcoming', 'upcoming']);
-    expect(states(milestone({ status: 'awaiting_control', evidence_count: 1 }))).toEqual(['done', 'done', 'current', 'upcoming']);
-    expect(states(fondations)).toEqual(['done', 'done', 'done', 'done']);
+  // Adapté selon PO-2026-09-28-04 : l'échelle des niveaux vient du serveur,
+  // avec la preuve de chaque niveau atteint (plus de dérivation côté écran).
+  it('niveaux de confiance : échelle fournie par le serveur, niveaux non atteints visibles et vides', async () => {
+    const evidence = { by: 'Constructeur Démo', role: 'Constructeur', at: '2026-09-27T20:10:00Z', version: 'déclaration n° 1', scope: 'Jalon « Gros œuvre », Lot A1' };
+    renderView([foncier, fondations, milestone({ ...grosOeuvre, trust_levels: { declared: evidence } })]);
+    const scale = await screen.findByRole('list', { name: 'Niveaux de confiance — Gros œuvre' });
+    expect(scale.querySelectorAll('li')).toHaveLength(5);
+    expect(scale.querySelector('[data-testid="trust-level-declared"]')).toHaveTextContent('Constructeur Démo (Constructeur)');
+    expect(scale.querySelector('[data-testid="trust-level-declared"]')).toHaveTextContent('déclaration n° 1');
+    expect(scale.querySelector('[data-testid="trust-level-documented"]')).toHaveTextContent('Non atteint');
   });
 
   it('le bandeau montre chaque jalon ; cliquer un jalon ouvre sa fiche', async () => {

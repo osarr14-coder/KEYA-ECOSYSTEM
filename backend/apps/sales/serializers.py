@@ -81,6 +81,7 @@ class ReservationSerializer(serializers.ModelSerializer):
             return None
         return {
             'version': schedule['version'],
+            'legally_validated': schedule['legally_validated'],
             'country_pack': schedule['country_pack'],
             'first_payment_amount': str(schedule['first_payment_amount']),
             'rows': [
@@ -88,6 +89,7 @@ class ReservationSerializer(serializers.ModelSerializer):
                     'code': row['code'], 'label': row['label'], 'amount': str(row['amount']),
                     'fee_included': str(row['fee_included']) if row['fee_included'] is not None else None,
                     'cumulative_cap_percent': str(row['cumulative_cap_percent']), 'condition': row['condition'],
+                    'requires_technical_acceptance': row.get('requires_technical_acceptance', False),
                     'planned_on': row['planned_on'].isoformat(),
                 }
                 for row in schedule['rows']
@@ -410,11 +412,17 @@ class PaymentNoticeDeclareSerializer(serializers.Serializer):
 
 class PaymentNoticeConfirmSerializer(serializers.Serializer):
     # Audit UI R1 (F02) : référence du relevé bancaire simulé, obligatoire et
-    # distincte de la référence indiquée par le client ; montant reçu (par
-    # défaut, le montant signalé) — un écart reste visible (T12).
+    # distincte de la référence indiquée par le client. PO-2026-09-28-10 :
+    # montant reçu obligatoire, lu au relevé (jamais recopié du
+    # signalement) — un écart reste visible (T12).
     bank_reference = serializers.CharField(max_length=64)
     received_on = serializers.DateField(required=False, allow_null=True, default=None)
-    amount = serializers.DecimalField(max_digits=16, decimal_places=2, required=False, allow_null=True, default=None)
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2)
+
+
+class PaymentNoticeAttachSerializer(serializers.Serializer):
+    # PO-2026-09-28-02 : encaissement déjà enregistré, même dossier.
+    receipt = serializers.UUIDField()
 
 
 class PaymentNoticeRejectSerializer(serializers.Serializer):
@@ -474,6 +482,22 @@ class PaymentNoticeSerializer(serializers.Serializer):
     def get_simulation(self, notice):
         return True
 
+    attachable_receipts = serializers.SerializerMethodField()
+
+    def get_attachable_receipts(self, notice):
+        """PO-2026-09-28-02 — encaissements déjà enregistrés sur le même
+        dossier, candidats au rattachement (préchargés sous le contexte RLS
+        du lot)."""
+        if notice.status != 'declared':
+            return []
+        return [
+            {
+                'id': str(receipt.id), 'bank_reference': receipt.bank_reference, 'amount': _money(receipt.amount),
+                'currency': receipt.currency, 'received_on': receipt.received_on.isoformat(),
+            }
+            for receipt in sorted(notice.reservation.receipts.all(), key=lambda receipt: receipt.recorded_at)
+        ]
+
     def get_receipt(self, notice):
         """Audit UI R1 (F01, F02) — l'encaissement simulé qui fait foi :
         justificatif fictif (référence bancaire, date, montant), état CDC
@@ -482,26 +506,56 @@ class PaymentNoticeSerializer(serializers.Serializer):
         receipt = notice.receipt
         if receipt is None:
             return None
-        allocations = list(receipt.allocations.all())
-        allocated = sum((allocation.amount for allocation in allocations), Decimal('0'))
+        return receipt_proof(receipt)
+
+
+def receipt_proof(receipt):
+    """Justificatif fictif d'un encaissement (relations préchargées)."""
+    allocations = list(receipt.allocations.all())
+    allocated = sum((allocation.amount for allocation in allocations), Decimal('0'))
+    return {
+        'id': str(receipt.id),
+        'bank_reference': receipt.bank_reference,
+        'amount': _money(receipt.amount),
+        'currency': receipt.currency,
+        'received_on': receipt.received_on.isoformat(),
+        'status': receipt.status,
+        'status_label': receipt.get_status_display(),
+        'recorded_by': receipt.recorded_by.email,
+        'recorded_at': receipt.recorded_at.isoformat(),
+        'reconciled_at': receipt.reconciled_at.isoformat() if receipt.reconciled_at else None,
+        'allocations': [
+            {
+                'id': str(allocation.id),
+                'payment_call': allocation.payment_call.get_kind_display(),
+                'amount': _money(allocation.amount),
+            }
+            for allocation in allocations
+        ],
+        'unallocated_amount': _money(receipt.amount - allocated),
+    }
+
+
+class FinanceReceiptSerializer(serializers.Serializer):
+    """PO-2026-09-28-01 — encaissement enregistré, vue Finance : justificatif
+    fictif, dossier et signalements rattachés (relations préchargées sous le
+    contexte RLS du lot, `services.list_receipts`)."""
+
+    def to_representation(self, receipt):
+        reservation = receipt.reservation
+        client = reservation.client
         return {
-            'id': str(receipt.id),
-            'bank_reference': receipt.bank_reference,
-            'amount': _money(receipt.amount),
-            'currency': receipt.currency,
-            'received_on': receipt.received_on.isoformat(),
-            'status': receipt.status,
-            'status_label': receipt.get_status_display(),
-            'recorded_by': receipt.recorded_by.email,
-            'recorded_at': receipt.recorded_at.isoformat(),
-            'reconciled_at': receipt.reconciled_at.isoformat() if receipt.reconciled_at else None,
-            'allocations': [
-                {
-                    'id': str(allocation.id),
-                    'payment_call': allocation.payment_call.get_kind_display(),
-                    'amount': _money(allocation.amount),
-                }
-                for allocation in allocations
+            **receipt_proof(receipt),
+            'simulation': True,
+            'organization_id': str(receipt.organization_id),
+            'program': {'id': str(reservation.lot.asset.program_id), 'name': reservation.lot.asset.program.name},
+            'lot': {'id': str(reservation.lot_id), 'name': reservation.lot.name},
+            'reservation': {'id': str(reservation.id), 'status': reservation.status,
+                            'status_label': reservation.get_status_display()},
+            'client': {'id': str(client.id), 'email': client.email, 'full_name': client.full_name},
+            'notices': [
+                {'id': str(notice.id), 'client_reference': notice.client_reference, 'status': notice.status,
+                 'status_label': notice.get_status_display()}
+                for notice in receipt.payment_notices.all()
             ],
-            'unallocated_amount': _money(receipt.amount - allocated),
         }

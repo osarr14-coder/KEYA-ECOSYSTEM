@@ -1,4 +1,4 @@
-import { ApiErrorBanner, StatusBadge, semanticColors } from '@keya/design-system';
+import { ApiErrorBanner, TrustEventLine, semanticColors, formatServerDateTime } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import { toTrustEventData } from '../api/types';
@@ -41,12 +41,11 @@ export function EvidenceFeedView({ lotId }: EvidenceFeedViewProps) {
           >
             <div>
               <strong>{item.milestone_label}</strong>
-              {item.status && (
-                <StatusBadge level={item.status.level} event={toTrustEventData(item.status)} />
-              )}
+              {/* PO-2026-09-28-04 : niveau en ligne datée, jamais en badge. */}
+              {item.status && <TrustEventLine event={toTrustEventData(item.status)} />}
             </div>
             <p style={{ color: semanticColors.neutral.textMuted }}>
-              Ajouté par {item.added_by} — {new Date(item.created_at).toLocaleString('fr-FR')}
+              Ajouté par {item.added_by} — {formatServerDateTime(item.created_at)}
             </p>
             {/* Ticket 023 (polish visuel) — cette liste imbriquée n'avait
                 jamais de reset (`listStyle`/`padding`), contrairement à

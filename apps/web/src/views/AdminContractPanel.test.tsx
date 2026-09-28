@@ -6,6 +6,8 @@ import type { AdminReservation, ContractVersion } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { AdminContractPanel } from './AdminContractPanel';
 
+// Libellé « signée (simulé) » : adapté selon PO-2026-09-28-06.
+
 const RESERVATION: AdminReservation = {
   id: 'reservation-1',
   status: 'held',
@@ -103,7 +105,7 @@ describe('AdminContractPanel — contrat fictif côté équipe KEYIMMO (ticket F
 
     const version = await screen.findByRole('article', { name: 'Version 1' });
     expect(version).toHaveTextContent('SIMULÉ — SANS VALEUR OPÉRATIONNELLE');
-    expect(version).toHaveTextContent('signée par le client (simulation) le 27 sept. 2026, 12:00 (GMT, Abidjan)'); // Audit UI R1 (F06)
+    expect(version).toHaveTextContent('signée par le client (simulé) le 27 sept. 2026, 12:00 (GMT, Abidjan)'); // Audit UI R1 (F06)
     // Repliée derrière un bouton explicite, jamais ouverte d'office.
     expect(screen.queryByRole('form', { name: 'Nouvelle version (v2)' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Corriger : créer une nouvelle version' }));

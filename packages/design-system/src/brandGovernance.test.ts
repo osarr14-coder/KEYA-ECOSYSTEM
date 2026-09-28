@@ -51,7 +51,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const componentsDir = path.join(__dirname, 'components');
 
 const FORBIDDEN_COMPONENT_DIRS = [
-  'AlertBanner', 'StatusBadge', 'ProgressBar', 'Button', 'Input', 'Select',
+  // Révisé selon PO-2026-09-28-04 : `StatusBadge` retiré, remplacé par
+  // l'échelle `TrustLevels` (surveillée à sa place).
+  'AlertBanner', 'TrustLevels', 'ProgressBar', 'Button', 'Input', 'Select',
   // Ticket F-046 — Card/Icon/TabBar créés après ce test (F-045), jamais
   // ajoutés à la liste surveillée : trou de couverture repéré à l'audit,
   // fermé ici. ProgressBar reste couvert malgré sa nouvelle prop

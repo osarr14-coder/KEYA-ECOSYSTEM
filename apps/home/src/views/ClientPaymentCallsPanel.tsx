@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactNode, useState } from 'react';
 
 import {
-  Button, Input, Pill, type PillTone, semanticColors, SimulatedMark,
+  Button, DateInput, Input, Pill, type PillTone, semanticColors, SimulatedMark,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -115,16 +115,11 @@ function DeclareForm({ call, onDeclared }: { call: ClientPaymentCall; onDeclared
           placeholder="ex. VIR-0001"
         />
       </label>
-      <label style={{ ...fieldLabelStyle, flex: '0 1 180px' }}>
-        Date du virement
-        <Input
-          aria-label="Date du virement"
-          type="date"
-          value={paidOn}
-          onChange={(event) => setPaidOn(event.target.value)}
-          required
-        />
-      </label>
+      {/* PO-2026-09-28-11 : saisie au format F06 (jour · mois · année). */}
+      <div style={{ ...fieldLabelStyle, flex: '0 1 auto' }}>
+        <span>Date du virement</span>
+        <DateInput label="Date du virement" value={paidOn} onChange={setPaidOn} />
+      </div>
       <Button type="submit" variant="accent" disabled={submitting || reference.trim() === ''}>
         {submitting ? 'Envoi…' : 'Signaler mon virement'}
       </Button>
@@ -175,7 +170,7 @@ export function CallRow({ call, onChanged }: { call: ClientPaymentCall; onChange
       )}
       {notice?.status === 'rejected' && !settled && (
         <p role="status" style={{ margin: 0, color: semanticColors.danger.text }} data-testid="payment-notice">
-          {`Virement introuvable au relevé (simulé) : ${notice.rejection_reason}. Vérifiez votre virement puis signalez-le à nouveau.`}
+          {`Signalement clôturé sans rattachement : ${notice.rejection_reason}. Vérifiez votre virement puis signalez-le à nouveau.`}
         </p>
       )}
 

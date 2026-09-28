@@ -168,7 +168,7 @@ Libellés cibles du prompt ; la colonne « Actuel » montre l'existant et les é
 | | `bank_executed_sim` | **Exécuté par la banque (simulé)** | Reçu en banque (simulé) / Exécuté en banque (simulé) |
 | | `reconciled_sim` | Rapproché (simulé) | identique |
 | | `beneficiary_confirmed_sim` | Confirmé par le bénéficiaire (simulé) | identique |
-| Signalement de virement (PO-05) | `declared` / `confirmed` / `rejected` | Signalé — non encaissé · Traité — encaissement enregistré · Introuvable au relevé (simulé) | identique (étape 2) |
+| Signalement de virement (PO-05, PO-2026-09-28-02) | `declared` / `confirmed` / `rejected` | Signalé par le client — non encaissé · Traité — encaissement enregistré (référence de l'encaissement affichée) · Clôturé sans rattachement (motif obligatoire) | aligné (étape 4) |
 | Réserve | `ouverte` … `levee` | Ouverte · Correction proposée · En recontrôle · Maintenue · Levée | identique |
 
 ## 9. Montants, dates, références
@@ -269,3 +269,9 @@ Aucune de ces étapes ne commence avant votre validation de ce document.
 | Gouvernance | `designSystemGovernance.test.ts` (dégradés, flou, rayons, ombres, doré, texte doré), `contrastGovernance.test.tsx` (contrastes AA clair et sombre) |
 
 Restent hors de cette étape (voir le compte rendu) : l'échelle `TrustLevels` n'est pas encore branchée sur les écrans (il faut exposer, par niveau, qui / quand / version / périmètre côté serveur) ; `StatusBadge` (niveau de confiance en badge) subsiste dans BUILD « À traiter » et dans l'ancienne vue HOME `OverviewView` ; export PDF filigrané à créer avec le premier export.
+
+## 17. Compléments de l'étape 4 (28 septembre 2026)
+
+- **Niveaux de confiance** (PO-2026-09-28-04) : le serveur expose, pour chaque niveau atteint d'un jalon, l'auteur, son rôle, la date serveur, la version examinée et le périmètre (`milestone_trust_levels`). L'échelle `TrustLevels` est branchée dans BUILD (fiche jalon), l'app Contrôle (fiche mission) et l'espace client (« Suivi du chantier »). `StatusBadge` est **retiré** : un événement isolé s'affiche en ligne datée (`TrustEventLine`). La garde du ticket 007 interdit désormais tout composant de badge.
+- **Saisie des dates** (PO-2026-09-28-11) : `DateInput` (jour · mois abrégé · année) remplace le champ natif `type="date"`, qui affiche le format du navigateur ; un test de gouvernance l'interdit.
+- **Menu Finance « Encaissements »** (PO-2026-09-28-01) : vues « Encaissements enregistrés » (relevé) et « Signalements clients ».

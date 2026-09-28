@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, CONTROLLER_DESIGNATION, Card, PageHeader, Pill, type PillTone, Select, Stepper, type StepperStep,
+  AlertBanner, ApiErrorBanner, Button, Icon, CONTROLLER_DESIGNATION, Card, PageHeader, Pill, type PillTone, Select, TrustLevels,
   semanticColors,
 } from '@keya/design-system';
 
@@ -46,12 +46,30 @@ function FileAction({
       onSubmit={(event) => { void handleSubmit(event); }}
       style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginTop: '8px' }}
     >
-      <input
-        type="file"
-        aria-label={label}
-        accept="application/pdf,image/jpeg,image/png"
-        onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-      />
+      {/* PO-2026-09-28-05 : tuile tactile de 44 px au lieu du champ fichier
+          natif (21 px, débordait à 375 px) ; le champ reste le vrai contrôle
+          accessible, focus visible par `.keya-file-drop` (GlobalStyles). */}
+      <label
+        className="keya-file-drop"
+        style={{
+          position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '8px', minHeight: '44px',
+          maxWidth: '100%', boxSizing: 'border-box', padding: '0 14px', borderRadius: '4px',
+          border: `1px dashed ${semanticColors.neutral.heading}`, color: semanticColors.neutral.heading,
+          fontWeight: 600, cursor: 'pointer', overflow: 'hidden',
+        }}
+      >
+        <Icon name="file-text" size={18} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {file ? file.name : 'Choisir une pièce (PDF, JPEG, PNG)'}
+        </span>
+        <input
+          type="file"
+          aria-label={label}
+          accept="application/pdf,image/jpeg,image/png"
+          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+        />
+      </label>
       <Button type="submit" variant="secondary" disabled={!file || submitting}>
         {submitting ? 'Envoi…' : submitLabel}
       </Button>
@@ -105,29 +123,6 @@ export function focusMilestone(milestones: LotMilestone[]): LotMilestone | undef
 }
 
 /** Niveau de confiance du jalon, du plus faible au plus fort. */
-export function trustSteps(milestone: LotMilestone): StepperStep[] {
-  const declared = milestone.status !== 'not_declared';
-  const documented = declared && milestone.evidence_count > 0 && milestone.status !== 'awaiting_documents';
-  const controlled = milestone.status === 'under_reserve' || milestone.status === 'accepted';
-  const validated = milestone.status === 'accepted';
-  const done = [declared, documented, controlled, validated];
-  const currentIndex = done.findIndex((isDone) => !isDone);
-  const captions = [
-    declared ? 'par vous' : undefined,
-    milestone.evidence_count > 0 ? `${milestone.evidence_count} pièce(s)` : undefined,
-    milestone.status === 'under_reserve'
-      ? 'avec réserve'
-      : milestone.control_scheduled && !controlled ? 'mission en cours' : undefined,
-    validated ? 'accepté techniquement' : undefined,
-  ];
-  return ['Déclaré', 'Documenté', 'Contrôlé', 'Validé'].map((label, index) => ({
-    id: ['declared', 'documented', 'controlled', 'validated'][index],
-    label,
-    caption: captions[index],
-    state: done[index] ? 'done' : index === currentIndex ? 'current' : 'upcoming',
-  }));
-}
-
 function ProgressStrip({
   milestones, selectedId, onSelect,
 }: { milestones: LotMilestone[]; selectedId: string; onSelect: (id: string) => void }) {
@@ -230,10 +225,11 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
         </p>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: semanticColors.neutral.textMuted }}>
-          Niveau de confiance
-        </span>
-        <Stepper steps={trustSteps(milestone)} aria-label={`Niveau de confiance — ${milestone.label}`} />
+        {/* PO-2026-09-28-04 : échelle des niveaux, chacun avec sa preuve
+            (qui, rôle, quand, version examinée, périmètre) fournie par le
+            serveur ; un niveau non atteint reste visible et vide. */}
+        <h3 style={{ margin: 0, fontSize: '15px' }}>Niveaux de confiance</h3>
+        <TrustLevels reached={milestone.trust_levels ?? {}} aria-label={`Niveaux de confiance — ${milestone.label}`} />
       </div>
 
       {milestone.status === 'not_declared' && (

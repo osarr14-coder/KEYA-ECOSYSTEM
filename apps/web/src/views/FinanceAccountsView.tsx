@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Input, KeyFigure, PageHeader, Pill, type PillTone, semanticColors, SimulatedMark, formatCalendarDate,
+  ApiErrorBanner, Button, Card, DateInput, Input, KeyFigure, PageHeader, Pill, type PillTone, semanticColors, SimulatedMark, formatCalendarDate,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -320,10 +320,11 @@ function DisbursementBlock({
                 Référence bancaire simulée
                 <Input aria-label="Référence de sortie" value={reference} onChange={(event) => setReference(event.target.value)} required style={{ width: '200px' }} />
               </label>
-              <label style={labelStyle}>
-                Exécuté le
-                <Input aria-label="Date d'exécution" type="date" value={executedOn} onChange={(event) => setExecutedOn(event.target.value)} required />
-              </label>
+              {/* PO-2026-09-28-11 : saisie au format F06 (jour · mois · année). */}
+              <div style={labelStyle}>
+                <span>Exécuté le</span>
+                <DateInput label="Date d'exécution" value={executedOn} onChange={setExecutedOn} />
+              </div>
               <Button type="submit" variant="accent" disabled={pending || reference.trim() === ''}>Exécuter (simulé)</Button>
             </form>
           )}
