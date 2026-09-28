@@ -7,9 +7,9 @@ import { documentLabel, MissionReviewView, opinionErrors } from './MissionReview
 const FIRST: MissionDetail = {
   id: 'm1', lotName: 'Lot A1', assetName: 'Bâtiment A', programName: 'Résidence Démonstration Abidjan',
   milestoneLabel: 'Fondations', followUp: false, completed: false,
-  declaration: { id: 'wd1', declaredBy: 'constructeur.demo@keya.test', declaredAt: '2026-09-27T09:00:00Z', note: 'Semelles coulées' },
+  declaration: { id: 'wd1', declaredBy: 'Constructeur Démo · Constructeur', declaredAt: '2026-09-27T09:00:00Z', note: 'Semelles coulées' },
   evidences: [{
-    id: 'ev1', version: 1, addedBy: 'constructeur.demo@keya.test', addedAt: '2026-09-27T09:05:00Z',
+    id: 'ev1', version: 1, addedBy: 'Constructeur Démo · Constructeur', addedAt: '2026-09-27T09:05:00Z',
     documents: [{ id: 'doc1', fileName: 'fondations.jpg', sha256: 'abcdef0123456789' }],
   }],
   openReserves: [],
@@ -20,13 +20,13 @@ const FOLLOW_UP: MissionDetail = {
   id: 'm2',
   followUp: true,
   evidences: [...FIRST.evidences, {
-    id: 'ev2', version: 2, addedBy: 'constructeur.demo@keya.test', addedAt: '2026-09-28T10:00:00Z',
+    id: 'ev2', version: 2, addedBy: 'Constructeur Démo · Constructeur', addedAt: '2026-09-28T10:00:00Z',
     documents: [{ id: 'doc2', fileName: 'correction.pdf', sha256: '99887766aabbccdd' }],
   }],
   openReserves: [{
     id: 'r1', motif: 'Enrobage insuffisant', expectedAction: 'Reprendre l’enrobage des armatures',
     openedAt: '2026-09-27T11:00:00Z', statusLabel: 'Correction proposée',
-    corrections: [{ submittedAt: '2026-09-28T10:00:00Z', submittedBy: 'constructeur.demo@keya.test' }],
+    corrections: [{ submittedAt: '2026-09-28T10:00:00Z', submittedBy: 'Constructeur Démo · Constructeur' }],
   }],
 };
 
@@ -45,9 +45,10 @@ describe('MissionReviewView — K01 pièces soumises', () => {
     renderView(FOLLOW_UP);
     const pieces = await screen.findAllByTestId('submitted-evidence');
     expect(pieces).toHaveLength(2);
-    expect(pieces[0]).toHaveTextContent('Version 1 — déposée par constructeur.demo@keya.test, le 27 sept. 2026');
+    // Adapté selon PO-2026-09-28-18 : « organisation · rôle », jamais l'e-mail.
+    expect(pieces[0]).toHaveTextContent('Version 1 — déposée par Constructeur Démo · Constructeur, le 27 sept. 2026');
     expect(pieces[1]).toHaveTextContent('Pièce 1 (PDF)');
-    expect(screen.getByText(/Déclaration de constructeur.demo@keya.test/)).toBeInTheDocument();
+    expect(screen.getByText(/Déclaration : Constructeur Démo · Constructeur/)).toBeInTheDocument();
   });
 
   it('l’avis enregistre les versions examinées', async () => {
@@ -122,6 +123,12 @@ describe('MissionReviewView — K03 décision explicite par réserve', () => {
       .toContain('Un avis conforme exige la levée de chaque réserve ouverte.');
     expect(opinionErrors('avec_reserve', [], FOLLOW_UP.openReserves, { r1: { decision: 'maintenue', motif: 'Toujours non conforme' } }))
       .toEqual([]);
+  });
+
+  it('PO-2026-09-28-13 (K01) : sans pièce soumise, l’avis ne peut pas être enregistré', async () => {
+    expect(opinionErrors('conforme', [], [], {}, 0))
+      .toContain('Aucune pièce soumise : un avis porte sur au moins une version de pièce.');
+    expect(opinionErrors('conforme', [], [], {}, 1)).toEqual([]);
   });
 });
 

@@ -262,7 +262,7 @@ function ProgramCard({ program, navigate }: { program: PublicProgram; navigate: 
 const STATUS_COLOR: Record<string, string> = {
   accepted: semanticColors.progress.fill,
   awaiting_control: semanticColors.info.text,
-  under_reserve: semanticColors.danger.border,
+  under_reserve: semanticColors.alert.border, // PO-2026-09-28-17 : Attention, jamais rouge
   awaiting_documents: semanticColors.alert.border,
   not_declared: semanticColors.neutral.border,
 };

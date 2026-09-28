@@ -12,11 +12,9 @@ export interface ExceptionsViewProps {
   /** Bascule vers l'onglet "Tous les lots" en filtrant sur ce lot — action
    * réelle de navigation, jamais un lien mort. */
   onViewLotInTable: (lotName: string) => void;
-  /** Ticket 019 — organisation active résolue par `App.tsx` (App Switcher).
-   * Dans les deps de `useApiResource` ci-dessous, ET transmise à
-   * `CapaciteManquanteRow` pour « Affecter à mon organisation », qui
-   * n'appelle plus `getMe()` lui-même (une seule résolution de
-   * l'organisation active, au niveau App, jamais dupliquée). */
+  /** Ticket 019 — organisation active résolue par `App.tsx` (App Switcher),
+   * dans les deps de `useApiResource` ci-dessous. (PO-2026-09-28-15 : plus
+   * d'action « Affecter à mon organisation ».) */
   activeOrganizationId: string | null;
 }
 
@@ -58,47 +56,18 @@ function LotRowList({
   );
 }
 
-function CapaciteManquanteRow({
-  row, onAssigned, activeOrganizationId,
-}: {
-  row: LotExceptionRow;
-  onAssigned: () => void;
-  activeOrganizationId: string | null;
-}) {
-  const api = useApiClient();
-  const [assigning, setAssigning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleAssign() {
-    setAssigning(true);
-    setError(null);
-    try {
-      // Ticket 019 : l'organisation active vient de `App.tsx` (App
-      // Switcher), plus d'un `getMe()` propre qui prenait aveuglément
-      // `memberships[0]` — même angle mort que celui corrigé ailleurs par
-      // ce ticket, déjà présent en production avant cette correction.
-      if (!activeOrganizationId) {
-        setError('Aucune organisation active.');
-        return;
-      }
-      await api.assignLotOrganization(row.lot_id, activeOrganizationId);
-      onAssigned();
-    } catch {
-      setError("Échec de l'affectation.");
-    } finally {
-      setAssigning(false);
-    }
-  }
-
+function CapaciteManquanteRow({ row }: { row: LotExceptionRow }) {
+  // PO-2026-09-28-15 : l'affectation d'une organisation constructrice est
+  // réservée au gestionnaire, côté serveur. Le constructeur la voit en
+  // lecture seule — aucune action ici.
   return (
     <li style={ROW_STYLE}>
       <strong>{row.lot_name}</strong>
       <span> — {row.asset_name} ({row.program_name})</span>
-      <p>{row.label}</p>
-      <Button type="button" onClick={handleAssign} disabled={assigning}>
-        Affecter à mon organisation
-      </Button>
-      {error && <div style={{ marginTop: '8px' }}><AlertBanner title={error} /></div>}
+      <p style={{ margin: '4px 0' }}>{row.label}</p>
+      <p style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
+        Lecture seule : l’organisation constructrice est affectée par le gestionnaire.
+      </p>
     </li>
   );
 }
@@ -144,7 +113,7 @@ function ReserveCorrectionForm({
         >
           {row.available_evidence.map((evidence: EvidenceSummary) => (
             <option key={evidence.id} value={evidence.id}>
-              {evidence.milestone_label} — {evidence.added_by_email} — {formatServerDateTime(evidence.created_at)}
+              {evidence.milestone_label} — {evidence.added_by} — {formatServerDateTime(evidence.created_at)}
             </option>
           ))}
         </Select>
@@ -306,12 +275,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
         ) : (
           <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {exceptions.capacites_manquantes.map((row) => (
-              <CapaciteManquanteRow
-                key={row.lot_id}
-                row={row}
-                onAssigned={reload}
-                activeOrganizationId={activeOrganizationId}
-              />
+              <CapaciteManquanteRow key={row.lot_id} row={row} />
             ))}
           </ul>
         )}

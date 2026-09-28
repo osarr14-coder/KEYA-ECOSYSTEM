@@ -14,6 +14,7 @@ from apps.core.rls import set_rls_context
 from apps.evidence.services import create_document, create_evidence, create_work_declaration
 from apps.inspections.models import InspectionOutcome
 from apps.inspections.services import create_inspection
+from apps.programs import services as programs_services
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Milestone, MilestoneTemplate, Program
 from apps.programs.services import instantiate_milestones_for_lot
@@ -60,6 +61,15 @@ def _setup_org_with_lot(email, organization_name, role_code='sponsor', lot_name=
 
 def _register_inspecteur(email, organization_name):
     return _register(email, organization_name, role_code='inspecteur')
+
+
+def _assign_as_manager(lot, organization):
+    """PO-2026-09-28-15 — affectation de l'organisation constructrice par le
+    chemin serveur du gestionnaire (`assign_lot_organization`)."""
+    programs_services.assign_lot_organization(
+        admin_organization_id=organization.id, target_organization_id=organization.id,
+        lot_id=lot.id, organization_id=organization.id,
+    )
 
 
 def _declare_first_milestone(organization, lot, constructeur):
@@ -113,10 +123,10 @@ class TestExceptionsAreNeverKPIs:
         # par construction (voir TestCapacitesManquantes), ce qui n'est pas
         # ce que ce test veut vérifier (la FORME de la réponse, pas son
         # contenu).
-        client.post(
-            reverse('lot-assign-organization', args=[lot.id]),
-            {'organization_id': str(organization.id)}, format='json',
-        )
+        # PO-2026-09-28-15 : l'affectation est une action du gestionnaire
+        # (refusée au membre du lot, voir apps/programs/tests.py) ; posée
+        # ici par le chemin serveur du gestionnaire.
+        _assign_as_manager(lot, organization)
 
         response = client.get(reverse('build-exceptions'))
 
@@ -189,7 +199,8 @@ class TestControlesAPlanifier:
         client, organization, user, _program, _asset, lot = _setup_org_with_lot(
             'controle2@example.com', 'Org Controle 2', role_code='constructeur',
         )
-        declaration = _declare_first_milestone(organization, lot, user)
+        # PO-2026-09-28-13 (K01) : un avis porte sur au moins une pièce soumise.
+        declaration, _evidence = _declare_and_document_first_milestone(organization, lot, user)
         inspecteur_client, inspecteur_organization, inspecteur = _register_inspecteur(
             'controle2-inspecteur@example.com', 'Org Controle 2 Inspecteur',
         )
@@ -245,11 +256,10 @@ class TestCapacitesManquantes:
         client, organization, _user, _program, _asset, lot = _setup_org_with_lot(
             'capacite2@example.com', 'Org Capacite 2',
         )
-        response = client.post(
-            reverse('lot-assign-organization', args=[lot.id]),
-            {'organization_id': str(organization.id)}, format='json',
-        )
-        assert response.status_code == 200
+        # PO-2026-09-28-15 : l'affectation est une action du gestionnaire
+        # (refusée au membre du lot, voir apps/programs/tests.py) ; posée
+        # ici par le chemin serveur du gestionnaire.
+        _assign_as_manager(lot, organization)
 
         exceptions_response = client.get(reverse('build-exceptions'))
 
@@ -263,7 +273,8 @@ class TestReservesOuvertes:
         client, organization, user, _program, _asset, lot = _setup_org_with_lot(
             'reserve1@example.com', 'Org Reserve 1', role_code='constructeur',
         )
-        declaration = _declare_first_milestone(organization, lot, user)
+        # PO-2026-09-28-13 (K01) : un avis porte sur au moins une pièce soumise.
+        declaration, _evidence = _declare_and_document_first_milestone(organization, lot, user)
         inspecteur_client, inspecteur_organization, inspecteur = _register_inspecteur(
             'reserve1-inspecteur@example.com', 'Org Reserve 1 Inspecteur',
         )
@@ -329,13 +340,16 @@ class TestReservesOuvertes:
 
         reserve_row = response.data['reserves_ouvertes'][0]
         evidence_row = next(item for item in reserve_row['available_evidence'] if item['id'] == str(evidence.id))
-        assert evidence_row['added_by_email'] == user.email
+        # Adapté selon PO-2026-09-28-18 : l'auteur s'affiche « organisation · rôle », jamais par e-mail.
+        assert evidence_row['added_by'] == 'Org Reserve Evidence Author · Constructeur'
+        assert 'added_by_email' not in evidence_row
 
     def test_a_resolved_reserve_is_not_flagged(self):
         client, organization, user, _program, _asset, lot = _setup_org_with_lot(
             'reserve2@example.com', 'Org Reserve 2', role_code='constructeur',
         )
-        declaration = _declare_first_milestone(organization, lot, user)
+        # PO-2026-09-28-13 (K01) : un avis porte sur au moins une pièce soumise.
+        declaration, _evidence = _declare_and_document_first_milestone(organization, lot, user)
         inspecteur_client, inspecteur_organization, inspecteur = _register_inspecteur(
             'reserve2-inspecteur@example.com', 'Org Reserve 2 Inspecteur',
         )
@@ -369,7 +383,8 @@ class TestReservesOuvertes:
         client, organization, user, _program, _asset, lot = _setup_org_with_lot(
             'reserve-tiebreak@example.com', 'Org Reserve Tiebreak', role_code='constructeur',
         )
-        declaration = _declare_first_milestone(organization, lot, user)
+        # PO-2026-09-28-13 (K01) : un avis porte sur au moins une pièce soumise.
+        declaration, _evidence = _declare_and_document_first_milestone(organization, lot, user)
         inspecteur_client, inspecteur_organization, inspecteur = _register_inspecteur(
             'reserve-tiebreak-inspecteur@example.com', 'Org Reserve Tiebreak Inspecteur',
         )
@@ -451,7 +466,8 @@ class TestConstructeurCannotChangeReserveStatusFromBuild:
         client, organization, user, _program, _asset, lot = _setup_org_with_lot(
             'noguard2@example.com', 'Org No Guard 2', role_code='constructeur',
         )
-        declaration = _declare_first_milestone(organization, lot, user)
+        # PO-2026-09-28-13 (K01) : un avis porte sur au moins une pièce soumise.
+        declaration, _evidence = _declare_and_document_first_milestone(organization, lot, user)
         inspecteur_client, inspecteur_organization, inspecteur = _register_inspecteur(
             'noguard2-inspecteur@example.com', 'Org No Guard 2 Inspecteur',
         )
@@ -506,10 +522,10 @@ class TestAllLotsSortFilterPaginate:
         client, organization, _user, _program, asset, assigned_lot = _setup_org_with_lot(
             'filter1@example.com', 'Org Filter 1', lot_name='Lot Affecté',
         )
-        client.post(
-            reverse('lot-assign-organization', args=[assigned_lot.id]),
-            {'organization_id': str(organization.id)}, format='json',
-        )
+        # PO-2026-09-28-15 : l'affectation est une action du gestionnaire
+        # (refusée au membre du lot, voir apps/programs/tests.py) ; posée
+        # ici par le chemin serveur du gestionnaire.
+        _assign_as_manager(assigned_lot, organization)
         unassigned_lot = Lot.objects.create(organization=organization, asset=asset, name='Lot Non Affecté')
 
         response = client.get(reverse('build-lots'), {'assigned': 'false'})

@@ -640,6 +640,8 @@ def _accept_milestone(promoter, lot_id, code, outcome='conforme'):
     set_rls_context(organization_id=promoter.id)
     milestone = Milestone.objects.get(lot_id=lot_id, code=code)
     declaration = create_work_declaration(organization=promoter, milestone=milestone, declared_by=inspector)
+    # PO-2026-09-28-13 (K01) : un avis désigne au moins une pièce soumise.
+    _add_evidence(promoter, declaration, inspector)
     create_inspection(
         inspector=inspector, inspector_organization=inspector_org, target_organization_id=promoter.id,
         work_declaration_id=declaration.id, outcome=outcome,
@@ -1189,9 +1191,14 @@ class TestDisbursementRefusalsT09:
         assert _account(s).data['balance']['available'] == '3000000.00'
 
     def test_a_declaration_without_evidence_is_not_disbursable(self):
+        # PO-2026-09-28-13 : un avis sur une déclaration sans pièce est
+        # désormais refusé ; le cas encore atteignable est une NOUVELLE
+        # déclaration, sans pièce, après l'acceptation (la plus récente).
         s = _disbursement_scenario()
-        milestone, _declaration, _inspector = _accept_milestone(s['promoter'], s['lot']['id'], 'fondations')
+        milestone, _declaration, inspector = _accept_milestone(s['promoter'], s['lot']['id'], 'fondations')
         disbursement = _prepare(s, milestone).data
+        set_rls_context(organization_id=s['promoter'].id)
+        create_work_declaration(organization=s['promoter'], milestone=milestone, declared_by=inspector)
 
         response = _action(s, 'eligibility', disbursement['id'])
 

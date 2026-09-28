@@ -45,7 +45,6 @@ from apps.core.rls import set_rls_context
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import LotClient
 from apps.trust.models import TrustLevel
-from apps.trust.services import LEVEL_PROGRESS_FRACTION
 
 PASSWORD = 'strongpass123'
 SENEGAL_MILESTONE_COUNT = 8  # voir apps/programs/migrations/0003 — 'foncier' en premier
@@ -414,8 +413,11 @@ class TestVerticalSliceMVP1:
             f"pas rester sur celui de la 1re (controle) — obtenu : {milestone_payload['level']}"
         )
 
-        expected_percentage = round(LEVEL_PROGRESS_FRACTION[TrustLevel.VERIFIE] / SENEGAL_MILESTONE_COUNT)
-        assert overview['progress_percentage'] == expected_percentage
+        # Adapté selon PO-2026-09-28-14 (CDC §1) : plus de pourcentage dérivé
+        # des niveaux de confiance — « n / N jalons acceptés techniquement ».
+        # Réserve levée par un avis conforme : le jalon 'foncier' est accepté.
+        assert 'progress_percentage' not in overview
+        assert (overview['accepted_milestone_count'], overview['milestone_count']) == (1, SENEGAL_MILESTONE_COUNT)
 
         # Fil de preuves : les DEUX Evidence constructeur (déclaration
         # initiale + correction) — l'Evidence de l'INSPECTEUR (ses propres
@@ -446,9 +448,10 @@ class TestVerticalSliceMVP1:
         build_row = next(row for row in all_lots_response.data['results'] if row['id'] == str(lot.id))
         assert build_row['open_reserve_count'] == 0
 
-        # Constat DÉLIBÉRÉ, pas un bug (déjà documenté au ticket 009) :
-        # BUILD et HOME calculent deux pourcentages différents pour le même
-        # lot — rendu visible en valeurs réelles.
-        build_expected_percentage = round((1 / SENEGAL_MILESTONE_COUNT) * LEVEL_PROGRESS_FRACTION[TrustLevel.DECLARE])
-        assert build_row['progress_percentage'] == build_expected_percentage
-        assert build_row['progress_percentage'] != overview['progress_percentage']
+        # Adapté selon PO-2026-09-28-14 : l'ancien écart DÉLIBÉRÉ entre les
+        # deux pourcentages (ticket 009) disparaît — BUILD et HOME affichent
+        # le même compte de jalons acceptés techniquement.
+        assert 'progress_percentage' not in build_row
+        assert (build_row['accepted_milestone_count'], build_row['milestone_count']) == (
+            overview['accepted_milestone_count'], overview['milestone_count'],
+        )

@@ -1,12 +1,12 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Icon, CONTROLLER_DESIGNATION, Card, PageHeader, Pill, type PillTone, Select, TrustLevels,
-  semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Icon, CONTROLLER_DESIGNATION, Card, PageHeader, Pill, type PillTone, ReserveCard,
+  type ReserveState, Select, TrustLevels, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
-import type { LotMilestone } from '../api/types';
+import type { LotMilestone, MilestoneReserve } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 
 /**
@@ -78,11 +78,44 @@ function FileAction({
   );
 }
 
+const RESERVE_STATE: Record<string, ReserveState> = {
+  ouverte: 'open', correction_proposee: 'correction_proposed', nouvelle_inspection: 'recheck', maintenue: 'maintained',
+};
+
+/** PO-2026-09-28-16 : chaque réserve ouverte du jalon — motif, action
+ * attendue, date serveur et auteur (« organisation · rôle ») — au-dessus du
+ * formulaire de correction. */
+function OpenReserves({ reserves }: { reserves: MilestoneReserve[] }) {
+  if (reserves.length === 0) return null;
+  return (
+    <section aria-label="Réserves ouvertes du jalon" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <h3 style={{ margin: 0, fontSize: '15px' }}>
+        {reserves.length > 1 ? `Réserves ouvertes (${reserves.length})` : 'Réserve ouverte'}
+      </h3>
+      {reserves.map((reserve, index) => (
+        <ReserveCard
+          key={reserve.id}
+          state={RESERVE_STATE[reserve.status ?? ''] ?? 'open'}
+          stateLabel={reserve.status_label || undefined}
+          title={reserves.length > 1 ? `Réserve ${index + 1}` : 'Réserve du contrôleur'}
+          openedAt={reserve.opened_at}
+          openedBy={reserve.opened_by}
+          reason={reserve.motif}
+          expectedAction={reserve.expected_action || 'Non précisée'}
+          proposedCorrection={reserve.status === 'correction_proposee' ? 'Correction proposée — en attente du recontrôle' : undefined}
+        />
+      ))}
+    </section>
+  );
+}
+
 const STATUS_TONE: Record<LotMilestone['status'], PillTone> = {
   not_declared: 'neutral',
   awaiting_documents: 'alert',
   awaiting_control: 'info',
-  under_reserve: 'danger',
+  // PO-2026-09-28-17 : « Corrections demandées » = action attendue (Attention) ;
+  // le rouge est réservé aux erreurs et aux refus.
+  under_reserve: 'alert',
   accepted: 'success',
 };
 
@@ -105,7 +138,7 @@ const STATUS_BAR: Record<LotMilestone['status'], string> = {
   not_declared: semanticColors.neutral.border,
   awaiting_documents: semanticColors.alert.border,
   awaiting_control: semanticColors.info.text,
-  under_reserve: semanticColors.danger.border,
+  under_reserve: semanticColors.alert.border, // PO-2026-09-28-17 : cohérente avec son badge
   accepted: semanticColors.progress.fill,
 };
 
@@ -256,6 +289,7 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
           <FileAction label={`Pièce pour ${milestone.label}`} submitLabel="Ajouter une pièce" onSubmit={addEvidence} />
         </>
       )}
+      <OpenReserves reserves={milestone.open_reserves ?? []} />
       {milestone.status === 'under_reserve' && (
         milestone.correction_submitted ? (
           <p style={{ margin: 0 }}>Correction proposée : en attente du recontrôle (seul le contrôleur lève la réserve).</p>

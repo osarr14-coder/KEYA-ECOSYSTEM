@@ -14,6 +14,7 @@ from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
 from apps.trust.models import TrustEvent
+from apps.inspections.testing import submit_evidence
 
 from . import services
 from .models import InspectionOutcome, Reserve
@@ -60,6 +61,9 @@ def _setup_constructeur_org(email, organization_name):
     milestone = lot.milestones.first()
 
     declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=user)
+    # PO-2026-09-28-13 (K01) : une déclaration prête à être inspectée porte
+    # au moins une pièce soumise ; un avis sans pièce est refusé.
+    submit_evidence(organization=organization, declaration=declaration, added_by=user)
 
     return client, organization, user, lot, declaration
 

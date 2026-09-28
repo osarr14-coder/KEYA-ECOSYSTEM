@@ -7,6 +7,7 @@ from apps.core.rls import set_rls_context
 from apps.evidence.models import Document, WorkDeclaration
 from apps.evidence.services import create_document, create_evidence
 from apps.inspections import services as inspections_services
+from apps.organizations.identity import actor_label
 from apps.organizations.models import Organization
 
 logger = logging.getLogger(__name__)
@@ -206,6 +207,7 @@ def mission_detail(*, inspector, caller_organization_id, mission_id):
         declaration = mission.work_declaration
         lot = declaration.milestone.lot
         completed, follow_up = _mission_flags(mission, inspector)
+        identity_cache = {}
         evidences = []
         for version, evidence in enumerate(
             Evidence.objects.filter(work_declaration=declaration).select_related('added_by').order_by('created_at'),
@@ -214,7 +216,7 @@ def mission_detail(*, inspector, caller_organization_id, mission_id):
             evidences.append({
                 'id': str(evidence.id),
                 'version': version,
-                'added_by': evidence.added_by.email,
+                'added_by': actor_label(evidence.added_by, 'constructeur', identity_cache),
                 'added_at': evidence.created_at.isoformat(),
                 'documents': [
                     {
@@ -235,7 +237,10 @@ def mission_detail(*, inspector, caller_organization_id, mission_id):
                 'status': status,
                 'status_label': inspections_services.RESERVE_STATUS_LABELS.get(status, status or ''),
                 'corrections': [
-                    {'submitted_at': correction.created_at.isoformat(), 'submitted_by': correction.submitted_by.email}
+                    {
+                        'submitted_at': correction.created_at.isoformat(),
+                        'submitted_by': actor_label(correction.submitted_by, 'constructeur', identity_cache),
+                    }
                     for correction in ReserveCorrection.objects.filter(reserve=reserve).select_related(
                         'submitted_by',
                     ).order_by('created_at')
@@ -251,7 +256,7 @@ def mission_detail(*, inspector, caller_organization_id, mission_id):
             'follow_up': follow_up,
             'declaration': {
                 'id': str(declaration.id),
-                'declared_by': declaration.declared_by.email,
+                'declared_by': actor_label(declaration.declared_by, 'constructeur', identity_cache),
                 'declared_at': declaration.created_at.isoformat(),
                 'note': declaration.note,
             },

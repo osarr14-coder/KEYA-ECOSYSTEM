@@ -24,6 +24,7 @@ export const TRUST_LEVEL_LABELS: Record<TrustLevelKey, string> = {
 export const TRUST_LEVEL_ORDER: TrustLevelKey[] = ['declared', 'documented', 'controlled', 'verified', 'validated'];
 
 export interface TrustLevelEvidence {
+  /** PO-2026-09-28-18 : ORGANISATION de l'acteur, jamais un e-mail. */
   by: string;
   /** PO-2026-09-28-04 : rôle de l'acteur (« Constructeur », « Contrôleur »). */
   role?: string;
@@ -60,6 +61,12 @@ export function TrustEventLine({ event, 'data-testid': testId = 'trust-event' }:
       {event.scope ? ` · périmètre : ${event.scope}` : ''}
     </span>
   );
+}
+
+/** PO-2026-09-28-18 : une personne s'affiche « organisation · rôle »,
+ * jamais d'e-mail ni de double parenthèse. */
+function personLabel({ by, role }: { by: string; role?: string }) {
+  return [by, role].filter(Boolean).join(' · ');
 }
 
 export interface TrustLevelsProps {
@@ -100,9 +107,7 @@ export function TrustLevels({ reached, 'aria-label': ariaLabel = 'Niveaux de con
               </span>
               {evidence ? (
                 <span style={{ fontSize: '13px', color: semanticColors.neutral.text }}>
-                  {key === 'validated'
-                    ? `Contrôleur : ${evidence.by} · `
-                    : `${evidence.by}${evidence.role ? ` (${evidence.role})` : ''} · `}
+                  {`${personLabel(evidence)} · `}
                   <DateTime value={evidence.at} />
                   {' · version examinée : '}
                   <Reference value={evidence.version} label="Version examinée" copyable={false} />

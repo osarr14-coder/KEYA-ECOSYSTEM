@@ -153,7 +153,8 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
 });
 
 describe('ReservationsView — vue Finance en lecture seule (audit UI R1, R03, PO-2026-09-27-10)', () => {
-  it('« Appels et encaissements » : aucune gestion du dossier, aucun contrat, aucun formulaire d’encaissement', async () => {
+  // Adapté selon PO-2026-09-28-12 (libellé « Appels par dossier »).
+  it('« Appels par dossier » : aucune gestion du dossier, aucun contrat, aucun formulaire d’encaissement', async () => {
     const listContracts = vi.fn().mockResolvedValue([]);
     const api = createMockApiClient({
       listReservations: vi.fn().mockResolvedValue([reservation()]),
@@ -167,7 +168,7 @@ describe('ReservationsView — vue Finance en lecture seule (audit UI R1, R03, P
       <ReservationsView mode="finance" openReservationId="reservation-1" permissions={{ canManageSales: false, canRecordMovements: false }} />
     )));
 
-    expect(await screen.findByRole('button', { name: /Appels et encaissements/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Appels par dossier/ })).toBeInTheDocument();
     await waitFor(() => expect(api.getFinanceFile).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'Dossier examiné : appeler les frais de réservation' })).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Prochaine action' })).not.toBeInTheDocument();

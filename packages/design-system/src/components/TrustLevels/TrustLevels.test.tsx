@@ -8,19 +8,21 @@ describe('TrustLevels — échelle des niveaux de confiance (PO-2026-09-27-20, �
     render(
       <TrustLevels
         reached={{
-          declared: { by: 'Constructeur Démo', at: '2026-09-27T10:00:00Z', version: 'v1', scope: 'Jalon fondations, lot A1' },
-          validated: { by: 'Contrôleur Démo', at: '2026-09-28T10:00:00Z', version: 'v2', scope: 'Jalon fondations, lot A1' },
+          declared: { by: 'Constructeur Démo', role: 'Constructeur', at: '2026-09-27T10:00:00Z', version: 'v1', scope: 'Jalon fondations, lot A1' },
+          validated: { by: 'Bureau de contrôle Démo', role: 'Contrôleur', at: '2026-09-28T10:00:00Z', version: 'v2', scope: 'Jalon fondations, lot A1' },
         }}
       />,
     );
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
     expect(screen.getByTestId('trust-level-declared')).toHaveAttribute('data-reached', 'true');
-    expect(screen.getByTestId('trust-level-declared')).toHaveTextContent('Constructeur Démo');
+    // Adapté selon PO-2026-09-28-18 : « organisation · rôle », sans parenthèse.
+    expect(screen.getByTestId('trust-level-declared')).toHaveTextContent('Constructeur Démo · Constructeur ·');
     expect(screen.getByTestId('trust-level-declared')).toHaveTextContent('v1');
     expect(screen.getByTestId('trust-level-declared')).toHaveTextContent('périmètre : Jalon fondations, lot A1');
     expect(screen.getByTestId('trust-level-documented')).toHaveTextContent('Non atteint');
     expect(screen.getByTestId('trust-level-validated')).toHaveTextContent('Validé techniquement — démonstration');
-    expect(screen.getByTestId('trust-level-validated')).toHaveTextContent('Contrôleur : Contrôleur Démo');
+    expect(screen.getByTestId('trust-level-validated')).toHaveTextContent('Bureau de contrôle Démo · Contrôleur ·');
+    expect(screen.getByRole('list').textContent).not.toMatch(/\((Constructeur|Contrôleur)\)|@/);
   });
 
   it('aucun score, aucun pourcentage', () => {

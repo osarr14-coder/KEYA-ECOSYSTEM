@@ -20,11 +20,11 @@ from django.utils import timezone
 from apps.core.demo import demo_scope
 from apps.evidence.models import Evidence, WorkDeclaration
 from apps.inspections.models import Inspection, Reserve
-from apps.inspections.services import OPEN_RESERVE_STATUSES
+from apps.inspections.services import OPEN_RESERVE_STATUSES, accepted_milestone_counts
+from apps.organizations.identity import actor_label, event_actor_label
 from apps.programs.models import Lot, Milestone
 from apps.trust import repository as trust_repository
-from apps.trust.models import TrustEvent, TrustLevel
-from apps.trust.services import LEVEL_PROGRESS_FRACTION
+from apps.trust.models import TrustEvent
 
 # Heuristique assumée et documentée pour ce ticket (comme la formule de
 # progression du ticket 008) — rien dans le schéma ne modélise un
@@ -54,7 +54,8 @@ def _serialize_trust_event(event):
     return {
         'level': event.level,
         'source': event.source,
-        'actor': event.actor.email,
+        # PO-2026-09-28-18 : « organisation · rôle », jamais l'e-mail.
+        'actor': event_actor_label(event),
         'scope': event.scope,
         'created_at': event.created_at.isoformat(),
     }
@@ -151,6 +152,7 @@ def get_exceptions(organization):
     # Construit ici, à partir des données déjà chargées ci-dessus — aucune
     # requête supplémentaire.
     evidence_summaries_by_lot_id = defaultdict(list)
+    identity_cache = {}
     for evidence in evidences:
         declaration = declaration_by_id.get(evidence.work_declaration_id)
         if declaration is None:
@@ -164,8 +166,9 @@ def get_exceptions(organization):
             # strictement indiscernables dans le dropdown de BUILD (« Foncier
             # — 16/08/2026 » répété 5 fois). L'auteur différencie
             # immédiatement, sans requête supplémentaire (voir
-            # `select_related('added_by')` ci-dessus).
-            'added_by_email': evidence.added_by.email,
+            # `select_related('added_by')` ci-dessus). PO-2026-09-28-18 :
+            # « organisation · rôle » et numéro de version, jamais l'e-mail.
+            'added_by': actor_label(evidence.added_by, 'constructeur', identity_cache),
         })
 
     # --- Lots en retard ---
@@ -295,16 +298,13 @@ def build_lot_rows(organization):
     for lot in lots:
         total_milestones = milestone_counts.get(lot.id, 0)
         declared_milestones = declared_milestone_counts.get(lot.id, 0)
-        # Approximation de la progression pour ce tableau à forte volumétrie
-        # (pas la moyenne pondérée exacte du ticket 008, coûteuse à calculer
-        # en masse pour des centaines de lots) : proportion de jalons ayant
-        # au moins une déclaration de travaux, sur `declare` = 20% comme
-        # unité (voir LEVEL_PROGRESS_FRACTION). Documenté comme approximation
-        # délibérée, pas la même précision que HOME (qui ne calcule que pour
-        # UN lot à la fois).
-        progress_percentage = (
-            round((declared_milestones / total_milestones) * LEVEL_PROGRESS_FRACTION[TrustLevel.DECLARE])
-            if total_milestones else 0
+        # PO-2026-09-28-14 (CDC §1) : « n / N jalons acceptés techniquement »,
+        # compté exactement (plus l'ancienne approximation en pourcentage
+        # dérivée des niveaux de confiance). Seuls les lots ayant au moins
+        # une déclaration sont examinés : sans déclaration, aucun jalon
+        # ne peut être accepté.
+        accepted_milestones = (
+            accepted_milestone_counts(lot.milestones.all())[0] if declared_milestones else 0
         )
         rows.append({
             'id': str(lot.id),
@@ -320,7 +320,7 @@ def build_lot_rows(organization):
             ),
             'milestone_count': total_milestones,
             'declared_milestone_count': declared_milestones,
-            'progress_percentage': progress_percentage,
+            'accepted_milestone_count': accepted_milestones,
             'open_reserve_count': open_reserves_by_lot.get(lot.id, 0),
             'created_at': lot.created_at.isoformat(),
         })
@@ -336,6 +336,7 @@ def lot_milestone_rows(organization, lot_id):
     lot = Lot.objects.filter(id=lot_id, organization=organization).first()
     if lot is None:
         return None
+    identity_cache = {}
     rows = []
     for milestone in lot.milestones.order_by('order'):
         milestone.lot = lot
@@ -359,5 +360,14 @@ def lot_milestone_rows(organization, lot_id):
             'reserve_id': str(reserve.id) if reserve else None,
             'correction_submitted': state['correction_submitted'],
             'control_scheduled': state['pending_mission'] is not None,
+            # PO-2026-09-28-16 : chaque réserve ouverte du jalon (motif,
+            # action attendue, date, auteur), affichée au-dessus du
+            # formulaire de correction.
+            'open_reserves': [
+                row for row in (
+                    inspections_services.declaration_reserves(state['declaration'], identity_cache)
+                    if state['declaration'] else []
+                ) if row['is_open']
+            ],
         })
     return rows

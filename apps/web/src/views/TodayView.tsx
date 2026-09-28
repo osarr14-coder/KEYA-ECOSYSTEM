@@ -36,7 +36,9 @@ export function taskTarget(task: Task): NavigationTarget | null {
 const TYPE_LABELS: Record<Task['type'], { label: string; tone: PillTone }> = {
   task: { label: 'À traiter', tone: 'alert' },
   notification: { label: 'Information', tone: 'info' },
-  alert: { label: 'Alerte', tone: 'danger' },
+  // PO-2026-09-28-17 : le rouge est réservé aux erreurs et aux refus ; une
+  // alerte attend une action (Attention), une exception signale une erreur.
+  alert: { label: 'Alerte', tone: 'alert' },
   exception: { label: 'Exception', tone: 'danger' },
 };
 
@@ -87,7 +89,7 @@ function TaskCard({
       <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <Pill tone={meta.tone}>{meta.label}</Pill>
-          {task.priority === 'high' && <Pill tone="danger">Prioritaire</Pill>}
+          {task.priority === 'high' && <Pill tone="alert">Prioritaire</Pill>}
           <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{formatServerDateTime(task.created_at)}</span>
         </div>
         <strong style={{ fontSize: '16px' }}>{task.label}</strong>
@@ -171,7 +173,7 @@ export function TodayView({
 
   function openIfAvailable(target: NavigationTarget | null) {
     // Audit UI R1 (R03) : Finance ouvre un dossier dans sa vue en lecture
-    // seule « Appels et encaissements », jamais dans « Dossiers clients ».
+    // seule « Appels par dossier », jamais dans « Dossiers clients ».
     const resolved = target && target.tab === 'reservations' && !availableTabs.includes('reservations')
       ? { ...target, tab: 'receipts' } : target;
     return resolved && availableTabs.includes(resolved.tab) ? () => onNavigate(resolved) : undefined;

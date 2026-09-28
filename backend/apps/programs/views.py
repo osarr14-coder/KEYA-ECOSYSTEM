@@ -9,7 +9,6 @@ from apps.core.demo import demo_scope
 from apps.backoffice.permissions import IsAdminKeyimmo, IsGestionnaireADV
 from apps.core.viewsets import OrganizationScopedMixin
 from apps.messaging.mixins import MessageThreadMixin
-from apps.organizations.models import Organization
 from apps.procurement.services import search_lots_for_commercial_as_admin
 from apps.core.deferred import DeferredModuleEnabled
 
@@ -225,6 +224,11 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
             # une action du gestionnaire, jamais de l'administrateur (B-047
             # la réservait à admin_keyimmo).
             return [permissions.IsAuthenticated(), IsGestionnaireADV()]
+        if self.action == 'assign_organization':
+            # PO-2026-09-28-15 : affecter une organisation constructrice est
+            # réservé au gestionnaire, côté serveur ; le constructeur la voit
+            # en lecture seule.
+            return [permissions.IsAuthenticated(), IsGestionnaireADV()]
         return super().get_permissions()
 
     def create(self, request, *args, **kwargs):
@@ -294,25 +298,30 @@ class LotViewSet(MessageThreadMixin, OrganizationScopedMixin, viewsets.ModelView
         """Ticket 009 (BUILD Control Tower) — point d'ancrage MINIMAL pour un
         futur module PRO (voir `Lot.assigned_organization`) : pose
         l'organisation constructrice responsable de ce lot, sans flux de
-        candidature/opportunité. Accepte explicitement `organization_id`
-        dans le corps plutôt que d'auto-affecter systématiquement
-        l'organisation active — un futur ticket PRO pourra réutiliser cet
-        endpoint tel quel pour affecter une organisation tierce, sans le
-        redéfinir. `get_object()` applique déjà le filtre par organisation
-        active du ViewSet (le lot lui-même reste dans le périmètre RLS
-        habituel), seule l'organisation CIBLE (celle qu'on affecte) peut
-        être une autre organisation que celle-ci.
+        candidature/opportunité. `organization_id` du CORPS désigne
+        l'organisation affectée.
+
+        PO-2026-09-28-15 : réservé au gestionnaire (`get_permissions`). Le
+        lot vit dans l'organisation qui le porte, pas dans celle du
+        gestionnaire : même discipline que `update` — paramètre de requête
+        `organization_id` (organisation du lot) et bascule RLS encadrée dans
+        `services.assign_lot_organization`.
         """
-        lot = self.get_object()
+        lot_organization_id = request.query_params.get('organization_id')
+        if not lot_organization_id:
+            raise ValidationError({'organization_id': 'Ce paramètre de requête est requis.'})
         organization_id = request.data.get('organization_id')
         if not organization_id:
             raise ValidationError({'organization_id': 'Ce champ est requis.'})
-        organization = Organization.objects.filter(id=organization_id).first()
-        if organization is None:
-            raise ValidationError({'organization_id': 'Organisation introuvable.'})
-
-        lot.assigned_organization = organization
-        lot.save(update_fields=['assigned_organization'])
+        try:
+            lot = services.assign_lot_organization(
+                admin_organization_id=request.organization.id if request.organization else None,
+                target_organization_id=lot_organization_id,
+                lot_id=pk,
+                organization_id=organization_id,
+            )
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'message_dict', getattr(exc, 'messages', [str(exc)])))
         return Response(LotSerializer(lot).data)
 
     # Action `messages` (GET/POST) fournie par `MessageThreadMixin` — voir

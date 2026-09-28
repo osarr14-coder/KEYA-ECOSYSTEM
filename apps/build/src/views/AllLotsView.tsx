@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Card, densityTokens, Input, ProgressBar, Select, type Density, PageHeader,
+  AlertBanner, ApiErrorBanner, Button, Card, densityTokens, Input, Select, type Density, PageHeader,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -25,8 +25,9 @@ const ORDERING_OPTIONS: { value: string; label: string }[] = [
   { value: '-name', label: 'Nom (Z→A)' },
   { value: '-created_at', label: 'Plus récent' },
   { value: 'created_at', label: 'Plus ancien' },
-  { value: '-progress_percentage', label: 'Avancement (décroissant)' },
-  { value: 'progress_percentage', label: 'Avancement (croissant)' },
+  // PO-2026-09-28-14 : plus de pourcentage d'avancement.
+  { value: '-accepted_milestone_count', label: 'Jalons acceptés (décroissant)' },
+  { value: 'accepted_milestone_count', label: 'Jalons acceptés (croissant)' },
   { value: '-open_reserve_count', label: 'Réserves ouvertes (décroissant)' },
 ];
 
@@ -253,7 +254,7 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
                   <th>Programme</th>
                   <th>Organisation constructrice</th>
                   <th>Jalons déclarés</th>
-                  <th>Avancement</th>
+                  <th>Jalons acceptés techniquement</th>
                   <th>Réserves ouvertes</th>
                 </tr>
               </thead>
@@ -269,12 +270,9 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
                     <td>{row.program_name}</td>
                     <td>{row.assigned_organization_name ?? '—'}</td>
                     <td>{row.declared_milestone_count}/{row.milestone_count}</td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <ProgressBar percentage={row.progress_percentage} width="60px" />
-                        <span>{row.progress_percentage}%</span>
-                      </div>
-                    </td>
+                    {/* PO-2026-09-28-14 (CDC §1) : « n / N jalons acceptés
+                        techniquement », jamais un pourcentage ni une jauge. */}
+                    <td>{row.accepted_milestone_count}/{row.milestone_count}</td>
                     <td>{row.open_reserve_count}</td>
                   </tr>
                 ))}

@@ -165,7 +165,7 @@ function ReservationDossier({
       <div>
         <Button type="button" variant="secondary" onClick={onBack}>
           <Icon name="chevron-left" size={16} />
-          {mode === 'finance' ? 'Appels et encaissements' : 'Dossiers clients'}
+          {mode === 'finance' ? 'Appels par dossier' : 'Dossiers clients'}
         </Button>
       </div>
 
@@ -319,7 +319,7 @@ const DEFAULT_PERMISSIONS: SalesPermissions = { canManageSales: true, canRecordM
 
 /**
  * Audit UI R1 (R03, PO-2026-09-27-10) — `finance` : vue en LECTURE SEULE
- * « Appels et encaissements » (identité fictive, appels, encaissements,
+ * « Appels par dossier » (PO-2026-09-28-12) (identité fictive, appels, encaissements,
  * affectations), sans gestion des dossiers, réservations ou contrats.
  */
 export type ReservationsMode = 'sales' | 'finance';
@@ -361,7 +361,7 @@ export function ReservationsView({
       {mode === 'finance' ? (
         <PageHeader
           eyebrow="Lecture seule — Finance"
-          title="Appels et encaissements"
+          title="Appels par dossier"
           subtitle="Par dossier : appels de fonds, encaissements simulés et leurs affectations. Les encaissements s’enregistrent depuis « Encaissements »."
         />
       ) : (

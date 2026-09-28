@@ -51,7 +51,7 @@ Les valeurs sont celles de `GlobalStyles.tsx` (thème clair). Seul le rôle **In
 | Texte doré | `--keya-accent-text` | `#8A6A12` | `#E2C47A` | Uniquement le libellé de l'élément de navigation actif. |
 | Succès | `--keya-success-text` / `-background` | `#1E5E42` / `#E3F2EA` | `#8FD9B6` / `#12352A` | États accomplis. |
 | Attention | `--keya-alert-text` / `-background` / `-border` | `#92400E` / `#FFFBEB` / `#D97706` | `#FCD34D` / `#451A03` / `#F59E0B` | En attente d'une action, anomalie non bloquante. |
-| Critique | `--keya-danger-text` / `-background` / `-border` | `#7F1D1D` / `#FEF2F2` / `#B91C1C` | `#FCA5A5` / `#450A0A` / `#F87171` | Refus, blocage, réserve ouverte. |
+| Critique | `--keya-danger-text` / `-background` / `-border` | `#7F1D1D` / `#FEF2F2` / `#B91C1C` | `#FCA5A5` / `#450A0A` / `#F87171` | Erreurs et refus uniquement (PO-2026-09-28-17). |
 | **Information (nouveau)** | `--keya-info-text` / `-background` | `#23577F` / `#E8F0F6` | `#9CC3E4` / `#10263D` | États en cours sans action attendue (« En examen », « En revue »). |
 | Progression | `--keya-progress-fill` / `-track` | `#2F7D5B` / `#EDE5D2` | `#4CB88A` / `#2A3B58` | Barres de couverture d'un montant (jamais de confiance). |
 
@@ -144,9 +144,9 @@ Dégradés ; violet, indigo, néon, glassmorphism, flou ; emojis ; hero centré 
 | Famille | Couleur | Exemples |
 |---|---|---|
 | Accompli | Succès | Concrétisée, Signé (simulé), Accepté techniquement, Rapproché (simulé), Réserve levée. |
-| Action attendue de quelqu'un | Attention | Bien bloqué, Soumis, Corrections demandées, Éligible, Signalé — non encaissé. |
+| Action attendue de quelqu'un | Attention | Bien bloqué, Soumis, Corrections demandées (badge **et** barre du jalon), Réserve ouverte, Éligible, Signalé — non encaissé. |
 | En cours, rien à faire | Information | En revue, En examen, Resoumis, Exécuté par la banque (simulé). |
-| Refus, fin sans aboutir | Critique | Annulée, Expirée, Réserve ouverte, Introuvable au relevé. |
+| Erreur, refus, fin sans aboutir | Critique | Annulée, Expirée, Réserve maintenue, Introuvable au relevé, Clôturé sans rattachement. Le rouge est réservé aux erreurs et aux refus (PO-2026-09-28-17). |
 | Neutre | Texte secondaire | Brouillon, Planifié, Demandée. |
 
 ### 8.3 Glossaire (identifiant technique → affichage)
@@ -275,3 +275,10 @@ Restent hors de cette étape (voir le compte rendu) : l'échelle `TrustLevels` n
 - **Niveaux de confiance** (PO-2026-09-28-04) : le serveur expose, pour chaque niveau atteint d'un jalon, l'auteur, son rôle, la date serveur, la version examinée et le périmètre (`milestone_trust_levels`). L'échelle `TrustLevels` est branchée dans BUILD (fiche jalon), l'app Contrôle (fiche mission) et l'espace client (« Suivi du chantier »). `StatusBadge` est **retiré** : un événement isolé s'affiche en ligne datée (`TrustEventLine`). La garde du ticket 007 interdit désormais tout composant de badge.
 - **Saisie des dates** (PO-2026-09-28-11) : `DateInput` (jour · mois abrégé · année) remplace le champ natif `type="date"`, qui affiche le format du navigateur ; un test de gouvernance l'interdit.
 - **Menu Finance « Encaissements »** (PO-2026-09-28-01) : vues « Encaissements enregistrés » (relevé) et « Signalements clients ».
+
+## 18. Compléments de l'étape 5 (28 septembre 2026)
+
+- **Avancement** (PO-2026-09-28-14, CDC §1) : « n / N jalons acceptés techniquement » (HOME, BUILD « Tous les lots », export CSV). Aucun pourcentage ni score dérivé des niveaux de confiance ; `ProgressBar` ne sert plus qu'à une part monétaire. Un test de gouvernance interdit tout retour d'un « % d'avancement ».
+- **Couleurs** (PO-2026-09-28-17) : le rouge (Critique) est réservé aux erreurs et aux refus. « Corrections demandées » (badge et barre du jalon) et une réserve ouverte prennent la couleur Attention ; une réserve **maintenue** après recontrôle reste Critique.
+- **Personnes** (PO-2026-09-28-18) : « organisation · rôle » (ex. « Constructeur Démonstration Abidjan · Constructeur »), jamais d'e-mail ni de double parenthèse, dans les niveaux de confiance, les pièces et la chronologie. Le serveur fournit l'organisation (`by`) et le rôle (`role`) ; `TrustLevels` les joint par « · ».
+- **Réserves visibles** (PO-2026-09-28-16) : BUILD affiche une `ReserveCard` par réserve ouverte (motif, action attendue, date, auteur) au-dessus du formulaire de correction ; l'espace client affiche un résumé simple (motif, ouverte/levée, date).

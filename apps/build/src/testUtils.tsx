@@ -13,7 +13,6 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     getMe: vi.fn(notMocked),
     getExceptions: vi.fn(notMocked),
     getAllLots: vi.fn(notMocked),
-    assignLotOrganization: vi.fn(notMocked),
     createReserveCorrection: vi.fn(notMocked),
     addEvidenceDocument: vi.fn(notMocked),
     // Ticket F-060 (compteur cloche AppShell) :

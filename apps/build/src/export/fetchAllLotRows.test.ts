@@ -7,7 +7,7 @@ function makeRow(id: string): LotRow {
   return {
     id, name: `Lot ${id}`, asset_name: 'Bien', program_id: 'p-1', program_name: 'Programme',
     assigned_organization_id: null, assigned_organization_name: null, milestone_count: 8,
-    declared_milestone_count: 1, progress_percentage: 5, open_reserve_count: 0,
+    declared_milestone_count: 1, accepted_milestone_count: 0, open_reserve_count: 0,
     created_at: '2026-03-01T00:00:00Z',
   };
 }
@@ -43,13 +43,13 @@ describe('fetchAllLotRows', () => {
       .mockResolvedValueOnce(page([makeRow('1')], 'http://x/?page=2'))
       .mockResolvedValueOnce(page([makeRow('2')], null));
 
-    await fetchAllLotRows(getAllLots, { ordering: '-progress_percentage', q: 'Ker', assigned: 'true' }, 100);
+    await fetchAllLotRows(getAllLots, { ordering: '-accepted_milestone_count', q: 'Ker', assigned: 'true' }, 100);
 
     expect(getAllLots).toHaveBeenNthCalledWith(1, {
-      ordering: '-progress_percentage', q: 'Ker', assigned: 'true', page: 1, page_size: 100,
+      ordering: '-accepted_milestone_count', q: 'Ker', assigned: 'true', page: 1, page_size: 100,
     });
     expect(getAllLots).toHaveBeenNthCalledWith(2, {
-      ordering: '-progress_percentage', q: 'Ker', assigned: 'true', page: 2, page_size: 100,
+      ordering: '-accepted_milestone_count', q: 'Ker', assigned: 'true', page: 2, page_size: 100,
     });
   });
 

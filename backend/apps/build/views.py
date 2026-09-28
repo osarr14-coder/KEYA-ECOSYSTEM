@@ -42,7 +42,7 @@ class AllLotsView(APIView):
     pagination_class = LotPagination
 
     ALLOWED_ORDERING_FIELDS = {
-        'name', 'created_at', 'progress_percentage', 'milestone_count', 'open_reserve_count',
+        'name', 'created_at', 'accepted_milestone_count', 'milestone_count', 'open_reserve_count',
     }
     DEFAULT_ORDERING_FIELD = 'name'
 

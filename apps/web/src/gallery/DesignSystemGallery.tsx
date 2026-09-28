@@ -83,7 +83,7 @@ const COLOR_ROLES: [string, string, string][] = [
   ['Marque et action principale', '--keya-accent-solid', 'Logo, bouton d’action principale — jamais un statut'],
   ['Succès', '--keya-success-text', 'États accomplis'],
   ['Attention', '--keya-alert-text', 'Action attendue de quelqu’un'],
-  ['Critique', '--keya-danger-text', 'Refus, blocage, réserve ouverte'],
+  ['Critique', '--keya-danger-text', 'Erreurs et refus uniquement (PO-2026-09-28-17)'],
   ['Information', '--keya-info-text', 'En cours, rien à faire'],
 ];
 
@@ -134,7 +134,9 @@ const GLOSSARY: { object: string; states: [string, string, PillTone][] }[] = [
   },
 ];
 
-const EVIDENCE = { by: 'Contrôleur Démo (bureau fictif)', at: '2026-09-28T10:12:00Z', version: 'v2', scope: 'Jalon « Fondations », lot A1' };
+// PO-2026-09-28-18 : une personne s'affiche « organisation · rôle ».
+const BUILDER = { by: 'Constructeur Démonstration Abidjan', role: 'Constructeur' };
+const EVIDENCE = { by: 'Bureau de contrôle Démonstration', role: 'Contrôleur', at: '2026-09-28T10:12:00Z', version: 'v2', scope: 'Jalon « Fondations », lot A1' };
 
 function DesignSystemGallery() {
   const [tab, setTab] = useState('etats');
@@ -243,16 +245,16 @@ function DesignSystemGallery() {
         <div style={GRID}>
           <Specimen label="Aucun niveau atteint"><TrustLevels reached={{}} /></Specimen>
           <Specimen label="Déclaré et documenté">
-            <TrustLevels reached={{ declared: { ...EVIDENCE, by: 'Constructeur Démo', version: 'v1' }, documented: { ...EVIDENCE, by: 'Constructeur Démo', version: 'v1' } }} />
+            <TrustLevels reached={{ declared: { ...EVIDENCE, ...BUILDER, version: 'v1' }, documented: { ...EVIDENCE, ...BUILDER, version: 'v1' } }} />
           </Specimen>
           <Specimen label="Événement isolé (ligne datée, jamais un badge)">
-            <TrustEventLine event={{ level: 'documente', actor: 'Constructeur Démo', createdAt: '2026-09-27T20:10:00Z', scope: 'Jalon « Fondations », Lot A1' }} />
+            <TrustEventLine event={{ level: 'documente', actor: 'Constructeur Démonstration Abidjan · Constructeur', createdAt: '2026-09-27T20:10:00Z', scope: 'Jalon « Fondations », Lot A1' }} />
           </Specimen>
           <Specimen label="Validé techniquement">
             <TrustLevels
               reached={{
-                declared: { ...EVIDENCE, by: 'Constructeur Démo', version: 'v1' },
-                documented: { ...EVIDENCE, by: 'Constructeur Démo', version: 'v2' },
+                declared: { ...EVIDENCE, ...BUILDER, version: 'v1' },
+                documented: { ...EVIDENCE, ...BUILDER, version: 'v2' },
                 controlled: EVIDENCE,
                 verified: EVIDENCE,
                 validated: EVIDENCE,
@@ -290,9 +292,9 @@ function DesignSystemGallery() {
           <Specimen label="Chronologie d’audit">
             <Timeline
               entries={[
-                { id: 't1', actor: 'Awa Koné', role: 'Gestionnaire', action: 'Contrat approuvé', at: '2026-09-27T14:05:00Z', object: { label: 'Contrat lot A1', version: 'v2' } },
-                { id: 't2', actor: 'Moussa Traoré', role: 'Juriste', action: 'Corrections demandées', at: '2026-09-27T11:40:00Z', justification: 'Clause de pénalité à préciser', object: { label: 'Contrat lot A1', version: 'v1' } },
-                { id: 't3', actor: 'Client Démo', role: 'Acquéreur', action: 'Réservation demandée', at: '2026-09-26T09:15:00Z' },
+                { id: 't1', actor: 'KEYIMMO AFRIC (démo)', role: 'Gestionnaire', action: 'Contrat approuvé', at: '2026-09-27T14:05:00Z', object: { label: 'Contrat lot A1', version: 'v2' } },
+                { id: 't2', actor: 'Cabinet juridique Démonstration', role: 'Juriste', action: 'Corrections demandées', at: '2026-09-27T11:40:00Z', justification: 'Clause de pénalité à préciser', object: { label: 'Contrat lot A1', version: 'v1' } },
+                { id: 't3', actor: 'Compte client fictif', role: 'Client', action: 'Réservation demandée', at: '2026-09-26T09:15:00Z' },
               ]}
             />
           </Specimen>
@@ -312,7 +314,7 @@ function DesignSystemGallery() {
               state="open"
               title="Fissure en pied de mur, façade nord"
               openedAt="2026-09-28T10:12:00Z"
-              openedBy="Contrôleur Démo"
+              openedBy="Bureau de contrôle Démonstration · Contrôleur"
               reason="Fissure de 3 mm sur 40 cm"
               expectedAction="Reprendre l’enduit et déposer une photo datée"
               actions={<Button type="button" disabled>Lever la réserve</Button>}
@@ -324,11 +326,11 @@ function DesignSystemGallery() {
               state="lifted"
               title="Fissure en pied de mur, façade nord"
               openedAt="2026-09-28T10:12:00Z"
-              openedBy="Contrôleur Démo"
+              openedBy="Bureau de contrôle Démonstration · Contrôleur"
               reason="Fissure de 3 mm sur 40 cm"
               expectedAction="Reprendre l’enduit et déposer une photo datée"
               proposedCorrection="Enduit repris, photo déposée (pièce v2)"
-              decision={{ by: 'Contrôleur Démo', at: '2026-09-30T08:30:00Z', text: 'Réserve levée après recontrôle' }}
+              decision={{ by: 'Bureau de contrôle Démonstration · Contrôleur', at: '2026-09-30T08:30:00Z', text: 'Réserve levée après recontrôle' }}
             />
           </Specimen>
           <Specimen label="Justificatif bancaire fictif">

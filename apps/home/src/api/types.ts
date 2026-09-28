@@ -40,7 +40,9 @@ export interface LotOverview {
   asset_name: string;
   asset_location: string;
   program_name: string;
-  progress_percentage: number;
+  /** PO-2026-09-28-14 : « n / N jalons acceptés techniquement », jamais un %. */
+  accepted_milestone_count: number;
+  milestone_count: number;
   milestones: MilestoneStatus[];
   latest_notable_event: ApiTrustEvent | null;
   open_reserve: OpenReserve | null;
@@ -263,4 +265,14 @@ export interface WorksiteMilestone {
   status_label: string;
   status_hint: string;
   trust_levels: Partial<Record<TrustLevelKey, TrustLevelEvidence>>;
+  /** PO-2026-09-28-16 (CDC §9.2 étape 9) : réserves en langage simple —
+   * motif, ouverte ou levée, date ; aucun détail technique interne. */
+  reserves?: WorksiteReserve[];
+}
+
+export interface WorksiteReserve {
+  motif: string;
+  status: 'ouverte' | 'levee';
+  status_label: string;
+  date: string;
 }

@@ -297,13 +297,23 @@ def _validate_opinion(*, declaration, outcome, reserves, decisions):
 def _examined_evidence_ids(declaration, examined_evidence_ids):
     """Audit UI R1 (K01) : versions examinées. Absent : toutes les pièces
     de la déclaration au moment de l'avis. Fourni : uniquement des pièces de
-    cette déclaration."""
+    cette déclaration.
+
+    PO-2026-09-28-13 (K01, CDC §7.2) : un avis désigne AU MOINS une version
+    de pièce soumise pour la déclaration — refusé sinon, quelle que soit la
+    voie d'entrée (liste vide, ou déclaration sans aucune pièce)."""
     current = [str(evidence_id) for evidence_id in Evidence.objects.filter(
         work_declaration=declaration,
     ).order_by('created_at').values_list('id', flat=True)]
+    if not current:
+        raise ValidationError(
+            'Aucune pièce n’a été soumise pour cette déclaration : un avis porte sur au moins une pièce.',
+        )
     if examined_evidence_ids is None:
         return current
     examined = [str(evidence_id) for evidence_id in examined_evidence_ids]
+    if not examined:
+        raise ValidationError('Un avis désigne au moins une version de pièce examinée.')
     if any(evidence_id not in current for evidence_id in examined):
         raise ValidationError('Une pièce examinée n’appartient pas à cette déclaration.')
     return examined
@@ -417,6 +427,15 @@ RESERVE_STATUS_LABELS = {
 
 def is_reserve_open(reserve):
     return get_reserve_status(reserve) in OPEN_RESERVE_STATUSES
+
+
+def accepted_milestone_counts(milestones):
+    """PO-2026-09-28-14 (CDC §1) — « n / N jalons acceptés techniquement » :
+    un COMPTE de jalons acceptés dans leur version courante, jamais un
+    pourcentage ni un score dérivé des niveaux de confiance. Retourne
+    `(n, N)`. Même contexte RLS que `is_milestone_technically_accepted`."""
+    milestones = list(milestones)
+    return sum(1 for milestone in milestones if is_milestone_technically_accepted(milestone)), len(milestones)
 
 
 def is_milestone_technically_accepted(milestone):
@@ -825,24 +844,13 @@ def milestone_cdc_state(state):
 TRUST_LEVEL_KEYS = ('declared', 'documented', 'controlled', 'verified', 'validated')
 
 
-def _person(user):
-    return (user.full_name or user.email) if user else ''
+def _level(user, expected_role, at, version, scope, cache):
+    """PO-2026-09-28-18 : l'acteur est « organisation · rôle » — `by` porte
+    l'organisation, `role` le rôle ; jamais d'e-mail."""
+    from apps.organizations.identity import actor_parts
 
-
-def _role_label(user, fallback):
-    """Rôle de l'acteur : son rattachement visible sous le contexte RLS
-    courant (organisation du lot) ; à défaut, le rôle de l'étape
-    (« Constructeur », « Contrôleur »)."""
-    membership = Membership.objects.filter(user=user).select_related('role').first() if user else None
-    label = (membership.role.label or '') if membership else ''
-    return f'{label[:1].upper()}{label[1:]}' if label else fallback
-
-
-def _level(user, fallback_role, at, version, scope):
-    return {
-        'by': _person(user), 'role': _role_label(user, fallback_role), 'at': at.isoformat(),
-        'version': version, 'scope': scope,
-    }
+    organization, role = actor_parts(user, expected_role, cache)
+    return {'by': organization, 'role': role, 'at': at.isoformat(), 'version': version, 'scope': scope}
 
 
 def milestone_trust_levels(milestone):
@@ -862,14 +870,18 @@ def milestone_trust_levels(milestone):
     if not declarations:
         return {}
     declaration = declarations[-1]
+    cache = {}
     levels = {'declared': _level(
-        declaration.declared_by, 'Constructeur', declaration.created_at, f'déclaration n° {len(declarations)}', scope,
+        declaration.declared_by, 'constructeur', declaration.created_at, f'déclaration n° {len(declarations)}', scope,
+        cache,
     )}
     evidences = list(Evidence.objects.filter(work_declaration=declaration).select_related('added_by').order_by('created_at'))
     version_of = {str(evidence.id): index for index, evidence in enumerate(evidences, start=1)}
     if evidences:
         latest = evidences[-1]
-        levels['documented'] = _level(latest.added_by, 'Constructeur', latest.created_at, f'pièce v{len(evidences)}', scope)
+        levels['documented'] = _level(
+            latest.added_by, 'constructeur', latest.created_at, f'pièce v{len(evidences)}', scope, cache,
+        )
     inspections = list(_declaration_inspections(declaration).select_related('inspector').order_by('created_at'))
     if inspections:
         last = inspections[-1]
@@ -878,13 +890,63 @@ def milestone_trust_levels(milestone):
             f"pièce{'s' if len(examined) > 1 else ''} {', '.join(examined)}" if examined
             else 'aucune pièce désignée par le contrôleur'
         )
-        controlled = _level(last.inspector, 'Contrôleur', last.created_at, version, scope)
+        controlled = _level(last.inspector, 'inspecteur', last.created_at, version, scope, cache)
         levels['controlled'] = controlled
         if last.outcome == InspectionOutcome.CONFORME:
             levels['verified'] = controlled
             if is_milestone_technically_accepted(milestone):
                 levels['validated'] = controlled
     return levels
+
+
+def declaration_reserves(declaration, cache=None):
+    """PO-2026-09-28-16 — réserves ouvertes par une inspection de cette
+    déclaration, avec motif, action attendue, date serveur, auteur
+    (« organisation · rôle ») et statut dérivé. Sous contexte RLS de
+    l'organisation du lot."""
+    from apps.organizations.identity import actor_label
+
+    reserves = Reserve.objects.filter(
+        opened_by_inspection__in=_declaration_inspections(declaration),
+    ).select_related('opened_by_inspection__inspector').order_by('created_at')
+    rows = []
+    for reserve in reserves:
+        current = trust_repository.get_current_status(reserve)
+        status = current.source if current else None
+        rows.append({
+            'id': str(reserve.id),
+            'motif': reserve.motif or reserve.description or 'Réserve',
+            'expected_action': reserve.expected_action,
+            'opened_at': reserve.created_at.isoformat(),
+            'opened_by': actor_label(reserve.opened_by_inspection.inspector, 'inspecteur', cache),
+            'status': status,
+            'status_label': RESERVE_STATUS_LABELS.get(status, status or ''),
+            'is_open': status in OPEN_RESERVE_STATUSES,
+            'status_at': current.created_at.isoformat() if current else reserve.created_at.isoformat(),
+        })
+    return rows
+
+
+def client_reserve_summary(declaration):
+    """PO-2026-09-28-16 (CDC §9.2 étape 9) — résumé en langage simple pour
+    le client : motif, ouverte ou levée, date. Aucun détail technique
+    interne (ni action attendue, ni auteur, ni identifiant, ni étape de
+    recontrôle)."""
+    summary = []
+    for row in declaration_reserves(declaration):
+        if row['is_open']:
+            summary.append({
+                'motif': row['motif'], 'status': 'ouverte',
+                'status_label': 'Ouverte — une correction est attendue du constructeur',
+                'date': row['opened_at'],
+            })
+        elif row['status'] == 'levee':
+            summary.append({
+                'motif': row['motif'], 'status': 'levee',
+                'status_label': 'Levée — correction constatée par le contrôleur',
+                'date': row['status_at'],
+            })
+    return summary
 
 
 def _declaration_inspections(declaration):

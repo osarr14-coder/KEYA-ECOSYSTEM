@@ -182,7 +182,12 @@ class TestProgressionIsComputedServerSideNotInFrontend:
     0") — ce qui prouve un calcul réel côté serveur, pas une valeur figée.
     """
 
-    def test_progress_percentage_is_zero_before_any_declaration(self):
+    # PO-2026-09-28-14 (CDC §1) : ces deux tests vérifiaient un pourcentage
+    # dérivé des niveaux de confiance (`progress_percentage`, 40 % pour un
+    # jalon documenté). Adaptés au compte « n / N jalons acceptés
+    # techniquement » — un jalon documenté n'est pas un jalon accepté.
+
+    def test_no_milestone_is_accepted_before_any_declaration(self):
         constructeur_client, organization, constructeur, asset, lot = _setup_constructeur_lot(
             'home-progress-constructeur1@example.com', 'Org Home Progression 1',
         )
@@ -191,10 +196,12 @@ class TestProgressionIsComputedServerSideNotInFrontend:
         response = client.get(reverse('my-lot-overview', args=[lot.id]))
 
         assert response.status_code == 200
-        assert response.data['progress_percentage'] == 0
+        assert response.data['accepted_milestone_count'] == 0
+        assert response.data['milestone_count'] == lot.milestones.count()
+        assert 'progress_percentage' not in response.data
         assert all(m['level'] is None for m in response.data['milestones'])
 
-    def test_progress_percentage_reflects_exactly_one_documented_milestone_among_eight(self):
+    def test_a_documented_milestone_is_not_accepted_until_a_conforming_opinion(self):
         constructeur_client, organization, constructeur, asset, lot = _setup_constructeur_lot(
             'home-progress-constructeur2@example.com', 'Org Home Progression 2',
         )
@@ -203,19 +210,27 @@ class TestProgressionIsComputedServerSideNotInFrontend:
         total_milestones = lot.milestones.count()
         assert total_milestones > 1, 'Le template Sénégal doit avoir plusieurs jalons pour ce test.'
 
-        milestone, _declaration, _evidence = _declare_and_document_first_milestone(organization, lot, constructeur)
+        milestone, declaration, _evidence = _declare_and_document_first_milestone(organization, lot, constructeur)
 
         response = client.get(reverse('my-lot-overview', args=[lot.id]))
-
-        # Formule documentée dans apps/home/services.py::LEVEL_PROGRESS_FRACTION :
-        # 'documente' = 40, un seul jalon documenté sur `total_milestones`.
-        expected_percentage = round(40 / total_milestones)
-        assert response.data['progress_percentage'] == expected_percentage
+        assert (response.data['accepted_milestone_count'], response.data['milestone_count']) == (0, total_milestones)
 
         milestone_row = next(m for m in response.data['milestones'] if m['id'] == str(milestone.id))
         assert milestone_row['level'] == 'documente'
         other_rows = [m for m in response.data['milestones'] if m['id'] != str(milestone.id)]
         assert all(m['level'] is None for m in other_rows)
+
+        _inspecteur_client, inspecteur_organization, inspecteur = _register_inspecteur(
+            'home-progress-inspecteur2@example.com', 'Org Home Progression Inspecteur 2',
+        )
+        create_inspection(
+            inspector=inspecteur, inspector_organization=inspecteur_organization,
+            target_organization_id=organization.id, work_declaration_id=declaration.id,
+            outcome=InspectionOutcome.CONFORME,
+        )
+
+        response = client.get(reverse('my-lot-overview', args=[lot.id]))
+        assert (response.data['accepted_milestone_count'], response.data['milestone_count']) == (1, total_milestones)
 
 
 @pytest.mark.django_db
@@ -252,7 +267,9 @@ class TestLotOverviewContent:
         assert event is not None
         assert event['level'] == 'documente'
         assert event['source'] == 'evidence_upload'
-        assert event['actor'] == constructeur.email
+        # Adapté selon PO-2026-09-28-18 : « organisation · rôle », jamais l'e-mail.
+        assert event['actor'] == 'Org Home Event · Constructeur'
+        assert constructeur.email not in str(response.data)
 
     def test_overview_of_a_lot_with_no_activity_yet_has_no_latest_event(self):
         constructeur_client, organization, constructeur, asset, lot = _setup_constructeur_lot(

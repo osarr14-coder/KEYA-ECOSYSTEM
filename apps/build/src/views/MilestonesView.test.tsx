@@ -15,7 +15,7 @@ const LOT: LotRow = {
   assigned_organization_name: 'Promoteur-constructeur',
   milestone_count: 8,
   declared_milestone_count: 0,
-  progress_percentage: 0,
+  accepted_milestone_count: 0,
   open_reserve_count: 0,
   created_at: '2026-09-27T10:00:00Z',
 };
@@ -90,6 +90,37 @@ describe('MilestonesView — jalons côté constructeur (ticket F-069)', () => {
     expect(screen.queryByRole('button', { name: /lever/i })).not.toBeInTheDocument();
   });
 
+  it('PO-2026-09-28-16 : chaque réserve ouverte (motif, action, date, auteur) est affichée au-dessus du formulaire de correction', async () => {
+    renderView([milestone({
+      status: 'under_reserve', status_label: 'Corrections demandées', cdc_state: 'CHANGES_REQUESTED',
+      work_declaration_id: 'declaration-1', evidence_count: 1, reserve_id: 'reserve-1',
+      open_reserves: [{
+        id: 'reserve-1', motif: 'Enrobage insuffisant', expected_action: 'Reprendre l’enrobage',
+        opened_at: '2026-09-27T20:10:00Z', opened_by: 'Bureau de contrôle Démonstration · Contrôleur',
+        status: 'ouverte', status_label: 'Ouverte',
+      }],
+    })]);
+
+    const card = await screen.findByTestId('reserve-card');
+    expect(card).toHaveTextContent('Enrobage insuffisant');
+    expect(card).toHaveTextContent('Reprendre l’enrobage');
+    expect(card).toHaveTextContent('Bureau de contrôle Démonstration · Contrôleur, 27 sept. 2026, 20:10 (GMT, Abidjan)');
+    const input = screen.getByLabelText('Correction pour Fondations');
+    // La fiche précède le formulaire dans l'ordre du document.
+    expect(card.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('PO-2026-09-28-17 : la barre « Corrections demandées » prend la couleur Attention, jamais le rouge', async () => {
+    renderView([milestone({
+      status: 'under_reserve', status_label: 'Corrections demandées', cdc_state: 'CHANGES_REQUESTED',
+      work_declaration_id: 'declaration-1', evidence_count: 1, reserve_id: 'reserve-1',
+    })]);
+    const label = await screen.findByTestId('milestone-status-fondations');
+    const bar = label.parentElement!.querySelector('span[aria-hidden="true"]') as HTMLElement;
+    expect(bar.getAttribute('style')).toContain('--keya-alert-border');
+    expect(bar.getAttribute('style')).not.toContain('danger');
+  });
+
   it('affiche l’état dérivé par le serveur (contrôle planifié, accepté)', async () => {
     renderView([
       milestone({
@@ -128,7 +159,8 @@ describe('MilestonesView — lecture de l\'avancement (ticket F-076)', () => {
     renderView([foncier, fondations, milestone({ ...grosOeuvre, trust_levels: { declared: evidence } })]);
     const scale = await screen.findByRole('list', { name: 'Niveaux de confiance — Gros œuvre' });
     expect(scale.querySelectorAll('li')).toHaveLength(5);
-    expect(scale.querySelector('[data-testid="trust-level-declared"]')).toHaveTextContent('Constructeur Démo (Constructeur)');
+    // Adapté selon PO-2026-09-28-18 : « organisation · rôle », jamais de parenthèses.
+    expect(scale.querySelector('[data-testid="trust-level-declared"]')).toHaveTextContent('Constructeur Démo · Constructeur');
     expect(scale.querySelector('[data-testid="trust-level-declared"]')).toHaveTextContent('déclaration n° 1');
     expect(scale.querySelector('[data-testid="trust-level-documented"]')).toHaveTextContent('Non atteint');
   });

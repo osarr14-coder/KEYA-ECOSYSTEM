@@ -22,7 +22,8 @@ export interface EvidenceSummary {
   /** Ticket 014 (friction du rapport bout-en-bout) : plusieurs preuves du
    * même jalon soumises le même jour sont sinon strictement indiscernables
    * dans le dropdown "Documenter une correction". */
-  added_by_email: string;
+  /** PO-2026-09-28-18 : « organisation · rôle », jamais l'e-mail. */
+  added_by: string;
 }
 
 export interface LotExceptionRow {
@@ -63,7 +64,8 @@ export interface LotRow {
   assigned_organization_name: string | null;
   milestone_count: number;
   declared_milestone_count: number;
-  progress_percentage: number;
+  /** PO-2026-09-28-14 : jalons acceptés techniquement (compte, jamais un %). */
+  accepted_milestone_count: number;
   open_reserve_count: number;
   created_at: string;
 }
@@ -164,4 +166,17 @@ export interface LotMilestone {
   reserve_id: string | null;
   correction_submitted: boolean;
   control_scheduled: boolean;
+  /** PO-2026-09-28-16 : réserves ouvertes du jalon (motif, action attendue,
+   * date serveur, auteur « organisation · rôle »). */
+  open_reserves?: MilestoneReserve[];
+}
+
+export interface MilestoneReserve {
+  id: string;
+  motif: string;
+  expected_action: string;
+  opened_at: string;
+  opened_by: string;
+  status: 'ouverte' | 'correction_proposee' | 'nouvelle_inspection' | 'maintenue' | string | null;
+  status_label: string;
 }

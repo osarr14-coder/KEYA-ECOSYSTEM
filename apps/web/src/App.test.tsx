@@ -678,7 +678,8 @@ describe('App — accès Finance, équipe KEYIMMO (ticket F-068)', () => {
     const sidebar = screen.getByRole('complementary', { name: 'Navigation des modules' });
     const labels = Array.from(sidebar.querySelectorAll('a')).map((link) => link.textContent);
     // Adapté selon PO-2026-09-28-01 : « Virements déclarés » devient « Encaissements ».
-    expect(labels).toEqual(['À faire', 'Encaissements', 'Appels et encaissements', 'Comptes & décaissements']);
+    // Adapté selon PO-2026-09-28-12 : « Appels et encaissements » devient « Appels par dossier ».
+    expect(labels).toEqual(['À faire', 'Encaissements', 'Appels par dossier', 'Comptes & décaissements']);
     expect(screen.queryByRole('link', { name: 'Dossiers clients' })).not.toBeInTheDocument();
     expect(getMyInboxTasks).toHaveBeenCalledWith({ status: 'pending' });
   });

@@ -19,10 +19,10 @@ from django.db.models import Q
 from apps.evidence.models import Evidence, WorkDeclaration
 from apps.inspections.models import Inspection, Reserve
 from apps.inspections.services import OPEN_RESERVE_STATUSES, get_reserve_status
+from apps.organizations.identity import actor_label, event_actor_label
 from apps.programs.models import Lot, LotClient
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustEvent
-from apps.trust.services import LEVEL_PROGRESS_FRACTION
 
 
 def get_client_lots(user):
@@ -52,7 +52,7 @@ def get_client_lot_or_none(user, lot_id):
     return assignment.lot if assignment else None
 
 
-def _serialize_event(event):
+def _serialize_event(event, cache=None):
     """Même forme que `apps/trust/repository.py::get_current_status` —
     directement consommable par le popover `StatusBadge` du design system
     (ticket 007) : level/source/actor/scope/createdAt, rien de calculé.
@@ -62,7 +62,8 @@ def _serialize_event(event):
     return {
         'level': event.level,
         'source': event.source,
-        'actor': event.actor.email,
+        # PO-2026-09-28-18 : « organisation · rôle », jamais l'e-mail.
+        'actor': event_actor_label(event, cache),
         'scope': event.scope,
         'created_at': event.created_at.isoformat(),
     }
@@ -99,17 +100,18 @@ def compute_milestone_status(milestone):
 
 
 def compute_lot_progress(lot):
-    """Calcule TOUT côté backend — pourcentage inclus (arrondi ici, pas dans
-    le frontend) — voir LEVEL_PROGRESS_FRACTION pour la formule.
+    """Calcule TOUT côté backend. PO-2026-09-28-14 (CDC §1) : l'avancement
+    est « n / N jalons acceptés techniquement » — plus de pourcentage dérivé
+    des niveaux de confiance (ancien LEVEL_PROGRESS_FRACTION, retiré).
     """
+    from apps.inspections.services import accepted_milestone_counts
+
     milestones = list(lot.milestones.order_by('order'))
     milestone_statuses = []
-    total_fraction = 0
 
     for milestone in milestones:
         latest_event = compute_milestone_status(milestone)
         level = latest_event.level if latest_event else None
-        total_fraction += LEVEL_PROGRESS_FRACTION[level]
         milestone_statuses.append({
             'id': str(milestone.id),
             'code': milestone.code,
@@ -119,8 +121,8 @@ def compute_lot_progress(lot):
             'event': _serialize_event(latest_event),
         })
 
-    percentage = round(total_fraction / len(milestone_statuses)) if milestone_statuses else 0
-    return {'percentage': percentage, 'milestones': milestone_statuses}
+    accepted, total = accepted_milestone_counts(milestones)
+    return {'accepted': accepted, 'total': total, 'milestones': milestone_statuses}
 
 
 def _lot_trust_events_queryset(lot):
@@ -179,7 +181,9 @@ def build_lot_overview(lot):
         'asset_name': lot.asset.name,
         'asset_location': lot.asset.location,
         'program_name': lot.asset.program.name,
-        'progress_percentage': progress['percentage'],
+        # PO-2026-09-28-14 : compte de jalons acceptés, jamais un pourcentage.
+        'accepted_milestone_count': progress['accepted'],
+        'milestone_count': progress['total'],
         'milestones': progress['milestones'],
         'latest_notable_event': _serialize_event(latest_event),
         'open_reserve': {
@@ -206,13 +210,14 @@ def build_lot_evidence_feed(lot):
     )
 
     feed = []
+    cache = {}
     for evidence in evidences:
         event = trust_repository.get_current_status(evidence)
         feed.append({
             'id': str(evidence.id),
             'milestone_code': evidence.work_declaration.milestone.code,
             'milestone_label': evidence.work_declaration.milestone.label,
-            'added_by': evidence.added_by.email,
+            'added_by': actor_label(evidence.added_by, 'constructeur', cache),
             'created_at': evidence.created_at.isoformat(),
             'document_count': evidence.documents.count(),
             'documents': [

@@ -1,5 +1,5 @@
 import {
-  AlertBanner, ApiErrorBanner, Card, ProgressBar, TrustEventLine,
+  AlertBanner, ApiErrorBanner, Card, TrustEventLine,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -63,15 +63,12 @@ export function OverviewView({ lotId, onSeeAllActions, activeOrganizationId }: O
         onRefresh={state.refetch}
       />
 
-      {/* tone="accent" (vert) retiré : l'icône colorée en vert à côté d'une
-          barre remplie en or (ci-dessous) aurait suggéré deux accents
-          "progression" différents pour la même section — icône neutre,
-          l'accent or reste porté par la seule barre. */}
       <Card aria-label="Progression" data-testid="progress" title="Progression" icon="building">
-        <ProgressBar percentage={overview.progress_percentage} width="200px" />
-        {/* Le pourcentage affiché est EXACTEMENT `progress_percentage` reçu
-            de l'API — aucune opération arithmétique n'est faite ici. */}
-        <p style={{ marginBottom: 0, marginTop: '8px' }}>{overview.progress_percentage}% d'avancement</p>
+        {/* PO-2026-09-28-14 (CDC §1) : un compte reçu de l'API, jamais un
+            pourcentage ni une jauge dérivés des niveaux de confiance. */}
+        <p style={{ margin: 0 }}>
+          {`${overview.accepted_milestone_count} / ${overview.milestone_count} jalons acceptés techniquement`}
+        </p>
       </Card>
 
       <Card aria-label="Dernier événement notable" title="Dernier événement" icon="check-circle">

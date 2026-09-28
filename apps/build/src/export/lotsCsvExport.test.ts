@@ -10,7 +10,7 @@ function makeRow(overrides: Partial<LotRow> = {}): LotRow {
     id: 'lot-1', name: 'Lot 12', asset_name: 'Résidence Ker', program_id: 'program-1',
     program_name: 'Programme Keur Massar', assigned_organization_id: null,
     assigned_organization_name: null, milestone_count: 8, declared_milestone_count: 1,
-    progress_percentage: 5, open_reserve_count: 0, created_at: '2026-03-01T00:00:00Z',
+    accepted_milestone_count: 0, open_reserve_count: 0, created_at: '2026-03-01T00:00:00Z',
     ...overrides,
   };
 }
@@ -19,19 +19,20 @@ describe('buildLotsCsv', () => {
   it('produit un en-tête identique aux colonnes affichées par AllLotsView', () => {
     const csv = buildLotsCsv([]);
 
-    expect(csv).toBe('Nom,Bien,Programme,Organisation constructrice,Jalons déclarés,Avancement (%),Réserves ouvertes');
+    // Adapté selon PO-2026-09-28-14 : « Avancement (%) » devient un compte de jalons acceptés.
+    expect(csv).toBe('Nom,Bien,Programme,Organisation constructrice,Jalons déclarés,Jalons acceptés techniquement,Réserves ouvertes');
   });
 
   it('formate une ligne exactement comme le tableau à l\'écran (fraction jalons, %, tirets)', () => {
     const csv = buildLotsCsv([makeRow({ assigned_organization_name: 'Org Constructeur' })]);
 
-    expect(csv).toContain('Lot 12,Résidence Ker,Programme Keur Massar,Org Constructeur,1/8,5,0');
+    expect(csv).toContain('Lot 12,Résidence Ker,Programme Keur Massar,Org Constructeur,1/8,0/8,0'); // Adapté selon PO-2026-09-28-14.
   });
 
   it('affiche « — » pour une organisation non affectée, jamais une cellule vide silencieuse', () => {
     const csv = buildLotsCsv([makeRow({ assigned_organization_name: null })]);
 
-    expect(csv).toContain('Lot 12,Résidence Ker,Programme Keur Massar,—,1/8,5,0');
+    expect(csv).toContain('Lot 12,Résidence Ker,Programme Keur Massar,—,1/8,0/8,0'); // Adapté selon PO-2026-09-28-14.
   });
 
   it('échappe un nom de lot contenant une virgule', () => {

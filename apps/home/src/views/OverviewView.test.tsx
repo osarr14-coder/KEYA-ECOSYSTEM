@@ -16,14 +16,16 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Almadies, Dakar', program_name: 'Programme Keur Massar',
-        progress_percentage: 37, milestones: [], latest_notable_event: null, open_reserve: null,
+        accepted_milestone_count: 1, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
       }),
       getMyTasks: NO_PENDING_TASKS,
     });
 
     render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
-    expect(await screen.findByText('37% d\'avancement')).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-14 : compte de jalons acceptés, jamais un pourcentage.
+    expect(await screen.findByText('1 / 2 jalons acceptés techniquement')).toBeInTheDocument();
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
   it('affiche le hero du bien tel que reçu (nom, programme, lot, localisation)', async () => {
@@ -31,7 +33,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Almadies, Dakar', program_name: 'Programme Keur Massar',
-        progress_percentage: 0, milestones: [], latest_notable_event: null, open_reserve: null,
+        accepted_milestone_count: 0, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
       }),
       getMyTasks: NO_PENDING_TASKS,
     });
@@ -52,7 +54,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Dakar', program_name: 'Programme',
-        progress_percentage: 40, milestones: [],
+        accepted_milestone_count: 0, milestone_count: 2, milestones: [],
         latest_notable_event: {
           level: 'documente', source: 'evidence_upload', actor: 'constructeur@example.com',
           scope: '', created_at: '2026-03-05T10:30:00Z',
@@ -75,7 +77,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Dakar', program_name: 'Programme',
-        progress_percentage: 60, milestones: [], latest_notable_event: null,
+        accepted_milestone_count: 0, milestone_count: 2, milestones: [], latest_notable_event: null,
         open_reserve: { id: 'reserve-1', status: 'ouverte', description: 'Fissure en façade' },
       }),
       getMyTasks: NO_PENDING_TASKS,
@@ -98,14 +100,14 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Dakar', program_name: 'Programme',
-        progress_percentage: 60, milestones: [], latest_notable_event: null, open_reserve: null,
+        accepted_milestone_count: 0, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
       }),
       getMyTasks: NO_PENDING_TASKS,
     });
 
     render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
-    await screen.findByText("60% d'avancement");
+    await screen.findByText('0 / 2 jalons acceptés techniquement'); // Adapté selon PO-2026-09-28-14.
     expect(screen.queryByTestId('open-reserve')).not.toBeInTheDocument();
   });
 
@@ -115,7 +117,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
       .mockResolvedValueOnce({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Dakar', program_name: 'Programme',
-        progress_percentage: 60, milestones: [], latest_notable_event: null, open_reserve: null,
+        accepted_milestone_count: 0, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
       });
     const api = createMockApiClient({ getLotOverview, getMyTasks: NO_PENDING_TASKS });
 
@@ -124,7 +126,7 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
     await screen.findByRole('alert');
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
 
-    await screen.findByText("60% d'avancement");
+    await screen.findByText('0 / 2 jalons acceptés techniquement'); // Adapté selon PO-2026-09-28-14.
     expect(getLotOverview).toHaveBeenCalledTimes(2);
   });
 
@@ -136,21 +138,22 @@ describe('OverviewView — aucun calcul côté frontend (critère d\'acceptation
         .mockResolvedValueOnce({
           lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
           asset_location: 'Dakar', program_name: 'Programme',
-          progress_percentage: 40, milestones: [], latest_notable_event: null, open_reserve: null,
+          accepted_milestone_count: 0, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
         })
         .mockResolvedValueOnce({
           lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
           asset_location: 'Dakar', program_name: 'Programme',
-          progress_percentage: 65, milestones: [], latest_notable_event: null, open_reserve: null,
+          accepted_milestone_count: 1, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
         });
       const api = createMockApiClient({ getLotOverview, getMyTasks: NO_PENDING_TASKS });
 
       render(withApiClient(api, <OverviewView lotId="lot-1" onSeeAllActions={() => {}} activeOrganizationId={null} />));
 
-      await screen.findByText("40% d'avancement");
+      // Adapté selon PO-2026-09-28-14 : compte de jalons acceptés au lieu du %.
+      await screen.findByText('0 / 2 jalons acceptés techniquement');
       fireEvent.click(screen.getByRole('button', { name: 'Actualiser' }));
 
-      await screen.findByText("65% d'avancement");
+      await screen.findByText('1 / 2 jalons acceptés techniquement');
       expect(getLotOverview).toHaveBeenCalledTimes(2);
     },
   );
@@ -162,7 +165,7 @@ describe('OverviewView — résumé de la tâche prioritaire (« prochaine actio
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Dakar', program_name: 'Programme',
-        progress_percentage: 0, milestones: [], latest_notable_event: null, open_reserve: null,
+        accepted_milestone_count: 0, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
       }),
       getMyTasks: async () => [
         {
@@ -185,7 +188,7 @@ describe('OverviewView — résumé de la tâche prioritaire (« prochaine actio
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Dakar', program_name: 'Programme',
-        progress_percentage: 0, milestones: [], latest_notable_event: null, open_reserve: null,
+        accepted_milestone_count: 0, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
       }),
       getMyTasks: NO_PENDING_TASKS,
     });
@@ -201,7 +204,7 @@ describe('OverviewView — résumé de la tâche prioritaire (« prochaine actio
       getLotOverview: async () => ({
         lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
         asset_location: 'Dakar', program_name: 'Programme',
-        progress_percentage: 0, milestones: [], latest_notable_event: null, open_reserve: null,
+        accepted_milestone_count: 0, milestone_count: 2, milestones: [], latest_notable_event: null, open_reserve: null,
       }),
       getMyTasks: async () => [
         {

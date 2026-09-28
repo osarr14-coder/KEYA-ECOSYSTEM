@@ -12,6 +12,7 @@ from apps.core.rls import set_rls_context
 from apps.evidence.models import Document, SensitivityLevel
 from apps.evidence.services import create_document, create_work_declaration
 from apps.inspections.models import InspectionOutcome
+from apps.inspections.testing import submit_evidence
 from apps.messaging.models import Message
 from apps.messaging.services import create_message
 from apps.organizations.models import Membership, Organization, Role
@@ -52,6 +53,9 @@ def _setup_constructeur_org(email, organization_name):
     instantiate_milestones_for_lot(lot)
     milestone = lot.milestones.first()
     declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=user)
+    # PO-2026-09-28-13 (K01) : une déclaration prête à être inspectée porte
+    # au moins une pièce soumise ; un avis sans pièce est refusé.
+    submit_evidence(organization=organization, declaration=declaration, added_by=user)
     return client, organization, user, lot, declaration
 
 

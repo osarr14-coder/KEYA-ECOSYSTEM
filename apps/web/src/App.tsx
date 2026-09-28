@@ -109,7 +109,7 @@ const TAB_DEFINITIONS: {
   },
   // Audit UI R1 (R03, PO-2026-09-27-10) — vue Finance en lecture seule.
   {
-    id: 'receipts', label: 'Appels et encaissements', path: '/encaissements', icon: 'receipt', group: 'Finance', roles: FINANCE_ONLY,
+    id: 'receipts', label: 'Appels par dossier', path: '/encaissements', icon: 'receipt', group: 'Finance', roles: FINANCE_ONLY,
   },
   // Ticket F-064 — prix et statut commercial des lots existants.
   {

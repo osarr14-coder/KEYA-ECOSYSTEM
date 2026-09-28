@@ -257,6 +257,26 @@ def update_lot(
     return lot
 
 
+def assign_lot_organization(*, admin_organization_id, target_organization_id, lot_id, organization_id):
+    """PO-2026-09-28-15 — le gestionnaire affecte l'organisation
+    constructrice d'un lot porté par une autre organisation. Même bascule
+    RLS encadrée que `update_lot`."""
+    organization = Organization.objects.filter(id=organization_id).first()
+    if organization is None:
+        raise ValidationError({'organization_id': 'Organisation introuvable.'})
+    with transaction.atomic():
+        set_rls_context(organization_id=target_organization_id)
+        try:
+            lot = Lot.objects.filter(id=lot_id, organization_id=target_organization_id).first()
+            if lot is None:
+                raise ValidationError({'lot': 'Lot introuvable.'})
+            lot.assigned_organization = organization
+            lot.save(update_fields=['assigned_organization'])
+        finally:
+            set_rls_context(organization_id=admin_organization_id)
+    return lot
+
+
 def delete_lot(*, admin_organization_id, target_organization_id, lot_id):
     with transaction.atomic():
         set_rls_context(organization_id=target_organization_id)

@@ -48,6 +48,19 @@ remplacée n'est jamais effacée : elle est marquée « REMPLACÉE PAR » avec l
 | PO-2026-09-28-10 | Montant reçu | Dans le formulaire d'encaissement Finance, **« Montant reçu » vide par défaut** : il se lit au relevé, il ne se recopie pas du signalement. | Product Owner | Back-office Finance. |
 | PO-2026-09-28-11 | Format des dates (F06) | Toutes les dates, **champs de saisie compris** (langue fr), suivent le format unique F06 (`28 sept. 2026`, `27 sept. 2026, 20:10 (GMT, Abidjan)`). | Product Owner | Toutes les apps. |
 
+## 28 septembre 2026 — arbitrages du Product Owner après l'étape 4
+
+| ID | Sujet | Décision | Auteur | Portée |
+|---|---|---|---|---|
+| PO-2026-09-28-12 | Menu Finance | Le menu « Appels et encaissements » est renommé **« Appels par dossier »** (le menu « Encaissements » de PO-2026-09-28-01 est inchangé). | Product Owner | Back-office Finance. |
+| PO-2026-09-28-13 | Avis sans pièce (K01, CDC §7.2) | **Avis sans pièce interdit côté serveur** : un avis désigne au moins une version de pièce parmi celles soumises pour la déclaration. L'avis existant du lot A2 (aucune pièce désignée) n'est **pas réécrit** ; il disparaîtra à la réinitialisation. | Product Owner | API d'avis (toutes voies d'entrée). |
+| PO-2026-09-28-14 | Avancement (CDC §1) | Le « % d'avancement » est remplacé par **« n / N jalons acceptés techniquement »**. Aucun pourcentage ni score dérivé des niveaux de confiance ne subsiste dans les apps. | Product Owner | HOME, BUILD, toutes apps. |
+| PO-2026-09-28-15 | Capacités manquantes | L'**affectation d'une organisation constructrice** à un lot est **réservée au gestionnaire, côté serveur**. Le constructeur la voit en lecture seule. Test de refus exigé. | Product Owner | API lots, BUILD. |
+| PO-2026-09-28-16 | Réserve visible (CDC §9.2 étape 9) | BUILD : sur le jalon, **motif, action attendue, date et auteur de chaque réserve ouverte**, au-dessus du formulaire de correction. Client : **résumé en langage simple** (motif, statut ouverte/levée, date), sans détail technique interne. | Product Owner | BUILD, HOME. |
+| PO-2026-09-28-17 | Couleurs | La barre du jalon « Corrections demandées » prend la couleur **Attention**, cohérente avec son badge. **Le rouge est réservé aux erreurs et aux refus.** | Product Owner | Toutes apps. |
+| PO-2026-09-28-18 | Personnes | Une personne s'affiche **« organisation · rôle »** (ex. « Constructeur Démonstration Abidjan · Constructeur »), **jamais d'e-mail ni de double parenthèse**, dans les niveaux de confiance, les pièces et la chronologie. | Product Owner | Toutes apps. |
+| PO-2026-09-28-19 | Réinitialisation (T14) | Préparer la procédure de réinitialisation de la base à partir du jeu démo versionné, **sans l'exécuter** : l'audit du parcours est lancé ensuite dans une autre session. | Product Owner | Base locale ; Render en attente d'accord. |
+
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
 | Sujet | Question au PO |

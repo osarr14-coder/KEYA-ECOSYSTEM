@@ -77,26 +77,23 @@ describe('ExceptionsView — lots en retard / contrôles à planifier : navigati
 });
 
 describe('ExceptionsView — capacités manquantes : action réelle "Affecter"', () => {
-  it('affecte le lot à l\'organisation active puis recharge les exceptions', async () => {
-    const getExceptions = vi.fn()
-      .mockResolvedValueOnce({
+  // PO-2026-09-28-15 : ce test vérifiait l'action « Affecter à mon
+  // organisation » ; l'affectation est désormais réservée au gestionnaire
+  // (refus serveur) et le constructeur la voit en lecture seule.
+  it('montre la capacité manquante en lecture seule, sans action d\'affectation', async () => {
+    renderView({
+      getExceptions: async () => ({
         ...EMPTY_EXCEPTIONS,
         capacites_manquantes: [{
           lot_id: 'lot-1', lot_name: 'Lot Sans Org', asset_name: 'Résidence', program_name: 'Programme',
           label: 'Aucune organisation constructrice affectée',
         }],
-      })
-      .mockResolvedValueOnce(EMPTY_EXCEPTIONS);
-    const assignLotOrganization = vi.fn().mockResolvedValue({});
+      }),
+    });
 
-    // Ticket 019 : l'organisation active vient désormais de `App.tsx` (App
-    // Switcher), passée en prop — plus un `getMe()` propre à cette action.
-    renderView({ getExceptions, assignLotOrganization }, vi.fn(), 'org-1');
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Affecter à mon organisation' }));
-
-    await waitFor(() => expect(assignLotOrganization).toHaveBeenCalledWith('lot-1', 'org-1'));
-    await waitFor(() => expect(getExceptions).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Aucune organisation constructrice affectée')).toBeInTheDocument();
+    expect(screen.getByText(/Lecture seule : l’organisation constructrice est affectée par le gestionnaire/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Affecter/ })).not.toBeInTheDocument();
   });
 });
 
@@ -105,13 +102,13 @@ describe('ExceptionsView — réserves ouvertes : StatusBadge + AlertBanner + ac
     lot_id: 'lot-1', lot_name: 'Lot Réserve', asset_name: 'Résidence', program_name: 'Programme',
     label: 'Réserve ouverte — Fissure en façade', reserve_id: 'reserve-1', status: 'ouverte',
     event: {
-      level: 'controle' as const, source: 'inspection_avec_reserve', actor: 'inspecteur@example.com',
+      level: 'controle' as const, source: 'inspection_avec_reserve', actor: 'Bureau de contrôle Démo · Contrôleur',
       scope: '', created_at: '2026-03-05T10:30:00Z',
     },
     available_evidence: [
       {
         id: 'evidence-1', milestone_label: 'Fondations', created_at: '2026-03-04T10:00:00Z',
-        added_by_email: 'constructeur@example.com',
+        added_by: 'Constructeur Démo · Constructeur',
       },
     ],
   };
@@ -164,11 +161,11 @@ describe('ExceptionsView — réserves ouvertes : StatusBadge + AlertBanner + ac
             available_evidence: [
               {
                 id: 'evidence-1', milestone_label: 'Foncier', created_at: '2026-08-16T09:00:00Z',
-                added_by_email: 'alice@example.com',
+                added_by: 'Constructeur Démo · Constructeur',
               },
               {
                 id: 'evidence-2', milestone_label: 'Foncier', created_at: '2026-08-16T14:00:00Z',
-                added_by_email: 'bob@example.com',
+                added_by: 'Constructeur Démo · Constructeur',
               },
             ],
           }],
@@ -178,9 +175,14 @@ describe('ExceptionsView — réserves ouvertes : StatusBadge + AlertBanner + ac
       await screen.findByText('Lot Réserve', { exact: false });
       const options = screen.getAllByRole('option') as HTMLOptionElement[];
       const labels = options.map((option) => option.textContent);
-      expect(labels[0]).toContain('alice@example.com');
-      expect(labels[1]).toContain('bob@example.com');
+      // Adapté selon PO-2026-09-28-18 : l'auteur s'affiche « organisation ·
+      // rôle » (plus d'e-mail) ; deux pièces du même jour restent
+      // distinctes par leur heure serveur.
+      expect(labels[0]).toContain('Constructeur Démo · Constructeur');
+      expect(labels[0]).toContain('16 août 2026, 09:00');
+      expect(labels[1]).toContain('16 août 2026, 14:00');
       expect(labels[0]).not.toBe(labels[1]);
+      expect(labels.join(' ')).not.toContain('@');
     },
   );
 

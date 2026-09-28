@@ -216,7 +216,7 @@ class MissionOpinionView(APIView):
                 note=data['note'],
                 reserves=data['reserves'],
                 decisions=data['decisions'],
-                examined_evidence_ids=data['examined_evidence_ids'],
+                examined_evidence_ids=data.get('examined_evidence_ids'),
             )
         except services.MissionNotFound:
             raise NotFound('Mission introuvable.')

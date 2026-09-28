@@ -238,11 +238,36 @@ describe('AcquisitionJourney — suivi du chantier (PO-2026-09-28-04)', () => {
     expect(item).toHaveTextContent('1. Fondations');
     expect(item).toHaveTextContent('En examen');
     const declared = within(item).getByTestId('trust-level-declared');
-    expect(declared).toHaveTextContent('Constructeur Démo (Constructeur)');
+    // Adapté selon PO-2026-09-28-18 : « organisation · rôle », jamais de parenthèses.
+    expect(declared).toHaveTextContent('Constructeur Démo · Constructeur');
     expect(declared).toHaveTextContent('27 sept. 2026, 20:10 (GMT, Abidjan)');
     expect(declared).toHaveTextContent('déclaration n° 1');
     expect(within(item).getByTestId('trust-level-validated')).toHaveTextContent('Non atteint');
     expect(item.textContent).not.toMatch(/%/);
+  });
+
+  it('PO-2026-09-28-16 : résumé des réserves en langage simple (motif, ouverte/levée, date), sans détail interne', async () => {
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([call({ settlement: 'settled', settled_amount: '100000.00' })]),
+      getMyContracts: vi.fn().mockResolvedValue([]),
+      getMyWorksite: vi.fn().mockResolvedValue([{
+        id: 'm1', order: 1, code: 'fondations', label: 'Fondations', cdc_state: 'CHANGES_REQUESTED',
+        status_label: 'Corrections demandées', status_hint: '', trust_levels: {},
+        reserves: [
+          { motif: 'Enrobage insuffisant', status: 'ouverte', status_label: 'Ouverte — une correction est attendue du constructeur', date: '2026-09-27T20:10:00Z' },
+          { motif: 'Joint de dilatation', status: 'levee', status_label: 'Levée — correction constatée par le contrôleur', date: '2026-09-28T09:00:00Z' },
+        ],
+      }]),
+    });
+    render(withApiClient(api, <AcquisitionJourney reservation={reservation({ status: 'committed' })} onChanged={() => {}} />));
+
+    const [open, lifted] = await screen.findAllByTestId('worksite-reserve');
+    expect(open).toHaveTextContent('Réserve : Enrobage insuffisant');
+    expect(open).toHaveTextContent('Ouverte');
+    expect(open).toHaveTextContent('27 sept. 2026, 20:10 (GMT, Abidjan)');
+    expect(lifted).toHaveTextContent('Réserve : Joint de dilatation');
+    expect(lifted).toHaveTextContent('Levée');
+    expect(lifted).toHaveTextContent('28 sept. 2026');
   });
 
   it('pas de suivi du chantier tant que le bien est seulement bloqué', async () => {

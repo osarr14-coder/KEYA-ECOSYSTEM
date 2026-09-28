@@ -99,11 +99,8 @@ export function createApiClient({
     getAllLots: (query: AllLotsQuery = {}) =>
       request<PaginatedResponse<LotRow>>(`/api/build/lots/${toQueryString(query as Record<string, string | number | undefined>)}`),
 
-    /** Point d'ancrage minimal PRO (ticket 009) — voir Lot.assigned_organization. */
-    assignLotOrganization: (lotId: string, organizationId: string) =>
-      request(`/api/lots/${lotId}/assign_organization/`, {
-        method: 'POST', json: { organization_id: organizationId },
-      }),
+    // PO-2026-09-28-15 : plus d'affectation d'organisation depuis BUILD
+    // (réservée au gestionnaire, côté serveur).
 
     /** Action réelle sur une réserve ouverte — ne modifie JAMAIS le statut
      * de la réserve directement (voir apps/inspections/services.py,

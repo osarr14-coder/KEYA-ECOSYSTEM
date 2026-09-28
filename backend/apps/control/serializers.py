@@ -64,4 +64,7 @@ class MissionOpinionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default='')
     reserves = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     decisions = serializers.ListField(child=serializers.DictField(), required=False, default=list)
-    examined_evidence_ids = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
+    # PO-2026-09-28-13 : absent = toutes les pièces soumises (règle du
+    # service) ; une liste fournie vide est refusée. Plus de `default=list`,
+    # qui transformait l'absence en liste vide (avis sans pièce).
+    examined_evidence_ids = serializers.ListField(child=serializers.UUIDField(), required=False)

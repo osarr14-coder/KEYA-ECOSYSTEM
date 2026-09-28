@@ -95,7 +95,9 @@ def payment_declared(notice, *, actor):
     label = (
         # Audit UI R1 (PO-2026-09-27-05) : un signalement, à rapprocher du relevé.
         f'Virement signalé à traiter — {_xof(notice.amount)}, réf. client {notice.client_reference} — '
-        f'{reservation.lot.name} ({_who(reservation.client)})'
+        # PO-2026-09-28-18 : jamais de double parenthèse (le nom fictif en
+        # porte déjà une : « Awa Koné (cliente fictive) »).
+        f'{reservation.lot.name} — {_who(reservation.client)}'
     )
     for member in users_with_role(FINANCE_ROLE_CODE, restore_user_id=actor.id):
         notify_user(
@@ -113,7 +115,7 @@ def payment_confirmed(notice, *, call_settled, actor):
         close_tasks(subject=call, source=PAYMENT_CALL_TO_PAY)
     label = (
         f'Encaissement enregistré et rapproché (simulé) — {_call_label(call)} : {_xof(notice.receipt.amount)} — {reservation.lot.name} '
-        f'({_who(reservation.client)}) — réservation : {reservation.get_status_display()}'
+        f'— {_who(reservation.client)} — réservation : {reservation.get_status_display()}'
     )
     recipients = _sales_team(restore_user_id=actor.id) + [reservation.client]
     for recipient in recipients:

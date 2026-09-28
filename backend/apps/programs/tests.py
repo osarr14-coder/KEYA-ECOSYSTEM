@@ -432,74 +432,96 @@ class TestLotAssignedOrganization:
 
         assert lot['assigned_organization'] is None
 
-    def test_assign_organization_sets_the_field(self):
-        client = _register_and_authenticate('assign-sets@example.com', 'Org Assign Sets')
-        organization = Organization.objects.get(name='Org Assign Sets')
-        admin_client = _any_manager_client()
-        program = _create_program(admin_client, organization.id)
-        asset = _create_asset(admin_client, organization.id, program['id'])
-        lot = _create_lot(admin_client, organization.id, asset['id'])
+    # PO-2026-09-28-15 : l'affectation est réservée au gestionnaire, côté
+    # serveur. Les quatre tests ci-dessous (ticket 009) passaient par un
+    # membre de l'organisation du lot ; ils sont adaptés pour passer par le
+    # gestionnaire (paramètre de requête `organization_id` = organisation du
+    # lot, même discipline que `LotViewSet.update`). Les refus sont couverts
+    # par les deux derniers tests.
 
+    def _lot(self, email, organization_name):
+        owner_client = _register_and_authenticate(email, organization_name)
+        organization = Organization.objects.get(name=organization_name)
+        manager_client = _any_manager_client()
+        program = _create_program(manager_client, organization.id)
+        asset = _create_asset(manager_client, organization.id, program['id'])
+        lot = _create_lot(manager_client, organization.id, asset['id'])
+        return owner_client, manager_client, organization, lot
+
+    @staticmethod
+    def _assign_url(lot, organization):
+        return f"{reverse('lot-assign-organization', args=[lot['id']])}?organization_id={organization.id}"
+
+    def test_assign_organization_sets_the_field(self):
+        owner_client, manager_client, organization, lot = self._lot('assign-sets@example.com', 'Org Assign Sets')
         senegal = CountryPack.objects.get(code='SN')
         constructeur_org = Organization.objects.create(name='Org Constructeur Cible', country_pack=senegal)
 
-        response = client.post(
-            reverse('lot-assign-organization', args=[lot['id']]),
-            {'organization_id': str(constructeur_org.id)}, format='json',
+        response = manager_client.post(
+            self._assign_url(lot, organization), {'organization_id': str(constructeur_org.id)}, format='json',
         )
 
         assert response.status_code == 200
         assert response.data['assigned_organization'] == constructeur_org.id
 
         # Persisté, pas seulement renvoyé dans la réponse.
-        refreshed = client.get(reverse('lot-detail', args=[lot['id']])).data
+        refreshed = owner_client.get(reverse('lot-detail', args=[lot['id']])).data
         assert refreshed['assigned_organization'] == constructeur_org.id
 
     def test_assign_organization_requires_organization_id(self):
-        client = _register_and_authenticate('assign-requires@example.com', 'Org Assign Requires')
-        organization = Organization.objects.get(name='Org Assign Requires')
-        admin_client = _any_manager_client()
-        program = _create_program(admin_client, organization.id)
-        asset = _create_asset(admin_client, organization.id, program['id'])
-        lot = _create_lot(admin_client, organization.id, asset['id'])
+        _owner, manager_client, organization, lot = self._lot('assign-requires@example.com', 'Org Assign Requires')
 
-        response = client.post(reverse('lot-assign-organization', args=[lot['id']]), {}, format='json')
+        response = manager_client.post(self._assign_url(lot, organization), {}, format='json')
 
         assert response.status_code == 400
 
     def test_assign_organization_rejects_an_unknown_organization_id(self):
-        client = _register_and_authenticate('assign-unknown@example.com', 'Org Assign Unknown')
-        organization = Organization.objects.get(name='Org Assign Unknown')
-        admin_client = _any_manager_client()
-        program = _create_program(admin_client, organization.id)
-        asset = _create_asset(admin_client, organization.id, program['id'])
-        lot = _create_lot(admin_client, organization.id, asset['id'])
+        _owner, manager_client, organization, lot = self._lot('assign-unknown@example.com', 'Org Assign Unknown')
 
-        response = client.post(
-            reverse('lot-assign-organization', args=[lot['id']]),
+        response = manager_client.post(
+            self._assign_url(lot, organization),
             {'organization_id': '00000000-0000-0000-0000-000000000000'}, format='json',
         )
 
         assert response.status_code == 400
 
-    def test_assign_organization_on_a_lot_of_another_organization_returns_404(self):
-        _client_a = _register_and_authenticate('assign-other-a@example.com', 'Org Assign Other A')
-        organization_a = Organization.objects.get(name='Org Assign Other A')
-        admin_client = _any_manager_client()
-        program = _create_program(admin_client, organization_a.id)
-        asset = _create_asset(admin_client, organization_a.id, program['id'])
-        lot = _create_lot(admin_client, organization_a.id, asset['id'])
-
-        client_b = _register_and_authenticate('assign-other-b@example.com', 'Org Assign Other B')
+    def test_assign_organization_with_a_lot_outside_the_named_organization_is_rejected(self):
+        _owner, manager_client, _organization, lot = self._lot('assign-other-a@example.com', 'Org Assign Other A')
         senegal = CountryPack.objects.get(code='SN')
+        other_org = Organization.objects.create(name='Org Assign Other B', country_pack=senegal)
         target_org = Organization.objects.create(name='Org Assign Other Target', country_pack=senegal)
 
-        response = client_b.post(
-            reverse('lot-assign-organization', args=[lot['id']]),
-            {'organization_id': str(target_org.id)}, format='json',
+        response = manager_client.post(
+            self._assign_url(lot, other_org), {'organization_id': str(target_org.id)}, format='json',
         )
 
-        assert response.status_code == 404
+        assert response.status_code == 400
+
+    def test_constructeur_of_the_lot_organization_cannot_assign_it(self):
+        """PO-2026-09-28-15 — test de refus : le constructeur voit
+        l'affectation en lecture seule ; le serveur refuse son écriture."""
+        owner_client, _manager, organization, lot = self._lot('assign-builder@example.com', 'Org Assign Builder')
+        user = User.objects.get(email='assign-builder@example.com')
+        set_rls_context(user_id=user.id, organization_id=organization.id)
+        role, _ = Role.objects.get_or_create(code='constructeur', defaults={'label': 'Constructeur'})
+        Membership.objects.filter(user=user, organization=organization).update(role=role)
+
+        for url in (reverse('lot-assign-organization', args=[lot['id']]), self._assign_url(lot, organization)):
+            response = owner_client.post(url, {'organization_id': str(organization.id)}, format='json')
+            assert response.status_code == 403
+
+        refreshed = owner_client.get(reverse('lot-detail', args=[lot['id']])).data
+        assert refreshed['assigned_organization'] is None
+
+    def test_member_of_another_organization_cannot_assign_the_lot(self):
+        _owner, _manager, organization, lot = self._lot('assign-intruder-a@example.com', 'Org Assign Intruder A')
+        intruder = _register_and_authenticate('assign-intruder-b@example.com', 'Org Assign Intruder B')
+
+        response = intruder.post(
+            self._assign_url(lot, organization), {'organization_id': str(organization.id)}, format='json',
+        )
+
+        assert response.status_code == 403
 
 
 @pytest.mark.django_db

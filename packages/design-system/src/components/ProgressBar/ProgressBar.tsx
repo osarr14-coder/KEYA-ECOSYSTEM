@@ -19,8 +19,13 @@ import { semanticColors } from '../../tokens/colors';
  * environ 1,55:1, egalement insuffisant. Une bordure explicite definit
  * desormais la frontiere du composant independamment du fond de page qui
  * l'entoure. Severite limitee en pratique : le pourcentage exact reste
- * TOUJOURS affiche en texte a cote (OverviewView/AllLotsView), jamais porte
- * par la seule barre, qui reste decorative/complementaire.
+ * TOUJOURS affiche en texte a cote, jamais porte par la seule barre, qui
+ * reste decorative/complementaire.
+ *
+ * PO-2026-09-28-14 (CDC §1) : ne sert JAMAIS à un avancement ni à un score
+ * dérivé des niveaux de confiance (l'avancement se lit « n / N jalons
+ * acceptés techniquement »). Seul usage restant : une part MONÉTAIRE
+ * (premier versement encaissé, espace client).
  */
 export interface ProgressBarProps {
   /** Pourcentage déjà calculé côté backend — jamais recalculé ici. */

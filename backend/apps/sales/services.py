@@ -869,6 +869,10 @@ def client_worksite(*, client, caller_organization_id, reservation_id):
                 'id': str(milestone.id), 'order': milestone.order, 'code': milestone.code, 'label': milestone.label,
                 'cdc_state': cdc_state, 'status_label': cdc_label, 'status_hint': cdc_hint,
                 'trust_levels': inspections_services.milestone_trust_levels(milestone),
+                # PO-2026-09-28-16 : réserves en langage simple.
+                'reserves': (
+                    inspections_services.client_reserve_summary(state['declaration']) if state['declaration'] else []
+                ),
             })
         return rows
     finally:

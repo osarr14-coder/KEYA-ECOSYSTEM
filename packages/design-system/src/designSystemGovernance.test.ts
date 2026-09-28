@@ -54,6 +54,10 @@ describe('Gouvernance du design system (PO-2026-09-27-20)', () => {
     expect(offenders(/type="date"|type="datetime-local"/)).toEqual([]);
   });
 
+  it('aucun pourcentage d’avancement ni score dérivé des niveaux de confiance (PO-2026-09-28-14, CDC §1)', () => {
+    expect(offenders(/progress_percentage|d'avancement|d’avancement|LEVEL_PROGRESS|trust_?score|trustScore/i)).toEqual([]);
+  });
+
   it('aucun flou ni effet de verre', () => {
     expect(offenders(/backdrop-?filter|backdropFilter|\bblur\(/)).toEqual([]);
   });

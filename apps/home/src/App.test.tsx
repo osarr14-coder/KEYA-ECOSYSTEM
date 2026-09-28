@@ -22,7 +22,7 @@ const LOTS = [
 const OVERVIEW = {
   lot_id: 'lot-1', lot_name: 'Lot 12', asset_name: 'Résidence Ker',
   asset_location: 'Almadies, Dakar', program_name: 'Programme Keur Massar',
-  progress_percentage: 45, milestones: [],
+  accepted_milestone_count: 1, milestone_count: 2, milestones: [],
   latest_notable_event: {
     level: 'documente' as const, source: 'evidence_upload', actor: 'constructeur@example.com',
     scope: '', created_at: '2026-03-06T09:00:00Z',
@@ -74,7 +74,8 @@ describe('App — critère produit 26.1 : les 5 éléments identifiables sans in
     // 1. Le bien
     expect(await screen.findByText('Résidence Ker')).toBeInTheDocument();
     // 2. L'avancement
-    expect(screen.getByText("45% d'avancement")).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-14 : « n / N jalons acceptés techniquement », plus de %.
+    expect(screen.getByText('1 / 2 jalons acceptés techniquement')).toBeInTheDocument();
     // 3. L'événement récent — adapté selon PO-2026-09-28-04 (ligne datée, plus de badge)
     expect(screen.getByTestId('trust-event')).toHaveTextContent('Niveau atteint : Documenté');
     // 4. Le problème principal — avec le style d'alerte (role="alert" + icône)

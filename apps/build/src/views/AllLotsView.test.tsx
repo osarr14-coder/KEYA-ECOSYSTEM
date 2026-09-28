@@ -14,7 +14,7 @@ function makeRow(overrides: Partial<LotRow> = {}): LotRow {
     id: 'lot-1', name: 'Lot 12', asset_name: 'Résidence Ker', program_id: 'program-1',
     program_name: 'Programme Keur Massar', assigned_organization_id: null,
     assigned_organization_name: null, milestone_count: 8, declared_milestone_count: 1,
-    progress_percentage: 5, open_reserve_count: 0, created_at: '2026-03-01T00:00:00Z',
+    accepted_milestone_count: 0, open_reserve_count: 0, created_at: '2026-03-01T00:00:00Z',
     ...overrides,
   };
 }
@@ -34,7 +34,10 @@ describe('AllLotsView — tableau, pas de version simplifiée (critère d\'accep
     expect(screen.getByText('Résidence Ker')).toBeInTheDocument();
     expect(screen.getByText('Org Constructeur')).toBeInTheDocument();
     expect(screen.getByText('1/8')).toBeInTheDocument();
-    expect(screen.getByText('5%')).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-14 : « n / N jalons acceptés techniquement », jamais un %.
+    expect(screen.getByText('0/8')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Jalons acceptés techniquement' })).toBeInTheDocument();
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
   it('affiche « — » pour un lot sans organisation affectée, pas une cellule vide silencieuse', async () => {
@@ -57,9 +60,9 @@ describe('AllLotsView — tableau, pas de version simplifiée (critère d\'accep
       expect.objectContaining({ q: 'Ker' }),
     ));
 
-    fireEvent.change(screen.getByLabelText('Trier par'), { target: { value: '-progress_percentage' } });
+    fireEvent.change(screen.getByLabelText('Trier par'), { target: { value: '-accepted_milestone_count' } });
     await waitFor(() => expect(getAllLots).toHaveBeenLastCalledWith(
-      expect.objectContaining({ ordering: '-progress_percentage' }),
+      expect.objectContaining({ ordering: '-accepted_milestone_count' }),
     ));
 
     fireEvent.change(screen.getByLabelText('Filtrer par affectation'), { target: { value: 'false' } });
@@ -213,15 +216,15 @@ describe('AllLotsView — export CSV (ticket F-032)', () => {
     await screen.findByText('Lot 12');
     fireEvent.change(screen.getByLabelText('Rechercher un lot'), { target: { value: 'Ker' } });
     await waitFor(() => expect(getAllLots).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'Ker' })));
-    fireEvent.change(screen.getByLabelText('Trier par'), { target: { value: '-progress_percentage' } });
+    fireEvent.change(screen.getByLabelText('Trier par'), { target: { value: '-accepted_milestone_count' } });
     await waitFor(() => expect(getAllLots).toHaveBeenLastCalledWith(
-      expect.objectContaining({ ordering: '-progress_percentage' }),
+      expect.objectContaining({ ordering: '-accepted_milestone_count' }),
     ));
 
     fireEvent.click(screen.getByRole('button', { name: 'Exporter en CSV' }));
 
     await waitFor(() => expect(getAllLots).toHaveBeenCalledWith(expect.objectContaining({
-      q: 'Ker', ordering: '-progress_percentage', page: 1, page_size: 100,
+      q: 'Ker', ordering: '-accepted_milestone_count', page: 1, page_size: 100,
     })));
   });
 

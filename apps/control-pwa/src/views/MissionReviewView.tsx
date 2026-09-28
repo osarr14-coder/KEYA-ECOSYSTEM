@@ -47,8 +47,11 @@ type Decision = { decision: 'levee' | 'maintenue' | ''; motif: string };
 /** Contrôles de saisie, mêmes règles que le serveur (CDC §7.1). */
 export function opinionErrors(
   outcome: OpinionPayload['outcome'] | '', reserves: NewReserve[], openReserves: OpenReserve[], decisions: Record<string, Decision>,
+  evidenceCount = 1,
 ): string[] {
   const errors: string[] = [];
+  // PO-2026-09-28-13 (K01, CDC §7.2) : un avis porte sur au moins une pièce soumise.
+  if (evidenceCount === 0) errors.push('Aucune pièce soumise : un avis porte sur au moins une version de pièce.');
   if (!outcome) errors.push('Choisissez un avis : conforme ou non conforme.');
   for (const reserve of openReserves) {
     const decision = decisions[reserve.id];
@@ -157,7 +160,7 @@ export function MissionReviewView({ missionId, api, onBack }: MissionReviewViewP
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!detail) return;
-    const found = opinionErrors(outcome, reserves, detail.openReserves, decisions);
+    const found = opinionErrors(outcome, reserves, detail.openReserves, decisions, detail.evidences.length);
     setErrors(found);
     if (found.length > 0 || !outcome) return;
     setSubmitting(true);
@@ -229,10 +232,12 @@ export function MissionReviewView({ missionId, api, onBack }: MissionReviewViewP
       <section aria-labelledby="submitted-title" style={sectionStyle}>
         <h2 id="submitted-title" style={{ margin: 0, fontSize: '18px' }}>Pièces soumises</h2>
         <p style={{ margin: 0 }}>
-          {`Déclaration de ${detail.declaration.declaredBy}, le ${formatServerDate(detail.declaration.declaredAt)}.`}
+          {`Déclaration : ${detail.declaration.declaredBy}, le ${formatServerDate(detail.declaration.declaredAt)}.`}
           {detail.declaration.note && ` « ${detail.declaration.note} »`}
         </p>
-        {detail.evidences.length === 0 && <p style={{ margin: 0 }}>Aucune pièce soumise.</p>}
+        {detail.evidences.length === 0 && (
+          <p style={{ margin: 0 }}>Aucune pièce soumise : l’avis ne peut pas être enregistré tant que le constructeur n’a pas déposé de pièce.</p>
+        )}
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {detail.evidences.map((evidence) => (
             <li key={evidence.id} data-testid="submitted-evidence" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

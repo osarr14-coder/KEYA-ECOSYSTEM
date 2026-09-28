@@ -10,7 +10,7 @@ import { buildCsv } from './csv';
  */
 const HEADERS = [
   'Nom', 'Bien', 'Programme', 'Organisation constructrice',
-  'Jalons déclarés', 'Avancement (%)', 'Réserves ouvertes',
+  'Jalons déclarés', 'Jalons acceptés techniquement', 'Réserves ouvertes',
 ];
 
 function formatLotRow(row: LotRow): string[] {
@@ -20,7 +20,7 @@ function formatLotRow(row: LotRow): string[] {
     row.program_name,
     row.assigned_organization_name ?? '—',
     `${row.declared_milestone_count}/${row.milestone_count}`,
-    String(row.progress_percentage),
+    `${row.accepted_milestone_count}/${row.milestone_count}`,
     String(row.open_reserve_count),
   ];
 }

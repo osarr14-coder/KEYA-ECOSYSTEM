@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import {
-  ApiErrorBanner, Button, Card, Pill, type PillTone, ProgressBar, SimulatedMark, Skeleton, Stepper, TrustLevels,
+  ApiErrorBanner, Button, Card, DateTime, Pill, type PillTone, ProgressBar, SimulatedMark, Skeleton, Stepper, TrustLevels,
   type StepperStep, formatSurface, semanticColors,
 } from '@keya/design-system';
 
@@ -463,6 +463,30 @@ function WorksiteCard({ reservationId }: { reservationId: string }) {
               </div>
               {milestone.status_hint && (
                 <span style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>{milestone.status_hint}</span>
+              )}
+              {(milestone.reserves ?? []).length > 0 && (
+                // PO-2026-09-28-16 (CDC §9.2 étape 9) : résumé en langage
+                // simple, sans détail technique interne.
+                <ul aria-label={`Réserves — ${milestone.label}`} style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {(milestone.reserves ?? []).map((reserve, index) => (
+                    <li
+                      key={`${reserve.date}-${index}`}
+                      data-testid="worksite-reserve"
+                      style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '14px' }}
+                    >
+                      <span style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                        <strong>{`Réserve : ${reserve.motif}`}</strong>
+                        <Pill tone={reserve.status === 'levee' ? 'success' : 'alert'}>
+                          {reserve.status === 'levee' ? 'Levée' : 'Ouverte'}
+                        </Pill>
+                      </span>
+                      <span style={{ color: semanticColors.neutral.textMuted }}>
+                        {`${reserve.status_label} · `}
+                        <DateTime value={reserve.date} />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
               <TrustLevels reached={milestone.trust_levels} aria-label={`Niveaux de confiance — ${milestone.label}`} />
             </li>

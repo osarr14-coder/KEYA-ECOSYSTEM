@@ -347,9 +347,13 @@ class TestK01SubmittedPieces:
         detail = _login(INSPECTEUR).get(reverse('control-mission-detail', args=[mission_id]))
         assert detail.status_code == 200, detail.data
         assert detail.data['declaration']['id'] == declaration_id
-        assert detail.data['declaration']['declared_by'] == CONSTRUCTEUR
+        # Adapté selon PO-2026-09-28-18 : « organisation · rôle », jamais l'e-mail.
+        assert detail.data['declaration']['declared_by'] == 'Constructeur Démonstration Abidjan · Constructeur'
         [evidence] = detail.data['evidences']
-        assert (evidence['id'], evidence['version'], evidence['added_by']) == (evidence_id, 1, CONSTRUCTEUR)
+        assert (evidence['id'], evidence['version'], evidence['added_by']) == (
+            evidence_id, 1, 'Constructeur Démonstration Abidjan · Constructeur',
+        )
+        assert CONSTRUCTEUR not in str(detail.data)
         assert evidence['documents'][0]['id'] == document_id
         assert len(evidence['documents'][0]['sha256']) == 64
 
