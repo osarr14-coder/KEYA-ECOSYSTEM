@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jauge des jalons</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #F6F2EA; --surface: #FFFFFF; --subtle: #FBF8F2; --ink: #0B1D3A; --text: #243248;
+  --muted: #5E6878; --faint: #8C93A0; --line: #E3DCCD; --line-strong: #D3CAB6;
+  --brand: #C49A2C; --brand-ink: #0B1D3A;
+  --ok: #1F6B3A; --ok-bg: #E4F1E8;
+  --warn: #8A5A00; --warn-bg: #FBF0D9;
+  --info: #23457A; --info-bg: #E6ECF6;
+  --display: 'Fraunces', Georgia, serif;
+  --body: 'Manrope', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); font-size: 12px; color: var(--muted); font-style: normal; }
+
+.board { width: 1240px; padding: 56px 48px 64px; display: flex; flex-direction: column; gap: 56px; }
+.board > header h1 { font: 600 30px/1.2 var(--display); color: var(--ink); margin: 0 0 8px; letter-spacing: -0.01em; }
+.board > header p { margin: 0; color: var(--muted); max-width: 760px; }
+.sec-title { display: flex; align-items: baseline; gap: 12px; margin: 0 0 16px; }
+.sec-title b { font: 700 13px var(--body); color: var(--ink); }
+.sec-title span { font-size: 13px; color: var(--muted); }
+.sec-title i { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+/* ---------- panneau ---------- */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+
+/* ---------- segments ---------- */
+.seg { height: 12px; border-radius: 2px; position: relative; }
+.s-draft    { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.s-sub      { background: var(--info-bg); box-shadow: inset 0 0 0 1px var(--info); }
+.s-review   { background: repeating-linear-gradient(135deg, var(--info) 0 1.5px, var(--info-bg) 1.5px 5px); box-shadow: inset 0 0 0 1px var(--info); }
+.s-changes  { background: repeating-linear-gradient(135deg, var(--warn) 0 2px, var(--warn-bg) 2px 6px); box-shadow: inset 0 0 0 1px var(--warn); }
+.s-ok       { background: var(--ok); }
+.s-stale    { background: var(--ok-bg); outline: 1.5px dashed var(--ok); outline-offset: -1.5px; }
+
+.badge { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 4px; font: 600 12px var(--body); white-space: nowrap; }
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.b-ok { background: var(--ok-bg); color: var(--ok); }
+.b-warn { background: var(--warn-bg); color: var(--warn); }
+.b-info { background: var(--info-bg); color: var(--info); }
+.b-draft { background: #F1EDE4; color: var(--muted); }
+
+/* ---------- 1 · carte de chantier ---------- */
+.card { padding: 28px 32px 24px; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 24px; }
+.card-head h2 { margin: 0 0 4px; font: 700 19px var(--body); color: var(--ink); }
+.card-head p { margin: 0; color: var(--muted); font-size: 13px; }
+.count { text-align: right; }
+.count .n { font: 700 30px/1 var(--body); color: var(--ink); }
+.count .n small { font: 600 18px var(--body); color: var(--muted); margin-left: 2px; }
+.count .l { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+.gauge { display: grid; column-gap: 12px; }
+.gauge.cols-2 { grid-template-columns: 1fr 1fr; }
+.track { display: contents; }
+.jal { padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.jal .t { display: flex; align-items: baseline; gap: 10px; }
+.jal .t .idx { font: 500 11px var(--mono); color: var(--faint); }
+.jal .t .name { font: 700 16px var(--body); color: var(--ink); }
+.jal .meta { font-size: 12.5px; color: var(--muted); }
+.seg.sel { outline: 2px solid var(--ink); outline-offset: 3px; }
+.caret { position: absolute; left: 32px; bottom: -27px; width: 12px; height: 12px; background: var(--subtle); border-left: 1px solid var(--line); border-top: 1px solid var(--line); transform: rotate(45deg); }
+
+.detail { margin-top: 22px; background: var(--subtle); border: 1px solid var(--line); border-radius: 6px; padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; gap: 24px; position: relative; }
+.detail h3 { margin: 0 0 14px; font: 700 14px var(--body); color: var(--ink); display: flex; align-items: center; gap: 10px; }
+.detail dl { margin: 0; display: grid; grid-template-columns: 150px 1fr; row-gap: 8px; column-gap: 16px; font-size: 13px; }
+.detail dt { color: var(--muted); }
+.detail dd { margin: 0; color: var(--text); }
+.detail dd strong { color: var(--ink); font-weight: 600; }
+.actions { display: flex; flex-direction: column; gap: 10px; align-items: stretch; justify-content: flex-end; min-width: 220px; }
+.btn { height: 40px; padding: 0 16px; border-radius: 4px; font: 700 13px var(--body); display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid transparent; }
+.btn-primary { background: var(--brand); color: var(--brand-ink); }
+.btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+.btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend .seg { width: 28px; height: 8px; }
+
+/* ---------- 2 · états ---------- */
+.states { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.state { background: var(--surface); padding: 20px 20px 18px; display: flex; flex-direction: column; gap: 10px; min-height: 132px; }
+.state .seg { height: 12px; }
+.state b { font: 700 13.5px var(--body); color: var(--ink); }
+.state p { margin: 0; font-size: 12.5px; color: var(--muted); }
+.state.rule { background: var(--subtle); justify-content: center; }
+.state.rule b { font: 600 15px/1.35 var(--display); }
+
+/* ---------- 3 · liste ---------- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font: 600 12px var(--body); color: var(--muted); padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--subtle); }
+td { padding: 14px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.lot b { color: var(--ink); font-weight: 700; }
+td.lot small { display: block; color: var(--muted); font-size: 12px; }
+.mini { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 132px; }
+.mini .seg { height: 8px; }
+.frac { font-weight: 700; color: var(--ink); }
+.frac small { color: var(--muted); font-weight: 600; }
+tr.future td { color: var(--muted); }
+tr.future td.lot b { color: var(--muted); }
+.tag { font: 500 11px var(--mono); color: var(--faint); margin-left: 6px; }
+
+/* ---------- 4 · mobile ---------- */
+.row4 { display: grid; grid-template-columns: 375px 1fr; gap: 48px; align-items: start; }
+.phone { width: 375px; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+.demo { background: var(--ink); color: #fff; text-align: center; padding: 6px 12px; font: 700 11px var(--body); letter-spacing: 0.06em;
+  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.07) 0 2px, transparent 2px 7px); }
+.demo span { display: block; font: 400 10.5px var(--mono); letter-spacing: 0; opacity: 0.85; }
+.m-top { background: var(--surface); border-bottom: 1px solid var(--line); height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.m-top .brand { display: flex; align-items: center; gap: 10px; font: 600 15px var(--display); color: var(--ink); }
+.logo { width: 28px; height: 28px; border-radius: 4px; background: var(--brand); color: var(--ink); display: grid; place-items: center; font: 700 12px var(--display); }
+.m-body { padding: 20px 16px 24px; display: flex; flex-direction: column; gap: 16px; }
+.m-body h2 { margin: 0; font: 600 22px var(--display); color: var(--ink); }
+.m-card { padding: 18px 16px; }
+.m-count { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.m-count b { font: 700 15px var(--body); color: var(--ink); }
+.m-count span { font-size: 12.5px; color: var(--muted); }
+.m-count span strong { color: var(--ink); font-size: 15px; }
+.m-list { list-style: none; margin: 16px 0 0; padding: 0; }
+.m-list li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.m-list li .seg { width: 22px; height: 22px; border-radius: 3px; margin-top: 1px; }
+.m-list li b { display: block; font: 700 15px var(--body); color: var(--ink); }
+.m-list li p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.m-res { background: var(--warn-bg); border-radius: 4px; padding: 12px 14px; margin-top: 10px; font-size: 13px; color: var(--text); }
+.m-res b { color: var(--warn); font-size: 13px; display: block; margin-bottom: 4px; }
+.m-btn { height: 44px; width: 100%; margin-top: 14px; font-size: 14px; }
+.notes { display: flex; flex-direction: column; gap: 18px; padding-top: 4px; }
+.notes h3 { margin: 0; font: 700 14px var(--body); color: var(--ink); }
+.notes p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; max-width: 560px; }
+</style>
+</head>
+<body>
+<div class="board">
+
+  <header>
+    <h1>Jauge des jalons</h1>
+    <p>Un segment par jalon, dans l'ordre du chantier. Chaque segment montre l'état de travail du jalon (CDC §7.1). La jauge juxtapose des états : elle ne calcule aucun pourcentage et ne représente pas les niveaux de confiance, visibles dans le détail de chaque jalon.</p>
+  </header>
+
+  <!-- 1 -->
+  <section>
+    <div class="sec-title"><b>1 · Carte de chantier</b><span>BUILD, gestionnaire · 1440 px · données du scénario, motif de réserve illustratif</span></div>
+    <div class="panel card">
+      <div class="card-head">
+        <div>
+          <h2>Lot A2 — Bâtiment A</h2>
+          <p>Résidence Démonstration Abidjan · Constructeur Démonstration Abidjan</p>
+        </div>
+        <div class="count">
+          <div class="n num">0<small>/ 2</small></div>
+          <div class="l">jalons acceptés techniquement</div>
+        </div>
+      </div>
+
+      <div class="gauge cols-2">
+        <div class="seg s-changes sel"><span class="caret" style="display:none"></span></div>
+        <div class="seg s-draft"></div>
+        <div class="jal">
+          <div class="t"><span class="idx">01</span><span class="name">Fondations</span></div>
+          <div><span class="badge b-warn">Corrections demandées</span></div>
+          <div class="meta">1 réserve ouverte depuis le 27 sept. 2026 · <span class="mono">déclaration n° 1 · pièce v1</span></div>
+        </div>
+        <div class="jal">
+          <div class="t"><span class="idx">02</span><span class="name">Élévation</span></div>
+          <div><span class="badge b-draft">Brouillon</span></div>
+          <div class="meta">Non déclaré · déclarable après l'acceptation des fondations</div>
+        </div>
+      </div>
+
+      <div class="detail">
+        <span class="caret" style="left:64px; top:-7px; bottom:auto;"></span>
+        <div>
+          <h3>Réserve R-01 · ouverte <span class="badge b-warn">Action du constructeur attendue</span></h3>
+          <dl>
+            <dt>Motif</dt><dd><strong>Enrobage des armatures insuffisant sur la semelle S3</strong></dd>
+            <dt>Action attendue</dt><dd>Reprise de l'enrobage et photo de la semelle avant coulage</dd>
+            <dt>Ouverte le</dt><dd class="num">27 sept. 2026, 20:10 (GMT, Abidjan)</dd>
+            <dt>Par</dt><dd>Bureau de contrôle Démonstration · Contrôleur</dd>
+            <dt>Version examinée</dt><dd><span class="mono">pièce v1</span></dd>
+          </dl>
+        </div>
+        <div class="actions">
+          <span class="btn btn-primary"><svg viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>Proposer une correction</span>
+          <span class="btn btn-secondary">Voir le jalon et ses niveaux</span>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="seg s-ok"></i>Accepté techniquement</span>
+        <span><i class="seg s-review"></i>En examen</span>
+        <span><i class="seg s-sub"></i>Soumis · Resoumis</span>
+        <span><i class="seg s-changes"></i>Corrections demandées</span>
+        <span><i class="seg s-stale"></i>Nouvelle revue requise</span>
+        <span><i class="seg s-draft"></i>Brouillon</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <div class="sec-title"><b>2 · États d'un segment</b><span>La forme et le libellé portent l'état, jamais la couleur seule</span></div>
+    <div class="states">
+      <div class="state"><div class="seg s-draft"></div><b>Brouillon</b><p>Jalon non déclaré par le constructeur.</p><i class="mono">DRAFT</i></div>
+      <div class="state"><div class="seg s-sub"></div><b>Soumis</b><p>Déclaration et pièces transmises, en attente du contrôleur.</p><i class="mono">SUBMITTED</i></div>
+      <div class="state"><div class="seg s-review"></div><b>En examen</b><p>Le contrôleur examine les versions soumises.</p><i class="mono">UNDER_REVIEW</i></div>
+      <div class="state"><div class="seg s-changes"></div><b>Corrections demandées</b><p>Au moins une réserve ouverte. Tout décaissement est bloqué.</p><i class="mono">CHANGES_REQUIRED</i></div>
+      <div class="state"><div class="seg s-sub"></div><b>Resoumis</b><p>Correction proposée, recontrôle attendu. La réserve reste ouverte.</p><i class="mono">RESUBMITTED</i></div>
+      <div class="state"><div class="seg s-ok"></div><b>Accepté techniquement</b><p>Avis conforme, aucune réserve ouverte, sur la version courante.</p><i class="mono">TECHNICALLY_ACCEPTED</i></div>
+      <div class="state"><div class="seg s-stale"></div><b>Nouvelle revue requise</b><p>Pièce modifiée après acceptation : l'avis antérieur est conservé, la version courante doit être revue (T07).</p></div>
+      <div class="state rule"><b>« 1 / 2 jalons acceptés »<br>et jamais « 50 % ».</b><p>La jauge ne cumule rien : un jalon accepté ne compense pas une réserve ouverte sur un autre.</p></div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <div class="sec-title"><b>3 · Version compacte</b><span>Liste des lots, pilotage · segments de 8 px</span></div>
+    <div class="panel" style="overflow:hidden">
+      <table>
+        <thead><tr><th>Lot</th><th>Jalons</th><th></th><th>Prochaine étape</th><th>Qui agit</th><th>Réserves</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="lot"><b>Lot A1</b><small>Awa Koné (cliente fictive)</small></td>
+            <td><div class="mini"><i class="seg s-review"></i><i class="seg s-draft"></i></div></td>
+            <td class="frac num">0 <small>/ 2</small></td>
+            <td>Avis sur les fondations</td>
+            <td>Contrôleur</td>
+            <td class="num">Aucune</td>
+          </tr>
+          <tr>
+            <td class="lot"><b>Lot A2</b><small>Yao Kouassi (client fictif)</small></td>
+            <td><div class="mini"><i class="seg s-changes"></i><i class="seg s-draft"></i></div></td>
+            <td class="frac num">0 <small>/ 2</small></td>
+            <td>Correction de la réserve R-01</td>
+            <td>Constructeur</td>
+            <td><span class="badge b-warn">1 ouverte</span></td>
+          </tr>
+          <tr class="future">
+            <td class="lot"><b>Lot A2</b><small>après recontrôle<span class="tag">scénario, étape 7</span></small></td>
+            <td><div class="mini"><i class="seg s-ok"></i><i class="seg s-draft"></i></div></td>
+            <td class="frac num">1 <small>/ 2</small></td>
+            <td>Déclaration de l'élévation</td>
+            <td>Constructeur</td>
+            <td>1 levée</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section>
+    <div class="sec-title"><b>4 · Mobile</b><span>BUILD, constructeur sur chantier · 375 px</span></div>
+    <div class="row4">
+      <div class="phone">
+        <div class="demo">DÉMONSTRATION — DONNÉES FICTIVES<span>Instance DEMO-CI-20260927-205F</span></div>
+        <div class="m-top"><div class="brand"><span class="logo">K+</span>KEYIMMO AFRIC</div><span class="mono">Menu</span></div>
+        <div class="m-body">
+          <h2>Lot A2 — Bâtiment A</h2>
+          <div class="panel m-card">
+            <div class="m-count"><b>Jalons</b><span><strong class="num">0</strong> / 2 acceptés techniquement</span></div>
+            <div class="gauge cols-2"><div class="seg s-changes"></div><div class="seg s-draft"></div></div>
+            <ul class="m-list">
+              <li><i class="seg s-changes"></i><div><b>Fondations</b><span class="badge b-warn" style="margin-top:6px">Corrections demandées</span>
+                <div class="m-res"><b>Réserve R-01 · 27 sept. 2026</b>Enrobage des armatures insuffisant sur la semelle S3. Attendu : reprise et photo avant coulage.</div>
+                <span class="btn btn-primary m-btn">Proposer une correction</span></div></li>
+              <li><i class="seg s-draft"></i><div><b>Élévation</b><p>Brouillon · déclarable après l'acceptation des fondations</p></div></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <div><h3>Pourquoi des segments égaux</h3><p>Un segment plus large pour un jalon plus coûteux reviendrait à pondérer, donc à calculer un avancement. Chaque jalon a la même place : la jauge dit « où en est chaque étape », pas « combien est fait ».</p></div>
+        <div><h3>Hachures plutôt que couleurs</h3><p>« En examen » et « Corrections demandées » restent distincts en niveaux de gris, à l'impression et pour les daltoniens. Le libellé est toujours affiché à côté.</p></div>
+        <div><h3>Interaction</h3><p>Chaque segment est un bouton focalisable (Tab, Entrée). Le segment sélectionné prend un contour de 2 px à l'encre et ouvre son détail juste en dessous : réserve, action attendue, auteur, version examinée.</p></div>
+        <div><h3>Accessibilité</h3><p>La jauge est une liste ordonnée : « Jalon 1 sur 2, Fondations, Corrections demandées, 1 réserve ouverte ». Le compteur « n / N » est du texte, pas une image.</p></div>
+        <div><h3>Où l'utiliser</h3><p>BUILD (carte du lot, liste des lots), gestionnaire et pilotage. Côté client et sur la page publique, la façade-jauge reprend exactement les mêmes états.</p></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
