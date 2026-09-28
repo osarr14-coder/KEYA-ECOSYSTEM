@@ -30,3 +30,12 @@ class OfflineSyncEnabled(BasePermission):
         if not offline_sync_enabled():
             raise NotFound('Synchronisation hors ligne non disponible dans cette démonstration.')
         return True
+
+
+class PublicWorksitesEnabled(BasePermission):
+    """PO-2026-09-28-38 : chantiers publics (état réel des lots) coupés."""
+
+    def has_permission(self, request, view):
+        if not getattr(settings, 'KEYA_PUBLIC_WORKSITES_ENABLED', False):
+            raise NotFound('Ressource introuvable.')
+        return True

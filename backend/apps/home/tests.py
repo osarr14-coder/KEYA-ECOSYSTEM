@@ -500,7 +500,8 @@ class TestClientCanOpenALitige:
         assert response.data['status'] == 'ouvert'
         assert str(response.data['lot']) == str(lot.id)
         # Adapté selon PO-2026-09-28-36 : « organisation · rôle », jamais l'e-mail.
-        assert response.data['opened_by_label'].endswith('Client(e)')
+        # Adapté selon PO-2026-09-28-40 : plus de « Client(e) » ; rôle du rattachement.
+        assert response.data['opened_by_label'].endswith('· Client')
         assert client_user.email not in str(response.data)
         assert response.data['resolved_at'] is None
 

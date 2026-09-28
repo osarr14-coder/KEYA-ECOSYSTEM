@@ -292,7 +292,7 @@ function ReservationRow({ reservation, onOpen }: { reservation: AdminReservation
   return (
     <tr data-testid="reservation-row">
       <td>
-        {/* PO-2026-09-28-34 : « Nom fictif · Client(e) ». */}
+        {/* PO-2026-09-28-34 / -40 : « Awa Koné · Cliente fictive » (rôle du jeu de démo). */}
         <div>
           <strong>{clientLabel(reservation)}</strong>
           <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{` · ${reservation.client.role}`}</span>

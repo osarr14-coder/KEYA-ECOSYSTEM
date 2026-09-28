@@ -88,6 +88,15 @@ remplacée n'est jamais effacée : elle est marquée « REMPLACÉE PAR » avec l
 | PO-2026-09-28-35 | Export CSV « Tous les lots » (BUILD) | Ajouter les colonnes « Prochaine étape » et « Qui agit ». | Product Owner | BUILD. |
 | PO-2026-09-28-36 | E-mails (suite de PO-2026-09-28-22) | La règle « organisation · rôle » s'applique aussi à la **messagerie** et au **support**. Les journaux techniques non affichés gardent l'e-mail ; vérifier qu'ils ne contiennent **ni secret ni mot de passe** (CDC §10). | Product Owner | Messagerie, support, journaux. |
 
+## 28 septembre 2026 — arbitrages du Product Owner après l'étape 7
+
+| ID | Sujet | Décision | Auteur | Portée |
+|---|---|---|---|---|
+| PO-2026-09-28-37 | Test instable de l'app Contrôle (suite de PO-2026-09-28-23 / -30) | Le test du conflit de synchronisation n'est **exécuté que si le hors ligne est activé** (marqueur conditionnel sur le réglage, décision citée). Il n'est pas supprimé. | Product Owner | App Contrôle (tests). |
+| PO-2026-09-28-38 | Chantiers publics | `/api/public/worksites/` **coupé** derrière un réglage désactivé par défaut (« introuvable »). Test exigé : aucune route anonyme ne renvoie d'état de lot, de jalon ou de dossier. | Product Owner | API publique. |
+| PO-2026-09-28-39 | Réactivation du hors ligne | Rédiger `docs/demo/REACTIVATION_HORS_LIGNE.md` : prérequis avant toute réactivation (garde d'affectation sur les routes de synchronisation, isolation IndexedDB du test, date de saisie et date serveur affichées). | Product Owner | Documentation. |
+| PO-2026-09-28-40 | Clients du jeu de démo (remplace l'affichage de PO-2026-09-28-34) | Noms sans « (cliente fictive) » ; affichage **« Awa Koné · Cliente fictive »**, **« Yao Kouassi · Client fictif »**. Le rôle affiché vient du jeu de démo, jamais « Client(e) ». | Product Owner | Jeu de démo, back-office. |
+
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
 | Sujet | Question au PO |

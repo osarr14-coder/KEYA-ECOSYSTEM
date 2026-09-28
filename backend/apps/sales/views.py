@@ -5,6 +5,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.backoffice.permissions import IsFinance, IsGestionnaireADV, IsKeyimmoTeam
+from apps.core.deferred import PublicWorksitesEnabled
 from apps.evidence.permissions import IsConstructeur
 
 from . import public, services
@@ -80,10 +81,11 @@ class PublicOfferView(APIView):
 
 class PublicWorksitesView(APIView):
     """`GET /api/public/worksites/` — ticket B-057. Avancement des chantiers
-    en cours, jalon par jalon, sans aucune donnée client."""
+    en cours, jalon par jalon, sans aucune donnée client. PO-2026-09-28-38 :
+    coupé (« introuvable ») tant que `KEYA_PUBLIC_WORKSITES_ENABLED` est faux."""
 
     authentication_classes = []
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [PublicWorksitesEnabled, permissions.AllowAny]
     throttle_scope = 'public'
     throttle_classes = [ScopedRateThrottle]
 

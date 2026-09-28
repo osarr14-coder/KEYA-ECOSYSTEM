@@ -422,7 +422,7 @@ export interface AdminReservation {
   program: { id: string; name: string };
   organization: { id: string; name: string };
   /** PO-2026-09-28-22 : le client est identifié par son nom fictif, jamais par son e-mail. */
-  client: { id: string; full_name: string; role: string; /** PO-2026-09-28-34 : « Nom fictif · Client(e) ». */ label?: string };
+  client: { id: string; full_name: string; role: string; /** PO-2026-09-28-34 / -40 : « Awa Koné · Cliente fictive ». */ label?: string };
   /** PO-2026-09-28-27 : jauge compacte du chantier du lot (calculée par le serveur). */
   worksite?: WorksiteGauge | null;
   cancellation_reason: string;
@@ -642,7 +642,7 @@ export interface PaymentNotice {
   lot: { id: string; name: string };
   reservation: { id: string; status: ReservationStatus; status_label: string };
   /** PO-2026-09-28-22 : le client est identifié par son nom fictif, jamais par son e-mail. */
-  client: { id: string; full_name: string; role: string; /** PO-2026-09-28-34 : « Nom fictif · Client(e) ». */ label?: string };
+  client: { id: string; full_name: string; role: string; /** PO-2026-09-28-34 / -40 : « Awa Koné · Cliente fictive ». */ label?: string };
   payment_call: { id: string; kind: PaymentCallKind; kind_label: string; tier_label: string; amount: string };
   amount: string;
   currency: string;
@@ -671,7 +671,7 @@ export interface FinanceReceipt extends PaymentNoticeReceipt {
   lot: { id: string; name: string };
   reservation: { id: string; status: ReservationStatus; status_label: string };
   /** PO-2026-09-28-22 : le client est identifié par son nom fictif, jamais par son e-mail. */
-  client: { id: string; full_name: string; role: string; /** PO-2026-09-28-34 : « Nom fictif · Client(e) ». */ label?: string };
+  client: { id: string; full_name: string; role: string; /** PO-2026-09-28-34 / -40 : « Awa Koné · Cliente fictive ». */ label?: string };
   notices: { id: string; client_reference: string; status: PaymentNotice['status']; status_label: string }[];
 }
 

@@ -83,3 +83,6 @@ KEYA_DEFERRED_MODULES_ENABLED = True
 # tests existants continuent d'exercer le code ; la coupure est testée
 # explicitement (apps/sales/test_audit_ui_r1_step7.py).
 KEYA_OFFLINE_SYNC_ENABLED = True
+# PO-2026-09-28-38 : idem pour les chantiers publics ; la coupure est testée
+# explicitement (apps/sales/test_audit_ui_r1_step8.py).
+KEYA_PUBLIC_WORKSITES_ENABLED = True

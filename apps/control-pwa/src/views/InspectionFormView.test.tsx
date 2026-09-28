@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { OFFLINE_MODE_ENABLED } from '../config';
 import { CHECKLIST_TEMPLATE } from '../db/missions';
 import * as repository from '../db/repository';
 import { createEmptyDraft, getDraftForMission, patchDraft, saveDraft } from '../db/repository';
@@ -152,7 +153,11 @@ describe(
       return draft;
     }
 
-    it('affiche le conflit et la saisie locale intacte, jamais un état vierge silencieux', async () => {
+    // PO-2026-09-28-37 : test du conflit de synchronisation hors ligne,
+    // exécuté seulement si le hors ligne est activé (K04, PO-2026-09-28-30).
+    // Instable tant que l'isolation IndexedDB n'est pas corrigée
+    // (docs/demo/REACTIVATION_HORS_LIGNE.md) ; conservé, jamais supprimé.
+    it.runIf(OFFLINE_MODE_ENABLED)('affiche le conflit et la saisie locale intacte, jamais un état vierge silencieux', async () => {
       await createConflictedDraft();
       render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
 

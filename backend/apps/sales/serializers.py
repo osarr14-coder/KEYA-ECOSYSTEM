@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from apps.organizations.identity import actor_label
+from apps.organizations.identity import SEPARATOR, actor_label, actor_parts
 
 from .models import (
     DEFAULT_CURRENCY, ContractVersion, CustomerReceipt, PaymentCall, PaymentCallKind, PaymentNotice, Reservation,
@@ -15,21 +15,23 @@ def _person(user, expected_role=''):
     return actor_label(user, expected_role) if user else None
 
 
-CLIENT_ROLE = 'Client(e)'
+def _client_parts(client):
+    """(nom, rôle) du client : son nom et le libellé de rôle du jeu de démo
+    (PO-2026-09-28-40 : « Awa Koné · Cliente fictive »), jamais son e-mail."""
+    _organization, role = actor_parts(client, 'client')
+    return (client.full_name or 'Client'), (role or 'Client')
 
 
 def client_label(client):
-    """PO-2026-09-28-34 : « Nom fictif · Client(e) », jamais l'e-mail."""
-    return f'{client.full_name} · {CLIENT_ROLE}' if client.full_name else CLIENT_ROLE
+    """PO-2026-09-28-34 / -40 : « Nom · rôle du jeu de démo »."""
+    return SEPARATOR.join(_client_parts(client))
 
 
 def _client(client):
     """Client d'un dossier : compte personnel, sans organisation affichable.
-    Son nom fictif l'identifie, jamais son e-mail (PO-2026-09-28-22, -34)."""
-    return {
-        'id': str(client.id), 'full_name': client.full_name or 'Client', 'role': CLIENT_ROLE,
-        'label': client_label(client),
-    }
+    Son nom l'identifie, jamais son e-mail (PO-2026-09-28-22, -34, -40)."""
+    name, role = _client_parts(client)
+    return {'id': str(client.id), 'full_name': name, 'role': role, 'label': SEPARATOR.join((name, role))}
 
 
 def _money(value):

@@ -136,13 +136,14 @@ EMAIL = re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')
 @pytest.mark.django_db
 class TestPeopleLabels:
     def test_the_client_reads_fictive_name_then_client_in_back_office_lists(self):
-        """PO-2026-09-28-34 : « Nom fictif · Client(e) »."""
+        """PO-2026-09-28-34, précisé par -40 : « Awa Koné · Cliente fictive »."""
         _reserve_and_examine()
         rows = _login(ADV).get(reverse('reservation-admin-list')).data
         rows = rows['results'] if isinstance(rows, dict) else rows
         client = next(row['client'] for row in rows if row['lot']['name'] == 'Lot A1')
-        assert client['role'] == 'Client(e)'
-        assert client['label'] == f"{client['full_name']} · Client(e)"
+        # Adapté selon PO-2026-09-28-40 : rôle venu du jeu de démo.
+        assert client['role'] == 'Cliente fictive'
+        assert client['label'] == f"{client['full_name']} · Cliente fictive"
         assert client['label'].startswith('Awa Koné')
 
     def test_messages_name_their_author_by_organization_and_role(self):

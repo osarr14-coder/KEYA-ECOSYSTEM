@@ -65,9 +65,15 @@ ACCOUNTS = [
     ('finance.demo@keya.test', 'Finance (démo)', 'finance', KEYIMMO_ORG),
     ('constructeur.demo@keya.test', 'Constructeur (démo)', 'constructeur', PROMOTER_ORG),
     ('inspecteur.demo@keya.test', 'Bureau de contrôle (démo)', 'inspecteur', CONTROL_ORG),
-    ('client1.demo@keya.test', 'Awa Koné (cliente fictive)', 'client', None),
-    ('client2.demo@keya.test', 'Yao Kouassi (client fictif)', 'client', None),
+    ('client1.demo@keya.test', 'Awa Koné', 'client', None),
+    ('client2.demo@keya.test', 'Yao Kouassi', 'client', None),
 ]
+# PO-2026-09-28-40 : le nom ne porte plus la mention ; le rôle affiché vient du
+# jeu de démo (« Awa Koné · Cliente fictive », « Yao Kouassi · Client fictif »).
+ROLE_LABELS = {
+    'client1.demo@keya.test': 'Cliente fictive',
+    'client2.demo@keya.test': 'Client fictif',
+}
 
 # CDC §9.1 : prix fictif 30 000 000 XOF.
 LOTS = [('Lot A1', Decimal('82.00')), ('Lot A2', Decimal('75.00'))]
@@ -119,6 +125,10 @@ class Command(BaseCommand):
                 if not created and membership.role_id != role.id:
                     membership.role = role
                     membership.save(update_fields=['role'])
+                role_label = ROLE_LABELS.get(email, '')
+                if membership.role_label != role_label:
+                    membership.role_label = role_label
+                    membership.save(update_fields=['role_label'])
                 self.stdout.write(f'  {email} — {role_code}')
 
             instance = self._ensure_demo_instance()

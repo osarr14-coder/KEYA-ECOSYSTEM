@@ -70,6 +70,9 @@ class Membership(models.Model):
     role = models.ForeignKey(
         Role, on_delete=models.PROTECT, related_name='memberships',
     )
+    # PO-2026-09-28-40 : libellé affiché du rôle pour CE rattachement, fourni
+    # par le jeu de démo (ex. « Cliente fictive »). Vide : libellé du rôle.
+    role_label = models.CharField(max_length=60, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

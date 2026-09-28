@@ -25,8 +25,7 @@ ROLE_DISPLAY = {
     'gestionnaire_adv': 'Gestionnaire',
     'finance': 'Finance',
     'admin_keyimmo': 'Administrateur',
-    # PO-2026-09-28-34 : « Nom fictif · Client(e) » dans le back-office.
-    'client': 'Client(e)',
+    'client': 'Client',
     'sponsor': 'Constructeur',
     'notaire': 'Notaire',
 }
@@ -72,10 +71,12 @@ def actor_parts(user, expected_role='', cache=None):
     else:
         organization = chosen.organization.name
         if organization.startswith(PERSONAL_ACCOUNT_PREFIX):
-            # Compte personnel d'un client : son nom fictif, jamais l'e-mail
-            # que porte le nom de l'organisation (PO-2026-09-28-34).
+            # Compte personnel d'un client : son nom, jamais l'e-mail que porte
+            # le nom de l'organisation (PO-2026-09-28-34 / -40).
             organization = user.full_name if chosen.role.code == 'client' else ''
-        role = ROLE_DISPLAY.get(chosen.role.code) or (chosen.role.label or '').capitalize()
+        # PO-2026-09-28-40 : libellé du rattachement fourni par le jeu de démo
+        # (« Cliente fictive »), sinon libellé du rôle.
+        role = chosen.role_label or ROLE_DISPLAY.get(chosen.role.code) or (chosen.role.label or '').capitalize()
         parts = (organization, role)
     if cache is not None:
         cache[key] = parts

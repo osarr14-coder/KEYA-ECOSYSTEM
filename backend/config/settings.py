@@ -221,6 +221,10 @@ KEYA_DEFERRED_MODULES_ENABLED = config('KEYA_DEFERRED_MODULES_ENABLED', default=
 # (`/api/control/sync/…`) coupée dans le MVP — « introuvable » tant que ce
 # réglage est faux. Code conservé pour le Projet 1, jamais supprimé.
 KEYA_OFFLINE_SYNC_ENABLED = config('KEYA_OFFLINE_SYNC_ENABLED', default=False, cast=bool)
+# PO-2026-09-28-38 : `/api/public/worksites/` (état réel des lots) coupé —
+# « introuvable » tant que ce réglage est faux. Aucune route anonyme ne
+# renvoie d'état de lot, de jalon ou de dossier.
+KEYA_PUBLIC_WORKSITES_ENABLED = config('KEYA_PUBLIC_WORKSITES_ENABLED', default=False, cast=bool)
 
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 
