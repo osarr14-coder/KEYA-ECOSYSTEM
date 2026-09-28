@@ -119,3 +119,24 @@ describe('ClientPaymentCallsPanel — paiement par le client (ticket F-071)', ()
     expect(screen.getByRole('button', { name: 'Signaler mon virement' })).toBeInTheDocument();
   });
 });
+
+describe('Lot 1 — reste à verser (PO-2026-09-28-43, P27)', () => {
+  it('après un versement partiel, les instructions de virement portent le reste à verser', async () => {
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([call({
+        kind: 'premier_versement', kind_label: 'Premier versement', amount: '12000000.00',
+        settled_amount: '5000000.00', remaining_amount: '7000000.00', settlement: 'partial',
+        payment_reference: 'KEYA-1A2B3C4D',
+        payment_instructions: {
+          beneficiary: 'Compte du programme (simulé)', bank: 'Banque fictive', iban: 'CI00 DEMO', simulation: true,
+        },
+        notice: null,
+      })]),
+    });
+    render(withApiClient(api, <ClientPaymentCallsPanel reservationId="reservation-1" />));
+
+    const amount = await screen.findByTestId('instruction-amount');
+    expect(amount.textContent!.replace(/\s/g, ' ')).toBe('7 000 000 XOF');
+    expect(screen.getByText('Reste à verser')).toBeInTheDocument();
+  });
+});

@@ -6,6 +6,7 @@ from apps.organizations.identity import SEPARATOR, actor_label, actor_parts
 
 from .models import (
     DEFAULT_CURRENCY, ContractVersion, CustomerReceipt, PaymentCall, PaymentCallKind, PaymentNotice, Reservation,
+    ReservationStatus,
 )
 
 
@@ -85,9 +86,33 @@ class ReservationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'status', 'status_label', 'held_until', 'price_amount', 'currency',
             'lot', 'program', 'organization', 'cancellation_reason', 'validated_at', 'created_at', 'updated_at',
-            'payment_schedule',
+            'payment_schedule', 'ended_at', 'ended_by',
         ]
         read_only_fields = fields
+
+    ended_at = serializers.SerializerMethodField()
+    ended_by = serializers.SerializerMethodField()
+
+    def get_ended_at(self, reservation):
+        """PO-2026-09-28-43 : date serveur de l'annulation ou de l'expiration.
+        Dossiers antérieurs au champ : date de la dernière mise à jour, qui
+        est celle de la sortie (plus aucune écriture ensuite)."""
+        if reservation.status not in (ReservationStatus.CANCELLED, ReservationStatus.EXPIRED):
+            return None
+        return (reservation.ended_at or reservation.updated_at).isoformat()
+
+    def get_ended_by(self, reservation):
+        """Qui a mis fin au blocage, lisible par le client sans e-mail ni nom
+        de personne (PO-2026-09-28-18) : `{kind, label}`, `kind` =
+        `expired` (échéance atteinte), `client` (lui-même) ou `team`
+        (« organisation · rôle »)."""
+        if reservation.status == ReservationStatus.EXPIRED:
+            return {'kind': 'expired', 'label': None}
+        if reservation.status != ReservationStatus.CANCELLED:
+            return None
+        if reservation.cancelled_by_id is None or reservation.cancelled_by_id == reservation.client_id:
+            return {'kind': 'client', 'label': None}
+        return {'kind': 'team', 'label': _person(reservation.cancelled_by, 'gestionnaire_adv')}
 
     def get_lot(self, reservation):
         lot = reservation.lot
@@ -203,12 +228,14 @@ class PaymentCallSerializer(serializers.ModelSerializer):
     allocated_amount = serializers.SerializerMethodField()
     settled_amount = serializers.SerializerMethodField()
     settlement = serializers.SerializerMethodField()
+    remaining_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = PaymentCall
         fields = [
             'id', 'reservation', 'kind', 'kind_label', 'tier_code', 'tier_label', 'cumulative_cap_percent',
             'amount', 'currency', 'issued_by', 'issued_at', 'allocated_amount', 'settled_amount', 'settlement',
+            'remaining_amount',
         ]
         read_only_fields = fields
 
@@ -220,6 +247,14 @@ class PaymentCallSerializer(serializers.ModelSerializer):
 
     def get_settled_amount(self, call):
         return _money(getattr(call, 'settled_total', None))
+
+    def get_remaining_amount(self, call):
+        """PO-2026-09-28-43 (P27) : reste à verser, calculé ici sur les seuls
+        encaissements rapprochés et affectés (jamais par le frontend)."""
+        settled = getattr(call, 'settled_total', None)
+        if settled is None:
+            return None
+        return _money(max(call.amount - settled, 0))
 
     def get_settlement(self, call):
         """`to_pay` / `partial` / `settled` — couvert seulement par des

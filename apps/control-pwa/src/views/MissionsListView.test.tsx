@@ -248,3 +248,18 @@ describe('MissionsListView — résultat de l’avis et identité de la mission 
     })).toBe('Non conforme · 2 réserves levées · 1 réserve maintenue');
   });
 });
+
+describe('MissionsListView — rafraîchissement en ligne (PO-2026-09-28-51)', () => {
+  it('relit la liste au retour sur la fenêtre : une mission affectée entre-temps apparaît', async () => {
+    const loadMissions = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([FIXTURE_MISSIONS[0]]);
+    render(<MissionsListView onSelectMission={() => {}} loadMissions={loadMissions} />);
+    await waitFor(() => expect(loadMissions).toHaveBeenCalledTimes(1));
+
+    fireEvent.focus(window);
+
+    await waitFor(() => expect(loadMissions).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(FIXTURE_MISSIONS[0].lotName, { exact: false })).toBeInTheDocument();
+  });
+});

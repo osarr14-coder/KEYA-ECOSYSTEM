@@ -93,3 +93,25 @@ describe('createApiClient — onUnauthorized (ticket F-033, vague 4)', () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 });
+
+describe('createApiClient — rafraîchissement après une action (PO-2026-09-28-51)', () => {
+  it('publie « données changées » après une écriture réussie, jamais après une lecture ni un refus', async () => {
+    const listener = vi.fn();
+    window.addEventListener('keya:data-changed', listener);
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'token' });
+    try {
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ id: 'r-1' })));
+      await client.getMe();
+      expect(listener).not.toHaveBeenCalled();
+
+      await client.createProgramRequest('Projet fictif');
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ detail: 'refus' }, 409)));
+      await expect(client.createProgramRequest('Projet fictif')).rejects.toBeInstanceOf(ApiError);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('keya:data-changed', listener);
+    }
+  });
+});

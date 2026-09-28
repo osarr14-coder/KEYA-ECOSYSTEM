@@ -75,6 +75,9 @@ class Reservation(models.Model):
         related_name='validated_reservations',
     )
     validated_at = models.DateTimeField(null=True, blank=True)
+    # PO-2026-09-28-43 (lot 1) : date serveur de la sortie (annulation ou
+    # expiration), montrée au client avec son motif (CDC §6.1).
+    ended_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

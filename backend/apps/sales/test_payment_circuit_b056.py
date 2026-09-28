@@ -74,14 +74,19 @@ class TestAdvValidation:
         assert calls[0]['notice'] is None
         assert _sources(client) == ['payment_call_to_pay']
 
-    def test_validation_restarts_the_payment_delay(self):
+    def test_validation_keeps_the_hold_deadline(self):
+        # Adapté selon PO-2026-09-28-50 (A1) : la validation du dossier ne
+        # reporte plus l'échéance du blocage (CDC §6.1). L'ancien test
+        # « test_validation_restarts_the_payment_delay » vérifiait le report.
         _client, _user, adv, _finance, promoter, _lot, reservation_id = _scenario()
         set_rls_context(organization_id=promoter.id)
-        Reservation.objects.filter(id=reservation_id).update(held_until=timezone.now() + timedelta(minutes=5))
+        deadline = timezone.now() + timedelta(minutes=5)
+        Reservation.objects.filter(id=reservation_id).update(held_until=deadline)
 
-        held_until = timezone.datetime.fromisoformat(_validate(adv, reservation_id, promoter).data['held_until'])
+        response = _validate(adv, reservation_id, promoter)
 
-        assert held_until - timezone.now() > timedelta(hours=23)
+        assert response.status_code == 200, response.data
+        assert timezone.datetime.fromisoformat(response.data['held_until']) == deadline
 
     def test_validation_is_refused_twice_or_on_an_expired_hold(self):
         _client, _user, adv, _finance, promoter, _lot, reservation_id = _scenario()

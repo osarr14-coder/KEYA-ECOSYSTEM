@@ -93,12 +93,14 @@ def _expire_if_overdue(reservation, now):
     if reservation.payment_notices.filter(status=PaymentNoticeStatus.DECLARED).exists():
         return False
     reservation.status = ReservationStatus.EXPIRED
-    reservation.save(update_fields=['status', 'updated_at'])
+    reservation.ended_at = now
+    reservation.save(update_fields=['status', 'ended_at', 'updated_at'])
     _set_lot_status(reservation.lot, LotCommercialStatus.DISPONIBLE)
     audit.record(
         organization_id=reservation.organization_id, actor=None, action='reservation.expired',
         obj=reservation, payload={'lot_id': str(reservation.lot_id), 'held_until': reservation.held_until.isoformat()},
     )
+    notifications.reservation_ended(reservation)
     return True
 
 
@@ -329,12 +331,14 @@ def _cancel(reservation, *, actor, reason):
     reservation.status = ReservationStatus.CANCELLED
     reservation.cancelled_by = actor
     reservation.cancellation_reason = reason
-    reservation.save(update_fields=['status', 'cancelled_by', 'cancellation_reason', 'updated_at'])
+    reservation.ended_at = now
+    reservation.save(update_fields=['status', 'cancelled_by', 'cancellation_reason', 'ended_at', 'updated_at'])
     _set_lot_status(reservation.lot, LotCommercialStatus.DISPONIBLE)
     audit.record(
         organization_id=reservation.organization_id, actor=actor, action='reservation.cancelled',
         obj=reservation, payload={'lot_id': str(reservation.lot_id)}, justification=reason,
     )
+    notifications.reservation_ended(reservation)
 
 
 def has_blocking_reservation(lot):
@@ -816,10 +820,11 @@ def issue_payment_call(*, actor, caller_organization_id, target_organization_id,
 
 def validate_reservation(*, actor, caller_organization_id, target_organization_id, reservation_id):
     """Ticket B-056 — l'ADV (ou l'admin) valide le dossier d'une réservation
-    bloquée et émet, dans la même transaction, l'appel « Frais ». Le délai de
-    paiement est relancé à partir de la validation (le client dispose du
-    délai complet après l'appel). Écart assumé au CDC §6.1 (décision
-    utilisateur)."""
+    bloquée et émet, dans la même transaction, l'appel « Frais ».
+    PO-2026-09-28-50 (A1) : l'échéance du blocage n'est **pas** reportée à la
+    validation (CDC §6.1 : blocage de 24 h, suspendu seulement après
+    l'enregistrement d'un encaissement simulé). L'ancien report B-056 est
+    retiré."""
     try:
         set_rls_context(organization_id=target_organization_id)
         reservation = _team_reservation(reservation_id, lock=True)
@@ -834,8 +839,7 @@ def validate_reservation(*, actor, caller_organization_id, target_organization_i
         now = timezone.now()
         reservation.validated_by = actor
         reservation.validated_at = now
-        reservation.held_until = max(reservation.held_until, now + _hold_duration())
-        reservation.save(update_fields=['validated_by', 'validated_at', 'held_until', 'updated_at'])
+        reservation.save(update_fields=['validated_by', 'validated_at', 'updated_at'])
         audit.record(
             organization_id=reservation.organization_id, actor=actor, action='reservation.validated',
             obj=reservation, payload={'held_until': reservation.held_until.isoformat()},

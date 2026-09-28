@@ -220,3 +220,25 @@ describe('createApiClient — corps de réponse 200 VRAIMENT vide (ticket F-030)
     },
   );
 });
+
+describe('createApiClient — rafraîchissement après une action (PO-2026-09-28-51)', () => {
+  it('publie « données changées » après une écriture réussie, jamais après une lecture ni un refus', async () => {
+    const listener = vi.fn();
+    window.addEventListener('keya:data-changed', listener);
+    const client = createApiClient({ baseUrl: 'http://api.test', getAccessToken: () => 'token' });
+    try {
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, { id: 'u-1' })));
+      await client.getMe();
+      expect(listener).not.toHaveBeenCalled();
+
+      await client.deactivateUser('u-1');
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(409, { detail: 'refus' })));
+      await expect(client.deactivateUser('u-1')).rejects.toBeInstanceOf(ApiError);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('keya:data-changed', listener);
+    }
+  });
+});

@@ -134,3 +134,73 @@ describe('ClientSalesView — catalogue et réservation (ticket F-066)', () => {
     await waitFor(() => expect(cancelMyReservation).toHaveBeenCalledWith('reservation-1'));
   });
 });
+
+describe('Lot 1 — cohérence de l’espace client (PO-2026-09-28-43)', () => {
+  it('P28 — une annulation par le gestionnaire est affichée en tête, datée, attribuée et motivée', async () => {
+    renderView({
+      getMyReservations: vi.fn().mockResolvedValue([reservation({
+        status: 'cancelled', status_label: 'Annulée', cancellation_reason: 'Dossier incomplet (motif fictif)',
+        ended_at: '2026-09-28T16:05:00Z',
+        ended_by: { kind: 'team', label: 'KEYIMMO AFRIC démo · Gestionnaire' },
+      })]),
+    });
+
+    const notice = await screen.findByTestId('reservation-ended');
+    expect(notice).toHaveTextContent('Votre réservation a été annulée — Résidence Démonstration Abidjan / Lot A12');
+    expect(notice).toHaveTextContent(
+      'Réservation annulée le 28 sept. 2026, 16:05 (GMT, Abidjan) par KEYIMMO AFRIC démo · Gestionnaire '
+      + '— motif : Dossier incomplet (motif fictif) : le bien a été libéré.',
+    );
+  });
+
+  it('P28 — une annulation à la demande du client le dit, sans nommer personne', async () => {
+    renderView({
+      getMyReservations: vi.fn().mockResolvedValue([reservation({
+        status: 'cancelled', status_label: 'Annulée', ended_at: '2026-09-28T16:05:00Z', ended_by: { kind: 'client', label: null },
+      })]),
+    });
+
+    expect(await screen.findByTestId('reservation-ended')).toHaveTextContent('à votre demande');
+  });
+
+  it('T02 — une expiration est affichée en tête avec son échéance et la possibilité de refaire une demande', async () => {
+    renderView({
+      getMyReservations: vi.fn().mockResolvedValue([reservation({
+        status: 'expired', status_label: 'Expirée', ended_at: '2026-09-28T14:31:00Z', ended_by: { kind: 'expired', label: null },
+      })]),
+    });
+
+    const notice = await screen.findByTestId('reservation-ended');
+    expect(notice).toHaveTextContent('Votre blocage a expiré');
+    expect(notice).toHaveTextContent('avant l’échéance du 28 sept. 2026, 14:30 (GMT, Abidjan)');
+    expect(notice).toHaveTextContent('vous pouvez refaire une demande');
+    expect(await screen.findByRole('button', { name: 'Réserver ce bien' })).toBeEnabled();
+  });
+
+  it('aucun avis de fin quand la réservation la plus récente est active', async () => {
+    renderView({
+      getMyReservations: vi.fn().mockResolvedValue([
+        reservation({ id: 'reservation-2' }),
+        reservation({ status: 'cancelled', status_label: 'Annulée', ended_at: '2026-09-27T10:00:00Z' }),
+      ]),
+    });
+
+    await screen.findAllByTestId('reservation');
+    expect(screen.queryByTestId('reservation-ended')).not.toBeInTheDocument();
+  });
+
+  it('P29 — après un refus (T01), le catalogue se recharge et le motif reste affiché', async () => {
+    const requestReservation = vi.fn().mockRejectedValue(
+      new ApiError(409, 'conflict', { detail: "Ce lot n'est plus disponible à la réservation." }),
+    );
+    const getCatalogLots = vi.fn().mockResolvedValueOnce([LOT]).mockResolvedValue([]);
+    renderView({ requestReservation, getCatalogLots });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Réserver ce bien' }));
+
+    expect(await screen.findByText("Ce lot n'est plus disponible à la réservation.")).toBeInTheDocument();
+    expect(await screen.findByText("Aucun bien n'est disponible à la réservation pour le moment.")).toBeInTheDocument();
+    expect(screen.getByText('Bien demandé : Résidence Démonstration Abidjan — Lot A12.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Réserver ce bien' })).not.toBeInTheDocument();
+  });
+});

@@ -112,6 +112,21 @@ Audit de référence : `docs/audit/AUDIT_PARCOURS_R1.md` (branche `audit/parcour
 | PO-2026-09-28-47 | Lot 5 — Archivage (P13 ; remplace PO-2026-09-28-25) | PO-2026-09-28-25 est **révisée** : l'archivage d'instance consultable en lecture seule entre dans le **périmètre de réception (T14)**. Base : `docs/demo/ARCHIVE_INSTANCE_PROPOSITION.md`. | Product Owner | Serveur, toutes apps, procédure T14. |
 | PO-2026-09-28-48 | Mise en route (P01 à P06) | Hors lots : inscrites au **plan de déploiement Render** — README racine, worker Celery, ports Postgres, `--dry-run` robuste aux migrations en attente, procédure de réinitialisation cohérente. Render reste soumis à l'accord du PO. | Product Owner | Documentation, exploitation. |
 
+## 28 septembre 2026 — validation du plan en lots et arbitrages A1 à A7
+
+Plan : `docs/plans/PLAN_LOTS_APRES_AUDIT_PARCOURS_R1.md`.
+
+| ID | Sujet | Décision | Auteur | Portée |
+|---|---|---|---|---|
+| PO-2026-09-28-49 | Ordre des lots | Plan validé. Lots 1, 2, 3 (jalon **« démo présentable »**), puis arrêt pour une répétition de démonstration, puis lot 4, puis lot 5. **Arrêt pour relecture après chaque lot.** | Product Owner | Organisation. |
+| PO-2026-09-28-50 | A1 — Blocage pendant l'examen du dossier | **Aucun report** du blocage à l'examen du dossier. Règle du CDC §6.1 : blocage de 24 h, suspendu **uniquement** après l'enregistrement d'un encaissement simulé, pour la revue Finance. Le report appliqué par le code est retiré et les tests adaptés en citant cette décision. | Product Owner | Serveur (réservation), tests. |
+| PO-2026-09-28-51 | A2 — Rafraîchissement | Rafraîchissement **immédiat après chaque action** de l'utilisateur, **au retour sur la fenêtre** et **toutes les 15 s**. La cloche aussi. | Product Owner | Toutes apps. |
+| PO-2026-09-28-52 | A3 — Sources du pilotage | Le gestionnaire voit le **total des décaissements**, sans le détail réservé à Finance (PO-2026-09-28-16). | Product Owner | Pilotage (lot 4). |
+| PO-2026-09-28-53 | A4 — Pièces exigées (jeu de démonstration, fictives, marquées démo) | **Fondations** : plan d'implantation ; photo des fouilles ; photo des armatures avant coulage ; bon de livraison du béton. **Élévation** : photo de chaque niveau ; photo des chaînages ; relevé de conformité aux plans. Indicateur « Pièces » : déposées / exigées, **sans assimiler présence et conformité** (§9.3). | Product Owner | Jeu `DEMO-CI-v1`, pilotage (lot 4). |
+| PO-2026-09-28-54 | A5 — Connexion | Règle de limitation conservée. La procédure de démonstration prévoit d'**ouvrir une fenêtre par rôle, à 15 s d'intervalle, avant la présentation**. | Product Owner | Procédure de démonstration (lot 3). |
+| PO-2026-09-28-55 | A6 — Archives | Responsable : **Product Owner**. Accès en **lecture seule pour l'administrateur et le gestionnaire** ; pas pour les clients dans le MVP. Rétention : **jusqu'à 90 jours après la fin de la campagne investisseurs**, puis **suppression tracée**. Lot 5 réestimé sur ce périmètre. | Product Owner | Lot 5, §10. |
+| PO-2026-09-28-56 | A7 — Vérification de T02 | Blocage d'**1 h autorisé sur l'instance locale uniquement**, pour vérifier T02 par l'interface, puis remis à 24 h. **Jamais sur Render.** | Product Owner | Instance locale. |
+
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
 | Sujet | Question au PO |

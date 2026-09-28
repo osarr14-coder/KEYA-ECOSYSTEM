@@ -180,6 +180,16 @@ export interface Reservation {
   /** Audit UI R1 (C03, C04, C06) — échéancier fictif du contrat (barème du
    * Country Pack), `null` sans barème actif. */
   payment_schedule?: PaymentSchedule | null;
+  /** PO-2026-09-28-43 (lot 1) — date serveur de l'annulation ou de
+   * l'expiration, et qui y a mis fin (`team` : « organisation · rôle »,
+   * jamais un e-mail). `null` tant que la réservation est active. */
+  ended_at?: string | null;
+  ended_by?: ReservationEndedBy | null;
+}
+
+export interface ReservationEndedBy {
+  kind: 'expired' | 'client' | 'team';
+  label: string | null;
 }
 
 export interface PaymentScheduleRow {
@@ -239,6 +249,9 @@ export interface ClientPaymentCall {
   issued_at: string;
   settled_amount: string | null;
   settlement: 'to_pay' | 'partial' | 'settled' | null;
+  /** PO-2026-09-28-43 (P27) — reste à verser, calculé par le serveur sur les
+   * seuls encaissements rapprochés et affectés. */
+  remaining_amount?: string | null;
   /** Ticket F-071 (backend B-056) — référence à indiquer sur le virement et
    * coordonnées bancaires FICTIVES ; dernière déclaration du client. */
   payment_reference?: string;

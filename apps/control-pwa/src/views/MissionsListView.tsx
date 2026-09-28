@@ -9,6 +9,9 @@ import { getCachedMissions, getDraftForMission } from '../db/repository';
 import { MISSIONS_UPDATED_EVENT } from '../sync/syncEngine';
 import type { Mission, SyncStatus } from '../db/types';
 
+/** PO-2026-09-28-51 (A2) — même cadence que `useApiResource` des autres apps. */
+export const LIVE_REFRESH_INTERVAL_MS = 15_000;
+
 export interface MissionsListViewProps {
   onSelectMission: (missionId: string) => void;
   /** Audit UI R1 (K04, PO-2026-09-27-04) — mode EN LIGNE : liste lue
@@ -124,10 +127,24 @@ export function MissionsListView({ onSelectMission, loadMissions }: MissionsList
   const [reloadToken, setReloadToken] = useState(0);
 
   // Ticket F-069 — relit le cache dès que la synchronisation l'a mis à jour.
+  // PO-2026-09-28-51 (A2) : en ligne, la liste suit aussi le retour sur la
+  // fenêtre et se relit toutes les 15 s, onglet visible (une mission que le
+  // gestionnaire vient d'affecter apparaît sans rechargement manuel).
   useEffect(() => {
     const reload = () => setReloadToken((token) => token + 1);
+    const reloadIfVisible = () => {
+      if (document.visibilityState !== 'hidden') reload();
+    };
     window.addEventListener(MISSIONS_UPDATED_EVENT, reload);
-    return () => window.removeEventListener(MISSIONS_UPDATED_EVENT, reload);
+    window.addEventListener('focus', reloadIfVisible);
+    document.addEventListener('visibilitychange', reloadIfVisible);
+    const timer = window.setInterval(reloadIfVisible, LIVE_REFRESH_INTERVAL_MS);
+    return () => {
+      window.removeEventListener(MISSIONS_UPDATED_EVENT, reload);
+      window.removeEventListener('focus', reloadIfVisible);
+      document.removeEventListener('visibilitychange', reloadIfVisible);
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {

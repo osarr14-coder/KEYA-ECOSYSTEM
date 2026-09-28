@@ -59,6 +59,13 @@ export function formatCallAmount(value: string | null, currency: string) {
   return `${Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${currency}`;
 }
 
+/** PO-2026-09-28-43 (P27) — montant à virer : le reste à verser calculé par
+ * le serveur quand un versement partiel est déjà encaissé, sinon le montant
+ * de l'appel. */
+export function amountToPay(call: ClientPaymentCall) {
+  return call.settlement === 'partial' && call.remaining_amount ? call.remaining_amount : call.amount;
+}
+
 /** Un appel encore déclarable : ni couvert, ni déjà en vérification. */
 export function canDeclare(call: ClientPaymentCall) {
   return call.settlement !== 'settled' && call.notice?.status !== 'declared';
@@ -191,7 +198,11 @@ export function CallRow({ call, onChanged }: { call: ClientPaymentCall; onChange
             <InstructionField label="Bénéficiaire">{call.payment_instructions.beneficiary}</InstructionField>
             <InstructionField label="Banque">{call.payment_instructions.bank}</InstructionField>
             <InstructionField label="IBAN">{call.payment_instructions.iban}</InstructionField>
-            <InstructionField label="Montant">{formatCallAmount(call.amount, call.currency)}</InstructionField>
+            {/* PO-2026-09-28-43 (P27) : après un versement partiel, le virement
+                attendu est le reste à verser, jamais le montant initial. */}
+            <InstructionField label={call.settlement === 'partial' ? 'Reste à verser' : 'Montant'}>
+              <span data-testid="instruction-amount">{formatCallAmount(amountToPay(call), call.currency)}</span>
+            </InstructionField>
             <InstructionField label="Référence à indiquer">
               <span
                 data-testid="payment-reference"

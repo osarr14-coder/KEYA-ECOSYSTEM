@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { ClientPaymentCall, ContractVersion, Reservation } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
-import { AcquisitionJourney, RESERVE_PLAIN_SENTENCE, acquisitionSteps, nextAction } from './AcquisitionJourney';
+import {
+  AcquisitionJourney, RESERVE_PLAIN_SENTENCE, acquisitionSteps, nextAction, reservationMessage,
+} from './AcquisitionJourney';
 
 function reservation(overrides: Partial<Reservation> = {}): Reservation {
   return {
@@ -340,5 +342,13 @@ describe('AcquisitionJourney — suivi du chantier (PO-2026-09-28-04)', () => {
     render(withApiClient(api, <AcquisitionJourney reservation={reservation()} onChanged={() => {}} />));
     await screen.findByTestId('next-action');
     expect(screen.queryByRole('region', { name: 'Suivi du chantier' })).not.toBeInTheDocument();
+  });
+});
+
+describe('reservationMessage — état seulement, jamais une suite figée (PO-2026-09-28-43, P22)', () => {
+  it('« réservée » ne promet plus « signature du contrat » : la suite vient de la seule prochaine action', () => {
+    const message = reservationMessage(reservation({ status: 'reserved', status_label: 'Réservée' }));
+    expect(message).toBe('Frais de réservation encaissés et rapprochés (simulé) : le bien vous est réservé.');
+    expect(message).not.toContain('Suite');
   });
 });

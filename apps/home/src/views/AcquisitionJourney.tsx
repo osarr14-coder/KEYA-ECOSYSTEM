@@ -16,7 +16,7 @@ import { useApiResource } from '../api/useApiResource';
 import { formatAmount, formatDate, formatDateTime } from '../format';
 import { ContractVersions } from './ClientContractPanel';
 import {
-  CallRow, callLabel, canDeclare, formatCallAmount, settlementText, settlementTone,
+  CallRow, amountToPay, callLabel, canDeclare, formatCallAmount, settlementText, settlementTone,
 } from './ClientPaymentCallsPanel';
 
 /**
@@ -40,19 +40,34 @@ export function reservationMessage(reservation: Reservation) {
         : `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. `
           + 'Votre conseiller examine votre dossier, puis vous envoie l’appel des frais de réservation.';
     case 'reserved':
-      return 'Frais de réservation encaissés et rapprochés (simulé) : le bien vous est réservé. '
-        + 'Suite : signature du contrat et complément du premier versement.';
+      // PO-2026-09-28-43 (P22) : l'état seulement ; la suite est donnée par
+      // l'UNIQUE prochaine action (`nextAction`), jamais par un texte figé
+      // qui resterait affiché une fois le contrat signé.
+      return 'Frais de réservation encaissés et rapprochés (simulé) : le bien vous est réservé.';
     case 'committed':
       return 'Acquisition concrétisée (simulée) : contrat signé et premier versement couvert.';
     case 'expired':
-      return 'Le délai de blocage est écoulé sans versement : le bien a été libéré.';
     case 'cancelled':
-      return reservation.cancellation_reason
-        ? `Réservation annulée — motif : ${reservation.cancellation_reason}`
-        : 'Réservation annulée.';
+      return reservationEndMessage(reservation);
     default:
       return reservation.status_label;
   }
+}
+
+/** PO-2026-09-28-43 (P28, CDC §6.1) — une annulation ou une expiration est
+ * datée, attribuée (« organisation · rôle », jamais un e-mail) et motivée ;
+ * le client sait que le bien est libéré et qu'il peut refaire une demande. */
+export function reservationEndMessage(reservation: Reservation) {
+  const when = reservation.ended_at ? ` le ${formatDateTime(reservation.ended_at)}` : '';
+  if (reservation.status === 'expired') {
+    return `Blocage expiré${when}, sans versement encaissé avant l’échéance du ${formatDateTime(reservation.held_until)} : `
+      + 'le bien a été libéré ; vous pouvez refaire une demande s’il est disponible.';
+  }
+  const by = reservation.ended_by?.kind === 'client'
+    ? ' à votre demande'
+    : reservation.ended_by?.label ? ` par ${reservation.ended_by.label}` : '';
+  const reason = reservation.cancellation_reason ? ` — motif : ${reservation.cancellation_reason}` : '';
+  return `Réservation annulée${when}${by}${reason} : le bien a été libéré.`;
 }
 
 export function reservationTone(reservation: Reservation): PillTone {
@@ -272,9 +287,15 @@ function NextActionCard({
         </div>
         {amount && (
           <div style={{ textAlign: 'right', marginLeft: 'auto' }}>
-            <div style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>Montant</div>
-            <div style={{ fontSize: '24px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}>
-              {formatCallAmount(amount.amount, amount.currency)}
+            {/* PO-2026-09-28-43 (P27) : après un versement partiel, le reste à verser. */}
+            <div style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>
+              {amount.settlement === 'partial' ? 'Reste à verser' : 'Montant'}
+            </div>
+            <div
+              data-testid="next-action-amount"
+              style={{ fontSize: '24px', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: semanticColors.neutral.heading }}
+            >
+              {formatCallAmount(amountToPay(amount), amount.currency)}
             </div>
           </div>
         )}

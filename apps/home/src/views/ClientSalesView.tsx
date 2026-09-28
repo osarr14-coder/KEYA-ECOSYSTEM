@@ -10,7 +10,9 @@ import { ApiError } from '../api/client';
 import type { CatalogLot, Reservation, ReservationStatus } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { formatAmount, formatDateTime } from '../format';
-import { AcquisitionJourney, reservationMessage, reservationTone } from './AcquisitionJourney';
+import {
+  AcquisitionJourney, reservationEndMessage, reservationMessage, reservationTone,
+} from './AcquisitionJourney';
 
 /**
  * Ticket F-066 — parcours d'achat du client (CDC V3 §9.2, étapes 1-2) :
@@ -51,19 +53,49 @@ function PastReservationRow({ reservation }: { reservation: Reservation }) {
   );
 }
 
-function CatalogLotCard({ lot, onReserved }: { lot: CatalogLot; onReserved: () => void }) {
+/**
+ * PO-2026-09-28-43 (P28, CDC §6.1) — la dernière réservation du client a pris
+ * fin (annulation ou expiration) : il le lit en tête de « Mon acquisition »,
+ * daté, attribué et motivé, avant le catalogue. Couleur d'attention, jamais
+ * le rouge réservé aux erreurs (PO-2026-09-28-17).
+ */
+function ReservationEndedNotice({ reservation }: { reservation: Reservation }) {
+  return (
+    <section
+      role="status"
+      aria-label="Fin de votre réservation"
+      data-testid="reservation-ended"
+      style={{
+        display: 'flex', flexDirection: 'column', gap: '6px', padding: '16px 18px', borderRadius: '6px',
+        background: semanticColors.alert.background, border: `1px solid ${semanticColors.alert.border}`,
+        color: semanticColors.alert.text,
+      }}
+    >
+      <strong>
+        {reservation.status === 'expired' ? 'Votre blocage a expiré' : 'Votre réservation a été annulée'}
+        {` — ${reservation.program.name} / ${reservation.lot.name}`}
+      </strong>
+      <p style={{ margin: 0 }}>{reservationEndMessage(reservation)}</p>
+    </section>
+  );
+}
+
+function CatalogLotCard({
+  lot, onReserved, onRefused,
+}: { lot: CatalogLot; onReserved: () => void; onRefused: (message: string) => void }) {
   const api = useApiClient();
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function reserve() {
     setSubmitting(true);
-    setError(null);
     try {
       await api.requestReservation(lot.id, lot.organization.id);
       onReserved();
     } catch (caught) {
-      setError(errorDetail(caught, 'La réservation a échoué. Réessayez.'));
+      // PO-2026-09-28-43 (P29) : le refus (bien pris entre-temps, T01) est
+      // affiché au-dessus du catalogue, qui se recharge aussitôt : la carte
+      // d'un bien devenu indisponible disparaît, le motif reste lisible.
+      onRefused(errorDetail(caught, 'La réservation a échoué. Réessayez.'));
       setSubmitting(false);
     }
   }
@@ -106,7 +138,6 @@ function CatalogLotCard({ lot, onReserved }: { lot: CatalogLot; onReserved: () =
             {submitting ? 'Réservation…' : 'Réserver ce bien'}
           </Button>
         </div>
-        {error && <AlertBanner title={error} />}
       </div>
     </li>
   );
@@ -117,14 +148,24 @@ export function ClientSalesView() {
   const reservationsState = useApiResource(() => api.getMyReservations(), []);
   const catalogState = useApiResource(() => api.getCatalogLots(), []);
 
+  const [refusal, setRefusal] = useState<{ lot: string; message: string } | null>(null);
+
   function refreshAll() {
+    setRefusal(null);
     reservationsState.refetch();
     catalogState.refetch();
+  }
+
+  function refused(lot: CatalogLot, message: string) {
+    refreshAll();
+    setRefusal({ lot: `${lot.program.name} — ${lot.name}`, message });
   }
 
   const reservations = reservationsState.status === 'success' ? reservationsState.data : [];
   const active = reservations.filter((reservation) => ACTIVE_STATUSES.includes(reservation.status));
   const past = reservations.filter((reservation) => !ACTIVE_STATUSES.includes(reservation.status));
+  // Liste triée par le serveur, la plus récente d'abord.
+  const ended = reservations.length > 0 && !ACTIVE_STATUSES.includes(reservations[0].status) ? reservations[0] : null;
 
   return (
     <section aria-label="Mon acquisition" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
@@ -149,11 +190,14 @@ export function ClientSalesView() {
         </Card>
       )}
 
+      {ended && <ReservationEndedNotice reservation={ended} />}
+
       {active.map((reservation) => (
         <AcquisitionJourney key={reservation.id} reservation={reservation} onChanged={refreshAll} />
       ))}
 
       <Card title="Biens disponibles" icon="building">
+        {refusal && <AlertBanner title={refusal.message}>{`Bien demandé : ${refusal.lot}.`}</AlertBanner>}
         {catalogState.status === 'loading' && <p>Chargement…</p>}
         {catalogState.status === 'error' && (
           <ApiErrorBanner error={catalogState.error} title="Impossible de charger le catalogue." onRetry={catalogState.refetch} />
@@ -168,7 +212,9 @@ export function ClientSalesView() {
             }}
           >
             {catalogState.data.map((lot) => (
-              <CatalogLotCard key={lot.id} lot={lot} onReserved={refreshAll} />
+              <CatalogLotCard
+                key={lot.id} lot={lot} onReserved={refreshAll} onRefused={(message) => refused(lot, message)}
+              />
             ))}
           </ul>
         )}

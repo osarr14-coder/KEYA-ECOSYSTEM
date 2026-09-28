@@ -8,6 +8,7 @@ import type {
   ReceivedDisbursement,
   Task,
 } from './types';
+import { notifyDataChanged } from './useApiResource';
 
 export class ApiError extends Error {
   status: number;
@@ -87,6 +88,9 @@ export function createApiClient({
     if (!response.ok) {
       throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`);
     }
+    // PO-2026-09-28-51 : toute écriture réussie rafraîchit aussitôt les
+    // données affichées (voir `useApiResource`).
+    if ((options.method ?? 'GET') !== 'GET') notifyDataChanged();
     if (response.status === 204) {
       return undefined as T;
     }

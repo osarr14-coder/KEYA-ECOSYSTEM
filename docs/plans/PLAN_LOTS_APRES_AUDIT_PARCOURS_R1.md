@@ -5,7 +5,7 @@
 | Décisions | PO-2026-09-28-41 à -48 (`docs/decisions/JOURNAL_DECISIONS.md`) |
 | Audit de référence | `docs/audit/AUDIT_PARCOURS_R1.md` (branche `audit/parcours-r1`) |
 | Branche de travail proposée | `fix/audit-ui-r1` (suite des étapes 1 à 8) |
-| Statut | **Plan proposé, aucun code écrit.** Démarrage d'un lot sur accord du PO. |
+| Statut | **Plan validé** (PO-2026-09-28-49). Ordre : lots 1, 2, 3 (jalon « démo présentable »), répétition de démonstration, lot 4, lot 5 ; arrêt pour relecture après chaque lot. Arbitrages A1 à A7 rendus (PO-2026-09-28-50 à -56). |
 
 Estimations en **jours de travail**. Elles comprennent le code, les tests automatiques, les captures avant/après (375 px et 1440 px) et le compte rendu. Chaque lot suit la méthode des étapes précédentes :
 
@@ -23,9 +23,9 @@ Estimations en **jours de travail**. Elles comprennent le code, les tests automa
 | 2 · Relais | P08, P09, P10, P11 | P33 ; P28 (notification) ; P30 en partie | T19, T06, T07, T11 | 3 à 4 j |
 | 3 · Connexion | P32 | — | T20 (erreurs compréhensibles), §10 | 0,5 à 1 j |
 | 4 · Pilotage minimal | P12 | P17 en partie (chronologie en libellés métier) | T19 (indicateurs), T14 (exclusion des archives, avec le lot 5) | 5 à 6 j |
-| 5 · Archivage | P13 | — | T14, T13, T16 (journal intact après archivage) | 10 à 12 j |
+| 5 · Archivage | P13 | — | T14, T13, T16 (journal intact après archivage) | 8 à 10 j (réestimé, A6) |
 | Vérification finale | — | — | T01–T20, dont T02, T14 et T20 complets | 2 j |
-| **Total** | | | | **23,5 à 29 j** |
+| **Total** | | | | **21,5 à 27 j** |
 
 ---
 
@@ -57,7 +57,7 @@ Estimations en **jours de travail**. Elles comprennent le code, les tests automa
    - un seul message « Suite » calculé depuis l'état réel du contrat et des appels, avec une seule prochaine action à la fois (P22) ;
    - le reste à verser (P27) ;
    - un catalogue rafraîchi après un refus concurrent (P29).
-3. **Échéance du blocage** : l'expliquer ou supprimer le report (arbitrage A1 ci-dessous).
+3. **Échéance du blocage** : le report à l'examen du dossier est retiré (A1, PO-2026-09-28-50) ; l'échéance affichée reste celle de la demande, suspendue seulement après un encaissement enregistré.
 4. **Annulation et expiration visibles** :
    - date de fin exposée par l'API (champ `ended_at` ou lecture de l'événement d'audit) ;
    - carte en tête de l'espace client : « Réservation annulée le … par le gestionnaire — motif : … » ou « Blocage expiré le … — le bien est de nouveau disponible, vous pouvez refaire une demande » ;
@@ -216,6 +216,20 @@ L'étape 11 demande l'archivage **dans l'écran Administration**. La proposition
 
 Cet ajout est estimé à **+1 à 1,5 j**. La procédure T14 (`PROCEDURE_REINITIALISATION_DEMO.md`) est à mettre à jour : l'archivage devient la voie normale et la réinitialisation complète reste un recours d'exploitation.
 
+### Réestimation après l'arbitrage A6 (PO-2026-09-28-55)
+
+Accès aux archives en lecture seule pour l'**administrateur** et le **gestionnaire** seulement : pas d'accès client dans le MVP. Responsable : Product Owner. Rétention : jusqu'à 90 jours après la fin de la campagne investisseurs, puis suppression tracée.
+
+| Poste | Contenu | Effort |
+|---|---|---|
+| Serveur | Paramètre d'instance réservé à ces deux rôles (refusé à tous les autres), `demo_scope` paramétré, garde-fou d'écriture sur toutes les routes | 3 à 3,5 j |
+| Tests serveur | Aucune écriture sur une archive (toutes routes), droits des deux rôles, refus aux autres, indicateurs exclus | 1,5 j |
+| Front | `apps/web` seulement : sélecteur d'instance, `ArchiveBanner`, actions désactivées avec explication. HOME, BUILD et Contrôle restent sur l'instance active. | 1 à 1,5 j |
+| Action d'archivage (étape 11) | Écran Administration, confirmation saisie, route authentifiée, jeu versionné rejoué, journal | 1 à 1,5 j |
+| Rétention | Date de fin de campagne en paramètre ; commande de suppression des archives échues, tracée au journal ; procédure | 0,5 à 1 j |
+| Captures, documentation, recette | Procédure T14 mise à jour | 1 j |
+| **Total** | | **8 à 10 j** |
+
 ### Tests
 
 - pytest :
@@ -258,14 +272,14 @@ P01 à P06, à intégrer au plan de déploiement, qui reste soumis à votre acco
 
 P03 et P07 (P2) peuvent suivre dans le même lot documentaire.
 
-## Arbitrages demandés avant de démarrer
+## Arbitrages rendus (PO-2026-09-28-50 à -56)
 
-| # | Lot | Question | Proposition |
-|---|---|---|---|
-| A1 | 1 | L'échéance du blocage est reportée à l'examen du dossier (+24 h). Faut-il garder ce report ? | Le garder et l'afficher : « Échéance reportée au … lors de l'examen du dossier ». Le supprimer changerait une règle testée (B-056). |
-| A2 | 1 | Rafraîchissement au retour sur la fenêtre et toutes les 15 s : cette cadence convient-elle ? | Oui. En démonstration, le changement de fenêtre déclenche le rechargement immédiat. |
-| A3 | 4 | Le détail des sorties (décaissements) est réservé à Finance (PO-2026-09-28-16). Le gestionnaire voit-il ces sources ? | Le gestionnaire voit le chiffre, sans détail : « Détail réservé à Finance ». Finance voit le détail. |
-| A4 | 4 | Les pièces exigées par jalon n'existent pas dans le jeu de démonstration. | Les ajouter comme paramètre versionné du Country Pack et du jeu `DEMO-CI-v1`, avec les pièces à définir par vous. **À confirmer : ajout au jeu de démonstration.** |
-| A5 | 3 | La limite par IP s'applique à toutes les tentatives, réussies comprises. Ouvrir 7 fenêtres en moins d'une minute la dépasse. | Garder la règle et échelonner les connexions dans le script de démonstration. Autre option : ne compter que les échecs (changement de la règle §10, à votre arbitrage). |
-| A6 | 5 | Points ouverts de la proposition d'archive (§5) : un client voit-il ses dossiers archivés ? Quelle rétention et quel responsable ? Archivage ou réinitialisation comme voie normale ? | Instance active par défaut et archive sur demande ; archivage comme voie normale ; rétention et responsable à fixer par vous avant l'hébergement (§10). |
-| A7 | — | Vérification de T02 par l'interface avec une durée de blocage de 1 h sur l'instance locale | Réglage local le temps de la vérification, puis retour à 24 h. |
+| # | Décision | Journal |
+|---|---|---|
+| A1 | Aucun report du blocage à l'examen du dossier. Blocage de 24 h, suspendu uniquement après l'enregistrement d'un encaissement simulé (§6.1). Le report existant est retiré, tests adaptés. | PO-2026-09-28-50 |
+| A2 | Rafraîchissement immédiat après chaque action, au retour sur la fenêtre et toutes les 15 s ; la cloche aussi. | PO-2026-09-28-51 |
+| A3 | Le gestionnaire voit le total des décaissements, sans le détail réservé à Finance. | PO-2026-09-28-52 |
+| A4 | Pièces exigées fictives : Fondations (plan d'implantation, photo des fouilles, photo des armatures avant coulage, bon de livraison du béton) ; Élévation (photo de chaque niveau, photo des chaînages, relevé de conformité aux plans). | PO-2026-09-28-53 |
+| A5 | Règle conservée ; procédure de démo : une fenêtre par rôle, à 15 s d'intervalle, avant la présentation. | PO-2026-09-28-54 |
+| A6 | Archives : responsable PO ; lecture seule administrateur et gestionnaire ; pas de clients ; rétention 90 jours après la campagne, puis suppression tracée. Lot 5 réestimé à 8 à 10 j. | PO-2026-09-28-55 |
+| A7 | Blocage d'1 h sur l'instance locale uniquement pour vérifier T02, puis 24 h ; jamais sur Render. | PO-2026-09-28-56 |

@@ -2,6 +2,7 @@ import type {
   CatalogLot, ClientPaymentCall, ContractVersion, EvidenceFeedItem, LotOverview, Me, MyLot, ProgramRequest, Reservation, Task,
   WorksiteMilestone,
 } from './types';
+import { notifyDataChanged } from './useApiResource';
 
 export class ApiError extends Error {
   status: number;
@@ -97,6 +98,9 @@ export function createApiClient({
       const errorBody = await response.json().catch(() => undefined);
       throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`, errorBody);
     }
+    // PO-2026-09-28-51 : toute écriture réussie rafraîchit aussitôt les
+    // données affichées (voir `useApiResource`).
+    if ((options.method ?? 'GET') !== 'GET') notifyDataChanged();
     return (await response.json()) as T;
   }
 

@@ -7,6 +7,7 @@ import type {
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
   OrganizationSearchResult, PricingCanal, PricingConfig, Program, ProgramRequest, ReservationStatus, Task,
 } from './types';
+import { notifyDataChanged } from './useApiResource';
 
 export class ApiError extends Error {
   status: number;
@@ -121,6 +122,9 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
       const errorBody = (await response.json().catch(() => undefined)) as { detail?: string } | undefined;
       throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`, errorBody?.detail, errorBody);
     }
+    // PO-2026-09-28-51 : toute écriture réussie rafraîchit aussitôt les
+    // données affichées (voir `useApiResource`).
+    if ((options.method ?? 'GET') !== 'GET') notifyDataChanged();
     // Ticket F-030 : bug réel trouvé en vérifiant `getActiveLegalPaymentTierTemplate`
     // en navigateur réel — DRF's `Response(None)` (ex.
     // `LegalPaymentTierTemplateActiveView`, quand aucun template n'est actif)

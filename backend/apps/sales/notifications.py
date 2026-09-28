@@ -85,6 +85,15 @@ def reservation_validated(reservation):
     close_tasks(subject=reservation, source=RESERVATION_TO_VALIDATE)
 
 
+def reservation_ended(reservation):
+    """PO-2026-09-28-43 (lot 1) — annulation ou expiration : plus rien à
+    examiner ni à régler sur ce dossier. Les tâches encore en attente
+    (« Dossier à examiner », « Appel de fonds à régler ») sont closes."""
+    close_tasks(subject=reservation, source=RESERVATION_TO_VALIDATE)
+    for call in reservation.payment_calls.all():
+        close_tasks(subject=call, source=PAYMENT_CALL_TO_PAY)
+
+
 def payment_call_issued(call):
     reservation = call.reservation
     notify_user(
