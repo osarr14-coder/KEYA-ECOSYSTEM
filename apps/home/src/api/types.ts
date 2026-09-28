@@ -285,6 +285,18 @@ export interface WorksiteMilestone {
   /** PO-2026-09-28-16 (CDC §9.2 étape 9) : réserves en langage simple —
    * motif, ouverte ou levée, date ; aucun détail technique interne. */
   reserves?: WorksiteReserve[];
+  /** PO-2026-09-28-61 (P14, CDC §9.2 étape 9) : sorties du compte du
+   * programme vers le constructeur pour ce jalon — jamais une dette du client. */
+  program_outflows?: ProgramOutflow[];
+}
+
+export interface ProgramOutflow {
+  amount: string;
+  currency: string;
+  executed_on: string | null;
+  beneficiary: string;
+  reconciled: boolean;
+  simulation: boolean;
 }
 
 export interface WorksiteReserve {

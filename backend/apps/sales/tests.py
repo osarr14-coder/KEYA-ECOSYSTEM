@@ -669,7 +669,8 @@ class TestPaymentCallsScenario:
         # Ticket B-056 — aucun appel avant la validation du dossier par l'ADV.
         before = _issue(adv, reservation_id, promoter, 'frais')
         assert before.status_code == 409
-        assert 'validée par l\'ADV' in before.data['detail']
+        # PO-2026-09-28-59 : « examiné par le gestionnaire » remplace « validée par l'ADV ».
+        assert 'examiné par le gestionnaire' in before.data['detail']
         fee = _fee_call(adv, reservation_id, promoter)
         assert fee['amount'] == '100000.00'
         assert _issue(adv, reservation_id, promoter, 'frais').status_code == 409
@@ -693,7 +694,7 @@ class TestPaymentCallsScenario:
 
         by_kind = {candidate['kind']: candidate for candidate in data['candidates']}
         assert by_kind['frais']['available'] is False
-        assert 'validée' in by_kind['frais']['reason']
+        assert 'examiné par le gestionnaire' in by_kind['frais']['reason']  # PO-2026-09-28-59
         assert by_kind['premier_versement']['available'] is False
         assert by_kind['premier_versement']['amount'] == '2900000.00'
 

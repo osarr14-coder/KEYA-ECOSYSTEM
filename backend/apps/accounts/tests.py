@@ -208,6 +208,24 @@ class TestLoginThrottling:
         response = _login(client, 'throttle@example.com')
         assert response.status_code == 429
 
+    def test_the_throttled_answer_says_how_long_to_wait(self):
+        """PO-2026-09-28-45 (P32) : message explicite et délai, dans le
+        corps et dans l'en-tête `Retry-After`."""
+        client = APIClient()
+        _register(client, 'throttle-wait@example.com', 'Org Throttle Wait')
+        for _ in range(5):
+            _login(client, 'throttle-wait@example.com')
+
+        response = _login(client, 'throttle-wait@example.com')
+
+        assert response.status_code == 429
+        assert response.data['code'] == 'login_throttled'
+        assert 1 <= response.data['retry_after'] <= 60
+        assert response['Retry-After'] == str(response.data['retry_after'])
+        assert response.data['detail'] == (
+            f"Trop de tentatives de connexion depuis ce poste. Réessayez dans {response.data['retry_after']} s."
+        )
+
     def test_throttle_counts_failed_attempts_too(self):
         """Un bourrage d'identifiants échoue systématiquement — le throttle
         doit compter CHAQUE tentative, pas seulement les connexions

@@ -362,3 +362,26 @@ describe('holdLine — échéance suspendue expliquée (PO-2026-09-28-57)', () =
     expect(holdLine(reservation())).toMatch(/^Bien bloqué pour vous jusqu'au /);
   });
 });
+
+describe('Lot 3 — sortie du compte du programme (PO-2026-09-28-61, P14)', () => {
+  it('un décaissement vers le constructeur est présenté comme une sortie du programme, jamais comme une dette', async () => {
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([call({ settlement: 'settled', settled_amount: '100000.00' })]),
+      getMyContracts: vi.fn().mockResolvedValue([]),
+      getMyWorksite: vi.fn().mockResolvedValue([{
+        id: 'm1', order: 1, code: 'fondations', label: 'Fondations', cdc_state: 'TECHNICALLY_ACCEPTED',
+        status_label: 'Accepté techniquement', status_hint: '', trust_levels: {}, reserves: [],
+        program_outflows: [{
+          amount: '1000000.00', currency: 'XOF', executed_on: '2026-10-01',
+          beneficiary: 'Constructeur Démonstration Abidjan', reconciled: true, simulation: true,
+        }],
+      }]),
+    });
+    render(withApiClient(api, <AcquisitionJourney reservation={reservation({ status: 'committed' })} onChanged={() => {}} />));
+
+    const outflow = await screen.findByTestId('program-outflow');
+    expect(outflow).toHaveTextContent('Paiement au constructeur (sortie du compte du programme)');
+    expect(outflow.textContent!.replace(/\s/g, ' ')).toContain('1 000 000 XOF versés à Constructeur Démonstration Abidjan le 1 oct. 2026, rapprochés par Finance');
+    expect(outflow).toHaveTextContent('il ne vous est pas demandé');
+  });
+});

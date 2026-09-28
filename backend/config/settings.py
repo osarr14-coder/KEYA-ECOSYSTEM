@@ -247,7 +247,8 @@ WEB_APP_URL = config('WEB_APP_URL', default='')
 # résolu une organisation.
 CORS_ALLOW_HEADERS = list(default_headers) + ['x-organization-id']
 # Audit UI R1 (T13) : marquage de démonstration lisible par les apps.
-CORS_EXPOSE_HEADERS = ['X-Demo-Instance', 'X-Environment']
+# PO-2026-09-28-45 (P32) : délai d'attente après trop de tentatives.
+CORS_EXPOSE_HEADERS = ['X-Demo-Instance', 'X-Environment', 'Retry-After']
 
 # ── Celery (ticket 004 : traitement asynchrone média) ──────────────────────
 # Broker Redis réel depuis l'ADR 0001 (docs/adr/0001-celery-eager-mode.md) :

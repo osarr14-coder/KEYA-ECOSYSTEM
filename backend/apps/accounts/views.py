@@ -1,6 +1,8 @@
+import math
+
 from django.conf import settings
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, Throttled
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -24,6 +26,26 @@ class ThrottledLoginView(TokenObtainPairView):
 
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'login'
+
+    def handle_exception(self, exc):
+        """PO-2026-09-28-45 (lot 3, P32) — la limite est conservée (CDC
+        §10) ; le refus dit combien de temps attendre, dans le corps (lisible
+        par toutes les apps) et dans `Retry-After` (exposé par CORS)."""
+        if isinstance(exc, Throttled):
+            retry_after = max(1, math.ceil(exc.wait or 60))
+            return Response(
+                {
+                    'code': 'login_throttled',
+                    'retry_after': retry_after,
+                    'detail': (
+                        'Trop de tentatives de connexion depuis ce poste. '
+                        f'Réessayez dans {retry_after} s.'
+                    ),
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={'Retry-After': str(retry_after)},
+            )
+        return super().handle_exception(exc)
 
 
 class RegisterView(generics.CreateAPIView):

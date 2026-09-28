@@ -139,7 +139,7 @@ Estimations en **jours de travail**. Elles comprennent le code, les tests automa
   - décompte annoncé (`aria-live`) ;
   - bouton désactivé jusqu'à l'échéance, puis réactivé ;
   - les autres erreurs sont distinguées : réseau, serveur indisponible, identifiants.
-- Script de démonstration : ouvrir les fenêtres de rôle en plusieurs fois. Avec 7 comptes, les 7 connexions dépassent 5 par minute (arbitrage A5). Les jetons durent 1 h et se renouvellent pendant 7 jours : une fenêtre ouverte tient toute la démonstration.
+- Script de démonstration : ouvrir les fenêtres de rôle en plusieurs fois. Avec 7 comptes, les 7 connexions dépassent 5 par minute (arbitrage A5). Correction (lot 3) : le jeton d'accès dure 1 h et les applications ne le renouvellent pas automatiquement ; une fenêtre ouverte moins de 30 minutes avant tient une démonstration de 15 minutes (procédure : `docs/demo/PROCEDURE_DEMONSTRATION.md`).
 
 ### Tests
 

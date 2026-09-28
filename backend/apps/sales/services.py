@@ -908,6 +908,21 @@ def client_worksite(*, client, caller_organization_id, reservation_id):
                 'reserves': (
                     inspections_services.client_reserve_summary(state['declaration']) if state['declaration'] else []
                 ),
+                # PO-2026-09-28-61 (P14, CDC §9.2 étape 9) : sorties du compte
+                # du programme vers le constructeur pour ce jalon, présentées
+                # comme telles — jamais comme une dette du client.
+                'program_outflows': [
+                    {
+                        'amount': f'{disbursement.amount:.2f}', 'currency': disbursement.currency,
+                        'executed_on': disbursement.executed_on.isoformat() if disbursement.executed_on else None,
+                        'beneficiary': disbursement.beneficiary_organization.name,
+                        'reconciled': disbursement.flow_status == DisbursementFlowStatus.RECONCILED_SIM,
+                        'simulation': True,
+                    }
+                    for disbursement in milestone.disbursements.filter(
+                        status=DisbursementStatus.EXECUTED_SIM,
+                    ).select_related('beneficiary_organization').order_by('executed_at')
+                ],
             })
         return rows
     finally:

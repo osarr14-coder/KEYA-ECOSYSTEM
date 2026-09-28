@@ -160,6 +160,32 @@ describe(
 
       expect(await screen.findByText('Une erreur est survenue. Réessayez.')).toBeInTheDocument();
     });
+
+    it('PO-2026-09-28-45 (P32) : trop de tentatives — délai annoncé, bouton bloqué jusqu’à l’échéance', async () => {
+      const login = vi.fn().mockRejectedValue(new ApiError(
+        429, 'Échec de connexion (429)', 'Trop de tentatives…', { code: 'login_throttled', retry_after: 42 },
+      ));
+      renderApp({ login });
+
+      await fillAndSubmit();
+
+      expect(await screen.findByText('Trop de tentatives de connexion depuis ce poste.')).toBeInTheDocument();
+      expect(screen.getByTestId('login-retry')).toHaveTextContent(/^Réessayez dans (42|41) s\.$/);
+      expect(screen.getByRole('button', { name: /Se connecter \(dans \d+ s\)/ })).toBeDisabled();
+      expect(screen.queryByText('Une erreur est survenue. Réessayez.')).not.toBeInTheDocument();
+    });
+
+    it('P32 : serveur injoignable et service indisponible ont chacun leur message', async () => {
+      const login = vi.fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new ApiError(503, 'Échec de connexion (503)'));
+      renderApp({ login });
+
+      await fillAndSubmit();
+      expect(await screen.findByText('Serveur injoignable. Vérifiez votre connexion, puis réessayez.')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Se connecter' }));
+      expect(await screen.findByText('Le service est momentanément indisponible. Réessayez dans un instant.')).toBeInTheDocument();
+    });
   },
 );
 

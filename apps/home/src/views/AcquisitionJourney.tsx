@@ -600,6 +600,26 @@ function WorksiteSection({ reservation }: { reservation: Reservation }) {
                           ))}
                         </ul>
                       )}
+                      {(milestone.program_outflows ?? []).map((outflow, outflowIndex) => (
+                        // PO-2026-09-28-61 (P14) : sortie du compte du programme,
+                        // présentée comme telle — jamais comme une dette du client.
+                        <p
+                          key={`${outflow.executed_on}-${outflowIndex}`}
+                          data-testid="program-outflow"
+                          style={{
+                            margin: 0, borderRadius: '4px', padding: '12px 14px', fontSize: '13px',
+                            background: semanticColors.neutral.subtle,
+                          }}
+                        >
+                          <strong style={{ color: semanticColors.neutral.heading }}>Paiement au constructeur (sortie du compte du programme)</strong>
+                          <span style={{ display: 'block', marginTop: '4px' }}>
+                            {`${formatAmount(outflow.amount, outflow.currency)} versés à ${outflow.beneficiary}`}
+                            {outflow.executed_on ? ` le ${formatDate(outflow.executed_on)}` : ''}
+                            {outflow.reconciled ? ', rapprochés par Finance' : ''}
+                            {' — simulé. Ce montant est pris sur le compte du programme ; il ne vous est pas demandé.'}
+                          </span>
+                        </p>
+                      ))}
                       {showLevels && (
                         <TrustLevels reached={milestone.trust_levels} aria-label={`Niveaux de confiance — ${milestone.label}`} />
                       )}

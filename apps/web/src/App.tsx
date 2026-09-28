@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, AppShell, BRAND_GRADIENT, Button, Field, Input, brandColors, typography,
@@ -385,12 +385,50 @@ function PublicSite({ redirect }: { redirect: (url: string) => void }) {
   );
 }
 
+/** PO-2026-09-28-45 (P32) — délai d'attente annoncé par le serveur après
+ * trop de tentatives (`retry_after`, en secondes), `null` sinon. */
+export function loginRetryAfter(caught: unknown): number | null {
+  if (!(caught instanceof ApiError) || caught.status !== 429) return null;
+  const body = caught.body as { retry_after?: unknown } | undefined;
+  const seconds = Number(body?.retry_after);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : 60;
+}
+
+/** Message explicite pour chaque cause d'échec de connexion (P32). */
+export function loginErrorMessage(caught: unknown): string {
+  // Ticket 020, vérifié empiriquement : identifiants invalides, compte
+  // désactivé (`is_active=False`, ticket 011) et email inexistant
+  // renvoient TOUS le même 401 générique. Aucun message différencié
+  // n'existe à afficher ici.
+  if (caught instanceof ApiError && caught.status === 401) return 'Identifiants invalides.';
+  if (caught instanceof ApiError && caught.status >= 500) {
+    return 'Le service est momentanément indisponible. Réessayez dans un instant.';
+  }
+  if (caught instanceof TypeError) return 'Serveur injoignable. Vérifiez votre connexion, puis réessayez.';
+  return 'Une erreur est survenue. Réessayez.';
+}
+
+/** Secondes restantes avant `until` (horodatage en ms), mises à jour chaque
+ * seconde ; 0 une fois atteint. */
+function useSecondsUntil(until: number | null) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (until === null) return undefined;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [until]);
+  return until === null ? 0 : Math.max(0, Math.ceil((until - now) / 1000));
+}
+
 function LoginView({ redirect, navigate }: { redirect: (url: string) => void; navigate: (path: PublicPath) => void }) {
   const api = useApiClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const retryIn = useSecondsUntil(retryAt);
   // Ticket F-053 — même seuil/hook que le reste du projet (MOBILE_BREAKPOINT_PX
   // via useIsMobile, AppShell.tsx), jamais une valeur ad hoc : le panneau
   // navy narratif serait trop à l'étroit à côté du formulaire sous ce seuil.
@@ -406,14 +444,13 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
       // réelle va démonter ce composant, remettre le formulaire actif
       // entre-temps ne ferait que clignoter avant la navigation.
     } catch (caught) {
-      // Ticket 020, vérifié empiriquement : identifiants invalides, compte
-      // désactivé (`is_active=False`, ticket 011) et email inexistant
-      // renvoient TOUS le même 401 générique. Aucun message différencié
-      // n'existe à afficher ici.
-      if (caught instanceof ApiError && caught.status === 401) {
-        setError('Identifiants invalides.');
+      const wait = loginRetryAfter(caught);
+      if (wait !== null) {
+        setError(null);
+        setRetryAt(Date.now() + wait * 1000);
       } else {
-        setError('Une erreur est survenue. Réessayez.');
+        setRetryAt(null);
+        setError(loginErrorMessage(caught));
       }
       setSubmitting(false);
     }
@@ -502,6 +539,16 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
           <h1 style={{ margin: '0 0 4px', fontSize: 'clamp(24px, 3vw, 32px)' }}>Connexion à KEYIMMO AFRIC</h1>
 
           {error && <AlertBanner title={error} />}
+          {/* PO-2026-09-28-45 (P32) : la limite reste (CDC §10) ; le délai
+              est dit, décompté, et le retour possible annoncé. */}
+          {retryAt !== null && retryIn > 0 && (
+            <AlertBanner title="Trop de tentatives de connexion depuis ce poste.">
+              <span data-testid="login-retry" aria-live="off">{`Réessayez dans ${retryIn} s.`}</span>
+            </AlertBanner>
+          )}
+          {retryAt !== null && retryIn === 0 && (
+            <p role="status" style={{ margin: 0 }}>Vous pouvez réessayer maintenant.</p>
+          )}
 
           <Field label="Email">
             <Input
@@ -523,8 +570,8 @@ function LoginView({ redirect, navigate }: { redirect: (url: string) => void; na
             />
           </Field>
 
-          <Button type="submit" disabled={submitting} style={{ alignSelf: 'flex-start' }}>
-            {submitting ? 'Connexion…' : 'Se connecter'}
+          <Button type="submit" disabled={submitting || retryIn > 0} style={{ alignSelf: 'flex-start' }}>
+            {submitting ? 'Connexion…' : retryIn > 0 ? `Se connecter (dans ${retryIn} s)` : 'Se connecter'}
           </Button>
           {/* Ticket F-079 — un visiteur sans compte n'est jamais bloqué ici. */}
           <p style={{ margin: 0, fontSize: '14px' }}>

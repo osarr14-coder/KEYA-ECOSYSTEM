@@ -156,7 +156,10 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
       body: JSON.stringify({ email, password }),
     });
     if (!response.ok) {
-      throw new ApiError(response.status, `Échec de connexion (${response.status})`);
+      // PO-2026-09-28-45 (P32) : le corps d'un refus 429 porte le délai
+      // d'attente (`retry_after`), lu par l'écran de connexion.
+      const errorBody = (await response.json().catch(() => undefined)) as { detail?: string } | undefined;
+      throw new ApiError(response.status, `Échec de connexion (${response.status})`, errorBody?.detail, errorBody);
     }
     return (await response.json()) as LoginResult;
   }
