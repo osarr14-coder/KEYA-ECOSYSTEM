@@ -48,10 +48,13 @@ type Decision = { decision: 'levee' | 'maintenue' | ''; motif: string };
 export function opinionErrors(
   outcome: OpinionPayload['outcome'] | '', reserves: NewReserve[], openReserves: OpenReserve[], decisions: Record<string, Decision>,
   evidenceCount = 1,
+  examinedCount = 1,
 ): string[] {
   const errors: string[] = [];
   // PO-2026-09-28-13 (K01, CDC §7.2) : un avis porte sur au moins une pièce soumise.
   if (evidenceCount === 0) errors.push('Aucune pièce soumise : un avis porte sur au moins une version de pièce.');
+  // PO-2026-09-28-20 : le contrôleur désigne explicitement les versions examinées.
+  else if (examinedCount === 0) errors.push('Cochez au moins une version de pièce que vous avez examinée.');
   if (!outcome) errors.push('Choisissez un avis : conforme ou non conforme.');
   for (const reserve of openReserves) {
     const decision = decisions[reserve.id];
@@ -136,6 +139,8 @@ export function MissionReviewView({ missionId, api, onBack }: MissionReviewViewP
   const [reserves, setReserves] = useState<NewReserve[]>([]);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [note, setNote] = useState('');
+  // PO-2026-09-28-20 : aucune version cochée par défaut.
+  const [examined, setExamined] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<OpinionResult | null>(null);
@@ -160,14 +165,14 @@ export function MissionReviewView({ missionId, api, onBack }: MissionReviewViewP
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!detail) return;
-    const found = opinionErrors(outcome, reserves, detail.openReserves, decisions, detail.evidences.length);
+    const found = opinionErrors(outcome, reserves, detail.openReserves, decisions, detail.evidences.length, examined.length);
     setErrors(found);
     if (found.length > 0 || !outcome) return;
     setSubmitting(true);
     try {
       const saved = await api.submitOpinion(missionId, {
         outcome,
-        examinedEvidenceIds: detail.evidences.map((evidence) => evidence.id),
+        examinedEvidenceIds: detail.evidences.map((evidence) => evidence.id).filter((id) => examined.includes(id)),
         reserves: outcome === 'avec_reserve' ? reserves : [],
         decisions: detail.openReserves.map((reserve) => ({
           reserveId: reserve.id,
@@ -242,6 +247,17 @@ export function MissionReviewView({ missionId, api, onBack }: MissionReviewViewP
           {detail.evidences.map((evidence) => (
             <li key={evidence.id} data-testid="submitted-evidence" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <strong>{`Version ${evidence.version} — déposée par ${evidence.addedBy}, le ${formatServerDate(evidence.addedAt)}`}</strong>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', minHeight: '44px', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={examined.includes(evidence.id)}
+                  onChange={(event) => setExamined((current) => (
+                    event.target.checked ? [...current, evidence.id] : current.filter((id) => id !== evidence.id)
+                  ))}
+                  style={{ width: '20px', height: '20px' }}
+                />
+                {`J’ai examiné la version ${evidence.version}`}
+              </label>
               {evidence.documents.map((document, index) => (
                 <span key={document.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <Icon name="file-text" size={16} />
@@ -258,7 +274,7 @@ export function MissionReviewView({ missionId, api, onBack }: MissionReviewViewP
           ))}
         </ul>
         <p style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-          Votre avis sera lié à ces versions ; une pièce ajoutée ensuite demandera une nouvelle revue.
+          Votre avis ne porte que sur les versions que vous cochez ; une pièce ajoutée ensuite demandera une nouvelle revue.
         </p>
       </section>
 

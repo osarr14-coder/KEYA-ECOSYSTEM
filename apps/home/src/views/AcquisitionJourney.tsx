@@ -3,6 +3,7 @@ import { useState } from 'react';
 import {
   ApiErrorBanner, Button, Card, DateTime, Pill, type PillTone, ProgressBar, SimulatedMark, Skeleton, Stepper, TrustLevels,
   type StepperStep, formatSurface, semanticColors,
+  LotPlan, hasLotPlan,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -208,6 +209,12 @@ function PropertyHero({ reservation }: { reservation: Reservation }) {
         <Pill tone={reservationTone(reservation)} data-testid="reservation-status">{reservation.status_label}</Pill>
         <SimulatedMark detail="Paiements et signature" />
       </div>
+      {/* PO-2026-09-28-26 : plan du lot sur sa fiche ; rien si le lot n'en a pas. */}
+      {hasLotPlan(reservation.program.name, reservation.lot.name) && (
+        <div style={{ maxWidth: '420px' }}>
+          <LotPlan programName={reservation.program.name} lotName={reservation.lot.name} />
+        </div>
+      )}
     </section>
   );
 }

@@ -59,6 +59,14 @@ def resolve_constructeur_for_reserve(reserve):
     return work_declaration.declared_by if work_declaration else None
 
 
+def _actor_label(user, expected_role):
+    """PO-2026-09-28-22 : les libellés de tâches nomment l'acteur
+    « organisation · rôle », jamais par son e-mail."""
+    from apps.organizations.identity import actor_label
+
+    return actor_label(user, expected_role)
+
+
 def _reserve_opened_label(reserve, assignee):
     """Nomme explicitement le constructeur comme responsable de l'action à
     mener — jamais KEYIMMO. Critère d'acceptation central du ticket 006 :
@@ -67,7 +75,7 @@ def _reserve_opened_label(reserve, assignee):
     """
     return (
         f'Réserve ouverte sur le lot « {reserve.lot.name} » — correction attendue '
-        f'du constructeur ({assignee.email})'
+        f'du constructeur ({_actor_label(assignee, "constructeur")})'
     )
 
 
@@ -92,7 +100,7 @@ def _mission_assigned_label(mission, assignee):
     lot = mission.work_declaration.milestone.lot
     return (
         f'Nouvelle mission — inspection à mener sur « {lot.name} » '
-        f'({assignee.email})'
+        f'({_actor_label(assignee, "inspecteur")})'
     )
 
 

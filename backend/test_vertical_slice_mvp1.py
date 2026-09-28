@@ -45,6 +45,7 @@ from apps.core.rls import set_rls_context
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import LotClient
 from apps.trust.models import TrustLevel
+from apps.inspections.testing import designated_pieces
 
 PASSWORD = 'strongpass123'
 SENEGAL_MILESTONE_COUNT = 8  # voir apps/programs/migrations/0003 — 'foncier' en premier
@@ -188,6 +189,8 @@ class TestVerticalSliceMVP1:
             {
                 'organization': str(organization.id),
                 'work_declaration': declaration_id,
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration_id),
                 'assigned_inspector': str(inspecteur_user.id),
             },
             format='json',
@@ -229,6 +232,8 @@ class TestVerticalSliceMVP1:
             {
                 'organization': str(organization.id),
                 'work_declaration': declaration_id,
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration_id),
                 'documents': [inspector_photo_response.data['id']],
                 'correlation_id': inspection1_correlation_id,
             },
@@ -241,6 +246,8 @@ class TestVerticalSliceMVP1:
             {
                 'organization': str(organization.id),
                 'work_declaration': declaration_id,
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration_id),
                 'outcome': 'avec_reserve',
                 'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'note': 'Limite de propriété à clarifier avec le voisin.',
@@ -304,6 +311,8 @@ class TestVerticalSliceMVP1:
             {
                 'organization': str(organization.id),
                 'work_declaration': declaration_id,
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration_id),
                 'assigned_inspector': str(inspecteur_user.id),
             },
             format='json',
@@ -355,6 +364,8 @@ class TestVerticalSliceMVP1:
             {
                 'organization': str(organization.id),
                 'work_declaration': declaration_id,
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration_id),
                 'outcome': 'conforme',
                 'reserve': reserve_id,
                 'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite

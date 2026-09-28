@@ -12,7 +12,7 @@ from apps.core.rls import set_rls_context
 from apps.evidence.models import Document
 from apps.evidence.services import create_work_declaration
 from apps.inspections.models import Inspection, InspectionOutcome, Reserve
-from apps.inspections.testing import submit_evidence
+from apps.inspections.testing import designated_pieces, submit_evidence
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
@@ -92,6 +92,8 @@ class TestSyncInspectionApplied:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
                 'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'note': 'Checklist: Sécurité ✓\nCommentaire: fissure visible',
@@ -128,6 +130,8 @@ class TestSyncInspectionApplied:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
                 'correlation_id': '44444444-4444-4444-4444-444444444441',
                 'known_latest_event_id': None,
@@ -153,6 +157,8 @@ class TestSyncInspectionApplied:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
                 'note': 'Second passage, légitime — pas une écriture concurrente.',
                 'correlation_id': '44444444-4444-4444-4444-444444444442',
@@ -182,6 +188,8 @@ class TestSyncInspectionApplied:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
                 'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '55555555-5555-5555-5555-555555555551',
@@ -209,6 +217,8 @@ class TestSyncInspectionApplied:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'reserve': reserve_id,
                 'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
                 'outcome': InspectionOutcome.CONFORME,
@@ -254,6 +264,8 @@ class TestSyncInspectionConflict:
         first_payload = {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'outcome': InspectionOutcome.CONFORME,
             'note': 'Premier inspecteur : conforme',
             'correlation_id': '22222222-2222-2222-2222-222222222221',
@@ -262,6 +274,8 @@ class TestSyncInspectionConflict:
         second_payload = {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
             'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'note': 'Second inspecteur : réserve — ne doit jamais écraser le premier',
@@ -311,6 +325,8 @@ class TestSyncInspectionConflict:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
                 'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '33333333-3333-3333-3333-333333333330',
@@ -332,6 +348,8 @@ class TestSyncInspectionConflict:
         first_follow_up = {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'reserve': reserve_id,
             'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
             'outcome': InspectionOutcome.CONFORME,
@@ -341,6 +359,8 @@ class TestSyncInspectionConflict:
         second_follow_up = {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'reserve': reserve_id,
             'decisions': [{'reserve_id': str(reserve_id), 'decision': 'maintenue', 'motif': 'Correction insuffisante'}],  # Audit UI R1 (K01) : décision explicite
             'outcome': InspectionOutcome.AVEC_RESERVE,
@@ -389,6 +409,8 @@ class TestSyncInspectionConflictObservability:
         first_payload = {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'outcome': InspectionOutcome.CONFORME,
             'correlation_id': '77777777-7777-7777-7777-777777777771',
             'known_latest_event_id': None,
@@ -396,6 +418,8 @@ class TestSyncInspectionConflictObservability:
         second_payload = {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
             'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'correlation_id': '77777777-7777-7777-7777-777777777772',
@@ -456,6 +480,8 @@ class TestSyncInspectionPermission:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
                 'correlation_id': '44444444-4444-4444-4444-444444444444',
             },
@@ -501,6 +527,8 @@ class TestSyncMediaQueue:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'documents': [document_response.data['id']],
                 'correlation_id': '55555555-5555-5555-5555-555555555552',
             },
@@ -559,6 +587,8 @@ class TestSyncMediaQueue:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
                 'correlation_id': '66666666-6666-6666-6666-666666666666',
                 'known_latest_event_id': None,
@@ -655,6 +685,8 @@ class TestMissionListView:
             {
                 'organization': str(organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
             },
             format='json',
@@ -693,6 +725,8 @@ class TestMissionListView:
             reverse('control-sync-inspection'),
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
                 'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '99999999-9999-9999-9999-999999999991',
@@ -768,6 +802,8 @@ class TestMissionListView:
             reverse('control-sync-inspection'),
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
                 'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '77777777-7777-7777-7777-777777777771',
@@ -827,6 +863,8 @@ class TestMissionListView:
             reverse('control-sync-inspection'),
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.AVEC_RESERVE,
                 'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 'correlation_id': '88888888-8888-8888-8888-888888888881',
@@ -857,6 +895,8 @@ class TestMissionListView:
             reverse('control-sync-inspection'),
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration.id),
                 'reserve': reserve_id, 'outcome': InspectionOutcome.CONFORME,
                 'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
                 'correlation_id': '88888888-8888-8888-8888-888888888882',

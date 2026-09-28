@@ -78,7 +78,7 @@ function ControlCard({
         >
           <Pill tone="primary">Mission en cours</Pill>
           <span data-testid="control-mission">
-            {`Mission en cours : ${control.pending_mission.inspector_email}, affectée le ${formatDate(control.pending_mission.assigned_at)}`}
+            {`Mission en cours : ${control.pending_mission.inspector}, affectée le ${formatDate(control.pending_mission.assigned_at)}`}
           </span>
         </p>
       ) : (
@@ -97,7 +97,7 @@ function ControlCard({
             >
               {inspectors.map((inspector) => (
                 <option key={inspector.id} value={inspector.id}>
-                  {`${inspector.full_name || inspector.email} — ${inspector.organizations.join(', ')}`}
+                  {inspector.label}
                 </option>
               ))}
             </Select>

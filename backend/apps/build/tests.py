@@ -14,6 +14,7 @@ from apps.core.rls import set_rls_context
 from apps.evidence.services import create_document, create_evidence, create_work_declaration
 from apps.inspections.models import InspectionOutcome
 from apps.inspections.services import create_inspection
+from apps.inspections.testing import designated_pieces
 from apps.programs import services as programs_services
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Milestone, MilestoneTemplate, Program
@@ -207,6 +208,8 @@ class TestControlesAPlanifier:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.CONFORME,
         )
 
@@ -226,6 +229,8 @@ class TestControlesAPlanifier:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, evidence_id=evidence.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, evidence_id=evidence.id),
             outcome=InspectionOutcome.CONFORME,
         )
 
@@ -281,6 +286,8 @@ class TestReservesOuvertes:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
 
@@ -307,6 +314,8 @@ class TestReservesOuvertes:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, evidence_id=evidence.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, evidence_id=evidence.id),
             outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
 
@@ -333,6 +342,8 @@ class TestReservesOuvertes:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, evidence_id=evidence.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, evidence_id=evidence.id),
             outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
 
@@ -356,12 +367,16 @@ class TestReservesOuvertes:
         inspection = create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
         reserve = inspection.opened_reserve
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.CONFORME, reserve_id=reserve.id,
             decisions=[{'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
         )
@@ -391,6 +406,8 @@ class TestReservesOuvertes:
         inspection = create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure',
         )
         reserve = inspection.opened_reserve
@@ -400,6 +417,8 @@ class TestReservesOuvertes:
             create_inspection(
                 inspector=inspecteur, inspector_organization=inspecteur_organization,
                 target_organization_id=organization.id, work_declaration_id=declaration.id,
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
                 outcome=InspectionOutcome.CONFORME, reserve_id=reserve.id,
                 decisions=[{'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
             )
@@ -455,6 +474,8 @@ class TestConstructeurCannotChangeReserveStatusFromBuild:
             reverse('inspection-list'),
             {
                 'organization': str(organization.id), 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
             },
             format='json',
@@ -474,6 +495,8 @@ class TestConstructeurCannotChangeReserveStatusFromBuild:
         inspection = create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],
         )
         reserve = inspection.opened_reserve

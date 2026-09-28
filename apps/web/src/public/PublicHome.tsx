@@ -1,14 +1,14 @@
 import { useState } from 'react';
 
 import {
-  Button, Pill, Select, brandColors, semanticColors, useIsMobile,
+  Button, Pill, Select, brandColors, semanticColors,
+  LotPlan, hasLotPlan,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
 import type { PublicProgram, PublicWorksite } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { FacadeIllustration } from './illustrations/FacadeIllustration';
-import { LotPlanA1 } from './illustrations/LotPlanA1';
 import { CONTROLLER_DESIGNATION, TrustTriangle } from './illustrations/TrustTriangle';
 import { paymentBreakdown } from './paymentBreakdown';
 import { CONTAINER_STYLE } from './PublicLayout';
@@ -180,6 +180,10 @@ function Hero({ navigate }: { navigate: (path: PublicPath) => void }) {
             </li>
           ))}
         </ol>
+        {/* PO-2026-09-28-26 : la façade du programme fictif ouvre la page. */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <FacadeIllustration />
+        </div>
       </div>
     </section>
   );
@@ -212,8 +216,14 @@ function ProgramCard({ program, navigate }: { program: PublicProgram; navigate: 
         border: `1px solid ${semanticColors.neutral.border}`,
       }}
     >
-      {/* PO-2026-09-27-20 (V07) : plus d'icône d'immeuble générique ; les
-          biens sont montrés par la façade et le plan au trait ci-dessus. */}
+      {/* PO-2026-09-27-20 (V07) : plus d'icône d'immeuble générique.
+          PO-2026-09-28-26 : vignette du plan du lot A1 (plein écran, zoom
+          tactile) ; aucun plan pour un lot qui n'en a pas (A2). */}
+      {hasLotPlan(program.name, 'Lot A1') && (
+        <div style={{ padding: '16px 16px 0' }}>
+          <LotPlan programName={program.name} lotName="Lot A1" />
+        </div>
+      )}
       <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: '10px', flexGrow: 1 }}>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <Pill tone={soldOut ? 'neutral' : 'success'}>
@@ -409,7 +419,6 @@ function Simulator({ programs }: { programs: PublicProgram[] }) {
 
 export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void }) {
   const api = useApiClient();
-  const isMobile = useIsMobile();
   const offerState = useApiResource(() => api.getPublicOffer(), []);
   const worksitesState = useApiResource(() => api.getPublicWorksites(), []);
   // Programmes avec des lots disponibles d'abord (aussi le choix par défaut
@@ -428,15 +437,6 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         title="Programmes de démonstration"
         subtitle="Programmes, biens et prix fictifs. Un bien réservé n’apparaît plus comme disponible."
       >
-        <div
-          style={{
-            display: 'grid', gap: '24px', marginBottom: '32px', alignItems: 'stretch',
-            gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'minmax(0, 2fr) minmax(0, 1fr)',
-          }}
-        >
-          <FacadeIllustration />
-          <LotPlanA1 />
-        </div>
         {offerState.status === 'loading' && <p>Chargement des programmes…</p>}
         {offerState.status === 'error' && <p role="alert">Les programmes sont momentanément indisponibles. Réessayez dans un instant.</p>}
         {offerState.status === 'success' && programs.length === 0 && <p>Aucun programme publié pour le moment.</p>}

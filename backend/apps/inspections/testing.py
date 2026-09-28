@@ -21,3 +21,21 @@ def submit_evidence(*, organization, declaration, added_by, content=b'photo de c
     return create_evidence(
         organization=organization, work_declaration=declaration, documents=[document], added_by=added_by,
     )
+
+
+def designated_pieces(organization_id, *, declaration_id=None, evidence_id=None):
+    """PO-2026-09-28-20 — le contrôleur désigne EXPLICITEMENT les versions
+    examinées. Les tests qui simulent un avis désignent ici toutes les
+    pièces soumises de la déclaration (ou de la pièce visée), lues sous le
+    contexte RLS de l'organisation du lot (laissé posé en sortie)."""
+    from apps.core.rls import set_rls_context
+    from apps.evidence.models import Evidence
+
+    set_rls_context(organization_id=organization_id)
+    if declaration_id is None:
+        declaration_id = Evidence.objects.get(id=evidence_id).work_declaration_id
+    return [
+        str(evidence_id) for evidence_id in Evidence.objects.filter(
+            work_declaration_id=declaration_id,
+        ).order_by('created_at').values_list('id', flat=True)
+    ]

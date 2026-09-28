@@ -51,20 +51,34 @@ describe('MissionReviewView — K01 pièces soumises', () => {
     expect(screen.getByText(/Déclaration : Constructeur Démo · Constructeur/)).toBeInTheDocument();
   });
 
+  // Adapté selon PO-2026-09-28-20 : les versions examinées sont cochées
+  // explicitement par le contrôleur (aucune par défaut).
   it('l’avis enregistre les versions examinées', async () => {
     const api = renderView(FIRST);
-    fireEvent.click(await screen.findByLabelText('Conforme'));
+    fireEvent.click(await screen.findByLabelText('J’ai examiné la version 1'));
+    fireEvent.click(screen.getByLabelText('Conforme'));
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer l’avis' }));
     await waitFor(() => expect(api.submitOpinion).toHaveBeenCalled());
     expect(api.submitOpinion.mock.calls[0][1].examinedEvidenceIds).toEqual(['ev1']);
     expect(await screen.findByRole('status')).toHaveTextContent('horodatage serveur : 28 sept. 2026');
+  });
+
+  it('PO-2026-09-28-20 : sans version cochée, l’avis est refusé avant envoi', async () => {
+    const api = renderView(FOLLOW_UP);
+    const boxes = await screen.findAllByRole('checkbox');
+    expect(boxes.every((box) => !(box as HTMLInputElement).checked)).toBe(true);
+    fireEvent.click(screen.getByLabelText('Conforme'));
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer l’avis' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Cochez au moins une version de pièce que vous avez examinée.');
+    expect(api.submitOpinion).not.toHaveBeenCalled();
   });
 });
 
 describe('MissionReviewView — K02 réserves structurées', () => {
   it('non conforme : plusieurs réserves avec motif et action attendue, commentaire après la décision', async () => {
     const api = renderView(FIRST);
-    fireEvent.click(await screen.findByLabelText('Non conforme — réserve(s)'));
+    fireEvent.click(await screen.findByLabelText('J’ai examiné la version 1')); // Adapté selon PO-2026-09-28-20.
+    fireEvent.click(screen.getByLabelText('Non conforme — réserve(s)'));
     const [first] = screen.getAllByTestId('new-reserve');
     fireEvent.change(within(first).getByLabelText('Motif'), { target: { value: 'Fissure' } });
     fireEvent.change(within(first).getByLabelText('Action attendue du constructeur'), { target: { value: 'Reprendre la semelle' } });
@@ -101,7 +115,10 @@ describe('MissionReviewView — K02 réserves structurées', () => {
 describe('MissionReviewView — K03 décision explicite par réserve', () => {
   it('un recontrôle exige Levée ou Maintenue avec motif pour chaque réserve ouverte', async () => {
     const api = renderView(FOLLOW_UP);
-    fireEvent.click(await screen.findByLabelText('Conforme'));
+    // Adapté selon PO-2026-09-28-20 : les deux versions sont cochées explicitement.
+    fireEvent.click(await screen.findByLabelText('J’ai examiné la version 1'));
+    fireEvent.click(screen.getByLabelText('J’ai examiné la version 2'));
+    fireEvent.click(screen.getByLabelText('Conforme'));
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer l’avis' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Décidez de la réserve « Enrobage insuffisant » : levée ou maintenue.');
     expect(api.submitOpinion).not.toHaveBeenCalled();

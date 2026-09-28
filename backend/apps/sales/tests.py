@@ -332,7 +332,8 @@ class TestAdminReservations:
         listing = adv.get(reverse('reservation-admin-list'))
         assert listing.status_code == 200
         row = next(row for row in listing.data if row['id'] == reservation_id)
-        assert row['client']['email'] == user.email
+        # Adapté selon PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+        assert row['client']['id'] == str(user.id) and 'email' not in row['client']
 
         url = reverse('reservation-admin-cancel', args=[reservation_id]) + f'?organization_id={promoter.id}'
         assert adv.post(url, {'reason': '   '}, format='json').status_code in (400, 409)
@@ -452,7 +453,8 @@ class TestContractLifecycle:
         assert _transition(adv, contract_id, promoter, 'submit').data['status'] == 'review'
         approved = _transition(adv, contract_id, promoter, 'approve')
         assert approved.data['status'] == 'approved'
-        assert approved.data['approved_by'] == adv_user.email
+        # Adapté selon PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+        assert approved.data['approved_by'].endswith(' · Gestionnaire') and '@' not in approved.data['approved_by']
 
         signed = client.post(reverse('my-contract-sign', args=[contract_id]))
         assert signed.status_code == 200
@@ -592,6 +594,7 @@ class TestContractSignatureRules:
 
 from apps.evidence.services import create_evidence, create_work_declaration  # noqa: E402
 from apps.inspections.services import create_inspection, is_milestone_technically_accepted  # noqa: E402
+from apps.inspections.testing import designated_pieces
 from apps.programs.models import Milestone  # noqa: E402
 
 from .models import PaymentCall  # noqa: E402
@@ -645,6 +648,8 @@ def _accept_milestone(promoter, lot_id, code, outcome='conforme'):
     create_inspection(
         inspector=inspector, inspector_organization=inspector_org, target_organization_id=promoter.id,
         work_declaration_id=declaration.id, outcome=outcome,
+        # PO-2026-09-28-20 : versions désignées explicitement.
+        examined_evidence_ids=designated_pieces(promoter.id, declaration_id=declaration.id),
         # Audit UI R1 (K02) : un avis non conforme ouvre une réserve structurée.
         reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}]
         if outcome == 'avec_reserve' else None,
@@ -1052,6 +1057,8 @@ def _accept_with_evidence(promoter, lot_id, code, author, outcome='conforme'):
     create_inspection(
         inspector=inspector, inspector_organization=inspector_org, target_organization_id=promoter.id,
         work_declaration_id=declaration.id, outcome=outcome,
+        # PO-2026-09-28-20 : versions désignées explicitement.
+        examined_evidence_ids=designated_pieces(promoter.id, declaration_id=declaration.id),
         # Audit UI R1 (K02) : un avis non conforme ouvre une réserve structurée.
         reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}]
         if outcome == 'avec_reserve' else None,

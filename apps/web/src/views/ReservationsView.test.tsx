@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// Adapté selon PO-2026-09-28-22 : personnes « organisation · rôle », client par son nom, jamais d'e-mail.
 import { ApiError } from '../api/client';
 import type { AdminReservation } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
@@ -17,7 +18,7 @@ function reservation(overrides: Partial<AdminReservation> = {}): AdminReservatio
     lot: { id: 'lot-1', name: 'Lot A12', surface: '82.00' },
     program: { id: 'program-1', name: 'Résidence Démonstration Abidjan' },
     organization: { id: 'org-promoteur', name: 'Promoteur Démonstration' },
-    client: { id: 'client-1', email: 'acquereur@example.com', full_name: 'Awa Koné' },
+    client: { id: 'client-1', full_name: 'Awa Koné', role: 'Client' },
     cancellation_reason: '',
     cancelled_by: null,
     created_at: '2026-09-27T14:30:00Z',
@@ -58,7 +59,8 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
     await openDossier();
     expect(screen.getByRole('heading', { name: 'Awa Koné · Lot A12' })).toBeInTheDocument();
     const dossier = screen.getByRole('article', { name: 'Dossier — Awa Koné, Lot A12' });
-    expect(dossier).toHaveTextContent('acquereur@example.com');
+    // Adapté selon PO-2026-09-28-22 : plus d'e-mail du client dans le dossier.
+    expect(dossier).not.toHaveTextContent('@');
     expect(dossier.textContent!.replace(/\s/g, ' ')).toContain('30 000 000 XOF');
     expect(dossier).toHaveTextContent('28 sept. 2026, 14:30 (GMT, Abidjan)'); // Audit UI R1 (F06)
   });
@@ -67,7 +69,7 @@ describe('ReservationsView — réservations côté équipe KEYIMMO (ticket F-06
     renderView({
       listReservations: vi.fn().mockResolvedValue([
         reservation(),
-        reservation({ id: 'reservation-2', client: { id: 'c2', email: 'yao@example.com', full_name: 'Yao Kouassi' }, lot: { id: 'l2', name: 'Lot B3', surface: null } }),
+        reservation({ id: 'reservation-2', client: { id: 'c2', full_name: 'Yao Kouassi', role: 'Client' }, lot: { id: 'l2', name: 'Lot B3', surface: null } }),
       ]),
     });
     expect(await screen.findAllByTestId('reservation-row')).toHaveLength(2);

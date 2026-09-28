@@ -131,3 +131,8 @@ export { VersionHistory } from './components/VersionHistory/VersionHistory';
 export type { VersionEntry, VersionHistoryProps, VersionReview } from './components/VersionHistory/VersionHistory';
 export { DateInput, MONTHS_SHORT } from './components/DateInput/DateInput';
 export type { DateInputProps } from './components/DateInput/DateInput';
+
+// PO-2026-09-28-26 : illustrations du programme fictif (page publique, espace client).
+export { LotPlanA1, PLAN_CAPTION } from './illustrations/LotPlanA1';
+export { FACADE_CAPTION, FacadeIllustration } from './illustrations/FacadeIllustration';
+export { LotPlan, hasLotPlan } from './illustrations/lotPlans';

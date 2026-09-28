@@ -14,7 +14,7 @@ from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
 from apps.trust.models import TrustEvent
-from apps.inspections.testing import submit_evidence
+from apps.inspections.testing import designated_pieces, submit_evidence
 
 from . import services
 from .models import InspectionOutcome, Reserve
@@ -82,6 +82,8 @@ def _open_reserve_via_inspection(inspecteur_client, constructeur_organization, d
         {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
             'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'note': 'Fissure visible en façade',
@@ -117,6 +119,8 @@ class TestIndependenceRule:
             {
                 'organization': str(organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
             },
             format='json',
@@ -137,6 +141,8 @@ class TestIndependenceRule:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
             },
             format='json',
@@ -187,6 +193,8 @@ class TestConstructeurCannotChangeReserveStatus:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
             },
             format='json',
@@ -202,6 +210,8 @@ class TestConstructeurCannotChangeReserveStatus:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
                 'reserve': str(reserve_id),
                 'decisions': [{'reserve_id': str(str(reserve_id)), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
@@ -293,6 +303,8 @@ class TestFullReserveHistoryIsReadableAfterLevee:
             {
                 'organization': str(constructeur_organization.id),
                 'work_declaration': str(declaration.id),
+                # PO-2026-09-28-20 : versions désignées explicitement.
+                'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                 'outcome': InspectionOutcome.CONFORME,
                 'reserve': reserve_id,
                 'decisions': [{'reserve_id': str(reserve_id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite

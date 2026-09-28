@@ -49,6 +49,10 @@ class SyncInspectionSerializer(serializers.Serializer):
     reserves = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     decisions = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     correlation_id = serializers.UUIDField()
+    # PO-2026-09-28-20 : même règle que l'avis en ligne — versions de pièces
+    # désignées explicitement, sinon refus (voie hors ligne inactive au MVP,
+    # K04, mais jamais un contournement de la règle).
+    examined_evidence_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     # `None` (absent du payload JSON) est une valeur légitime : "le client
     # n'a jamais observé le moindre événement pour cette cible" — distinct
     # d'un champ manquant par erreur, donc jamais `required=False` seul :
@@ -64,7 +68,6 @@ class MissionOpinionSerializer(serializers.Serializer):
     note = serializers.CharField(required=False, allow_blank=True, default='')
     reserves = serializers.ListField(child=serializers.DictField(), required=False, default=list)
     decisions = serializers.ListField(child=serializers.DictField(), required=False, default=list)
-    # PO-2026-09-28-13 : absent = toutes les pièces soumises (règle du
-    # service) ; une liste fournie vide est refusée. Plus de `default=list`,
-    # qui transformait l'absence en liste vide (avis sans pièce).
+    # PO-2026-09-28-20 : désignation explicite obligatoire ; absente ou vide,
+    # l'avis est refusé par `create_inspection` (message métier en 400).
     examined_evidence_ids = serializers.ListField(child=serializers.UUIDField(), required=False)

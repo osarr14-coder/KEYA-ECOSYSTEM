@@ -226,12 +226,18 @@ class ProgramRequestDecisionSerializer(serializers.Serializer):
 
 class ProgramRequestSerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(source='organization.name', read_only=True)
-    requested_by_email = serializers.CharField(source='requested_by.email', read_only=True)
+    # PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+    requested_by_label = serializers.SerializerMethodField()
 
     class Meta:
         model = ProgramRequest
         fields = [
-            'id', 'organization', 'organization_name', 'requested_by', 'requested_by_email',
+            'id', 'organization', 'organization_name', 'requested_by', 'requested_by_label',
             'description', 'status', 'program', 'created_at',
         ]
         read_only_fields = fields
+
+    def get_requested_by_label(self, program_request):
+        from apps.organizations.identity import actor_label
+
+        return actor_label(program_request.requested_by)

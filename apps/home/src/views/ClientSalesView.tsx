@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, Button, Card, PageHeader, Pill, formatSurface, semanticColors,
+  LotPlan, hasLotPlan,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -80,6 +81,13 @@ function CatalogLotCard({ lot, onReserved }: { lot: CatalogLot; onReserved: () =
         background: semanticColors.neutral.surface,
       }}
     >
+      {/* PO-2026-09-28-26 : vignette du plan (plein écran, zoom tactile) ;
+          rien pour un lot sans plan (A2). */}
+      {hasLotPlan(lot.program.name, lot.name) && (
+        <div style={{ padding: '14px 14px 0' }}>
+          <LotPlan programName={lot.program.name} lotName={lot.name} />
+        </div>
+      )}
       <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '8px', flexGrow: 1 }}>
         <strong style={{ fontSize: '17px', fontWeight: 700, color: semanticColors.neutral.heading }}>
           {lot.program.name} — {lot.name}

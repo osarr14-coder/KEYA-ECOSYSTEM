@@ -12,7 +12,7 @@ from apps.core.rls import set_rls_context
 from apps.evidence.models import Document, SensitivityLevel
 from apps.evidence.services import create_document, create_work_declaration
 from apps.inspections.models import InspectionOutcome
-from apps.inspections.testing import submit_evidence
+from apps.inspections.testing import designated_pieces, submit_evidence
 from apps.messaging.models import Message
 from apps.messaging.services import create_message
 from apps.organizations.models import Membership, Organization, Role
@@ -69,6 +69,8 @@ def _open_reserve(inspecteur_client, constructeur_organization, declaration):
         {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
             'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
         },

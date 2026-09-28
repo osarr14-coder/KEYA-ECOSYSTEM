@@ -65,8 +65,9 @@ function CapaciteManquanteRow({ row }: { row: LotExceptionRow }) {
       <strong>{row.lot_name}</strong>
       <span> — {row.asset_name} ({row.program_name})</span>
       <p style={{ margin: '4px 0' }}>{row.label}</p>
+      {/* PO-2026-09-28-21 : le constructeur sait pourquoi il ne peut pas agir. */}
       <p style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-        Lecture seule : l’organisation constructrice est affectée par le gestionnaire.
+        Affectation réalisée par le gestionnaire
       </p>
     </li>
   );

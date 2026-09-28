@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// Adapté selon PO-2026-09-28-22 : personnes « organisation · rôle », client par son nom, jamais d'e-mail.
 import { ApiError } from '../api/client';
 import type { ControlToAssign, InspectorSummary } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
@@ -25,7 +26,7 @@ function control(overrides: Partial<ControlToAssign> = {}): ControlToAssign {
 }
 
 const INSPECTOR: InspectorSummary = {
-  id: 'inspector-1', email: 'inspecteur.demo@keya.test', full_name: 'Bureau de contrôle (démo)',
+  id: 'inspector-1', label: 'Bureau de contrôle Démonstration · Contrôleur',
   organizations: ['Bureau de contrôle Démonstration'],
 };
 
@@ -51,10 +52,10 @@ describe('ControlsView — contrôles à affecter (ticket F-069)', () => {
 
   it('une mission en cours remplace le formulaire', async () => {
     renderView([control({
-      pending_mission: { id: 'mission-1', inspector_email: 'inspecteur.demo@keya.test', assigned_at: '2026-09-28T10:00:00Z' },
+      pending_mission: { id: 'mission-1', inspector: 'Bureau de contrôle Démonstration · Contrôleur', assigned_at: '2026-09-28T10:00:00Z' },
     })]);
 
-    expect(await screen.findByTestId('control-mission')).toHaveTextContent('Mission en cours : inspecteur.demo@keya.test');
+    expect(await screen.findByTestId('control-mission')).toHaveTextContent('Mission en cours : Bureau de contrôle Démonstration · Contrôleur');
     expect(screen.queryByRole('button', { name: 'Missionner' })).not.toBeInTheDocument();
   });
 
@@ -88,7 +89,7 @@ describe('ControlsView — chiffres clés (ticket F-078)', () => {
       control({
         work_declaration_id: 'declaration-2',
         pending_mission: {
-          id: 'mission-1', inspector_email: 'inspecteur.demo@keya.test', assigned_at: '2026-09-28T10:00:00Z',
+          id: 'mission-1', inspector: 'Bureau de contrôle Démonstration · Contrôleur', assigned_at: '2026-09-28T10:00:00Z',
         } as ControlToAssign['pending_mission'],
       }),
       control({ work_declaration_id: 'declaration-3', status: 'under_reserve', status_label: 'Sous réserve' }),

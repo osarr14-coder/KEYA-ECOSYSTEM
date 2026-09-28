@@ -92,7 +92,8 @@ describe('ExceptionsView — capacités manquantes : action réelle "Affecter"',
     });
 
     expect(await screen.findByText('Aucune organisation constructrice affectée')).toBeInTheDocument();
-    expect(screen.getByText(/Lecture seule : l’organisation constructrice est affectée par le gestionnaire/)).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-21 : libellé « Affectation réalisée par le gestionnaire ».
+    expect(screen.getByText('Affectation réalisée par le gestionnaire')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Affecter/ })).not.toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@ import { ProgramRequestsView } from './ProgramRequestsView';
 
 const REQUEST = {
   id: 'req-1', organization: 'org-1', organization_name: 'Compte personnel — sponsor@example.com',
-  requested_by: 'user-1', requested_by_email: 'sponsor@example.com',
+  requested_by: 'user-1', requested_by_label: 'Org Sponsor · Constructeur',
   description: 'Villa 4 pièces à Dakar, budget 60M FCFA.',
   status: 'en_attente' as const, program: null, created_at: '2026-03-06T09:00:00Z',
 };
@@ -39,7 +39,8 @@ describe('ProgramRequestsView', () => {
 
     expect(await screen.findByText(REQUEST.organization_name)).toBeInTheDocument();
     expect(screen.getByText(REQUEST.description)).toBeInTheDocument();
-    expect(screen.getByTestId('request-meta')).toHaveTextContent(REQUEST.requested_by_email);
+    // Adapté selon PO-2026-09-28-22 : « organisation · rôle » au lieu de l'e-mail.
+    expect(screen.getByTestId('request-meta')).toHaveTextContent(REQUEST.requested_by_label);
     expect(screen.getByTestId('request-status')).toHaveTextContent('En attente');
   });
 

@@ -200,7 +200,8 @@ export interface ProgramRequest {
   organization: string;
   organization_name: string;
   requested_by: string;
-  requested_by_email: string;
+  /** PO-2026-09-28-22 : « organisation · rôle ». */
+  requested_by_label: string;
   description: string;
   status: 'en_attente' | 'acceptee' | 'refusee';
   program: string | null;
@@ -420,7 +421,8 @@ export interface AdminReservation {
   lot: { id: string; name: string; surface: string | null };
   program: { id: string; name: string };
   organization: { id: string; name: string };
-  client: { id: string; email: string; full_name: string };
+  /** PO-2026-09-28-22 : le client est identifié par son nom fictif, jamais par son e-mail. */
+  client: { id: string; full_name: string; role: string };
   cancellation_reason: string;
   cancelled_by: string | null;
   /** Ticket F-071 (backend B-056) — validation du dossier par l'ADV. */
@@ -617,13 +619,14 @@ export interface ControlToAssign {
   evidence_count: number;
   latest_outcome: 'conforme' | 'avec_reserve' | null;
   correction_submitted: boolean;
-  pending_mission: { id: string; inspector_email: string; assigned_at: string } | null;
+  /** PO-2026-09-28-22 : contrôleur « organisation · rôle ». */
+  pending_mission: { id: string; inspector: string; assigned_at: string } | null;
 }
 
 export interface InspectorSummary {
   id: string;
-  email: string;
-  full_name: string;
+  /** PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail. */
+  label: string;
   organizations: string[];
 }
 
@@ -636,7 +639,8 @@ export interface PaymentNotice {
   program: { id: string; name: string };
   lot: { id: string; name: string };
   reservation: { id: string; status: ReservationStatus; status_label: string };
-  client: { id: string; email: string; full_name: string };
+  /** PO-2026-09-28-22 : le client est identifié par son nom fictif, jamais par son e-mail. */
+  client: { id: string; full_name: string; role: string };
   payment_call: { id: string; kind: PaymentCallKind; kind_label: string; tier_label: string; amount: string };
   amount: string;
   currency: string;
@@ -664,7 +668,8 @@ export interface FinanceReceipt extends PaymentNoticeReceipt {
   program: { id: string; name: string };
   lot: { id: string; name: string };
   reservation: { id: string; status: ReservationStatus; status_label: string };
-  client: { id: string; email: string; full_name: string };
+  /** PO-2026-09-28-22 : le client est identifié par son nom fictif, jamais par son e-mail. */
+  client: { id: string; full_name: string; role: string };
   notices: { id: string; client_reference: string; status: PaymentNotice['status']; status_label: string }[];
 }
 

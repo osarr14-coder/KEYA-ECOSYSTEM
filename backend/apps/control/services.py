@@ -108,7 +108,7 @@ class SyncOutcome:
 def sync_inspection(
     *, inspector, inspector_organization, target_organization_id,
     work_declaration_id, outcome, note, correlation_id, known_latest_event_id=None, reserve_id=None,
-    reserves=None, decisions=None,
+    reserves=None, decisions=None, examined_evidence_ids=None,
 ):
     """Point d'entrée CONTROL pour synchroniser une inspection saisie hors
     ligne. Délègue entièrement à `apps.inspections.services.create_inspection`
@@ -142,6 +142,7 @@ def sync_inspection(
             client_correlation_id=correlation_id,
             reserves=reserves,
             decisions=decisions,
+            examined_evidence_ids=examined_evidence_ids,
         )
     except inspections_services.SyncConflict as exc:
         logger.warning('control_sync_inspection_conflict correlation_id=%s', correlation_id)

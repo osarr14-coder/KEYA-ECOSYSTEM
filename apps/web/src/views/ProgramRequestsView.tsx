@@ -71,7 +71,7 @@ function RequestCard({ request, onDecided }: { request: ProgramRequest; onDecide
         </span>
       </div>
       <p data-testid="request-meta" style={{ margin: '4px 0', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-        {request.requested_by_email} — {formatServerDateTime(request.created_at)}
+        {request.requested_by_label} — {formatServerDateTime(request.created_at)}
       </p>
       <p style={{ margin: '8px 0' }}>{request.description}</p>
 

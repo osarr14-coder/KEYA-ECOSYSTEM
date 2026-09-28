@@ -8,6 +8,7 @@ from django.urls import reverse
 
 from apps.core.rls import set_rls_context
 from apps.inspections.services import create_inspection
+from apps.inspections.testing import designated_pieces
 
 from .tests import _register, _setup_org_with_lot
 
@@ -88,11 +89,14 @@ class TestChantierPathB054:
         assert any(entry['id'] == str(inspector.id) and 'Org B054 Controle' in entry['organizations'] for entry in inspectors)
 
         assert _assign(admin, organization, declaration_id, inspector).status_code == 201
-        assert _control_row(admin, declaration_id)['pending_mission']['inspector_email'] == inspector.email
+        # Adapté selon PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+        assert _control_row(admin, declaration_id)['pending_mission']['inspector'] == 'Org B054 Controle · Contrôleur'
         assert _milestones(builder, lot)['fondations']['control_scheduled'] is True
 
         create_inspection(
             inspector=inspector, inspector_organization=inspector_org, target_organization_id=organization.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration_id),
             work_declaration_id=declaration_id, outcome='avec_reserve', reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],
         )
         row = _milestones(builder, lot)['fondations']
@@ -110,6 +114,8 @@ class TestChantierPathB054:
         assert _assign(admin, organization, declaration_id, inspector).status_code == 201
         create_inspection(
             inspector=inspector, inspector_organization=inspector_org, target_organization_id=organization.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration_id),
             work_declaration_id=declaration_id, outcome='conforme', reserve_id=row['reserve_id'],
             decisions=[{'reserve_id': str(row['reserve_id']), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
         )
@@ -124,6 +130,8 @@ class TestChantierPathB054:
         _add_evidence(builder, declaration_id)
         create_inspection(
             inspector=inspector, inspector_organization=inspector_org, target_organization_id=organization.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration_id),
             work_declaration_id=declaration_id, outcome='conforme',
         )
         assert _milestones(builder, lot)['fondations']['status'] == 'accepted'

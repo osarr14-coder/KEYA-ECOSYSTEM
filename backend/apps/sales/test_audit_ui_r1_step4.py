@@ -148,7 +148,9 @@ class TestFinanceReceiptsAndClientSignals:
         assert listed.status_code == 200, listed.data
         row = next(item for item in listed.data if item['id'] == receipt['id'])
         assert row['bank_reference'] == 'SIM-REL-0101'
-        assert row['lot']['name'] and row['client']['email'] == 'client1.demo@keya.test'
+        # Adapté selon PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+        assert row['lot']['name'] and row['client']['full_name'] == 'Awa Koné (cliente fictive)'
+        assert 'email' not in row['client']
         assert row['unallocated_amount'] == '100000.00' and row['notices'] == []
         assert _login(CLIENT_EMAIL).get(reverse('finance-receipt-list')).status_code == 403
 

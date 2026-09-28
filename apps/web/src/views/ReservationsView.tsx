@@ -126,12 +126,12 @@ function ValidateButton({ reservation, onValidated }: { reservation: AdminReserv
 }
 
 function initials(reservation: AdminReservation) {
-  const source = reservation.client.full_name || reservation.client.email;
-  return source.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join('');
+  const source = reservation.client.full_name;
+  return source.split(/[\s.()]+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join('');
 }
 
 function clientLabel(reservation: AdminReservation) {
-  return reservation.client.full_name || reservation.client.email;
+  return reservation.client.full_name;
 }
 
 export function reservationTone(status: ReservationStatus): PillTone {
@@ -186,7 +186,6 @@ function ReservationDossier({
             {[
               reservation.program.name,
               reservation.lot.surface ? `${Number(reservation.lot.surface).toLocaleString('fr-FR')} m²` : null,
-              reservation.client.email,
             ].filter(Boolean).join(' · ')}
           </span>
         </div>
@@ -293,7 +292,7 @@ function ReservationRow({ reservation, onOpen }: { reservation: AdminReservation
     <tr data-testid="reservation-row">
       <td>
         <div style={{ fontWeight: 700 }}>{clientLabel(reservation)}</div>
-        <div style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{reservation.client.email}</div>
+        <div style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>{reservation.client.role}</div>
       </td>
       <td>
         <div style={{ fontWeight: 600 }}>{reservation.lot.name}</div>
@@ -340,7 +339,7 @@ export function ReservationsView({
   const needle = query.trim().toLowerCase();
   const rows = needle
     ? all.filter((reservation) => [
-      reservation.client.full_name, reservation.client.email, reservation.lot.name, reservation.program.name,
+      reservation.client.full_name, reservation.lot.name, reservation.program.name,
     ].some((value) => value.toLowerCase().includes(needle)))
     : all;
 

@@ -87,7 +87,8 @@ function reservation(overrides: Partial<AdminReservation>): AdminReservation {
   return {
     id: 'r', status: 'held', status_label: 'Bloquée', held_until: '2026-09-28T14:30:00Z', price_amount: '30000000.00', currency: 'XOF',
     lot: { id: 'l', name: 'Lot A1', surface: null }, program: { id: 'p', name: 'Programme' }, organization: { id: 'o', name: 'Org' },
-    client: { id: 'c', email: 'c@example.com', full_name: '' }, cancellation_reason: '', cancelled_by: null, validated_at: null,
+    // Adapté selon PO-2026-09-28-22 : client sans e-mail.
+    client: { id: 'c', full_name: 'Client', role: 'Client' }, cancellation_reason: '', cancelled_by: null, validated_at: null,
     created_at: '2026-09-27T14:30:00Z', updated_at: '2026-09-27T14:30:00Z',
     ...overrides,
   };

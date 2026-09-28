@@ -12,6 +12,7 @@ from apps.evidence.services import create_document, create_evidence, create_work
 from apps.home.services import compute_milestone_status, get_latest_notable_event
 from apps.inspections.models import InspectionOutcome
 from apps.inspections.services import create_inspection, get_reserve_status
+from apps.inspections.testing import designated_pieces
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, LotClient, Program
 from apps.programs.services import instantiate_milestones_for_lot
@@ -226,6 +227,8 @@ class TestProgressionIsComputedServerSideNotInFrontend:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.CONFORME,
         )
 
@@ -365,6 +368,8 @@ class TestOpenReserveSurfacesAsMainProblem:
         inspection = create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.AVEC_RESERVE, reserves=[{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}], note='Fissure visible',
         )
         reserve = inspection.opened_reserve
@@ -396,6 +401,8 @@ class TestOpenReserveSurfacesAsMainProblem:
         create_inspection(
             inspector=inspecteur, inspector_organization=inspecteur_organization,
             target_organization_id=organization.id, work_declaration_id=declaration.id,
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            examined_evidence_ids=designated_pieces(organization.id, declaration_id=declaration.id),
             outcome=InspectionOutcome.CONFORME, reserve_id=reserve.id,
             decisions=[{'reserve_id': str(reserve.id), 'decision': 'levee', 'motif': 'Correction vérifiée sur place'}],  # Audit UI R1 (K01) : décision explicite
         )

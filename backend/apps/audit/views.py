@@ -7,6 +7,7 @@ from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
 
 from .models import AuditEvent
+from apps.organizations.identity import actor_label
 
 JOURNAL_LIMIT = 200
 
@@ -38,7 +39,8 @@ class AdminJournalView(APIView):
                 'id': event.id,
                 'created_at': event.created_at.isoformat(),
                 'organization': event.organization.name,
-                'actor': event.actor.email if event.actor else None,
+                # PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+                'actor': actor_label(event.actor) if event.actor else None,
                 'action': event.action,
                 'object_type': event.object_type,
                 'object_id': str(event.object_id),

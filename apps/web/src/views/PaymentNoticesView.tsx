@@ -234,7 +234,7 @@ function NoticeCard({ notice, canAct, onDone }: { notice: PaymentNotice; canAct:
       </div>
       <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '6px 20px', margin: 0 }}>
         <dt style={{ color: semanticColors.neutral.textMuted }}>Client</dt>
-        <dd style={{ margin: 0 }}>{notice.client.full_name ? `${notice.client.full_name} (${notice.client.email})` : notice.client.email}</dd>
+        <dd style={{ margin: 0 }}>{notice.client.full_name}</dd>
         <dt style={{ color: semanticColors.neutral.textMuted }}>Appel</dt>
         <dd style={{ margin: 0 }}>{`${callLabel} — ${formatAmount(notice.payment_call.amount)}`}</dd>
         <dt style={{ color: semanticColors.neutral.textMuted }}>Montant signalé</dt>
@@ -301,7 +301,7 @@ function ReceiptEntry() {
           <option value="">Choisir un dossier…</option>
           {reservations.map((reservation) => (
             <option key={reservation.id} value={reservation.id}>
-              {`${reservation.client.full_name || reservation.client.email} — ${reservation.lot.name} (${reservation.status_label})`}
+              {`${reservation.client.full_name} — ${reservation.lot.name} (${reservation.status_label})`}
             </option>
           ))}
         </Select>
@@ -353,7 +353,7 @@ function ReceiptsLedger() {
               <td style={{ whiteSpace: 'nowrap' }}>{formatCalendarDate(receipt.received_on)}</td>
               <td><Reference value={receipt.bank_reference} label="Référence bancaire simulée" /></td>
               <td>
-                {`${receipt.client.full_name || receipt.client.email} — ${receipt.lot.name}`}
+                {`${receipt.client.full_name} — ${receipt.lot.name}`}
                 <span style={{ display: 'block', fontSize: '13px', color: semanticColors.neutral.textMuted }}>{receipt.program.name}</span>
               </td>
               <td style={{ textAlign: 'right' }}><Money value={receipt.amount} currency={receipt.currency} kind="received" /></td>

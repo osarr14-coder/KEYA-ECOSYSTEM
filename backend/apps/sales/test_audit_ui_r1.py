@@ -274,7 +274,9 @@ class TestR02AdminHasNoBusinessPower:
         promoter, lot = _promoter_lot()
         client1.post(reverse('reservation-create'), {'lot': str(lot.id), 'organization': str(promoter.id)}, format='json')
         journal = _login(ADMIN).get(reverse('admin-journal')).json()
-        assert any(entry['actor'] == 'client1.demo@keya.test' for entry in journal)
+        # Adapté selon PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+        assert any(entry['actor'] == 'Client' for entry in journal)
+        assert '@' not in str(journal)
 
 
 # ─── K01–K03 : avis en ligne du contrôleur (CDC §7.1, T05/T06) ─────────────
@@ -337,6 +339,13 @@ def _declared_foundations():
 
 
 def _opinion(inspector, mission_id, **payload):
+    """PO-2026-09-28-20 : le contrôleur désigne explicitement les versions
+    examinées. Sauf liste fournie par le test, l'aide désigne, comme l'app
+    Contrôle, les pièces affichées dans la fiche de la mission."""
+    if 'examined_evidence_ids' not in payload:
+        detail = inspector.get(reverse('control-mission-detail', args=[mission_id]))
+        if detail.status_code == 200:
+            payload['examined_evidence_ids'] = [evidence['id'] for evidence in detail.data['evidences']]
     return inspector.post(reverse('control-mission-opinion', args=[mission_id]), payload, format='json')
 
 

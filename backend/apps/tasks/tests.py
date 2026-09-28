@@ -16,7 +16,7 @@ from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
 from apps.inspections import services as inspection_services
-from apps.inspections.testing import submit_evidence
+from apps.inspections.testing import designated_pieces, submit_evidence
 from apps.inspections.models import InspectionOutcome, Reserve
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
@@ -87,6 +87,8 @@ def _open_reserve_via_inspection(inspecteur_client, constructeur_organization, d
         {
             'organization': str(constructeur_organization.id),
             'work_declaration': str(declaration.id),
+            # PO-2026-09-28-20 : versions désignées explicitement.
+            'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
             'outcome': InspectionOutcome.AVEC_RESERVE,
             'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
             'note': 'Fissure visible en façade',
@@ -146,6 +148,8 @@ class TestReserveOpenedCreatesTaskForConstructeur:
                 {
                     'organization': str(constructeur_organization.id),
                     'work_declaration': str(declaration.id),
+                    # PO-2026-09-28-20 : versions désignées explicitement.
+                    'examined_evidence_ids': designated_pieces(constructeur_organization.id, declaration_id=declaration.id),
                     'outcome': InspectionOutcome.AVEC_RESERVE,
                     'reserves': [{'motif': 'Non-conformité constatée', 'expected_action': 'Corriger puis fournir une nouvelle pièce'}],  # Audit UI R1 (K02) : réserve structurée
                 },
@@ -249,7 +253,9 @@ class TestGeneratedLabelNeverAttributesDecisionToKeyimmo:
         assert 'constructeur' in label_lower, (
             f"Le libellé généré ne nomme pas l'acteur responsable : {task.label!r}"
         )
-        assert constructeur_user.email in task.label
+        # Adapté selon PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+        assert constructeur_user.email not in task.label
+        assert '· Constructeur' in task.label
 
 
 class TestNoTaskLabelGeneratorAttributesDecisionToKeyimmo:

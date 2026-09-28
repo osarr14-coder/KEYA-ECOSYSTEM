@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// Adapté selon PO-2026-09-28-22 : personnes « organisation · rôle », client par son nom, jamais d'e-mail.
 import { ApiError } from '../api/client';
 import type { AdminReservation, PaymentNotice } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
@@ -13,7 +14,7 @@ function notice(overrides: Partial<PaymentNotice> = {}): PaymentNotice {
     program: { id: 'program-1', name: 'Résidence Démonstration Abidjan' },
     lot: { id: 'lot-1', name: 'Lot A1' },
     reservation: { id: 'reservation-1', status: 'held', status_label: 'Bloquée' },
-    client: { id: 'client-1', email: 'client1.demo@keya.test', full_name: 'Awa Koné' },
+    client: { id: 'client-1', full_name: 'Awa Koné', role: 'Client' },
     payment_call: { id: 'call-1', kind: 'frais', kind_label: 'Frais de réservation', tier_label: '', amount: '100000.00' },
     amount: '100000.00',
     currency: 'XOF',
@@ -150,7 +151,7 @@ const DOSSIER: AdminReservation = {
   price_amount: '30000000.00', currency: 'XOF', lot: { id: 'lot-1', name: 'Lot A1', surface: '82.00' },
   program: { id: 'program-1', name: 'Résidence Démonstration Abidjan' },
   organization: { id: 'org-promoteur', name: 'Constructeur Démonstration' },
-  client: { id: 'client-1', email: 'client1.demo@keya.test', full_name: 'Awa Koné' },
+  client: { id: 'client-1', full_name: 'Awa Koné', role: 'Client' },
   cancellation_reason: '', cancelled_by: null, created_at: '2026-09-27T14:30:00Z', updated_at: '2026-09-27T14:30:00Z',
 };
 
@@ -224,7 +225,7 @@ describe('PaymentNoticesView — encaissements et signalements (PO-2026-09-28-01
         ...RECEIPT, simulation: true, organization_id: 'org-promoteur',
         program: { id: 'program-1', name: 'Résidence Démonstration Abidjan' }, lot: { id: 'lot-1', name: 'Lot A1' },
         reservation: { id: 'reservation-1', status: 'reserved', status_label: 'Réservée' },
-        client: { id: 'client-1', email: 'client1.demo@keya.test', full_name: 'Awa Koné' },
+        client: { id: 'client-1', full_name: 'Awa Koné', role: 'Client' },
         notices: [{ id: 'notice-1', client_reference: 'VIR-001', status: 'confirmed', status_label: 'Traité — encaissement enregistré' }],
       }]),
     }, { signals: false });

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+// Adapté selon PO-2026-09-28-22 : personnes « organisation · rôle », client par son nom, jamais d'e-mail.
 import { ApiError } from '../api/client';
 import type { AdminReservation, ContractVersion } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
@@ -18,7 +19,7 @@ const RESERVATION: AdminReservation = {
   lot: { id: 'lot-1', name: 'Lot A12', surface: '82.00' },
   program: { id: 'program-1', name: 'Résidence Démonstration Abidjan' },
   organization: { id: 'org-promoteur', name: 'Promoteur Démonstration' },
-  client: { id: 'client-1', email: 'acquereur@example.com', full_name: '' },
+  client: { id: 'client-1', full_name: 'Client', role: 'Client' },
   cancellation_reason: '',
   cancelled_by: null,
   created_at: '2026-09-27T14:30:00Z',

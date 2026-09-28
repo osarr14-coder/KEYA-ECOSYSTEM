@@ -82,14 +82,24 @@ class TestAnOpinionDesignatesAtLeastOnePiece:
         assert 'Aucune pièce' in str(response.data)
         assert _inspection_count(promoter) == before
 
-    def test_without_an_explicit_list_the_opinion_covers_every_submitted_piece(self):
+    def test_an_absent_list_is_refused_like_an_empty_one(self):
+        """Adapté selon PO-2026-09-28-20 : ce test vérifiait qu'une liste
+        absente couvrait toutes les pièces soumises ; la désignation est
+        désormais explicite, une liste absente est refusée."""
         builder, promoter, _m, declaration_id, evidence_id, _doc, mission_id = _declared_foundations()
         second_id, _second_doc = _add_evidence(builder, declaration_id)
-        response = _opinion(_login(INSPECTEUR), mission_id, outcome='conforme')
+        inspector = _login(INSPECTEUR)
+        before = _inspection_count(promoter)
+        refused = inspector.post(reverse('control-mission-opinion', args=[mission_id]), {'outcome': 'conforme'}, format='json')
+        assert refused.status_code == 400
+        assert 'explicitement' in str(refused.data)
+        assert _inspection_count(promoter) == before
+
+        response = _opinion(inspector, mission_id, outcome='conforme', examined_evidence_ids=[second_id])
         assert response.status_code == 201, response.data
         set_rls_context(organization_id=promoter.id)
         inspection = Inspection.objects.get(work_declaration_id=declaration_id)
-        assert inspection.examined_evidence_ids == [evidence_id, second_id]
+        assert inspection.examined_evidence_ids == [second_id]
 
 
 @pytest.mark.django_db

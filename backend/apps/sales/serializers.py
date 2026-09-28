@@ -2,9 +2,23 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.organizations.identity import actor_label
+
 from .models import (
     DEFAULT_CURRENCY, ContractVersion, CustomerReceipt, PaymentCall, PaymentCallKind, PaymentNotice, Reservation,
 )
+
+
+def _person(user, expected_role=''):
+    """PO-2026-09-28-18 / -22 : une personne s'affiche « organisation · rôle »,
+    jamais par son e-mail (seule exception : Administration › Utilisateurs)."""
+    return actor_label(user, expected_role) if user else None
+
+
+def _client(client):
+    """Client d'un dossier : compte personnel, sans organisation affichable.
+    Son nom fictif l'identifie, jamais son e-mail (PO-2026-09-28-22)."""
+    return {'id': str(client.id), 'full_name': client.full_name or 'Client', 'role': 'Client'}
 
 
 def _money(value):
@@ -108,14 +122,13 @@ class AdminReservationSerializer(ReservationSerializer):
     validated_by = serializers.SerializerMethodField()
 
     def get_validated_by(self, reservation):
-        return reservation.validated_by.email if reservation.validated_by_id else None
+        return _person(reservation.validated_by, 'gestionnaire_adv')
 
     def get_client(self, reservation):
-        client = reservation.client
-        return {'id': str(client.id), 'email': client.email, 'full_name': client.full_name}
+        return _client(reservation.client)
 
     def get_cancelled_by(self, reservation):
-        return reservation.cancelled_by.email if reservation.cancelled_by else None
+        return _person(reservation.cancelled_by)
 
 
 class AdminCancelSerializer(serializers.Serializer):
@@ -129,7 +142,7 @@ class ContractVersionSerializer(serializers.ModelSerializer):
     status_label = serializers.CharField(source='get_status_display', read_only=True)
     reservation = serializers.UUIDField(source='reservation_id', read_only=True)
     lot_name = serializers.CharField(source='reservation.lot.name', read_only=True)
-    authored_by = serializers.EmailField(source='authored_by.email', read_only=True)
+    authored_by = serializers.SerializerMethodField()
     approved_by = serializers.SerializerMethodField()
     simulation = serializers.SerializerMethodField()
 
@@ -142,8 +155,11 @@ class ContractVersionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_authored_by(self, contract):
+        return _person(contract.authored_by, 'gestionnaire_adv')
+
     def get_approved_by(self, contract):
-        return contract.approved_by.email if contract.approved_by else None
+        return _person(contract.approved_by, 'gestionnaire_adv')
 
     def get_simulation(self, contract):
         return True
@@ -162,7 +178,7 @@ class PaymentCallSerializer(serializers.ModelSerializer):
     `DecimalField`), jamais recalculé côté frontend."""
 
     kind_label = serializers.CharField(source='get_kind_display', read_only=True)
-    issued_by = serializers.EmailField(source='issued_by.email', read_only=True)
+    issued_by = serializers.SerializerMethodField()
     reservation = serializers.UUIDField(source='reservation_id', read_only=True)
     # Ticket B-051 — calculés par le service sous le contexte RLS du lot
     # (`allocated_total`/`settled_total`), jamais ici.
@@ -178,6 +194,9 @@ class PaymentCallSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+
+    def get_issued_by(self, call):
+        return _person(call.issued_by, 'gestionnaire_adv')
     def get_allocated_amount(self, call):
         return _money(getattr(call, 'allocated_total', None))
 
@@ -269,7 +288,7 @@ class CustomerReceiptSerializer(serializers.ModelSerializer):
     """Ticket B-051. `simulation: true` : aucun fonds réel (CDC §3.1)."""
 
     status_label = serializers.CharField(source='get_status_display', read_only=True)
-    recorded_by = serializers.EmailField(source='recorded_by.email', read_only=True)
+    recorded_by = serializers.SerializerMethodField()
     reconciled_by = serializers.SerializerMethodField()
     unallocated_amount = serializers.SerializerMethodField()
     allocations = AllocationSerializer(many=True, read_only=True)
@@ -284,8 +303,11 @@ class CustomerReceiptSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_recorded_by(self, receipt):
+        return _person(receipt.recorded_by, 'finance')
+
     def get_reconciled_by(self, receipt):
-        return receipt.reconciled_by.email if receipt.reconciled_by else None
+        return _person(receipt.reconciled_by, 'finance')
 
     def get_unallocated_amount(self, receipt):
         return _money(getattr(receipt, 'unallocated_total', None))
@@ -317,7 +339,8 @@ def balance_payload(balance):
 
 
 def _email(user):
-    return user.email if user else None
+    """PO-2026-09-28-22 : plus jamais l'e-mail — « organisation · rôle »."""
+    return _person(user, 'finance')
 
 
 class DisbursementSerializer(serializers.Serializer):
@@ -467,7 +490,7 @@ class PaymentNoticeSerializer(serializers.Serializer):
         return {'id': str(reservation.id), 'status': reservation.status, 'status_label': reservation.get_status_display()}
 
     def get_client(self, notice):
-        return {'id': str(notice.client_id), 'email': notice.client.email, 'full_name': notice.client.full_name}
+        return _client(notice.client)
 
     def get_payment_call(self, notice):
         call = notice.payment_call
@@ -477,7 +500,7 @@ class PaymentNoticeSerializer(serializers.Serializer):
         }
 
     def get_processed_by(self, notice):
-        return notice.processed_by.email if notice.processed_by_id else None
+        return _person(notice.processed_by, 'finance')
 
     def get_simulation(self, notice):
         return True
@@ -521,7 +544,7 @@ def receipt_proof(receipt):
         'received_on': receipt.received_on.isoformat(),
         'status': receipt.status,
         'status_label': receipt.get_status_display(),
-        'recorded_by': receipt.recorded_by.email,
+        'recorded_by': _person(receipt.recorded_by, 'finance'),
         'recorded_at': receipt.recorded_at.isoformat(),
         'reconciled_at': receipt.reconciled_at.isoformat() if receipt.reconciled_at else None,
         'allocations': [
@@ -552,7 +575,7 @@ class FinanceReceiptSerializer(serializers.Serializer):
             'lot': {'id': str(reservation.lot_id), 'name': reservation.lot.name},
             'reservation': {'id': str(reservation.id), 'status': reservation.status,
                             'status_label': reservation.get_status_display()},
-            'client': {'id': str(client.id), 'email': client.email, 'full_name': client.full_name},
+            'client': _client(client),
             'notices': [
                 {'id': str(notice.id), 'client_reference': notice.client_reference, 'status': notice.status,
                  'status_label': notice.get_status_display()}

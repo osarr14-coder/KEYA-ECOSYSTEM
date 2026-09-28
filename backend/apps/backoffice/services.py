@@ -80,8 +80,15 @@ def list_inspectors(*, admin_user):
             set_rls_context(user_id=user.id)
             memberships = list(Membership.objects.filter(user=user).select_related('organization', 'role'))
             if any(membership.role.code == 'inspecteur' for membership in memberships):
+                # PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail
+                # (seule la page Utilisateurs le garde, identifiant de connexion).
+                organizations = sorted({
+                    membership.organization.name for membership in memberships
+                    if membership.role.code == 'inspecteur'
+                })
                 inspectors.append({
-                    'id': str(user.id), 'email': user.email, 'full_name': user.full_name,
+                    'id': str(user.id),
+                    'label': ' · '.join([', '.join(organizations), 'Contrôleur']),
                     'organizations': sorted({membership.organization.name for membership in memberships}),
                 })
     finally:

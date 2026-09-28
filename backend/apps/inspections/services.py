@@ -295,13 +295,15 @@ def _validate_opinion(*, declaration, outcome, reserves, decisions):
 
 
 def _examined_evidence_ids(declaration, examined_evidence_ids):
-    """Audit UI R1 (K01) : versions examinées. Absent : toutes les pièces
-    de la déclaration au moment de l'avis. Fourni : uniquement des pièces de
+    """Audit UI R1 (K01) : versions examinées, uniquement des pièces de
     cette déclaration.
 
     PO-2026-09-28-13 (K01, CDC §7.2) : un avis désigne AU MOINS une version
     de pièce soumise pour la déclaration — refusé sinon, quelle que soit la
-    voie d'entrée (liste vide, ou déclaration sans aucune pièce)."""
+    voie d'entrée (liste vide, ou déclaration sans aucune pièce).
+    PO-2026-09-28-20 : désignation EXPLICITE par le contrôleur ; une liste
+    absente est refusée comme une liste vide (plus de « par défaut, toutes
+    les pièces soumises »)."""
     current = [str(evidence_id) for evidence_id in Evidence.objects.filter(
         work_declaration=declaration,
     ).order_by('created_at').values_list('id', flat=True)]
@@ -309,11 +311,11 @@ def _examined_evidence_ids(declaration, examined_evidence_ids):
         raise ValidationError(
             'Aucune pièce n’a été soumise pour cette déclaration : un avis porte sur au moins une pièce.',
         )
-    if examined_evidence_ids is None:
-        return current
-    examined = [str(evidence_id) for evidence_id in examined_evidence_ids]
+    examined = [str(evidence_id) for evidence_id in (examined_evidence_ids or [])]
     if not examined:
-        raise ValidationError('Un avis désigne au moins une version de pièce examinée.')
+        raise ValidationError(
+            'Un avis désigne explicitement au moins une version de pièce examinée.',
+        )
     if any(evidence_id not in current for evidence_id in examined):
         raise ValidationError('Une pièce examinée n’appartient pas à cette déclaration.')
     return examined
@@ -586,7 +588,9 @@ def _create_mission_row(*, assigned_by, target_organization_id, work_declaration
     pending = _pending_mission_for(work_declaration)
     if pending is not None:
         raise ValidationError(
-            f"Une mission est déjà en attente pour cette déclaration (affectée à {pending.assigned_inspector.email}) : "
+            # PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+            f"Une mission est déjà en attente pour cette déclaration (affectée à "
+            f"{_actor_label(pending.assigned_inspector, 'inspecteur')}) : "
             "attendez l'avis du contrôleur avant d'en affecter une autre."
         )
 
@@ -899,6 +903,12 @@ def milestone_trust_levels(milestone):
     return levels
 
 
+def _actor_label(user, expected_role):
+    from apps.organizations.identity import actor_label
+
+    return actor_label(user, expected_role)
+
+
 def declaration_reserves(declaration, cache=None):
     """PO-2026-09-28-16 — réserves ouvertes par une inspection de cette
     déclaration, avec motif, action attendue, date serveur, auteur
@@ -1038,7 +1048,7 @@ def list_controls_to_assign(*, caller_organization_id):
                     'latest_outcome': state['latest_outcome'],
                     'correction_submitted': state['correction_submitted'],
                     'pending_mission': {
-                        'id': str(mission.id), 'inspector_email': mission.assigned_inspector.email,
+                        'id': str(mission.id), 'inspector': _actor_label(mission.assigned_inspector, 'inspecteur'),
                         'assigned_at': mission.created_at,
                     } if mission else None,
                 })

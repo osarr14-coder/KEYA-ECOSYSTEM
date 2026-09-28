@@ -63,7 +63,8 @@ class TestAdvValidation:
         response = _validate(adv, reservation_id, promoter)
 
         assert response.status_code == 200, response.data
-        assert response.data['validated_by'].startswith('gestionnaire_adv-')
+        # Adapté selon PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
+        assert response.data['validated_by'].endswith(' · Gestionnaire')
         assert response.data['validated_at'] is not None
         assert 'reservation_to_validate' not in _sources(adv)
         calls = _client_calls(client, reservation_id)

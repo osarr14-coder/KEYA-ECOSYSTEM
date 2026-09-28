@@ -116,6 +116,7 @@ class SyncInspectionView(APIView):
                 reserve_id=data.get('reserve'),
                 reserves=data.get('reserves') or [],
                 decisions=data.get('decisions') or [],
+                examined_evidence_ids=data.get('examined_evidence_ids'),
             )
         except inspections_services.IndependenceRuleViolation as exc:
             raise PermissionDenied(str(exc))

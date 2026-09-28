@@ -32,7 +32,8 @@ describe('AlertBanner — ressort clairement sans lecture attentive du texte', (
   });
 
   it("n'affiche pas de bloc de contenu additionnel quand aucun children n'est fourni", () => {
-    const { container } = render(<AlertBanner title="Réserve ouverte" />);
+    // PO-2026-09-28-24 : variable `container` inutilisée retirée (aucun effet).
+    render(<AlertBanner title="Réserve ouverte" />);
     // Un seul enfant textuel (le titre) dans le conteneur de texte — pas de
     // <div> vide généré pour rien.
     const textContainer = screen.getByText('Réserve ouverte').parentElement;

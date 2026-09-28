@@ -52,7 +52,10 @@ def _xof(amount):
 
 
 def _who(user):
-    return user.full_name or user.email
+    # PO-2026-09-28-22 : jamais l'e-mail dans un libellé du back-office.
+    from apps.organizations.identity import actor_label
+
+    return user.full_name or actor_label(user) or 'Client'
 
 
 def _call_label(call):
