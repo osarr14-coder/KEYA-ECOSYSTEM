@@ -24,6 +24,8 @@ from apps.organizations.models import Organization
 from apps.pricing.services import get_active_legal_payment_tier_template
 from apps.programs.models import Lot, LotClient, LotCommercialStatus, Milestone, Program
 
+from apps.tasks import relays
+
 from . import notifications
 from .models import (
     BLOCKING_STATUSES,
@@ -645,7 +647,8 @@ def compute_payment_call_candidates(reservation):
                 if reservation.status != ReservationStatus.HELD
                 # Ticket B-056 — l'ADV valide le dossier avant tout appel.
                 else None if reservation.validated_at
-                else 'La réservation doit d\'abord être validée par l\'ADV.'
+                # PO-2026-09-28-59 (P16) : « examiner », jamais « valider par l'ADV ».
+                else 'Le dossier doit d\'abord être examiné par le gestionnaire.'
             ),
         })
 
@@ -813,6 +816,8 @@ def issue_payment_call(*, actor, caller_organization_id, target_organization_id,
         )
         # Ticket B-056 — le client est prévenu qu'un appel l'attend.
         notifications.payment_call_issued(call)
+        if kind == PaymentCallKind.PREMIER_VERSEMENT:
+            relays.close(reservation, relays.COMPLEMENT_TO_CALL)  # R1 : action faite.
         return call
     finally:
         set_rls_context(organization_id=caller_organization_id)
@@ -835,7 +840,7 @@ def validate_reservation(*, actor, caller_organization_id, target_organization_i
                 f'Seule une réservation bloquée se valide (statut actuel : {reservation.get_status_display()}).'
             )
         if reservation.validated_at is not None:
-            raise ReservationTransitionError('Cette réservation est déjà validée.')
+            raise ReservationTransitionError('Ce dossier a déjà été examiné.')
         now = timezone.now()
         reservation.validated_by = actor
         reservation.validated_at = now
@@ -950,6 +955,12 @@ def evaluate_reservation_transitions(reservation, *, actor):
       complément du premier versement couverts (T03 : total 3 000 000, sans
       double imputation). À la concrétisation : lot « vendu », `LotClient`.
     Sous contexte RLS de l'organisation du lot."""
+    # PO-2026-09-28-44 (R8, P33) : un appel soldé, quel que soit le chemin
+    # (signalement confirmé ou flux Finance direct), n'est plus « à régler ».
+    for call in reservation.payment_calls.all():
+        if settled_amount(call) >= call.amount:
+            notifications.close_tasks(subject=call, source=notifications.PAYMENT_CALL_TO_PAY)
+
     if reservation.status == ReservationStatus.HELD and _is_settled(reservation, PaymentCallKind.FRAIS):
         reservation.status = ReservationStatus.RESERVED
         reservation.save(update_fields=['status', 'updated_at'])
@@ -957,6 +968,9 @@ def evaluate_reservation_transitions(reservation, *, actor):
             organization_id=reservation.organization_id, actor=actor, action='reservation.reserved', obj=reservation,
             payload={'reason': 'frais encaissés, rapprochés et affectés'},
         )
+        # R1 (P08) : le gestionnaire appelle le complément.
+        if not reservation.payment_calls.filter(kind=PaymentCallKind.PREMIER_VERSEMENT).exists():
+            relays.complement_to_call(reservation, actor=actor)
 
     if reservation.status == ReservationStatus.RESERVED:
         latest_contract = reservation.contract_versions.order_by('-version').first()
@@ -976,6 +990,8 @@ def evaluate_reservation_transitions(reservation, *, actor):
                 obj=reservation,
                 payload={'contract_version': latest_contract.version, 'reason': 'contrat signé et premier versement couvert'},
             )
+            # R4 (P11) : le constructeur déclare le premier jalon.
+            relays.sync_lot_relays(reservation.lot, actor=actor)
 
 
 def _finance_reservation(reservation_id):
@@ -1396,6 +1412,10 @@ def execute_disbursement(*, finance, caller_organization_id, target_organization
                      'beneficiary_organization_id': str(disbursement.beneficiary_organization_id),
                      'simulation': True},
         )
+        # R5 (P11) : le constructeur peut confirmer la réception ; R3 : le
+        # jalon n'est plus « décaissable ».
+        relays.disbursement_executed(disbursement, actor=finance)
+        relays.sync_lot_relays(disbursement.lot, actor=finance)
         return disbursement, True
     finally:
         set_rls_context(organization_id=caller_organization_id)
@@ -1473,6 +1493,9 @@ def reconcile_disbursement(*, finance, caller_organization_id, target_organizati
             obj=disbursement, justification=disbursement.reconciliation_reason,
             payload={'beneficiary_confirmed': confirmed, 'simulation': True},
         )
+        # R5 : rapproché, la confirmation n'est plus attendue (T11 : son
+        # absence reste visible sur le mouvement).
+        relays.disbursement_settled(disbursement)
         return disbursement
     finally:
         set_rls_context(organization_id=caller_organization_id)
@@ -1508,6 +1531,7 @@ def confirm_disbursement_as_beneficiary(*, constructeur, caller_organization_id,
             organization_id=disbursement.organization_id, actor=constructeur, action='disbursement.beneficiary_confirmed',
             obj=disbursement, payload={'after_reconciliation': 'flow_status' not in fields},
         )
+        relays.disbursement_settled(disbursement)
         return _load_disbursement(disbursement.id)
     finally:
         set_rls_context(organization_id=caller_organization_id)

@@ -98,3 +98,28 @@ describe('MyActionsView', () => {
     expect(await screen.findByText('Échec du marquage comme traité.')).toBeInTheDocument();
   });
 });
+
+describe('Lot 2 — mes actions reliées à l’action (PO-2026-09-28-44, P33)', () => {
+  const base = {
+    subject_type: 'sales.paymentcall', subject_id: 'x', program: null, assignee: 'c', due_date: null,
+    priority: 'high' as const, created_at: '2026-09-28T09:00:00Z', completed_at: null,
+  };
+
+  it('en attente d’abord, ouverture de « Mon acquisition », traitées repliées', async () => {
+    const onOpenAcquisition = vi.fn();
+    const api = createMockApiClient({
+      getMyTasks: async () => [
+        { ...base, id: 't1', type: 'task' as const, source: 'payment_call_to_pay:u', label: 'Appel de fonds à régler', status: 'pending' as const },
+        { ...base, id: 't2', type: 'notification' as const, source: 'reservation_ended:u', label: 'Réservation annulée le …', status: 'pending' as const },
+        { ...base, id: 't3', type: 'task' as const, source: 'payment_call_to_pay:u', label: 'Frais réglés', status: 'done' as const },
+      ],
+    });
+
+    render(withApiClient(api, <MyActionsView activeOrganizationId={null} onOpenAcquisition={onOpenAcquisition} />));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir mon acquisition' }));
+    expect(onOpenAcquisition).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Marquer comme lu' })).toBeInTheDocument();
+    expect(screen.getByText('Déjà traitées (1)')).toBeInTheDocument();
+  });
+});

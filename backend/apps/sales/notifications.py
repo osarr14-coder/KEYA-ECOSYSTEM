@@ -88,10 +88,16 @@ def reservation_validated(reservation):
 def reservation_ended(reservation):
     """PO-2026-09-28-43 (lot 1) — annulation ou expiration : plus rien à
     examiner ni à régler sur ce dossier. Les tâches encore en attente
-    (« Dossier à examiner », « Appel de fonds à régler ») sont closes."""
+    (« Dossier à examiner », « Appel de fonds à régler ») sont closes.
+    PO-2026-09-28-44 (R9) : le client en est prévenu, sauf s'il a lui-même
+    annulé."""
+    from apps.tasks import relays
+
     close_tasks(subject=reservation, source=RESERVATION_TO_VALIDATE)
+    close_tasks(subject=reservation, source=relays.COMPLEMENT_TO_CALL)
     for call in reservation.payment_calls.all():
         close_tasks(subject=call, source=PAYMENT_CALL_TO_PAY)
+    relays.reservation_ended(reservation, actor=None)
 
 
 def payment_call_issued(call):

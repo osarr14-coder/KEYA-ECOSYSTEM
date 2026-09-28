@@ -10,7 +10,7 @@
 |---|---|---|
 | Mode hors ligne de l'app | `apps/control-pwa/src/config.ts` — `OFFLINE_MODE_ENABLED` | `false` : brouillons IndexedDB, moteur de synchronisation et `InspectionFormView` conservés, jamais démarrés ni affichés. |
 | Routes de synchronisation | `/api/control/sync/{documents,evidence,inspection}/` | Coupées par `KEYA_OFFLINE_SYNC_ENABLED` (faux par défaut, réponse « introuvable ») — PO-2026-09-28-30. Activées seulement dans `settings_test.py`, pour que leurs tests continuent d'exercer le code. |
-| Test du conflit de synchronisation | `apps/control-pwa/src/views/InspectionFormView.test.tsx` | Exécuté seulement si `OFFLINE_MODE_ENABLED` est vrai (`it.runIf`) — PO-2026-09-28-37. Instable : voir prérequis 2. |
+| Tests du conflit de synchronisation (affichage du conflit ; « Ignorer ma saisie et recommencer ») | `apps/control-pwa/src/views/InspectionFormView.test.tsx` | Exécutés seulement si `OFFLINE_MODE_ENABLED` est vrai (`it.runIf`) — PO-2026-09-28-37 et PO-2026-09-28-58. Instables : voir prérequis 2. |
 | Avis en ligne | `/api/control/missions/{id}/avis/` | Seule voie de l'app : mission affectée, versions désignées explicitement, date serveur. |
 
 Réactiver le hors ligne suppose d'activer **les deux** réglages (app et serveur).
@@ -57,7 +57,7 @@ renvoie l'ancien. Le test échoue environ une fois sur huit sous charge.
   promesses d'écriture du dépôt (`db/repository.ts`) et les attendre dans
   `afterEach`, ou ouvrir une base IndexedDB distincte par test ;
 - démonter explicitement les vues (`cleanup()`) avant `clearIndexedDB()` ;
-- retirer alors le marqueur `it.runIf(OFFLINE_MODE_ENABLED)` et vérifier
+- retirer alors les deux marqueurs `it.runIf(OFFLINE_MODE_ENABLED)` et vérifier
   30 exécutions consécutives sans échec, en parallèle et sous charge.
 
 ### 3. Date de saisie et date serveur affichées

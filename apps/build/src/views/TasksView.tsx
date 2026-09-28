@@ -24,7 +24,21 @@ import { useApiResource } from '../api/useApiResource';
  * l'organisation active courante (contrairement au cas admin_keyimmo
  * cross-org documenté côté `apps/web/src/views/TasksView.tsx`).
  */
-function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }) {
+/** PO-2026-09-28-44 (lot 2) — écran où mener l'action d'une tâche, d'après
+ * sa source (préfixe : `notify_user` suffixe la source par le destinataire). */
+export type BuildTaskTarget = 'milestones' | 'disbursements';
+
+export function buildTaskTarget(task: Task): BuildTaskTarget | null {
+  const source = task.source.split(':')[0];
+  if (source === 'milestone_to_declare' || source === 'reserve_opened') return 'milestones';
+  if (source === 'disbursement_to_confirm') return 'disbursements';
+  return null;
+}
+
+function TaskCard({
+  task, onCompleted, onOpen,
+}: { task: Task; onCompleted: () => void; onOpen?: (target: BuildTaskTarget) => void }) {
+  const target = buildTaskTarget(task);
   const api = useApiClient();
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +65,12 @@ function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }
       }}
     >
       <strong>{task.label}</strong>
-      <div style={{ marginTop: '8px' }}>
+      <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+        {target && onOpen && (
+          <Button type="button" onClick={() => onOpen(target)}>
+            {target === 'milestones' ? 'Ouvrir le jalon' : 'Ouvrir les paiements reçus'}
+          </Button>
+        )}
         <Button type="button" variant="secondary" onClick={() => { void handleComplete(); }} disabled={completing}>
           {completing ? 'Marquage…' : 'Marquer comme traité'}
         </Button>
@@ -61,7 +80,7 @@ function TaskCard({ task, onCompleted }: { task: Task; onCompleted: () => void }
   );
 }
 
-export function TasksView() {
+export function TasksView({ onOpen }: { onOpen?: (target: BuildTaskTarget) => void } = {}) {
   const api = useApiClient();
   const state = useApiResource(() => api.getMyTasks({ status: 'pending' }), []);
 
@@ -79,7 +98,7 @@ export function TasksView() {
       {state.status === 'success' && state.data.length > 0 && (
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {state.data.map((task) => (
-            <TaskCard key={task.id} task={task} onCompleted={() => state.refetch()} />
+            <TaskCard key={task.id} task={task} onCompleted={() => state.refetch()} onOpen={onOpen} />
           ))}
         </ul>
       )}

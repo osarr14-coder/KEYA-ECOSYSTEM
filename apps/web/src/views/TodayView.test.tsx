@@ -106,6 +106,14 @@ describe('taskTarget — écran où traiter une tâche (ticket F-075)', () => {
     expect(taskTarget(TASK)).toEqual({ tab: 'devis' });
   });
 
+  it('lot 2 (PO-2026-09-28-44) : complément, affectation du contrôle et jalon décaissable ouvrent leur écran', () => {
+    expect(taskTarget({
+      ...TASK, subject_type: 'sales.reservation', subject_id: 'res-9', source: 'complement_to_call:user-1',
+    })).toEqual({ tab: 'reservations', reservationId: 'res-9' });
+    expect(taskTarget({ ...TASK, subject_type: 'programs.milestone', source: 'control_to_assign:u' })).toEqual({ tab: 'controls' });
+    expect(taskTarget({ ...TASK, subject_type: 'programs.milestone', source: 'milestone_disbursable:u' })).toEqual({ tab: 'finance' });
+  });
+
   it('une source inconnue ne propose aucune navigation', () => {
     expect(taskTarget({ ...TASK, subject_type: 'x.y', source: 'inconnue' })).toBeNull();
   });

@@ -251,7 +251,8 @@ export function AppShell({
             event.preventDefault();
             onTaskInboxClick();
           })}
-          aria-label={`Task Inbox — ${taskInboxCount} en attente`}
+          // PO-2026-09-28-59 (P16) : libellé français, lu par les lecteurs d'écran.
+          aria-label={`Tâches — ${taskInboxCount} en attente`}
           style={chipStyle}
         >
           <Icon name="bell" size={18} />

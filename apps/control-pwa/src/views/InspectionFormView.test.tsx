@@ -167,7 +167,10 @@ describe(
       expect(screen.getByLabelText('Réserve')).toBeChecked();
     });
 
-    it('l\'action explicite "Ignorer ma saisie et recommencer" repart d\'un formulaire vierge', async () => {
+    // PO-2026-09-28-58 (suite de PO-2026-09-28-37) : même famille (conflit
+    // hors ligne, isolation IndexedDB), même marqueur ; conservé, jamais
+    // supprimé ni modifié.
+    it.runIf(OFFLINE_MODE_ENABLED)('l\'action explicite "Ignorer ma saisie et recommencer" repart d\'un formulaire vierge', async () => {
       await createConflictedDraft();
       render(<InspectionFormView missionId="mission-1" onBack={() => {}} />);
       await screen.findByText('Conflit à résoudre', { selector: 'span' });

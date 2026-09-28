@@ -92,4 +92,9 @@ def create_evidence(*, organization, work_declaration, documents, added_by):
         subject=evidence, organization=organization, level=TrustLevel.DOCUMENTE,
         actor=added_by, source='evidence_upload',
     )
+    # PO-2026-09-28-44 (R2, R4) : jalon soumis → affectation du contrôle ;
+    # pièce ajoutée après acceptation → nouvelle revue (T07).
+    from apps.tasks.relays import sync_lot_relays
+
+    sync_lot_relays(work_declaration.milestone.lot, actor=added_by)
     return evidence

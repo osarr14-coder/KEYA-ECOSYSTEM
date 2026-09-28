@@ -80,6 +80,8 @@ function ControlCard({
           <span data-testid="control-mission">
             {`Mission en cours : ${control.pending_mission.inspector}, affectée le ${formatDate(control.pending_mission.assigned_at)}`}
           </span>
+          {/* PO-2026-09-28-44 (P30) : qui agit ensuite. */}
+          <span>La mission apparaît dans l&apos;app Contrôle ; le contrôleur rend seul son avis.</span>
         </p>
       ) : (
         <div
@@ -103,7 +105,8 @@ function ControlCard({
             </Select>
           </label>
           <Button type="button" variant="accent" disabled={pending || inspectorId === ''} onClick={() => { void assign(); }}>
-            {pending ? 'Affectation…' : 'Missionner'}
+            {/* PO-2026-09-28-59 (P15) : « affecter », jamais « missionner ». */}
+            {pending ? 'Affectation…' : 'Affecter le contrôleur'}
           </Button>
         </div>
       )}
@@ -120,7 +123,8 @@ export function ControlsView() {
     <section aria-label="Contrôles à affecter">
       <PageHeader
         title="Contrôles à affecter"
-        subtitle="Déclarations documentées en attente de contrôle ou sous réserve. KEYIMMO missionne le contrôleur ; le constructeur ne le choisit jamais."
+        // PO-2026-09-27-01 / PO-2026-09-28-59 (P15) : formulation neutre.
+        subtitle="Déclarations documentées en attente de contrôle ou sous réserve. Le contrôleur est désigné indépendamment du constructeur ; les modalités de désignation et de rémunération seront définies pour le Projet 1."
       />
       {state.status === 'loading' && <p>Chargement…</p>}
       {state.status === 'error' && (
@@ -132,12 +136,12 @@ export function ControlsView() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
               <KeyFigure
-                label="À missionner"
+                label="Contrôleur à affecter"
                 value={controls.filter((control) => !control.pending_mission).length}
                 tone={controls.some((control) => !control.pending_mission) ? 'accent' : 'neutral'}
                 data-testid="kf-to-assign"
               />
-              <KeyFigure label="Missions en cours" value={controls.filter((control) => control.pending_mission).length} data-testid="kf-in-progress" />
+              <KeyFigure label="Contrôles en cours" value={controls.filter((control) => control.pending_mission).length} data-testid="kf-in-progress" />
               <KeyFigure
                 label="Sous réserve"
                 value={controls.filter((control) => control.status === 'under_reserve').length}

@@ -103,6 +103,13 @@ def create_inspection(
                 examined_evidence_ids=examined_evidence_ids,
                 require_assigned_mission=require_assigned_mission,
             )
+            # PO-2026-09-28-44 (R3, R7) : avis rendu — mission close ; jalon
+            # accepté → Finance ; réserve levée sans acceptation → rien.
+            from apps.tasks.relays import sync_lot_relays
+
+            declaration = inspection.work_declaration or getattr(inspection.evidence, 'work_declaration', None)
+            if declaration is not None:
+                sync_lot_relays(declaration.milestone.lot, actor=inspector)
         finally:
             # Toujours restaurer le contexte de l'inspecteur avant de rendre
             # la main — le reste de la requête ne doit jamais continuer avec
@@ -416,6 +423,11 @@ def create_reserve_correction(*, organization, reserve, evidence, submitted_by):
         subject=reserve, organization=organization, level=TrustLevel.DOCUMENTE,
         actor=submitted_by, source='correction_proposee',
     )
+    # PO-2026-09-28-44 (R2, R6) : recontrôle à affecter ; la tâche « réserve
+    # à corriger » du constructeur est close.
+    from apps.tasks.relays import sync_lot_relays
+
+    sync_lot_relays(reserve.lot, actor=submitted_by)
     return correction
 
 
@@ -564,6 +576,12 @@ def create_mission(
             from apps.procurement.services import record_bc_charge_for_mission
 
             record_bc_charge_for_mission(mission=mission, actor=assigned_by)
+
+            # PO-2026-09-28-44 (R2) : contrôle affecté, la tâche du
+            # gestionnaire est close.
+            from apps.tasks.relays import sync_lot_relays
+
+            sync_lot_relays(mission.work_declaration.milestone.lot, actor=assigned_by)
         finally:
             set_rls_context(organization_id=assigned_by_organization_id)
 

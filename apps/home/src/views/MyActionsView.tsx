@@ -8,11 +8,19 @@ import { useApiClient } from '../api/ApiClientContext';
 import type { Task } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 
+/** PO-2026-09-28-44 (P33) — une entrée du circuit d'achat ouvre « Mon
+ * acquisition », où l'action se mène. */
+export function opensAcquisition(task: Task) {
+  const source = task.source.split(':')[0];
+  return source.startsWith('payment_') || source.startsWith('reservation_');
+}
+
 export interface MyActionsViewProps {
   /** Ticket 019 — dans les deps de `useApiResource` ci-dessous : cette vue
    * n'a pas de `lotId` pour déclencher un refetch naturellement lors d'un
    * changement d'organisation, il lui faut donc son propre signal explicite. */
   activeOrganizationId: string | null;
+  onOpenAcquisition?: () => void;
 }
 
 /**
@@ -22,7 +30,9 @@ export interface MyActionsViewProps {
  * reste affichée (cette vue n'a jamais filtré par statut, voir
  * `MyActionsView` ci-dessous), simplement sans bouton.
  */
-function ActionItem({ task, onCompleted }: { task: Task; onCompleted: () => void }) {
+function ActionItem({
+  task, onCompleted, onOpenAcquisition,
+}: { task: Task; onCompleted: () => void; onOpenAcquisition?: () => void }) {
   const api = useApiClient();
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,9 +65,12 @@ function ActionItem({ task, onCompleted }: { task: Task; onCompleted: () => void
     >
       <strong>{task.label}</strong>
       {task.status === 'pending' && (
-        <div style={{ marginTop: '8px' }}>
+        <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {onOpenAcquisition && opensAcquisition(task) && task.type === 'task' && (
+            <Button type="button" onClick={onOpenAcquisition}>Ouvrir mon acquisition</Button>
+          )}
           <Button type="button" variant="secondary" onClick={() => { void handleComplete(); }} disabled={completing}>
-            {completing ? 'Marquage…' : 'Marquer comme traité'}
+            {completing ? 'Marquage…' : task.type === 'notification' ? 'Marquer comme lu' : 'Marquer comme traité'}
           </Button>
         </div>
       )}
@@ -66,7 +79,7 @@ function ActionItem({ task, onCompleted }: { task: Task; onCompleted: () => void
   );
 }
 
-export function MyActionsView({ activeOrganizationId }: MyActionsViewProps) {
+export function MyActionsView({ activeOrganizationId, onOpenAcquisition }: MyActionsViewProps) {
   const api = useApiClient();
   const state = useApiResource(() => api.getMyTasks(), [activeOrganizationId]);
 
@@ -80,13 +93,27 @@ export function MyActionsView({ activeOrganizationId }: MyActionsViewProps) {
     return <p>Aucune action en attente pour le moment.</p>;
   }
 
+  // PO-2026-09-28-44 (P33) : ce qui attend d'abord ; ce qui est traité
+  // ensuite, replié, pour ne pas s'accumuler sous les yeux du client.
+  const pending = state.data.filter((task) => task.status === 'pending');
+  const done = state.data.filter((task) => task.status !== 'pending');
+  const list = (tasks: Task[]) => (
+    <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {tasks.map((task) => (
+        <ActionItem key={task.id} task={task} onCompleted={() => state.refetch()} onOpenAcquisition={onOpenAcquisition} />
+      ))}
+    </ul>
+  );
+
   return (
     <section aria-label="Mes actions">
-      <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {state.data.map((task) => (
-          <ActionItem key={task.id} task={task} onCompleted={() => state.refetch()} />
-        ))}
-      </ul>
+      {pending.length === 0 ? <p>Aucune action en attente pour le moment.</p> : list(pending)}
+      {done.length > 0 && (
+        <details style={{ marginTop: '16px' }}>
+          <summary>{`Déjà traitées (${done.length})`}</summary>
+          {list(done)}
+        </details>
+      )}
     </section>
   );
 }

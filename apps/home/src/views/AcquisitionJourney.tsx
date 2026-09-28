@@ -35,9 +35,9 @@ export function reservationMessage(reservation: Reservation) {
   switch (reservation.status) {
     case 'held':
       return reservation.validated_at
-        ? `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. Réglez les frais de réservation, `
+        ? `${holdLine(reservation)} Réglez les frais de réservation, `
           + 'puis signalez votre virement : il sera pris en compte une fois encaissé et rapproché (simulé).'
-        : `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. `
+        : `${holdLine(reservation)} `
           + 'Votre conseiller examine votre dossier, puis vous envoie l’appel des frais de réservation.';
     case 'reserved':
       // PO-2026-09-28-43 (P22) : l'état seulement ; la suite est donnée par
@@ -68,6 +68,18 @@ export function reservationEndMessage(reservation: Reservation) {
     : reservation.ended_by?.label ? ` par ${reservation.ended_by.label}` : '';
   const reason = reservation.cancellation_reason ? ` — motif : ${reservation.cancellation_reason}` : '';
   return `Réservation annulée${when}${by}${reason} : le bien a été libéré.`;
+}
+
+/** PO-2026-09-28-57 — le blocage reste acquis, son échéance ne s'applique
+ * plus tant que Finance examine un versement. */
+export function holdLine(reservation: Reservation) {
+  if (reservation.hold_suspension === 'notice_declared') {
+    return 'Échéance suspendue : votre virement signalé est en cours de vérification par Finance. Le bien reste bloqué pour vous.';
+  }
+  if (reservation.hold_suspension === 'receipt') {
+    return 'Échéance suspendue : un encaissement est enregistré et en revue par Finance. Le bien reste bloqué pour vous.';
+  }
+  return `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}.`;
 }
 
 export function reservationTone(reservation: Reservation): PillTone {
@@ -219,7 +231,9 @@ function PropertyHero({ reservation }: { reservation: Reservation }) {
       {/* Audit UI R1 (X03) : date complète dans l'en-tête du dossier. */}
       <p data-testid="reservation-dates" style={{ margin: 0, fontSize: '14px', color: semanticColors.neutral.textMuted }}>
         {`Réservation du ${formatDateTime(reservation.created_at)}`}
-        {reservation.status === 'held' && ` · bien bloqué jusqu'au ${formatDateTime(reservation.held_until)}`}
+        {reservation.status === 'held' && (reservation.hold_suspension
+          ? ' · échéance du blocage suspendue (revue Finance)'
+          : ` · bien bloqué jusqu'au ${formatDateTime(reservation.held_until)}`)}
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
         <Pill tone={reservationTone(reservation)} data-testid="reservation-status">{reservation.status_label}</Pill>
@@ -280,7 +294,7 @@ function NextActionCard({
           <p style={{ margin: 0, color: semanticColors.neutral.text }}>
             {/* PO-2026-09-28-09 : pendant la vérification, aucune consigne de paiement. */}
             {action.kind === 'verifying' && reservation.status === 'held'
-              ? `Bien bloqué pour vous jusqu'au ${formatDateTime(reservation.held_until)}. Votre virement est signalé : `
+              ? `${holdLine(reservation)} Votre virement est signalé : `
                 + 'il sera pris en compte une fois encaissé et rapproché (simulé). Vous serez prévenu.'
               : reservationMessage(reservation)}
           </p>
@@ -405,7 +419,8 @@ function AdvisorCard() {
           GA
         </span>
         <div>
-          <div style={{ fontWeight: 700 }}>Gestionnaire ADV</div>
+          {/* PO-2026-09-28-59 (P16) : pas de sigle interne. */}
+          <div style={{ fontWeight: 700 }}>Gestionnaire</div>
           <div style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>
             Examine votre dossier, prépare votre contrat et vous prévient à chaque étape.
           </div>

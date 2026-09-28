@@ -197,10 +197,15 @@ function ReservationDossier({
         <KeyFigure label="Prix à la réservation (fictif)" value={formatAmount(reservation.price_amount, reservation.currency)} />
         <KeyFigure label="Organisation" textual value={reservation.organization.name} />
         {reservation.status === 'held' && (
+          // PO-2026-09-28-57 : échéance suspendue expliquée au gestionnaire.
           <KeyFigure
-            label="Blocage jusqu'au"
+            label={reservation.hold_suspension ? 'Échéance du blocage' : "Blocage jusqu'au"}
             textual
-            value={formatDateTime(reservation.held_until)}
+            value={reservation.hold_suspension === 'notice_declared'
+              ? 'Suspendue : virement signalé, vérification Finance'
+              : reservation.hold_suspension === 'receipt'
+                ? 'Suspendue : encaissement enregistré, revue Finance'
+                : formatDateTime(reservation.held_until)}
             tone="accent"
           />
         )}

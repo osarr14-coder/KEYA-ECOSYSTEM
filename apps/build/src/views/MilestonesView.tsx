@@ -188,7 +188,19 @@ function LotGaugeCard({
   );
 }
 
-function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; onChanged: () => void }) {
+/** PO-2026-09-28-60 (P20) et PO-2026-09-28-44 (P30) : après une action, le
+ * constructeur reste sur le jalon et lit ce qui a changé et qui agit
+ * ensuite. */
+const DONE_MESSAGES = {
+  declared: 'Jalon déclaré — joignez au moins une pièce pour le soumettre au contrôle.',
+  submitted: 'Pièce jointe — jalon soumis : le gestionnaire affecte maintenant le contrôleur.',
+  corrected: 'Correction proposée — en attente de recontrôle : le gestionnaire affecte le contrôleur, qui seul lève la réserve.',
+} as const;
+type DoneMessage = keyof typeof DONE_MESSAGES;
+
+function MilestoneDetail({
+  milestone, onChanged, notice,
+}: { milestone: LotMilestone; onChanged: (done?: DoneMessage) => void; notice?: string | null }) {
   const api = useApiClient();
   const [declaring, setDeclaring] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -198,7 +210,7 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
     setError(null);
     try {
       await api.declareMilestone(milestone.id);
-      onChanged();
+      onChanged('declared');
     } catch (caught) {
       setError(errorMessage(caught, 'Échec de la déclaration.'));
       setDeclaring(false);
@@ -212,7 +224,7 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
       category: 'preuve_chantier',
       source: 'control_tower_upload',
     });
-    onChanged();
+    onChanged(milestone.status === 'awaiting_documents' ? 'submitted' : undefined);
   }
 
   async function proposeCorrection(file: File) {
@@ -223,7 +235,7 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
       source: 'control_tower_upload',
     });
     await api.createReserveCorrection(milestone.reserve_id as string, evidenceId);
-    onChanged();
+    onChanged('corrected');
   }
 
   return (
@@ -244,6 +256,9 @@ function MilestoneDetail({ milestone, onChanged }: { milestone: LotMilestone; on
         <Pill tone={milestoneTone(milestone)}>{milestone.status_label}</Pill>
         {milestone.control_scheduled && <Pill tone="info">Contrôleur affecté</Pill>}
       </div>
+      {notice && (
+        <p role="status" data-testid="milestone-done" style={{ margin: 0, fontWeight: 600 }}>{notice}</p>
+      )}
       {milestone.status_hint && (
         <p data-testid="milestone-status-hint" style={{ margin: '-8px 0 0', color: semanticColors.neutral.textMuted }}>
           {milestone.status_hint}
@@ -313,6 +328,7 @@ function LotMilestones({ lotId }: { lotId: string }) {
   const api = useApiClient();
   const state = useApiResource(() => api.listLotMilestones(lotId), [lotId]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [done, setDone] = useState<{ milestoneId: string; message: string } | null>(null);
 
   if (state.status === 'loading') return <p>Chargement des jalons…</p>;
   if (state.status === 'error') {
@@ -321,19 +337,34 @@ function LotMilestones({ lotId }: { lotId: string }) {
   if (state.data.length === 0) return <p>Aucun jalon pour ce lot.</p>;
   const milestones = [...state.data].sort((a, b) => a.order - b.order);
   const selected = milestones.find((milestone) => milestone.id === selectedId) ?? focusMilestone(milestones)!;
+  // Même règle que la tâche du constructeur (PO-2026-09-28-44, P21) : le
+  // jalon suivant n'est à déclarer qu'une fois les précédents acceptés.
   const nextToDeclare = milestones.find(
-    (milestone) => milestone.status === 'not_declared' && milestone.order > selected.order,
+    (milestone) => milestone.status === 'not_declared' && milestone.order > selected.order
+      && milestones.every((earlier) => earlier.order >= milestone.order || earlier.status === 'accepted'),
   );
+
+  function changed(message?: DoneMessage) {
+    // P20 : rester sur le jalon où l'action vient d'être faite.
+    setSelectedId(selected.id);
+    setDone(message ? { milestoneId: selected.id, message: DONE_MESSAGES[message] } : null);
+    state.refetch();
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <LotGaugeCard milestones={milestones} selectedId={selected.id} onSelect={setSelectedId} />
+      <LotGaugeCard
+        milestones={milestones}
+        selectedId={selected.id}
+        onSelect={(id) => { setSelectedId(id); setDone(null); }}
+      />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 520px', minWidth: 0 }}>
           <MilestoneDetail
             key={`${selected.id}-${selected.status}-${selected.evidence_count}-${selected.correction_submitted}`}
             milestone={selected}
-            onChanged={state.refetch}
+            onChanged={changed}
+            notice={done?.milestoneId === selected.id ? done.message : null}
           />
         </div>
         <aside style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>

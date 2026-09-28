@@ -45,7 +45,8 @@ describe('ControlsView — contrôles à affecter (ticket F-069)', () => {
     const assignMission = vi.fn().mockResolvedValue({});
     renderView([control()], { assignMission });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Missionner' }));
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    fireEvent.click(await screen.findByRole('button', { name: 'Affecter le contrôleur' }));
 
     await waitFor(() => expect(assignMission).toHaveBeenCalledWith('org-promoteur', 'declaration-1', 'inspector-1'));
   });
@@ -56,7 +57,8 @@ describe('ControlsView — contrôles à affecter (ticket F-069)', () => {
     })]);
 
     expect(await screen.findByTestId('control-mission')).toHaveTextContent('Mission en cours : Bureau de contrôle Démonstration · Contrôleur');
-    expect(screen.queryByRole('button', { name: 'Missionner' })).not.toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    expect(screen.queryByRole('button', { name: 'Affecter le contrôleur' })).not.toBeInTheDocument();
   });
 
   it('sous réserve : indique si la correction est proposée', async () => {
@@ -71,7 +73,8 @@ describe('ControlsView — contrôles à affecter (ticket F-069)', () => {
     ));
     renderView([control()], { assignMission });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Missionner' }));
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    fireEvent.click(await screen.findByRole('button', { name: 'Affecter le contrôleur' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent("règle d'indépendance");
   });

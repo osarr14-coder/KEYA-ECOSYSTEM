@@ -250,6 +250,9 @@ function DisbursementBlock({
   const [reference, setReference] = useState('');
   const [executedOn, setExecutedOn] = useState(today());
   const [cancelReason, setCancelReason] = useState('');
+  // PO-2026-09-28-60 (P23) : l'exécution est irréversible — confirmation
+  // explicite avant l'appel.
+  const [confirmingExecution, setConfirmingExecution] = useState(false);
   const act = (action: () => Promise<unknown>, fallback: string) => {
     void run(action, fallback).then((ok) => { if (ok) onChanged(); });
   };
@@ -302,17 +305,42 @@ function DisbursementBlock({
               Contrôler l&apos;éligibilité
             </Button>
           )}
-          {disbursement.status === 'eligible' && (
+          {disbursement.status === 'eligible' && confirmingExecution && (
+            <div
+              role="alertdialog"
+              aria-label="Confirmer l'exécution du décaissement"
+              style={{ ...blockStyle, display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}
+            >
+              <strong>
+                {`Exécuter (simulé) ${formatAmount(disbursement.amount, disbursement.currency)} vers ${disbursement.beneficiary_organization.name}, référence ${reference.trim()} ?`}
+              </strong>
+              <span>Aucune annulation après exécution. Le constructeur pourra ensuite confirmer la réception ; vous rapprocherez le mouvement.</span>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <Button
+                  type="button"
+                  variant="accent"
+                  disabled={pending}
+                  onClick={() => act(
+                    () => api.executeDisbursement(disbursement.id, organizationId, {
+                      bank_reference: reference.trim(), executed_on: executedOn,
+                    }),
+                    'Exécution refusée.',
+                  )}
+                >
+                  Confirmer l&apos;exécution
+                </Button>
+                <Button type="button" variant="secondary" disabled={pending} onClick={() => setConfirmingExecution(false)}>
+                  Revenir
+                </Button>
+              </div>
+            </div>
+          )}
+          {disbursement.status === 'eligible' && !confirmingExecution && (
             <form
               aria-label={`Exécuter le décaissement ${disbursement.lot.name} — ${disbursement.milestone.label}`}
               onSubmit={(event) => {
                 event.preventDefault();
-                act(
-                  () => api.executeDisbursement(disbursement.id, organizationId, {
-                    bank_reference: reference.trim(), executed_on: executedOn,
-                  }),
-                  'Exécution refusée.',
-                );
+                setConfirmingExecution(true);
               }}
               style={{ display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}
             >

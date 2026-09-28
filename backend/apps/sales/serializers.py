@@ -86,9 +86,26 @@ class ReservationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'status', 'status_label', 'held_until', 'price_amount', 'currency',
             'lot', 'program', 'organization', 'cancellation_reason', 'validated_at', 'created_at', 'updated_at',
-            'payment_schedule', 'ended_at', 'ended_by',
+            'payment_schedule', 'ended_at', 'ended_by', 'hold_suspension',
         ]
         read_only_fields = fields
+
+    hold_suspension = serializers.SerializerMethodField()
+
+    def get_hold_suspension(self, reservation):
+        """PO-2026-09-28-57 — pourquoi l'échéance d'un blocage ne s'applique
+        plus : `receipt` (encaissement enregistré, revue Finance, CDC §6.1)
+        ou `notice_declared` (virement signalé en cours de vérification par
+        Finance) ; `null` sinon. Même règle que `_expire_if_overdue`."""
+        from .models import PaymentNoticeStatus
+
+        if reservation.status != ReservationStatus.HELD:
+            return None
+        if reservation.receipts.exists():
+            return 'receipt'
+        if reservation.payment_notices.filter(status=PaymentNoticeStatus.DECLARED).exists():
+            return 'notice_declared'
+        return None
 
     ended_at = serializers.SerializerMethodField()
     ended_by = serializers.SerializerMethodField()

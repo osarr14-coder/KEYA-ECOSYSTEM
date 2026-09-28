@@ -1,3 +1,5 @@
+from datetime import timezone as dt_timezone
+
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -144,12 +146,88 @@ def _program_request_decided_label(program_request):
     return 'Votre demande de programme sur mesure a été refusée.'
 
 
+_MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
+
+
+def _server_datetime(value):
+    """Date serveur au format F06 des écrans : « 28 sept. 2026, 22:20 (GMT,
+    Abidjan) » (Abidjan = UTC, sans heure d'été)."""
+    value = value.astimezone(dt_timezone.utc)
+    return f'{value.day} {_MONTHS[value.month - 1]} {value.year}, {value:%H:%M} (GMT, Abidjan)'
+
+
+def _xof(amount):
+    return f'{int(amount):,}'.replace(',', ' ') + ' XOF'
+
+
+# ─── Relais du lot 2 (PO-2026-09-28-44) — apps/tasks/relays.py ──────────────
+# Chaque libellé nomme l'action attendue et le rôle qui la mène ; aucun ne
+# présente une décision d'un tiers (contrôleur, Finance, client) comme prise
+# par KEYIMMO.
+
+
+def _complement_to_call_label(reservation, client_label):
+    """Gestionnaire — les frais sont encaissés et rapprochés par Finance :
+    appeler le complément du premier versement (P08)."""
+    return (
+        f'Appeler le complément du premier versement — {reservation.lot.asset.program.name} / '
+        f'{reservation.lot.name} — {client_label} (frais encaissés et rapprochés par Finance)'
+    )
+
+
+def _control_to_assign_label(milestone, reason):
+    """Gestionnaire — affectation du contrôle (P09, PO-2026-09-28-33) ; le
+    contrôleur rendra seul son avis."""
+    return f'Affecter le contrôleur — {milestone.lot.name} · {milestone.label} ({reason})'
+
+
+def _milestone_disbursable_label(milestone):
+    """Finance — l'acceptation technique est celle du contrôleur ; Finance
+    prépare le décaissement (P10, CDC §8.2)."""
+    return (
+        f'Jalon décaissable — {milestone.lot.name} · {milestone.label} : accepté techniquement par le '
+        'contrôleur, aucune réserve ouverte'
+    )
+
+
+def _milestone_to_declare_label(milestone):
+    """Constructeur — prochain jalon à déclarer (P11, P21)."""
+    return f'Déclarer le jalon « {milestone.label} » — {milestone.lot.name}'
+
+
+def _disbursement_to_confirm_label(disbursement):
+    """Constructeur — confirmation facultative de la réception ; son absence
+    n'empêche pas le rapprochement Finance (P11, T11)."""
+    return (
+        f'Confirmer la réception (facultatif) — {_xof(disbursement.amount)} exécutés (simulé) par Finance — '
+        f'{disbursement.lot.name} · {disbursement.milestone.label}'
+    )
+
+
+def _reservation_ended_label(reservation, by_label):
+    """Client — fin de sa réservation, datée et motivée (P28, CDC §6.1). Une
+    annulation nomme le rôle qui l'a faite ; une expiration n'a pas
+    d'auteur."""
+    when = _server_datetime(reservation.ended_at or reservation.updated_at)
+    lot = f'{reservation.lot.asset.program.name} / {reservation.lot.name}'
+    if reservation.status == 'expired':
+        return f'Blocage expiré le {when} sans versement encaissé — {lot} : le bien a été libéré.'
+    reason = f' — motif : {reservation.cancellation_reason}' if reservation.cancellation_reason else ''
+    return f'Réservation annulée le {when} par {by_label}{reason} — {lot} : le bien a été libéré.'
+
+
 LABEL_GENERATORS = [
     _reserve_opened_label,
     _mission_assigned_label,
     _devis_ajustement_refuse_label,
     _lot_ledger_margin_negative_label,
     _program_request_decided_label,
+    _complement_to_call_label,
+    _control_to_assign_label,
+    _milestone_disbursable_label,
+    _milestone_to_declare_label,
+    _disbursement_to_confirm_label,
+    _reservation_ended_label,
 ]
 
 

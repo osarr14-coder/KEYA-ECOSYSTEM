@@ -74,3 +74,20 @@ describe('TasksView', () => {
     expect(await screen.findByText('Échec du marquage comme traité.')).toBeInTheDocument();
   });
 });
+
+describe('Lot 2 — entrées cliquables (PO-2026-09-28-44)', () => {
+  it('une tâche de jalon ou de réception ouvre son écran', async () => {
+    const onOpen = vi.fn();
+    render(withApiClient(createMockApiClient({
+      getMyTasks: async () => [
+        { ...TASK, id: 't1', source: 'milestone_to_declare:u', label: 'Déclarer le jalon « Fondations » — Lot A1' },
+        { ...TASK, id: 't2', source: 'disbursement_to_confirm:u', label: 'Confirmer la réception (facultatif)' },
+      ],
+    }), <TasksView onOpen={onOpen} />));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir le jalon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir les paiements reçus' }));
+
+    expect(onOpen.mock.calls).toEqual([['milestones'], ['disbursements']]);
+  });
+});

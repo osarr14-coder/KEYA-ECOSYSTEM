@@ -243,7 +243,9 @@ export function App() {
       )}
       {lotsReady && activeView === 'acquisition' && <ClientSalesView />}
       {lotsReady && activeView === 'program-request' && <ProgramRequestView />}
-      {lotsReady && activeView === 'actions' && <MyActionsView activeOrganizationId={activeOrganizationId} />}
+      {lotsReady && activeView === 'actions' && (
+        <MyActionsView activeOrganizationId={activeOrganizationId} onOpenAcquisition={() => setSelectedView('acquisition')} />
+      )}
       {lotsReady && activeView === 'overview' && !currentLotId && (
         <p>Aucun bien ne vous est encore associé.</p>
       )}

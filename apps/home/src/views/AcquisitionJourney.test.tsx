@@ -352,3 +352,13 @@ describe('reservationMessage — état seulement, jamais une suite figée (PO-20
     expect(message).not.toContain('Suite');
   });
 });
+
+describe('holdLine — échéance suspendue expliquée (PO-2026-09-28-57)', () => {
+  it('virement signalé, encaissement enregistré, sinon l’échéance', async () => {
+    const { holdLine } = await import('./AcquisitionJourney');
+    expect(holdLine(reservation({ hold_suspension: 'notice_declared' })))
+      .toBe('Échéance suspendue : votre virement signalé est en cours de vérification par Finance. Le bien reste bloqué pour vous.');
+    expect(holdLine(reservation({ hold_suspension: 'receipt' }))).toContain('un encaissement est enregistré et en revue par Finance');
+    expect(holdLine(reservation())).toMatch(/^Bien bloqué pour vous jusqu'au /);
+  });
+});

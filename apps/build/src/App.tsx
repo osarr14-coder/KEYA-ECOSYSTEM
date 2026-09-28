@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
+  AlertBanner, ApiErrorBanner, AppShell, Button, semanticColors, buildCrossAppUrl, resolveAppOrigins, useOnlineStatus,
   type AppModule, type IconName, logoutToLoginScreen,
 } from '@keya/design-system';
 
@@ -11,7 +11,7 @@ import { AllLotsView } from './views/AllLotsView';
 import { ExceptionsView } from './views/ExceptionsView';
 import { DisbursementsView } from './views/DisbursementsView';
 import { MilestonesView } from './views/MilestonesView';
-import { TasksView } from './views/TasksView';
+import { TasksView, buildTaskTarget } from './views/TasksView';
 
 // Réutilise AppShell tel quel (ticket 007), variante dense (ticket 009,
 // écran professionnel à fort volume) — aucune redéfinition. Les modules
@@ -133,6 +133,7 @@ export function App() {
   }
 
   const pendingCount = taskInboxState.status === 'success' ? taskInboxState.data.length : 0;
+  const nextTask = taskInboxState.status === 'success' ? taskInboxState.data[0] ?? null : null;
   const modules: AppModule[] = [
     ...TABS.map(({ id, label, icon }) => ({
       id, label, icon, href: `#${id}`, badge: id === 'tasks' ? pendingCount : undefined,
@@ -181,14 +182,39 @@ export function App() {
               gaspillé avec une organisation encore inconnue (`null`), pur
               artefact du chargement initial de `/me`. */}
           {activeTab === 'exceptions' && (
-            <ExceptionsView onViewLotInTable={handleViewLotInTable} activeOrganizationId={activeOrganizationId} />
+            <>
+              {/* PO-2026-09-28-44 (P11) : la prochaine action du constructeur,
+                  en tête de son écran d'arrivée. */}
+              {nextTask && (
+                <section
+                  aria-label="Votre prochaine action"
+                  data-testid="next-task"
+                  style={{
+                    display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '16px',
+                    padding: '14px 16px', borderRadius: '6px', border: `1px solid ${semanticColors.neutral.heading}`,
+                    background: semanticColors.neutral.surface,
+                  }}
+                >
+                  <div style={{ flex: '1 1 240px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: semanticColors.neutral.textMuted }}>
+                      {`À faire (${pendingCount})`}
+                    </div>
+                    <strong>{nextTask.label}</strong>
+                  </div>
+                  <Button type="button" onClick={() => setActiveTab(buildTaskTarget(nextTask) ?? 'tasks')}>
+                    Ouvrir
+                  </Button>
+                </section>
+              )}
+              <ExceptionsView onViewLotInTable={handleViewLotInTable} activeOrganizationId={activeOrganizationId} />
+            </>
           )}
           {activeTab === 'all_lots' && (
             <AllLotsView initialSearch={lotSearchFilter} activeOrganizationId={activeOrganizationId} />
           )}
           {activeTab === 'milestones' && <MilestonesView activeOrganizationId={activeOrganizationId} />}
           {activeTab === 'disbursements' && <DisbursementsView />}
-          {activeTab === 'tasks' && <TasksView />}
+          {activeTab === 'tasks' && <TasksView onOpen={(target) => setActiveTab(target)} />}
         </>
       )}
     </AppShell>

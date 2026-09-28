@@ -131,6 +131,10 @@ describe('FinanceAccountsView — comptes et décaissements (ticket F-068)', () 
     fireEvent.change(screen.getByLabelText("Date d'exécution — mois"), { target: { value: '10' } });
     fireEvent.change(screen.getByLabelText("Date d'exécution — jour"), { target: { value: '1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Exécuter (simulé)' }));
+    // Adapté selon PO-2026-09-28-60 (P23) : confirmation explicite avant l'appel.
+    expect(executeDisbursement).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Aucune annulation après exécution.');
+    fireEvent.click(screen.getByRole('button', { name: "Confirmer l'exécution" }));
 
     await waitFor(() => expect(executeDisbursement).toHaveBeenCalledWith('disbursement-1', 'org-promoteur', {
       bank_reference: 'SORTIE-001', executed_on: '2026-10-01',

@@ -117,7 +117,8 @@ describe('AppShell — topbar (recherche, sélecteurs, Task Inbox, avatar)', () 
 
   it('ticket F-065 : showTaskInbox={false} masque entièrement la cloche', () => {
     render(<AppShell density="dense" modules={MODULES} userRoles={[]} showTaskInbox={false} />);
-    expect(screen.queryByRole('link', { name: /Task Inbox/ })).not.toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    expect(screen.queryByRole('link', { name: /^Tâches — \d+ en attente$/ })).not.toBeInTheDocument();
     expect(screen.queryByTestId('task-inbox-count')).not.toBeInTheDocument();
   });
 
@@ -125,7 +126,8 @@ describe('AppShell — topbar (recherche, sélecteurs, Task Inbox, avatar)', () 
     'ticket F-061 : sans onTaskInboxClick, la cloche garde son href /tasks (rétrocompatible)',
     () => {
       render(<AppShell density="dense" modules={MODULES} userRoles={[]} />);
-      expect(screen.getByRole('link', { name: /Task Inbox/ })).toHaveAttribute('href', '/tasks');
+      // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+      expect(screen.getByRole('link', { name: /^Tâches — \d+ en attente$/ })).toHaveAttribute('href', '/tasks');
     },
   );
 
@@ -135,7 +137,8 @@ describe('AppShell — topbar (recherche, sélecteurs, Task Inbox, avatar)', () 
       const onTaskInboxClick = vi.fn();
       render(<AppShell density="dense" modules={MODULES} userRoles={[]} onTaskInboxClick={onTaskInboxClick} />);
 
-      const link = screen.getByRole('link', { name: /Task Inbox/ });
+      // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+      const link = screen.getByRole('link', { name: /^Tâches — \d+ en attente$/ });
       const event = fireEvent.click(link);
 
       expect(onTaskInboxClick).toHaveBeenCalledTimes(1);

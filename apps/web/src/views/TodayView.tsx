@@ -30,6 +30,10 @@ export function taskTarget(task: Task): NavigationTarget | null {
   if (source.startsWith('devis') || source.startsWith('lot_ledger')) return { tab: 'devis' };
   if (source.startsWith('program_request')) return { tab: 'program-requests' };
   if (source === 'mission_assigned' || source === 'reserve_opened') return { tab: 'controls' };
+  // PO-2026-09-28-44 (lot 2) : affectation du contrôle (gestionnaire), jalon
+  // décaissable (Finance).
+  if (source === 'control_to_assign') return { tab: 'controls' };
+  if (source === 'milestone_disbursable') return { tab: 'finance' };
   return null;
 }
 

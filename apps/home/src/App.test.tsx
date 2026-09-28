@@ -482,7 +482,8 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
     renderApp({ getMyTasks });
 
     await waitFor(() => expect(getMyTasks).toHaveBeenCalled());
-    expect(await screen.findByLabelText('Task Inbox — 0 en attente')).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    expect(await screen.findByLabelText('Tâches — 0 en attente')).toBeInTheDocument();
     expect(screen.queryByTestId('task-inbox-count')).not.toBeInTheDocument();
   });
 });
@@ -492,7 +493,8 @@ describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
     renderApp();
     await screen.findByText('Résidence Ker');
 
-    fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    fireEvent.click(screen.getByRole('link', { name: /^Tâches — \d+ en attente$/ }));
 
     expect(await screen.findByRole('link', { name: /^Mes actions/ })).toHaveAttribute('aria-current', 'page');
     expect(window.location.pathname).toBe('/');

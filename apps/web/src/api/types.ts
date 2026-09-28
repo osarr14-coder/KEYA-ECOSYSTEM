@@ -416,6 +416,9 @@ export interface AdminReservation {
   status: ReservationStatus;
   status_label: string;
   held_until: string;
+  /** PO-2026-09-28-57 — échéance suspendue : encaissement enregistré ou
+   * virement signalé en cours de vérification par Finance. */
+  hold_suspension?: 'receipt' | 'notice_declared' | null;
   price_amount: string;
   currency: string;
   lot: { id: string; name: string; surface: string | null };

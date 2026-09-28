@@ -265,7 +265,7 @@ export function ExceptionsView({ onViewLotInTable, activeOrganizationId }: Excep
         />
         {exceptions.controles_a_planifier.length > 0 && (
           <p style={{ margin: '8px 0 0', fontSize: '14px', color: semanticColors.neutral.textMuted }}>
-            Le contrôleur est désigné et missionné indépendamment du constructeur.
+            Le contrôleur est désigné indépendamment du constructeur ; les modalités de désignation et de rémunération seront définies pour le Projet 1.
           </p>
         )}
       </Card>

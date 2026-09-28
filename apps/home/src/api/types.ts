@@ -185,7 +185,11 @@ export interface Reservation {
    * jamais un e-mail). `null` tant que la réservation est active. */
   ended_at?: string | null;
   ended_by?: ReservationEndedBy | null;
+  /** PO-2026-09-28-57 — pourquoi l'échéance du blocage ne s'applique plus. */
+  hold_suspension?: HoldSuspension | null;
 }
+
+export type HoldSuspension = 'receipt' | 'notice_declared';
 
 export interface ReservationEndedBy {
   kind: 'expired' | 'client' | 'team';

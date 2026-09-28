@@ -560,7 +560,8 @@ describe('App — compteur de la cloche AppShell (ticket F-060)', () => {
     renderAuthenticated({ getMyInboxTasks });
 
     await waitFor(() => expect(getMyInboxTasks).toHaveBeenCalled());
-    expect(await screen.findByLabelText('Task Inbox — 0 en attente')).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    expect(await screen.findByLabelText('Tâches — 0 en attente')).toBeInTheDocument();
     expect(screen.queryByTestId('task-inbox-count')).not.toBeInTheDocument();
   });
 });
@@ -583,7 +584,8 @@ describe('App — clic sur la cloche AppShell (ticket F-061)', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Programmes' }));
     expect(window.location.pathname).toBe('/programmes');
 
-    fireEvent.click(screen.getByRole('link', { name: /Task Inbox/ }));
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    fireEvent.click(screen.getByRole('link', { name: /^Tâches — \d+ en attente$/ }));
 
     expect(await screen.findByRole('heading', { name: 'Vos priorités du jour' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
@@ -642,7 +644,8 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
     const { getMyInboxTasks } = renderAsAdv();
 
     await screen.findByTestId('app-shell');
-    expect(screen.getByRole('link', { name: /Task Inbox/ })).toBeInTheDocument();
+    // Adapté selon PO-2026-09-28-59 (P15, P16) : libellé français, « affecter ».
+    expect(screen.getByRole('link', { name: /^Tâches — \d+ en attente$/ })).toBeInTheDocument();
     expect(getMyInboxTasks).toHaveBeenCalledWith({ status: 'pending' });
   });
 

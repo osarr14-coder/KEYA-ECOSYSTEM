@@ -177,3 +177,30 @@ describe('MilestonesView — lecture de l\'avancement (ticket F-076)', () => {
     expect(screen.getByRole('region', { name: 'Jalon Fondations' })).toHaveTextContent('Validé techniquement');
   });
 });
+
+describe('Lot 2 — rester sur le jalon et confirmer (PO-2026-09-28-60, P20)', () => {
+  it('après « Proposer la correction », le jalon reste affiché et la suite est annoncée', async () => {
+    const reserved = milestone({
+      status: 'under_reserve', status_label: 'Sous réserve', work_declaration_id: 'declaration-1',
+      evidence_count: 1, reserve_id: 'reserve-1',
+    });
+    const corrected = { ...reserved, correction_submitted: true };
+    const next = milestone({ id: 'milestone-2', order: 4, code: 'elevation', label: 'Élévation' });
+    const listLotMilestones = vi.fn()
+      .mockResolvedValueOnce([reserved, next])
+      .mockResolvedValue([corrected, next]);
+    renderView([], {
+      listLotMilestones,
+      addEvidenceDocument: vi.fn().mockResolvedValue({ duplicateOf: null, evidenceId: 'evidence-2' }),
+      createReserveCorrection: vi.fn().mockResolvedValue({}),
+    });
+
+    fireEvent.change(await screen.findByLabelText('Correction pour Fondations'), { target: { files: [PDF] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Proposer la correction' }));
+
+    expect(await screen.findByTestId('milestone-done')).toHaveTextContent('Correction proposée — en attente de recontrôle');
+    expect(screen.getByRole('heading', { name: '3. Fondations' })).toBeInTheDocument();
+    // P21 : Élévation n'est pas « à déclarer » tant que Fondations n'est pas accepté.
+    expect(screen.queryByText('Prochain jalon à déclarer')).not.toBeInTheDocument();
+  });
+});

@@ -204,6 +204,12 @@ export function MissionReviewView({ missionId, api, onBack }: MissionReviewViewP
         <p role="status" style={{ margin: 0, fontWeight: 700 }}>
           {`Avis enregistré — horodatage serveur : ${formatServerDate(result.recordedAt)}.`}
         </p>
+        {/* PO-2026-09-28-44 (P30) : ce qui suit, et qui agit. */}
+        <p data-testid="opinion-next" style={{ margin: 0 }}>
+          {outcome === 'conforme'
+            ? 'Sans réserve ouverte, le jalon est accepté techniquement : Finance peut préparer le décaissement.'
+            : 'Le constructeur doit maintenant proposer une correction ; la réserve reste ouverte jusqu’au recontrôle.'}
+        </p>
         {backButton}
       </section>
     );

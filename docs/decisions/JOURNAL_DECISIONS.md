@@ -127,6 +127,20 @@ Plan : `docs/plans/PLAN_LOTS_APRES_AUDIT_PARCOURS_R1.md`.
 | PO-2026-09-28-55 | A6 — Archives | Responsable : **Product Owner**. Accès en **lecture seule pour l'administrateur et le gestionnaire** ; pas pour les clients dans le MVP. Rétention : **jusqu'à 90 jours après la fin de la campagne investisseurs**, puis **suppression tracée**. Lot 5 réestimé sur ce périmètre. | Product Owner | Lot 5, §10. |
 | PO-2026-09-28-56 | A7 — Vérification de T02 | Blocage d'**1 h autorisé sur l'instance locale uniquement**, pour vérifier T02 par l'interface, puis remis à 24 h. **Jamais sur Render.** | Product Owner | Instance locale. |
 
+## 28 septembre 2026 — arbitrages après le lot 1, délégués par le Product Owner
+
+Le Product Owner a délégué ces arbitrages à Claude Code (« tranche toi ») le 28 septembre 2026.
+Auteur : Claude Code, par délégation du PO ; révisables par le PO à tout moment.
+
+| ID | Sujet | Décision | Auteur | Portée |
+|---|---|---|---|---|
+| PO-2026-09-28-57 | Virement signalé et échéance (complète PO-2026-09-28-50) | La suspension de l'expiration par un virement **signalé** (B-056) est **conservée** : la retirer peut libérer le bien d'un client qui a payé pendant que Finance vérifie. Écart au mot « uniquement » de PO-50, assumé. L'écran l'**explique** au client (« Échéance suspendue : votre virement signalé est en cours de vérification par Finance ») et au gestionnaire. | Claude Code (délégation PO) | Serveur (exposition), HOME, back-office — lot 2. |
+| PO-2026-09-28-58 | Second test instable de l'app Contrôle (suite de PO-2026-09-28-37) | « Ignorer ma saisie et recommencer » (`InspectionFormView`, conflit hors ligne) est rattaché au même marqueur conditionnel `OFFLINE_MODE_ENABLED` que PO-37, décision citée. Ni supprimé ni modifié. | Claude Code (délégation PO) | App Contrôle (tests) — lot 2. |
+| PO-2026-09-28-59 | P15, P16 (vocabulaire) | Lot 2. « Affecter le contrôleur » au lieu de « missionner » (formule PO-2026-09-27-01 : désignation indépendante, modalités définies pour le Projet 1) ; « examiner », jamais « valider par l'ADV » ; « Gestionnaire », jamais « Gestionnaire ADV » à l'écran ; cloche « Tâches — n en attente » au lieu de « Task Inbox ». | Claude Code (délégation PO) | Toutes apps — lot 2. |
+| PO-2026-09-28-60 | P20, P23 (confirmations) | Lot 2. Après « Proposer la correction », le constructeur reste sur le jalon et lit « Correction proposée — en attente de recontrôle ». « Exécuter (simulé) » demande une confirmation explicite (« Aucune annulation après exécution »). | Claude Code (délégation PO) | BUILD, Finance — lot 2. |
+| PO-2026-09-28-61 | P14 (sortie programme chez le client) | Lot 3 (avec la connexion, pour le jalon « démo présentable »). L'espace client présente les décaissements du programme vers le constructeur **comme des sorties du compte du programme**, jamais comme une dette du client (CDC §9.2 étape 9). | Claude Code (délégation PO) | Serveur, HOME — lot 3. |
+| PO-2026-09-28-62 | Autres frictions P2 hors lots (P18, P21, P24–P26, P31, P34, P36) | Non traitées avant le jalon « démo présentable » ; réexaminées après la répétition de démonstration. | Claude Code (délégation PO) | Organisation. |
+
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
 | Sujet | Question au PO |
