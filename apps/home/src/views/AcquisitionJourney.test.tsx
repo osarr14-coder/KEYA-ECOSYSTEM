@@ -1,9 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ClientPaymentCall, ContractVersion, Reservation } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
-import { AcquisitionJourney, acquisitionSteps, nextAction } from './AcquisitionJourney';
+import { AcquisitionJourney, RESERVE_PLAIN_SENTENCE, acquisitionSteps, nextAction } from './AcquisitionJourney';
 
 function reservation(overrides: Partial<Reservation> = {}): Reservation {
   return {
@@ -237,6 +238,10 @@ describe('AcquisitionJourney — suivi du chantier (PO-2026-09-28-04)', () => {
     const item = await screen.findByTestId('worksite-milestone');
     expect(item).toHaveTextContent('1. Fondations');
     expect(item).toHaveTextContent('En examen');
+    // Adapté selon PO-2026-09-28-28 (D2) : l'échelle des niveaux s'ouvre par
+    // le lien « Voir qui a vérifié quoi, et quand ».
+    expect(within(item).queryByTestId('trust-level-declared')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Voir qui a vérifié quoi, et quand' }));
     const declared = within(item).getByTestId('trust-level-declared');
     // Adapté selon PO-2026-09-28-18 : « organisation · rôle », jamais de parenthèses.
     expect(declared).toHaveTextContent('Constructeur Démo · Constructeur');
@@ -262,12 +267,47 @@ describe('AcquisitionJourney — suivi du chantier (PO-2026-09-28-04)', () => {
     render(withApiClient(api, <AcquisitionJourney reservation={reservation({ status: 'committed' })} onChanged={() => {}} />));
 
     const [open, lifted] = await screen.findAllByTestId('worksite-reserve');
-    expect(open).toHaveTextContent('Réserve : Enrobage insuffisant');
+    // Adapté selon PO-2026-09-28-28 (D2) : formulation de la référence
+    // (« Le contrôleur a demandé une reprise le … : motif ») et phrase fixe
+    // sous la seule réserve ouverte.
+    expect(open).toHaveTextContent('Le contrôleur a demandé une reprise');
+    expect(open).toHaveTextContent('Enrobage insuffisant');
     expect(open).toHaveTextContent('Ouverte');
     expect(open).toHaveTextContent('27 sept. 2026, 20:10 (GMT, Abidjan)');
-    expect(lifted).toHaveTextContent('Réserve : Joint de dilatation');
+    expect(open).toHaveTextContent(RESERVE_PLAIN_SENTENCE);
+    expect(lifted).toHaveTextContent('Réserve levée');
+    expect(lifted).toHaveTextContent('Joint de dilatation');
     expect(lifted).toHaveTextContent('Levée');
     expect(lifted).toHaveTextContent('28 sept. 2026');
+    expect(lifted).not.toHaveTextContent('Aucun paiement au constructeur');
+  });
+
+  it('PO-2026-09-28-28 : la façade-jauge reflète le cdc_state du serveur, pour le seul bien du client', async () => {
+    const getMyWorksite = vi.fn().mockResolvedValue([
+      {
+        id: 'm1', order: 1, code: 'fondations', label: 'Fondations', cdc_state: 'TECHNICALLY_ACCEPTED',
+        status_label: 'Accepté techniquement', status_hint: '', trust_levels: {},
+      },
+      {
+        id: 'm2', order: 2, code: 'elevation', label: 'Élévation', cdc_state: 'CHANGES_REQUESTED',
+        status_label: 'Corrections demandées', status_hint: '', trust_levels: {},
+      },
+    ]);
+    const api = createMockApiClient({
+      getMyPaymentCalls: vi.fn().mockResolvedValue([]), getMyContracts: vi.fn().mockResolvedValue([]), getMyWorksite,
+    });
+    const own = reservation({ status: 'committed' });
+    render(withApiClient(api, <AcquisitionJourney reservation={own} onChanged={() => {}} />));
+
+    const facade = await screen.findByRole('img', { name: /^Façade de la résidence/ });
+    expect(facade).toHaveAccessibleName('Façade de la résidence : fondations accepté techniquement, élévation corrections demandées');
+    expect(facade.querySelector('[data-jalon="fondations"]')).toHaveClass('st-ok');
+    expect(facade.querySelector('[data-jalon="elevation"]')).toHaveClass('st-changes');
+    expect(screen.getByTestId('worksite-count')).toHaveTextContent('1 / 2');
+    expect(screen.getByTestId('worksite-count').textContent).not.toMatch(/%/);
+    // Un seul bien : l'appel porte sur la réservation du client, et rien d'autre.
+    expect(getMyWorksite).toHaveBeenCalledTimes(1);
+    expect(getMyWorksite).toHaveBeenCalledWith(own.id);
   });
 
   it('pas de suivi du chantier tant que le bien est seulement bloqué', async () => {

@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react';
 
 import {
   ApiErrorBanner, Button, Card, Icon, Input, KeyFigure, PageHeader, Pill, type PillTone, Select, semanticColors, formatServerDateTime,
+  MilestoneGauge,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -305,6 +306,35 @@ function ReservationRow({ reservation, onOpen }: { reservation: AdminReservation
           {reservation.status === 'held' && !reservation.validated_at && <Pill tone="alert">À examiner</Pill>}
         </div>
       </td>
+      {/* PO-2026-09-28-27 : jauge compacte du chantier (états CDC du serveur),
+          compteur « n / N » en texte, prochaine étape et qui agit. */}
+      <td>
+        {reservation.worksite && reservation.worksite.milestones.length > 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <MilestoneGauge
+              variant="compact"
+              aria-label={`Jalons — ${reservation.lot.name}`}
+              milestones={reservation.worksite.milestones.map((item) => ({
+                id: `${reservation.id}-${item.code}`, label: item.label, cdcState: item.cdc_state,
+                statusLabel: item.status_label, openReserveCount: item.open_reserve_count,
+              }))}
+            />
+            <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+              {reservation.worksite.accepted_milestone_count}
+              <span style={{ color: semanticColors.neutral.textMuted, fontWeight: 600 }}>{` / ${reservation.worksite.milestone_count}`}</span>
+            </span>
+          </div>
+        ) : null}
+        {reservation.worksite && reservation.worksite.open_reserve_count > 0 && (
+          <div style={{ marginTop: '6px' }}>
+            <Pill tone="alert">
+              {`${reservation.worksite.open_reserve_count} réserve${reservation.worksite.open_reserve_count > 1 ? 's' : ''} ouverte${reservation.worksite.open_reserve_count > 1 ? 's' : ''}`}
+            </Pill>
+          </div>
+        )}
+      </td>
+      <td>{reservation.worksite?.next_step ?? ''}</td>
+      <td>{reservation.worksite?.next_actor ?? ''}</td>
       <td style={{ textAlign: 'right' }}>
         <Button type="button" variant="secondary" onClick={onOpen} aria-label={`Ouvrir le dossier ${clientLabel(reservation)} — ${reservation.lot.name}`}>
           Ouvrir
@@ -403,22 +433,28 @@ export function ReservationsView({
       {state.status === 'success' && all.length > 0 && rows.length === 0 && <p>Aucun dossier ne correspond à la recherche.</p>}
       {rows.length > 0 && (
         <Card>
-          <table>
-            <thead>
-              <tr>
-                <th>Client</th>
-                <th>Lot</th>
-                <th style={{ textAlign: 'right' }}>Prix à la réservation</th>
-                <th>État</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((reservation) => (
-                <ReservationRow key={reservation.id} reservation={reservation} onOpen={() => setSelectedId(reservation.id)} />
-              ))}
-            </tbody>
-          </table>
+          {/* PO-2026-09-28-27 : colonnes de jauge ; le tableau défile dans sa carte. */}
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Lot</th>
+                  <th style={{ textAlign: 'right' }}>Prix à la réservation</th>
+                  <th>État</th>
+                  <th>Jalons</th>
+                  <th>Prochaine étape</th>
+                  <th>Qui agit</th>
+                  <th aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((reservation) => (
+                  <ReservationRow key={reservation.id} reservation={reservation} onOpen={() => setSelectedId(reservation.id)} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
     </section>

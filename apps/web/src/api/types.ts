@@ -423,6 +423,8 @@ export interface AdminReservation {
   organization: { id: string; name: string };
   /** PO-2026-09-28-22 : le client est identifié par son nom fictif, jamais par son e-mail. */
   client: { id: string; full_name: string; role: string };
+  /** PO-2026-09-28-27 : jauge compacte du chantier du lot (calculée par le serveur). */
+  worksite?: WorksiteGauge | null;
   cancellation_reason: string;
   cancelled_by: string | null;
   /** Ticket F-071 (backend B-056) — validation du dossier par l'ADV. */
@@ -713,4 +715,14 @@ export interface PublicWorksite {
   accepted: number;
   total: number;
   milestones: { label: string; status: string; status_label: string }[];
+}
+
+/** PO-2026-09-28-27 — jauge compacte d'un lot (liste des dossiers du gestionnaire). */
+export interface WorksiteGauge {
+  milestones: { order: number; code: string; label: string; cdc_state: string; status_label: string; open_reserve_count: number }[];
+  accepted_milestone_count: number;
+  milestone_count: number;
+  next_step: string;
+  next_actor: string;
+  open_reserve_count: number;
 }

@@ -66,6 +66,10 @@ export interface LotRow {
   declared_milestone_count: number;
   /** PO-2026-09-28-14 : jalons acceptés techniquement (compte, jamais un %). */
   accepted_milestone_count: number;
+  /** PO-2026-09-28-27 : jauge compacte (états CDC du serveur), prochaine étape, qui agit. */
+  milestones?: { order: number; code: string; label: string; cdc_state: string; status_label: string; open_reserve_count: number }[];
+  next_step?: string;
+  next_actor?: string;
   open_reserve_count: number;
   created_at: string;
 }

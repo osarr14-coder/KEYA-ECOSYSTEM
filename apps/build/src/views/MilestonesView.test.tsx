@@ -115,10 +115,13 @@ describe('MilestonesView — jalons côté constructeur (ticket F-069)', () => {
       status: 'under_reserve', status_label: 'Corrections demandées', cdc_state: 'CHANGES_REQUESTED',
       work_declaration_id: 'declaration-1', evidence_count: 1, reserve_id: 'reserve-1',
     })]);
-    const label = await screen.findByTestId('milestone-status-fondations');
-    const bar = label.parentElement!.querySelector('span[aria-hidden="true"]') as HTMLElement;
-    expect(bar.getAttribute('style')).toContain('--keya-alert-border');
-    expect(bar.getAttribute('style')).not.toContain('danger');
+    // Adapté selon PO-2026-09-28-27 : la barre devient le segment de la jauge
+    // (hachures Attention) ; la règle PO-2026-09-28-17 reste vérifiée.
+    const segment = (await screen.findByRole('button', { name: /Jalon 1 sur 1, Fondations/ }))
+      .querySelector('[data-testid="gauge-segment"]') as HTMLElement;
+    expect(segment.dataset.state).toBe('CHANGES_REQUESTED');
+    expect(segment.getAttribute('style')).toContain('--keya-alert-text');
+    expect(segment.getAttribute('style')).not.toContain('danger');
   });
 
   it('affiche l’état dérivé par le serveur (contrôle planifié, accepté)', async () => {

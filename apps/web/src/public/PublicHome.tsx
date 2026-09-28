@@ -9,6 +9,7 @@ import { useApiClient } from '../api/ApiClientContext';
 import type { PublicProgram, PublicWorksite } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 import { FacadeIllustration } from './illustrations/FacadeIllustration';
+import { FacadeTimeline } from './illustrations/FacadeTimeline';
 import { CONTROLLER_DESIGNATION, TrustTriangle } from './illustrations/TrustTriangle';
 import { paymentBreakdown } from './paymentBreakdown';
 import { CONTAINER_STYLE } from './PublicLayout';
@@ -475,6 +476,16 @@ export function PublicHome({ navigate }: { navigate: (path: PublicPath) => void 
         subtitle="Ce que la démonstration applique, sur des données fictives : qui encaisse, qui examine, qui décaisse."
       >
         <TrustTriangle />
+        {/* PO-2026-09-28-28 (D3) : frise figée, sans aucune donnée de dossier. */}
+        <div style={{ marginTop: '48px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ maxWidth: '720px' }}>
+            <h3 style={{ margin: 0, fontSize: '20px' }}>La façade au fil du chantier</h3>
+            <p style={{ margin: '8px 0 0', color: semanticColors.neutral.textMuted }}>
+              Chaque partie du bâtiment suit l’état de son jalon : déclarée par le constructeur, examinée par le contrôleur, puis acceptée techniquement.
+            </p>
+          </div>
+          <FacadeTimeline />
+        </div>
       </Section>
 
       <Section

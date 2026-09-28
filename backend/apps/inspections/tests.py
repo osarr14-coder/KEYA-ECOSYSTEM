@@ -447,7 +447,10 @@ class TestCreateMissionIndependenceRule:
         task = Task.objects.get(subject_id=mission.id)
         assert task.assignee_id == inspecteur_user.id
         assert task.source == 'mission_assigned'
-        assert inspecteur_user.email in task.label
+        # Adapté selon PO-2026-09-28-22 : les tâches sont des listes du
+        # back-office, le contrôleur y est nommé « organisation · rôle ».
+        assert inspecteur_user.email not in task.label
+        assert '· Contrôleur' in task.label
 
         assert not TrustEvent.objects.filter(subject_id=mission.id).exists()
 

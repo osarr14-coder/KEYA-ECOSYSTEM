@@ -29,6 +29,8 @@ describe('Galerie /design-system (PO-2026-09-27-20, A-DS-3)', () => {
       'Couleurs', 'Typographie', 'Marquage démonstration et simulation', 'Boutons et actions', 'Champs de formulaire',
       'États de travail — badges compacts', 'Niveaux de confiance — échelle', 'Montants, dates, références', 'Traçabilité',
       'Indicateurs et chiffres clés', 'États d’écran', 'Navigation et parcours', 'Icônes',
+      // Adapté selon PO-2026-09-28-29 (E) : nouvelle famille de la galerie.
+      'Jalons — jauge segmentée et façade-jauge',
     ]) {
       expect(screen.getByRole('heading', { level: 2, name: title })).toBeInTheDocument();
     }
@@ -36,6 +38,17 @@ describe('Galerie /design-system (PO-2026-09-27-20, A-DS-3)', () => {
     expect(screen.getByText('Signé (simulé)')).toBeInTheDocument();
     expect(screen.getAllByText('Non applicable').length).toBeGreaterThan(0);
     expect(screen.getByTestId('archive-banner')).toBeInTheDocument();
+  });
+
+  it('PO-2026-09-28-29 : jauge (7 états, carte et compacte) et façade-jauge (tous les états, par partie)', async () => {
+    stubInstance('DEMO');
+    render(<DesignSystemGalleryRoute />);
+    const card = await screen.findByRole('list', { name: 'Jauge de démonstration — 7 états' });
+    expect(card.querySelectorAll('[data-testid="gauge-segment"]')).toHaveLength(7);
+    const compact = screen.getByRole('list', { name: 'Jauge compacte de démonstration' });
+    expect(compact.querySelectorAll('[data-testid="gauge-segment"]')).toHaveLength(7);
+    expect(screen.getAllByTestId('gallery-facade-fondations')).toHaveLength(7);
+    expect(screen.getAllByTestId('gallery-facade-elevation')).toHaveLength(7);
   });
 
   it('hors environnement DÉMO : galerie refusée', async () => {

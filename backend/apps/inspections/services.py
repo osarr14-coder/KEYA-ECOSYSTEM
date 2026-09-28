@@ -804,12 +804,16 @@ CONTROL_STATUS_LABELS = {
 #   réserve ouverte sans correction déposée → Corrections demandées
 #   réserve ouverte avec correction déposée → Resoumis
 #   acceptation technique → Accepté techniquement
+#   PO-2026-09-28-27 (T07) : avis conforme devenu caduc (pièce ajoutée après
+#   l'avis, aucune réserve ouverte) → Nouvelle revue requise. Absent de la
+#   liste du CDC §7.1 : état demandé par le Product Owner, écart signalé.
 CDC_DRAFT = 'DRAFT'
 CDC_SUBMITTED = 'SUBMITTED'
 CDC_UNDER_REVIEW = 'UNDER_REVIEW'
 CDC_CHANGES_REQUESTED = 'CHANGES_REQUESTED'
 CDC_RESUBMITTED = 'RESUBMITTED'
 CDC_TECHNICALLY_ACCEPTED = 'TECHNICALLY_ACCEPTED'
+CDC_REVIEW_REQUIRED = 'REVIEW_REQUIRED'
 
 CDC_STATE_LABELS = {
     CDC_DRAFT: 'Brouillon',
@@ -818,6 +822,7 @@ CDC_STATE_LABELS = {
     CDC_CHANGES_REQUESTED: 'Corrections demandées',
     CDC_RESUBMITTED: 'Resoumis',
     CDC_TECHNICALLY_ACCEPTED: 'Accepté techniquement',
+    CDC_REVIEW_REQUIRED: 'Nouvelle revue requise',
 }
 
 # Précision affichée sous l'état quand le libellé du CDC seul ne dit pas ce
@@ -838,9 +843,58 @@ def milestone_cdc_state(state):
         code = CDC_TECHNICALLY_ACCEPTED
     elif status == UNDER_RESERVE:
         code = CDC_RESUBMITTED if state['correction_submitted'] else CDC_CHANGES_REQUESTED
+    elif state.get('stale_acceptance'):
+        code = CDC_REVIEW_REQUIRED
     else:
         code = CDC_UNDER_REVIEW if state['pending_mission'] is not None else CDC_SUBMITTED
     return code, CDC_STATE_LABELS[code], CDC_STATE_HINTS.get(status, '')
+
+
+# PO-2026-09-28-27 — « Prochaine étape » et « Qui agit » d'un lot : le
+# premier jalon non accepté, dans l'ordre du chantier.
+def milestone_next_step(label, cdc_state, control_scheduled):
+    """`(prochaine étape, qui agit)` pour un jalon dans l'état CDC donné.
+    Guillemets à espaces insécables : le libellé ne se coupe pas à l'écran."""
+    if cdc_state == CDC_DRAFT:
+        return f'Déclaration de «\u00a0{label}\u00a0»', 'Constructeur'
+    if cdc_state == CDC_SUBMITTED:
+        return f'Affectation d’un contrôleur («\u00a0{label}\u00a0»)', 'Gestionnaire'
+    if cdc_state == CDC_UNDER_REVIEW:
+        return f'Avis sur «\u00a0{label}\u00a0»', 'Contrôleur'
+    if cdc_state == CDC_CHANGES_REQUESTED:
+        return f'Correction de la réserve («\u00a0{label}\u00a0»)', 'Constructeur'
+    if cdc_state in (CDC_RESUBMITTED, CDC_REVIEW_REQUIRED):
+        verb = 'Recontrôle' if cdc_state == CDC_RESUBMITTED else 'Nouvelle revue'
+        return f'{verb} de «\u00a0{label}\u00a0»', ('Contrôleur' if control_scheduled else 'Gestionnaire')
+    return '', ''
+
+
+def milestone_gauge_rows(lot):
+    """PO-2026-09-28-27 — jalons d'un lot pour la jauge compacte : ordre,
+    libellé, `cdc_state` calculé par le serveur, réserve ouverte et contrôle
+    programmé. Sous contexte RLS de l'organisation du lot ; une lecture
+    d'état par jalon (quelques jalons par lot à l'échelle du MVP)."""
+    rows = []
+    for milestone in lot.milestones.order_by('order'):
+        milestone.lot = lot
+        state = milestone_control_state(milestone)
+        code, label, _hint = milestone_cdc_state(state)
+        rows.append({
+            'order': milestone.order, 'code': milestone.code, 'label': milestone.label,
+            'cdc_state': code, 'status_label': label,
+            'open_reserve_count': 1 if state['reserve'] is not None else 0,
+            'control_scheduled': state['pending_mission'] is not None,
+        })
+    return rows
+
+
+def lot_next_step(milestone_rows):
+    """Prochaine étape d'un lot à partir de ses jalons ordonnés
+    (`cdc_state`, `label`, `control_scheduled`)."""
+    for row in milestone_rows:
+        if row['cdc_state'] != CDC_TECHNICALLY_ACCEPTED:
+            return milestone_next_step(row['label'], row['cdc_state'], row.get('control_scheduled', False))
+    return 'Tous les jalons sont acceptés techniquement', '—'
 
 
 # ─── Niveaux de confiance d'un jalon — PO-2026-09-28-04 (CDC §7) ──────────────
@@ -984,7 +1038,7 @@ def milestone_control_state(milestone):
     declaration = WorkDeclaration.objects.filter(milestone=milestone).order_by('-created_at').first()
     state = {
         'status': NOT_DECLARED, 'declaration': None, 'evidence_count': 0, 'latest_outcome': None,
-        'reserve': None, 'correction_submitted': False, 'pending_mission': None,
+        'reserve': None, 'correction_submitted': False, 'pending_mission': None, 'stale_acceptance': False,
     }
     if declaration is None:
         return state
@@ -993,7 +1047,14 @@ def milestone_control_state(milestone):
     open_reserve = _find_open_reserve_for_lot(milestone.lot)
     reserve = open_reserve if open_reserve and inspections.filter(id=open_reserve.opened_by_inspection_id).exists() else None
     evidence_count = Evidence.objects.filter(work_declaration=declaration).count()
+    # PO-2026-09-28-27 (T07) : avis conforme sans réserve ouverte, rendu
+    # caduc par une pièce ajoutée après lui.
+    stale = bool(
+        latest is not None and latest.outcome == InspectionOutcome.CONFORME and reserve is None
+        and Evidence.objects.filter(work_declaration=declaration, created_at__gt=latest.created_at).exists()
+    )
     state.update({
+        'stale_acceptance': stale,
         'declaration': declaration,
         'evidence_count': evidence_count,
         'latest_outcome': latest.outcome if latest else None,

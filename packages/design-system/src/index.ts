@@ -136,3 +136,12 @@ export type { DateInputProps } from './components/DateInput/DateInput';
 export { LotPlanA1, PLAN_CAPTION } from './illustrations/LotPlanA1';
 export { FACADE_CAPTION, FacadeIllustration } from './illustrations/FacadeIllustration';
 export { LotPlan, hasLotPlan } from './illustrations/lotPlans';
+// PO-2026-09-28-27 / -28 : jauge segmentée et façade-jauge des jalons.
+export { MilestoneGauge, MilestoneGaugeLegend, milestoneAccessibleLabel } from './components/MilestoneGauge/MilestoneGauge';
+export type { GaugeMilestone, MilestoneGaugeProps } from './components/MilestoneGauge/MilestoneGauge';
+export {
+  MILESTONE_STATES, MILESTONE_STATE_LABELS, MILESTONE_STATE_TONES, resolveMilestoneState,
+} from './components/MilestoneGauge/milestoneStates';
+export type { MilestoneState } from './components/MilestoneGauge/milestoneStates';
+export { FACADE_PARTS, FacadeGauge, facadeAccessibleLabel } from './components/FacadeGauge/FacadeGauge';
+export type { FacadeGaugeProps, FacadePart } from './components/FacadeGauge/FacadeGauge';

@@ -113,10 +113,11 @@ class ReservationSerializer(serializers.ModelSerializer):
 
 class AdminReservationSerializer(ReservationSerializer):
     client = serializers.SerializerMethodField()
+    worksite = serializers.SerializerMethodField()
     cancelled_by = serializers.SerializerMethodField()
 
     class Meta(ReservationSerializer.Meta):
-        fields = ReservationSerializer.Meta.fields + ['client', 'cancelled_by', 'validated_by']
+        fields = ReservationSerializer.Meta.fields + ['client', 'cancelled_by', 'validated_by', 'worksite']
         read_only_fields = fields
 
     validated_by = serializers.SerializerMethodField()
@@ -129,6 +130,10 @@ class AdminReservationSerializer(ReservationSerializer):
 
     def get_cancelled_by(self, reservation):
         return _person(reservation.cancelled_by)
+
+    def get_worksite(self, reservation):
+        # PO-2026-09-28-27 : calculé par `list_reservations_as_admin`.
+        return getattr(reservation, 'worksite_gauge', None)
 
 
 class AdminCancelSerializer(serializers.Serializer):

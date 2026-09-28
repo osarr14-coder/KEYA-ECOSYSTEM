@@ -261,7 +261,7 @@ export interface WorksiteMilestone {
   order: number;
   code: string;
   label: string;
-  cdc_state: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'CHANGES_REQUESTED' | 'RESUBMITTED' | 'TECHNICALLY_ACCEPTED';
+  cdc_state: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'CHANGES_REQUESTED' | 'RESUBMITTED' | 'TECHNICALLY_ACCEPTED' | 'REVIEW_REQUIRED';
   status_label: string;
   status_hint: string;
   trust_levels: Partial<Record<TrustLevelKey, TrustLevelEvidence>>;

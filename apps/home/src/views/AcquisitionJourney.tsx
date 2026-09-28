@@ -4,6 +4,7 @@ import {
   ApiErrorBanner, Button, Card, DateTime, Pill, type PillTone, ProgressBar, SimulatedMark, Skeleton, Stepper, TrustLevels,
   type StepperStep, formatSurface, semanticColors,
   LotPlan, hasLotPlan,
+  FACADE_CAPTION, FacadeGauge, MILESTONE_STATE_TONES, formatCalendarDate, resolveMilestoneState,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -433,74 +434,156 @@ function CancelReservation({ reservation, onChanged }: { reservation: Reservatio
   );
 }
 
-const WORKSITE_TONE: Record<WorksiteMilestone['cdc_state'], PillTone> = {
-  DRAFT: 'neutral', SUBMITTED: 'alert', UNDER_REVIEW: 'info', CHANGES_REQUESTED: 'alert', RESUBMITTED: 'info',
-  TECHNICALLY_ACCEPTED: 'success',
-};
+/** Phrase fixe sous une réserve ouverte (PO-2026-09-28-28, D2). */
+export const RESERVE_PLAIN_SENTENCE =
+  'Le constructeur doit corriger, puis le contrôleur vérifiera de nouveau. '
+  + 'Aucun paiement au constructeur n’est possible tant que cette réserve est ouverte.';
+
+function milestoneLine(milestone: WorksiteMilestone) {
+  const declared = milestone.trust_levels.declared?.at;
+  const controlled = milestone.trust_levels.controlled?.at;
+  if (!declared) return milestone.status_hint || 'Pas encore déclaré par le constructeur.';
+  return `Déclaré par le constructeur le ${formatCalendarDate(declared)}`
+    + (controlled ? `, examiné par le bureau de contrôle le ${formatCalendarDate(controlled)}.` : '.');
+}
 
 /**
- * PO-2026-09-28-04 — suivi du chantier du bien : chaque jalon avec son état
- * (CDC §7.1) et l'échelle des niveaux de confiance, chaque niveau atteint
- * disant qui, quand, sur quelle version et dans quel périmètre. Jamais un
- * score ni un pourcentage.
+ * PO-2026-09-28-28 (D2) — « Suivi du chantier » de SON bien (référence
+ * `facade-jauge-reference.html`, section 1) : façade-jauge, compteur
+ * « n / N » en texte, liste numérotée des jalons (état, date, réserve en
+ * langage simple et phrase fixe), puis « Voir qui a vérifié quoi, et quand »
+ * qui ouvre l'échelle des niveaux de confiance. La liste fait foi : la
+ * couleur n'est jamais seule porteuse. États calculés par le serveur.
  */
-function WorksiteCard({ reservationId }: { reservationId: string }) {
+function WorksiteSection({ reservation }: { reservation: Reservation }) {
   const api = useApiClient();
-  const state = useApiResource(() => api.getMyWorksite(reservationId), [reservationId]);
+  const state = useApiResource(() => api.getMyWorksite(reservation.id), [reservation.id]);
+  const [showLevels, setShowLevels] = useState(false);
+  const rows = state.status === 'success' ? state.data : [];
+  const byCode = Object.fromEntries(rows.map((row) => [row.code, row]));
+  const hasFacade = Boolean(byCode.fondations && byCode.elevation);
+  const accepted = rows.filter((row) => row.cdc_state === 'TECHNICALLY_ACCEPTED').length;
   return (
-    <Card title="Suivi du chantier" icon="building" aria-label="Suivi du chantier">
-      {state.status === 'loading' && <Skeleton lines={3} label="Chargement du chantier" />}
-      {state.status === 'error' && (
-        <ApiErrorBanner error={state.error} title="Impossible de charger le suivi du chantier." onRetry={state.refetch} />
+    <section
+      aria-labelledby="worksite-title"
+      data-testid="worksite-section"
+      style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))',
+        border: `1px solid ${semanticColors.neutral.border}`, borderRadius: '6px', background: semanticColors.neutral.surface,
+        overflow: 'hidden',
+      }}
+    >
+      {hasFacade && (
+        <div style={{ padding: '24px 20px 20px', background: semanticColors.neutral.subtle, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <FacadeGauge
+            states={{ fondations: byCode.fondations.cdc_state, elevation: byCode.elevation.cdc_state }}
+            labels={{ fondations: byCode.fondations.label, elevation: byCode.elevation.label }}
+          />
+          <span style={{ fontSize: '12px', color: semanticColors.neutral.textMuted }}>{FACADE_CAPTION}</span>
+        </div>
       )}
-      {state.status === 'success' && state.data.length === 0 && (
-        <p style={{ margin: 0 }}>Aucun jalon n’est encore défini pour votre bien.</p>
-      )}
-      {state.status === 'success' && state.data.length > 0 && (
-        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {state.data.map((milestone) => (
-            <li
-              key={milestone.id}
-              data-testid="worksite-milestone"
-              style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '12px', borderTop: `1px solid ${semanticColors.neutral.border}` }}
-            >
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                <strong>{`${milestone.order}. ${milestone.label}`}</strong>
-                <Pill tone={WORKSITE_TONE[milestone.cdc_state]}>{milestone.status_label}</Pill>
-              </div>
-              {milestone.status_hint && (
-                <span style={{ fontSize: '14px', color: semanticColors.neutral.textMuted }}>{milestone.status_hint}</span>
-              )}
-              {(milestone.reserves ?? []).length > 0 && (
-                // PO-2026-09-28-16 (CDC §9.2 étape 9) : résumé en langage
-                // simple, sans détail technique interne.
-                <ul aria-label={`Réserves — ${milestone.label}`} style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {(milestone.reserves ?? []).map((reserve, index) => (
-                    <li
-                      key={`${reserve.date}-${index}`}
-                      data-testid="worksite-reserve"
-                      style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '14px' }}
+      <div style={{ padding: '24px clamp(16px, 3vw, 32px)', display: 'flex', flexDirection: 'column', gap: '0' }}>
+        <h2 id="worksite-title" style={{ margin: '0 0 4px', fontSize: '19px' }}>Suivi du chantier</h2>
+        <p style={{ margin: '0 0 16px', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
+          {`${reservation.lot.name} · ${reservation.organization.name}`}
+        </p>
+        {state.status === 'loading' && <Skeleton lines={3} label="Chargement du chantier" />}
+        {state.status === 'error' && (
+          <ApiErrorBanner error={state.error} title="Impossible de charger le suivi du chantier." onRetry={state.refetch} />
+        )}
+        {state.status === 'success' && rows.length === 0 && (
+          <p style={{ margin: 0 }}>Aucun jalon n’est encore défini pour votre bien.</p>
+        )}
+        {rows.length > 0 && (
+          <>
+            <p data-testid="worksite-count" style={{ margin: 0, paddingBottom: '16px', borderBottom: `1px solid ${semanticColors.neutral.border}` }}>
+              <strong style={{ fontSize: '26px', color: semanticColors.neutral.heading }}>{accepted}</strong>
+              <span style={{ fontSize: '17px', color: semanticColors.neutral.textMuted, fontWeight: 600 }}>{` / ${rows.length}`}</span>
+              <span style={{ marginLeft: '8px', fontSize: '13px', color: semanticColors.neutral.textMuted }}>jalons acceptés techniquement</span>
+            </p>
+            <ol aria-label="Jalons de mon bien" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {rows.map((milestone, index) => {
+                const known = resolveMilestoneState(milestone.cdc_state);
+                return (
+                  <li
+                    key={milestone.id}
+                    data-testid="worksite-milestone"
+                    style={{
+                      display: 'grid', gridTemplateColumns: '30px minmax(0, 1fr)', gap: '12px', padding: '16px 0',
+                      borderBottom: index === rows.length - 1 ? 'none' : `1px solid ${semanticColors.neutral.border}`,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: '26px', height: '26px', borderRadius: '50%', display: 'grid', placeItems: 'center',
+                        fontSize: '10px', fontWeight: 600, border: '1.4px solid currentColor',
+                        color: known === 'TECHNICALLY_ACCEPTED' ? semanticColors.success.text
+                          : known === 'CHANGES_REQUESTED' || known === 'REVIEW_REQUIRED' ? semanticColors.alert.text
+                            : known === 'DRAFT' ? semanticColors.neutral.textMuted : semanticColors.info.text,
+                      }}
                     >
-                      <span style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                        <strong>{`Réserve : ${reserve.motif}`}</strong>
-                        <Pill tone={reserve.status === 'levee' ? 'success' : 'alert'}>
-                          {reserve.status === 'levee' ? 'Levée' : 'Ouverte'}
-                        </Pill>
-                      </span>
-                      <span style={{ color: semanticColors.neutral.textMuted }}>
-                        {`${reserve.status_label} · `}
-                        <DateTime value={reserve.date} />
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <TrustLevels reached={milestone.trust_levels} aria-label={`Niveaux de confiance — ${milestone.label}`} />
-            </li>
-          ))}
-        </ol>
-      )}
-    </Card>
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+                      <h3 style={{ margin: 0, fontSize: '15px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {`${milestone.order}. ${milestone.label}`}
+                        <Pill tone={known ? MILESTONE_STATE_TONES[known] : 'danger'}>{milestone.status_label}</Pill>
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '13px', color: semanticColors.neutral.textMuted }}>{milestoneLine(milestone)}</p>
+                      {(milestone.reserves ?? []).length > 0 && (
+                        <ul aria-label={`Réserves — ${milestone.label}`} style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {(milestone.reserves ?? []).map((reserve, reserveIndex) => (
+                            <li
+                              key={`${reserve.date}-${reserveIndex}`}
+                              data-testid="worksite-reserve"
+                              style={{
+                                borderRadius: '4px', padding: '12px 14px', fontSize: '13px',
+                                background: reserve.status === 'levee' ? semanticColors.success.background : semanticColors.alert.background,
+                              }}
+                            >
+                              <span style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                                <strong style={{ color: semanticColors.neutral.heading }}>
+                                  {reserve.status === 'levee' ? 'Réserve levée' : 'Le contrôleur a demandé une reprise'}
+                                </strong>
+                                <Pill tone={reserve.status === 'levee' ? 'success' : 'alert'}>{reserve.status === 'levee' ? 'Levée' : 'Ouverte'}</Pill>
+                              </span>
+                              <span style={{ display: 'block', marginTop: '4px' }}>
+                                {'le '}<DateTime value={reserve.date} />{` : ${reserve.motif}`}
+                              </span>
+                              {reserve.status !== 'levee' && (
+                                <span style={{ display: 'block', marginTop: '6px', color: semanticColors.neutral.textMuted, fontSize: '12.5px' }}>
+                                  {RESERVE_PLAIN_SENTENCE}
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {showLevels && (
+                        <TrustLevels reached={milestone.trust_levels} aria-label={`Niveaux de confiance — ${milestone.label}`} />
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+            <button
+              type="button"
+              aria-expanded={showLevels}
+              onClick={() => setShowLevels((current) => !current)}
+              style={{
+                alignSelf: 'flex-start', marginTop: '12px', minHeight: '44px', padding: 0, border: 'none', background: 'transparent',
+                fontWeight: 700, fontSize: '13px', color: semanticColors.neutral.heading, textDecoration: 'underline',
+                textUnderlineOffset: '3px', cursor: 'pointer',
+              }}
+            >
+              {showLevels ? 'Masquer le détail des vérifications' : 'Voir qui a vérifié quoi, et quand'}
+            </button>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -548,9 +631,6 @@ export function AcquisitionJourney({ reservation, onChanged }: { reservation: Re
               <ContractVersions contracts={contracts} onSigned={refreshAll} />
             </Card>
           )}
-          {(reservation.status === 'reserved' || reservation.status === 'committed') && (
-            <WorksiteCard reservationId={reservation.id} />
-          )}
         </div>
         <aside style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <FinancialSummary reservation={reservation} calls={calls} />
@@ -561,6 +641,9 @@ export function AcquisitionJourney({ reservation, onChanged }: { reservation: Re
           {reservation.status === 'held' && <CancelReservation reservation={reservation} onChanged={onChanged} />}
         </aside>
       </div>
+      {(reservation.status === 'reserved' || reservation.status === 'committed') && (
+        <WorksiteSection reservation={reservation} />
+      )}
     </article>
   );
 }

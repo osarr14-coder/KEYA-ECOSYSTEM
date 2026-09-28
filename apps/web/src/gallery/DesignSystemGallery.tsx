@@ -5,6 +5,7 @@ import {
   Input, KeyFigure, MONEY_KIND_LABELS, Money, type MoneyKind, Pill, type PillTone, ReceiptProof, Reference, ReserveCard,
   Select, SimulatedMark, Skeleton, Stepper, TabBar, Timeline, TrustEventLine, TrustLevels, VersionHistory, fetchDemoInstance,
   semanticColors, typography,
+  FACADE_PARTS, FacadeGauge, MILESTONE_STATES, MILESTONE_STATE_LABELS, MilestoneGauge, MilestoneGaugeLegend,
 } from '@keya/design-system';
 
 /**
@@ -264,6 +265,14 @@ function DesignSystemGallery() {
         </div>
       </Section>
 
+      <Section
+        id="jalons"
+        title="Jalons — jauge segmentée et façade-jauge"
+        intro="PO-2026-09-28-27 / -28 : un segment de largeur égale par jalon, état issu du seul cdc_state du serveur ; aucun pourcentage (le compteur n / N est du texte). Une partie de la façade n’est tracée en trait plein qu’une fois son jalon accepté techniquement."
+      >
+        <GalleryMilestones />
+      </Section>
+
       <Section id="montants" title="Montants, dates, références" intro="Six notions distinctes ; le non affecté n’est jamais masqué.">
         <div style={{ overflowX: 'auto' }}>
           <table aria-label="Notions de montant">
@@ -404,5 +413,53 @@ function DesignSystemGallery() {
         </ul>
       </Section>
     </main>
+  );
+}
+
+/** PO-2026-09-28-29 (E) : les 7 états CDC, versions carte et compacte, et la façade par partie. */
+const GALLERY_MILESTONES = MILESTONE_STATES.map((state, index) => ({
+  id: `g-${state}`,
+  code: `galerie-${index + 1}`,
+  label: MILESTONE_STATE_LABELS[state],
+  cdcState: state,
+  openReserveCount: state === 'CHANGES_REQUESTED' ? 1 : 0,
+}));
+
+function GalleryMilestones() {
+  const [selected, setSelected] = useState<string | null>('g-CHANGES_REQUESTED');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <Specimen label="Version carte (BUILD) — 7 états, segments boutons de 44 px, segment sélectionné cerné à l’encre">
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: '720px' }}>
+            <MilestoneGauge milestones={GALLERY_MILESTONES} selectedId={selected} onSelect={setSelected} aria-label="Jauge de démonstration — 7 états" />
+          </div>
+        </div>
+      </Specimen>
+      <Specimen label="Version compacte (listes gestionnaire et pilotage) — segments de 8 px">
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}>
+          <MilestoneGauge variant="compact" milestones={GALLERY_MILESTONES} aria-label="Jauge compacte de démonstration" />
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>1 / 7</span>
+        </span>
+      </Specimen>
+      <Specimen label="Légende"><MilestoneGaugeLegend /></Specimen>
+      {FACADE_PARTS.map((part) => (
+        <Specimen key={part.key} label={`Façade-jauge — ${part.label} dans chacun des états (l’autre partie : ${part.key === 'fondations' ? 'Brouillon' : 'Accepté techniquement'})`}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', gap: '16px' }}>
+            {MILESTONE_STATES.map((state) => (
+              <figure key={state} style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }} data-testid={`gallery-facade-${part.key}`}>
+                <FacadeGauge
+                  markers={false}
+                  states={part.key === 'fondations'
+                    ? { fondations: state, elevation: 'DRAFT' }
+                    : { fondations: 'TECHNICALLY_ACCEPTED', elevation: state }}
+                />
+                <figcaption style={{ fontSize: '12px', color: semanticColors.neutral.textMuted }}>{MILESTONE_STATE_LABELS[state]}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </Specimen>
+      ))}
+    </div>
   );
 }

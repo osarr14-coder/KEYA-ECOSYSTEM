@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, Button, Card, densityTokens, Input, Select, type Density, PageHeader,
+  MilestoneGauge,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -255,6 +256,8 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
                   <th>Organisation constructrice</th>
                   <th>Jalons déclarés</th>
                   <th>Jalons acceptés techniquement</th>
+                  <th>Prochaine étape</th>
+                  <th>Qui agit</th>
                   <th>Réserves ouvertes</th>
                 </tr>
               </thead>
@@ -272,7 +275,24 @@ export function AllLotsView({ initialSearch = '', activeOrganizationId }: AllLot
                     <td>{row.declared_milestone_count}/{row.milestone_count}</td>
                     {/* PO-2026-09-28-14 (CDC §1) : « n / N jalons acceptés
                         techniquement », jamais un pourcentage ni une jauge. */}
-                    <td>{row.accepted_milestone_count}/{row.milestone_count}</td>
+                    <td>
+                      {/* PO-2026-09-28-27 : jauge compacte (segments de 8 px) + compteur en texte. */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {row.milestones && row.milestones.length > 0 && (
+                          <MilestoneGauge
+                            variant="compact"
+                            aria-label={`Jalons — ${row.name}`}
+                            milestones={row.milestones.map((item) => ({
+                              id: `${row.id}-${item.code}`, label: item.label, cdcState: item.cdc_state,
+                              statusLabel: item.status_label, openReserveCount: item.open_reserve_count,
+                            }))}
+                          />
+                        )}
+                        <span>{row.accepted_milestone_count}/{row.milestone_count}</span>
+                      </div>
+                    </td>
+                    <td>{row.next_step ?? ''}</td>
+                    <td>{row.next_actor ?? ''}</td>
                     <td>{row.open_reserve_count}</td>
                   </tr>
                 ))}

@@ -1,8 +1,8 @@
 import { type FormEvent, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, Button, Icon, CONTROLLER_DESIGNATION, Card, PageHeader, Pill, type PillTone, ReserveCard,
-  type ReserveState, Select, TrustLevels, semanticColors,
+  AlertBanner, ApiErrorBanner, Button, Icon, CONTROLLER_DESIGNATION, Card, MilestoneGauge, MilestoneGaugeLegend, PageHeader,
+  Pill, type PillTone, ReserveCard, type ReserveState, Select, TrustLevels, formatCalendarDate, semanticColors,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -134,13 +134,6 @@ function milestoneTone(milestone: LotMilestone): PillTone {
   }
 }
 
-const STATUS_BAR: Record<LotMilestone['status'], string> = {
-  not_declared: semanticColors.neutral.border,
-  awaiting_documents: semanticColors.alert.border,
-  awaiting_control: semanticColors.info.text,
-  under_reserve: semanticColors.alert.border, // PO-2026-09-28-17 : cohérente avec son badge
-  accepted: semanticColors.progress.fill,
-};
 
 /** Jalon mis en avant par défaut : celui qui attend une action du
  * constructeur (réserve, pièce manquante), sinon le contrôle en cours,
@@ -155,43 +148,42 @@ export function focusMilestone(milestones: LotMilestone[]): LotMilestone | undef
     ?? milestones[0];
 }
 
-/** Niveau de confiance du jalon, du plus faible au plus fort. */
-function ProgressStrip({
+/** PO-2026-09-28-27 : carte du lot — compteur « n / N » en texte, jauge
+ * segmentée (un bouton par jalon, état CDC du serveur), légende. Le jalon
+ * sélectionné s'ouvre juste en dessous. */
+function LotGaugeCard({
   milestones, selectedId, onSelect,
 }: { milestones: LotMilestone[]; selectedId: string; onSelect: (id: string) => void }) {
+  const accepted = milestones.filter((milestone) => milestone.cdc_state === 'TECHNICALLY_ACCEPTED').length;
   return (
-    <Card aria-label="Avancement du lot">
-      <ol
-        style={{
-          listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px',
-        }}
-      >
-        {milestones.map((milestone) => {
-          const selected = milestone.id === selectedId;
-          return (
-            <li key={milestone.id}>
-              <button
-                type="button"
-                aria-pressed={selected}
-                onClick={() => onSelect(milestone.id)}
-                className="keya-tab"
-                style={{
-                  width: '100%', display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', border: 'none',
-                  borderRadius: '6px', textAlign: 'left', font: 'inherit', color: 'inherit',
-                  background: selected ? semanticColors.neutral.subtle : 'transparent',
-                  outline: selected ? `2px solid ${semanticColors.neutral.heading}` : undefined,
-                }}
-              >
-                <span aria-hidden="true" style={{ height: '8px', borderRadius: '4px', background: STATUS_BAR[milestone.status] }} />
-                <span style={{ fontWeight: 700 }}>{milestone.label}</span>
-                <span data-testid={`milestone-status-${milestone.code}`} style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-                  {milestone.status_label}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+    <Card aria-label="Jauge des jalons">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        <h2 style={{ margin: 0, fontSize: '17px' }}>Jalons du chantier</h2>
+        <p data-testid="accepted-count" style={{ margin: 0, textAlign: 'right' }}>
+          <strong style={{ fontSize: '26px', color: semanticColors.neutral.heading }}>{accepted}</strong>
+          <span style={{ fontSize: '17px', color: semanticColors.neutral.textMuted }}>{` / ${milestones.length}`}</span>
+          <span style={{ display: 'block', fontSize: '12px', color: semanticColors.neutral.textMuted }}>jalons acceptés techniquement</span>
+        </p>
+      </div>
+      <MilestoneGauge
+        milestones={milestones.map((milestone) => ({
+          id: milestone.id,
+          code: milestone.code,
+          label: milestone.label,
+          cdcState: milestone.cdc_state ?? '',
+          statusLabel: milestone.status_label,
+          openReserveCount: (milestone.open_reserves ?? []).length,
+          meta: (milestone.open_reserves ?? []).length > 0
+            ? `${(milestone.open_reserves ?? []).length} réserve${(milestone.open_reserves ?? []).length > 1 ? 's' : ''} ouverte${(milestone.open_reserves ?? []).length > 1 ? 's' : ''} depuis le ${formatCalendarDate((milestone.open_reserves ?? [])[0].opened_at)}`
+            : milestone.status_hint || undefined,
+        }))}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        aria-label="Jalons du lot"
+      />
+      <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: `1px solid ${semanticColors.neutral.border}` }}>
+        <MilestoneGaugeLegend />
+      </div>
     </Card>
   );
 }
@@ -332,11 +324,10 @@ function LotMilestones({ lotId }: { lotId: string }) {
   const nextToDeclare = milestones.find(
     (milestone) => milestone.status === 'not_declared' && milestone.order > selected.order,
   );
-  const accepted = milestones.filter((milestone) => milestone.status === 'accepted').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <ProgressStrip milestones={milestones} selectedId={selected.id} onSelect={setSelectedId} />
+      <LotGaugeCard milestones={milestones} selectedId={selected.id} onSelect={setSelectedId} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 520px', minWidth: 0 }}>
           <MilestoneDetail
@@ -346,12 +337,6 @@ function LotMilestones({ lotId }: { lotId: string }) {
           />
         </div>
         <aside style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <Card title="Avancement" icon="check-circle" tone="accent">
-            <p style={{ margin: 0 }}>
-              <strong style={{ fontSize: '22px' }}>{`${accepted} / ${milestones.length}`}</strong>
-              {' jalons acceptés techniquement'}
-            </p>
-          </Card>
           {nextToDeclare && (
             <Card title="Prochain jalon à déclarer" icon="clipboard-check">
               <p style={{ margin: '0 0 12px' }}>

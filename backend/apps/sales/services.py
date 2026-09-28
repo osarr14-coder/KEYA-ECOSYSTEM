@@ -260,13 +260,39 @@ def list_reservations_as_admin(*, caller_organization_id, status=None):
             ).select_related(
                 'lot', 'lot__asset', 'lot__asset__program', 'organization', 'client', 'cancelled_by',
             )
+            gauges = {}
             for reservation in queryset:
                 _expire_if_overdue(reservation, now)
                 if status is None or reservation.status == status:
+                    # PO-2026-09-28-27 : jauge compacte du chantier du lot,
+                    # lue sous le contexte RLS de son organisation.
+                    if reservation.lot_id not in gauges:
+                        gauges[reservation.lot_id] = worksite_gauge(reservation.lot)
+                    reservation.worksite_gauge = gauges[reservation.lot_id]
                     results.append(reservation)
     finally:
         set_rls_context(organization_id=caller_organization_id)
     return sorted(results, key=lambda reservation: reservation.created_at, reverse=True)
+
+
+def worksite_gauge(lot):
+    """PO-2026-09-28-27 — jauge compacte d'un lot : jalons (état CDC du
+    serveur), « n / N » compté sur ces états, prochaine étape, qui agit,
+    réserves ouvertes. Aucun pourcentage."""
+    from apps.inspections import services as inspections_services
+
+    milestones = inspections_services.milestone_gauge_rows(lot)
+    next_step, next_actor = inspections_services.lot_next_step(milestones)
+    return {
+        'milestones': milestones,
+        'accepted_milestone_count': sum(
+            1 for row in milestones if row['cdc_state'] == inspections_services.CDC_TECHNICALLY_ACCEPTED
+        ),
+        'milestone_count': len(milestones),
+        'next_step': next_step,
+        'next_actor': next_actor,
+        'open_reserve_count': sum(row['open_reserve_count'] for row in milestones),
+    }
 
 
 def cancel_reservation_as_admin(*, admin, caller_organization_id, target_organization_id, reservation_id, reason):

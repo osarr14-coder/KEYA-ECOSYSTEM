@@ -20,7 +20,9 @@ from django.utils import timezone
 from apps.core.demo import demo_scope
 from apps.evidence.models import Evidence, WorkDeclaration
 from apps.inspections.models import Inspection, Reserve
-from apps.inspections.services import OPEN_RESERVE_STATUSES, accepted_milestone_counts
+from apps.inspections.services import (
+    CDC_DRAFT, CDC_STATE_LABELS, OPEN_RESERVE_STATUSES, accepted_milestone_counts, lot_next_step, milestone_gauge_rows,
+)
 from apps.organizations.identity import actor_label, event_actor_label
 from apps.programs.models import Lot, Milestone
 from apps.trust import repository as trust_repository
@@ -290,6 +292,13 @@ def build_lot_rows(organization):
         .values('milestone__lot_id').annotate(count=Count('milestone_id', distinct=True))
         .values_list('milestone__lot_id', 'count'),
     )
+    # PO-2026-09-28-27 : jalons de tous les lots en une requête ; un lot sans
+    # déclaration n'a que des jalons « Brouillon » (aucune lecture d'état).
+    milestones_by_lot = defaultdict(list)
+    for milestone in (
+        Milestone.objects.filter(lot_id__in=lot_ids).order_by('order').values('lot_id', 'order', 'code', 'label')
+    ):
+        milestones_by_lot[milestone['lot_id']].append(milestone)
     open_reserves_by_lot = defaultdict(int)
     for reserve, _event in _bulk_open_reserves(organization):
         open_reserves_by_lot[reserve.lot_id] += 1
@@ -306,6 +315,18 @@ def build_lot_rows(organization):
         accepted_milestones = (
             accepted_milestone_counts(lot.milestones.all())[0] if declared_milestones else 0
         )
+        # PO-2026-09-28-27 : jauge compacte, « Prochaine étape », « Qui agit ».
+        # États lus seulement pour les lots ayant au moins une déclaration
+        # (même borne que le compte « n / N » ci-dessus).
+        gauge = milestone_gauge_rows(lot) if declared_milestones else [
+            {
+                'order': milestone['order'], 'code': milestone['code'], 'label': milestone['label'],
+                'cdc_state': CDC_DRAFT, 'status_label': CDC_STATE_LABELS[CDC_DRAFT],
+                'open_reserve_count': 0, 'control_scheduled': False,
+            }
+            for milestone in milestones_by_lot.get(lot.id, [])
+        ]
+        next_step, next_actor = lot_next_step(gauge)
         rows.append({
             'id': str(lot.id),
             'name': lot.name,
@@ -321,6 +342,9 @@ def build_lot_rows(organization):
             'milestone_count': total_milestones,
             'declared_milestone_count': declared_milestones,
             'accepted_milestone_count': accepted_milestones,
+            'milestones': gauge,
+            'next_step': next_step,
+            'next_actor': next_actor,
             'open_reserve_count': open_reserves_by_lot.get(lot.id, 0),
             'created_at': lot.created_at.isoformat(),
         })
