@@ -1,4 +1,5 @@
 from django.core import signing
+from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.urls import reverse
 from rest_framework import mixins, permissions, viewsets
@@ -8,6 +9,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.demo import viewed_demo_instance
 from apps.core.viewsets import OrganizationScopedMixin
 from apps.messaging.mixins import MessageThreadMixin
 
@@ -20,6 +22,20 @@ from .serializers import (
     EvidenceSerializer,
     WorkDeclarationSerializer,
 )
+
+
+def document_instance_scope():
+    """PO-2026-09-29-12 (A6) — un document appartient à l'instance de la pièce
+    qui le porte ; pas encore rattaché, à celle pendant laquelle il a été
+    déposé. Instance consultée : l'active, sauf consultation d'archive
+    autorisée (administrateur, gestionnaire)."""
+    instance = viewed_demo_instance()
+    if instance is None:
+        return Q()
+    unattached = Q(evidences__isnull=True, created_at__gte=instance.created_at)
+    if instance.archived_at is not None:
+        unattached &= Q(created_at__lte=instance.archived_at)
+    return Q(evidences__work_declaration__milestone__lot__asset__program__demo_instance=instance) | unattached
 
 
 class DocumentViewSet(
@@ -37,6 +53,12 @@ class DocumentViewSet(
 
     queryset = Document.objects.all()
     parser_classes = [MultiPartParser]
+
+    def instance_scope(self):
+        return document_instance_scope()
+
+    def get_queryset(self):
+        return super().get_queryset().distinct()
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -110,6 +132,10 @@ class DocumentDownloadView(APIView):
             raise Http404
         if not access.user_can_access_document(request.user, document, organization):
             raise Http404
+        # PO-2026-09-29-12 (A6) : un lien signé obtenu avant l'archivage ne
+        # sert plus un document d'une archive.
+        if not Document.objects.filter(id=document.id).filter(document_instance_scope()).exists():
+            raise Http404
 
         return FileResponse(document.file.open('rb'), as_attachment=True, filename=document.file.name)
 
@@ -122,6 +148,7 @@ class WorkDeclarationViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = WorkDeclaration.objects.all()
+    instance_scope_prefix = 'milestone__lot__asset__program__'  # PO-2026-09-29-12 (A6)
     serializer_class = WorkDeclarationSerializer
 
     def get_permissions(self):
@@ -150,6 +177,7 @@ class EvidenceViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = Evidence.objects.all()
+    instance_scope_prefix = 'work_declaration__milestone__lot__asset__program__'  # PO-2026-09-29-12 (A6)
     serializer_class = EvidenceSerializer
 
     def perform_create(self, serializer):

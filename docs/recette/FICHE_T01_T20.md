@@ -12,7 +12,7 @@
 | Date | 29 septembre 2026, 00:50 → 02:10 (GMT) |
 | Environnement | Pile **locale** uniquement (Render non touché). Blocage d'**1 h** pour T02 (arbitrage A7, local seulement), **remis à 24 h** à la fin |
 | Outillage | Interface seule (Playwright, comptes de démonstration, clavier seul pour T20), API (jeton du compte concerné), suites automatisées |
-| Suites | Backend : 751 passés ; front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
+| Suites | Backend : 754 passés ; front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
 | Relecteur | **À désigner** (revue indépendante §11) — procédure : `docs/recette/PROCEDURE_REVUE_INDEPENDANTE.md` |
 
 Légende des modes : **Écran** (rejoué par l'interface, sans intervention en base), **API** (requête
@@ -46,7 +46,7 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 
 ## Résultat des suites
 
-- Backend : **751 passés**, 0 échec (suite complète, `pytest --create-db`, après PO-2026-09-29-11 ; 747 après PO-2026-09-29-10, 736 après PO-2026-09-29-09, 728 après PO-2026-09-29-05).
+- Backend : **754 passés**, 0 échec (suite complète, `pytest --create-db`, après PO-2026-09-29-12 ; 751 après PO-2026-09-29-11, 747 après PO-2026-09-29-10, 736 après PO-2026-09-29-09, 728 après PO-2026-09-29-05).
 - Front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés, mode hors ligne différé, PO-37/PO-58), design system 246 ; `tsc` sans erreur sur les 5 espaces.
 
 ## Constats du rejeu (corrigés pendant la vérification)
@@ -57,6 +57,8 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 4. T15 : règle de dépôt alignée sur le CDC §10 (PO-2026-09-29-05) — tests adaptés et ajoutés.
 5. T20 (P2) : focus perdu après « Confirmer la réception » — corrigé à la demande du PO, test ajouté (BUILD 113).
 6. Ordre du scénario (PO-2026-09-29-09) : pendant le rejeu, le constructeur avait déclaré Fondations A2 et déposé une pièce avant l'examen du dossier d'Awa, puis avait été payé avant la concrétisation. Désormais le serveur refuse toute déclaration de jalon tant que le dossier du lot n'est pas concrétisé ; BUILD affiche le motif. Tests : `build/test_ordre_scenario.py` (8) ; vérifié sur l'instance locale active (lots A1/A2 sans dossier) : motif affiché, aucun bouton, requête de déclaration refusée (400), rien de créé (`o-1440-jalon-ferme`, `o-375-jalon-ferme`). Le chemin « dossier concrétisé puis déclaration » est couvert par les tests automatisés, non rejoué à l'écran.
+
+7. Visibilité des archives (A6, PO-2026-09-29-12) — **écart trouvé par la revue assistée** (`REVUE_ASSISTEE_R1.md`) : le constructeur listait les documents, pièces et déclarations des instances archivées de sa propre organisation et téléchargeait un document d'archive par lien signé. Corrigé : déclarations, pièces, documents, contrôles, réserves et corrections suivent l'instance consultée (l'active, sauf consultation d'archive autorisée à l'administrateur et au gestionnaire) ; un lien signé ne sert plus un document d'archive. Vérifié sur la pile locale : le constructeur liste 3 documents, 2 pièces et 2 déclarations, tous de l'instance active ; détail et lien signé de trois documents d'archive de son organisation → **404** ; document de l'instance active → 200. `evidence/test_instance_scope.py` (3 ; échouent sans le correctif).
 
 ## Constats ouverts
 

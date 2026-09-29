@@ -33,6 +33,7 @@ class InspectionViewSet(
     """
 
     queryset = Inspection.objects.all()
+    instance_scope_prefix = 'lot__asset__program__'  # PO-2026-09-29-12 (A6)
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -103,6 +104,7 @@ class ReserveViewSet(
     """
 
     queryset = Reserve.objects.all()
+    instance_scope_prefix = 'lot__asset__program__'  # PO-2026-09-29-12 (A6)
     serializer_class = ReserveSerializer
 
 
@@ -114,6 +116,7 @@ class ReserveCorrectionViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = ReserveCorrection.objects.all()
+    instance_scope_prefix = 'reserve__lot__asset__program__'  # PO-2026-09-29-12 (A6)
 
     def get_serializer_class(self):
         if self.action == 'create':
