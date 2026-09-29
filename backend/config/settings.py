@@ -246,10 +246,11 @@ WEB_APP_URL = config('WEB_APP_URL', default='')
 # jamais une réponse HTTP lisible) — CHAQUE requête suivante d'une app
 # HOME/BUILD échouait, dès l'instant où l'App Switcher (ticket 019) avait
 # résolu une organisation.
-CORS_ALLOW_HEADERS = list(default_headers) + ['x-organization-id']
+# Lot 5 (PO-2026-09-29-01) : consultation d'une archive par son code.
+CORS_ALLOW_HEADERS = list(default_headers) + ['x-organization-id', 'x-demo-instance-view']
 # Audit UI R1 (T13) : marquage de démonstration lisible par les apps.
 # PO-2026-09-28-45 (P32) : délai d'attente après trop de tentatives.
-CORS_EXPOSE_HEADERS = ['X-Demo-Instance', 'X-Environment', 'Retry-After']
+CORS_EXPOSE_HEADERS = ['X-Demo-Instance', 'X-Environment', 'Retry-After', 'X-Demo-Instance-View']
 
 # ── Celery (ticket 004 : traitement asynchrone média) ──────────────────────
 # Broker Redis réel depuis l'ADR 0001 (docs/adr/0001-celery-eager-mode.md) :

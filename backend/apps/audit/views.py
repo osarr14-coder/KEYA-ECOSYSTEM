@@ -34,6 +34,15 @@ class AdminJournalView(APIView):
                 )
         finally:
             set_rls_context(organization_id=caller_organization_id)
+        # Lot 5 (PO-2026-09-29-01) : une archive consultée restreint le
+        # journal à sa période (une seule instance active à la fois).
+        viewed = getattr(request, 'viewed_demo_instance', None)
+        if viewed is not None:
+            end = viewed.archived_at
+            events = [
+                event for event in events
+                if event.created_at >= viewed.created_at and (end is None or event.created_at <= end)
+            ]
         events.sort(key=lambda event: event.created_at, reverse=True)
         return Response([
             {

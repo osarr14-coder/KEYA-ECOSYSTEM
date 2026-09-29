@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  AlertBanner, ApiErrorBanner, AppShell, BRAND_GRADIENT, Button, Field, Input, brandColors, typography,
+  AlertBanner, ApiErrorBanner, AppShell, ArchiveBanner, BRAND_GRADIENT, Button, Field, Input, brandColors, typography,
   useIsMobile, useOnlineStatus, type AppModule, type IconName, logoutToLoginScreen,
 } from '@keya/design-system';
 
 import { useApiClient } from './api/ApiClientContext';
+import { setViewedArchive, useViewedArchive } from './api/archiveView';
 import { ApiError } from './api/client';
 import { useApiResource } from './api/useApiResource';
 import {
@@ -27,6 +28,7 @@ import { PricingView } from './views/PricingView';
 import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
 import { ReservationsView } from './views/ReservationsView';
+import { InstancesView } from './views/InstancesView';
 import { PilotageView } from './views/PilotageView';
 import { type NavigationTarget, TodayView } from './views/TodayView';
 import { signInAndRedirect } from './auth/signInAndRedirect';
@@ -38,7 +40,7 @@ import { DesignSystemGalleryRoute } from './gallery/DesignSystemGallery';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
-  | 'program-requests' | 'controls' | 'payment-notices' | 'todo' | 'journal' | 'receipts' | 'pilotage';
+  | 'program-requests' | 'controls' | 'payment-notices' | 'todo' | 'journal' | 'receipts' | 'pilotage' | 'instances';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -142,6 +144,12 @@ const TAB_DEFINITIONS: {
   },
   {
     id: 'journal', label: 'Journal', path: '/journal', icon: 'history', group: 'Administration', roles: ADMIN_ONLY,
+  },
+  // Lot 5 (PO-2026-09-29-01, -03) — archivage (administrateur) et
+  // consultation des archives (administrateur, gestionnaire ; A6).
+  {
+    id: 'instances', label: 'Instances et archives', path: '/instances', icon: 'lock', group: 'Administration',
+    roles: [ADMIN_KEYIMMO_ROLE, GESTIONNAIRE_ADV_ROLE],
   },
   {
     id: 'devis', label: 'Devis / Appels d\'offres', path: '/devis', icon: 'file-text', group: 'Administration', roles: ADMIN_ONLY, deferred: true,
@@ -295,6 +303,14 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   const api = useApiClient();
   const isAdv = userRoles.includes(GESTIONNAIRE_ADV_ROLE);
   const isFinance = userRoles.includes(FINANCE_ROLE);
+  const isAdmin = userRoles.includes(ADMIN_KEYIMMO_ROLE);
+  // Lot 5 (PO-2026-09-29-01, -02) : archive consultée — tout en lecture
+  // seule ; réservée à l'administrateur et au gestionnaire (A6).
+  const archive = useViewedArchive();
+  const readOnly = archive !== null;
+  useEffect(() => {
+    if (archive && !isAdv && !isAdmin) setViewedArchive(null);
+  }, [archive, isAdv, isAdmin]);
   // Ticket F-065 — onglets du rôle courant (les rôles ne changent pas en
   // cours de session). Premier onglet visible = repli : un ADV qui arrive
   // sur `/` (Back-office, admin seul) ou un lien vers un onglet admin est
@@ -319,7 +335,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
   return (
     <AppShell
       // Ticket F-070 — déconnexion volontaire, vers l'écran de connexion.
-      onLogout={() => logoutToLoginScreen()}
+      onLogout={() => { setViewedArchive(null); logoutToLoginScreen(); }}
       density="dense"
       brand
       appLabel="Back-office KEYIMMO"
@@ -331,6 +347,15 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       // Ticket F-061/F-075 — la cloche ouvre « À faire », URL synchronisée.
       onTaskInboxClick={() => navigate({ tab: 'todo' })}
     >
+      {archive && (
+        <div style={{ margin: '-8px 0 16px' }}>
+          <ArchiveBanner
+            instanceCode={archive.code}
+            archivedAt={archive.archived_at}
+            onReturn={() => setViewedArchive(null)}
+          />
+        </div>
+      )}
       {activeTab === 'todo' && (
         <TodayView
           onNavigate={navigate}
@@ -344,12 +369,13 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'devis' && <DevisView />}
       {activeTab === 'pricing' && <PricingView />}
       {activeTab === 'legal-tiers' && <LegalPaymentTiersView />}
-      {activeTab === 'lots' && <LotsCommercialView canEditPrice={isAdv} />}
+      {activeTab === 'lots' && <LotsCommercialView canEditPrice={isAdv && !readOnly} />}
       {activeTab === 'reservations' && (
         <ReservationsView
           key={dossier ? `${dossier.id}-${dossier.nonce}` : 'list'}
           openReservationId={dossier?.id ?? null}
-          permissions={{ canManageSales: isAdv, canRecordMovements: false }}
+          permissions={{ canManageSales: isAdv && !readOnly, canRecordMovements: false }}
+          readOnly={readOnly}
         />
       )}
       {activeTab === 'receipts' && (
@@ -366,6 +392,9 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'program-requests' && <ProgramRequestsView />}
       {activeTab === 'controls' && <ControlsView />}
       {activeTab === 'pilotage' && <PilotageView onNavigate={navigate} />}
+      {activeTab === 'instances' && (
+        <InstancesView canArchive={isAdmin} onConsult={() => navigate({ tab: isAdv ? 'reservations' : 'journal' })} />
+      )}
     </AppShell>
   );
 }

@@ -4,7 +4,7 @@ from django.http import HttpResponseRedirect, JsonResponse
 from django.urls import include, path
 
 from apps.accounts.views import MeView
-from apps.core.views import DemoInstanceView
+from apps.core.views import AdminArchiveInstanceView, AdminInstancesView, DemoInstanceView
 
 
 def backend_root(request):
@@ -25,6 +25,9 @@ urlpatterns = [
     path('api/auth/', include('apps.accounts.urls')),
     path('api/me/', MeView.as_view(), name='me'),
     path('api/public/demo-instance/', DemoInstanceView.as_view(), name='public-demo-instance'),
+    # Lot 5 (PO-2026-09-29-01, -03) — instances et archivage.
+    path('api/admin/instances/', AdminInstancesView.as_view(), name='admin-instances'),
+    path('api/admin/instances/archive/', AdminArchiveInstanceView.as_view(), name='admin-instance-archive'),
     path('api/', include('apps.programs.urls')),
     path('api/', include('apps.evidence.urls')),
     path('api/', include('apps.inspections.urls')),

@@ -29,6 +29,10 @@ class DemoInstance(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     archived_at = models.DateTimeField(null=True, blank=True)
     origin = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT, related_name='successors')
+    # Lot 5 (PO-2026-09-29-01) — programmes de l'instance, relevés à
+    # l'archivage : table sans RLS, lisible pour écarter les tâches d'une
+    # archive de la boîte de chacun sans jointure sur des tables en RLS.
+    program_ids = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = 'core_demo_instance'

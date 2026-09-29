@@ -1,19 +1,16 @@
-"""Audit UI R1 (D01, T14 partiel) — archive l'instance de démonstration
-active puis, avec `--reseed`, crée une instance NOUVELLE à partir du jeu
-initial versionné (`seed_demo_scenario`) : nouveaux objets, aucun lien avec
-l'ancienne instance, dont les programmes ne sont plus listés.
+"""Archive l'instance de démonstration active puis, avec `--reseed`, crée
+une instance NOUVELLE à partir du jeu initial versionné : nouveaux objets,
+aucun lien avec l'ancienne instance.
 
-Aucune donnée n'est supprimée : l'instance archivée reste en base.
-Limite connue : l'interdiction d'écrire dans une instance archivée et sa
-consultation dans l'application ne sont pas encore implémentées (T14).
+Lot 5 (PO-2026-09-29-03) : même service que l'action « Archiver et créer
+une nouvelle instance » de l'écran Administration ; l'archive reste en base,
+consultable en lecture seule par l'administrateur et le gestionnaire, et
+refuse toute écriture. Les comptes de démonstration ne sont pas modifiés.
 """
-from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
-from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
-from apps.core.demo import active_demo_instance
-from apps.core.models import DemoInstanceStatus
+from apps.core.instances import archive_active_instance
 
 
 class Command(BaseCommand):
@@ -21,22 +18,17 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--confirm', action='store_true', help='Confirme l’archivage.')
-        parser.add_argument('--reseed', action='store_true', help='Crée ensuite une nouvelle instance (DEMO_PASSWORD).')
+        parser.add_argument('--reseed', action='store_true', help='Crée ensuite une nouvelle instance.')
 
     def handle(self, *args, **options):
         if not options['confirm']:
             raise CommandError('Refus : ajoutez --confirm.')
-        with transaction.atomic():
-            instance = active_demo_instance()
-            if instance is None:
-                raise CommandError('Aucune instance de démonstration active.')
-            instance.status = DemoInstanceStatus.ARCHIVED
-            instance.archived_at = timezone.now()
-            instance.save(update_fields=['status', 'archived_at'])
-        self.stdout.write(f'Instance {instance.code} archivée.')
-        if options['reseed']:
-            call_command('seed_demo_scenario', stdout=self.stdout)
-            successor = active_demo_instance()
-            if successor is not None and successor.origin_id is None:
-                successor.origin = instance
-                successor.save(update_fields=['origin'])
+        try:
+            archived, created = archive_active_instance(
+                actor=None, caller_organization_id=None, renew=options['reseed'],
+            )
+        except ValidationError as exc:
+            raise CommandError(str(exc.detail)) from exc
+        self.stdout.write(f'Instance {archived.code} archivée.')
+        if created is not None:
+            self.stdout.write(f'Nouvelle instance {created.code} ({created.dataset_version}).')

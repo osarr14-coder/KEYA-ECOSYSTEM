@@ -101,6 +101,7 @@ export type { DemoBannerProps, DemoInstanceInfo } from './components/DemoBanner/
 
 // PO-2026-09-27-20 (DESIGN_SYSTEM §7, §9, §10, §12) : traçabilité et états.
 export { ArchiveBanner } from './components/ArchiveBanner/ArchiveBanner';
+export type { ArchiveBannerProps } from './components/ArchiveBanner/ArchiveBanner';
 export { DateTime } from './components/DateTime/DateTime';
 export type { DateTimeProps } from './components/DateTime/DateTime';
 export { EmptyState } from './components/EmptyState/EmptyState';

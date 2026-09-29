@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DemoBanner, resetDemoInstanceCache } from './DemoBanner';
@@ -34,5 +34,20 @@ describe('DemoBanner (audit M01/M02)', () => {
     const style = screen.getByTestId('demo-banner').getAttribute('style') ?? '';
     expect(style).toContain('var(--keya-neutral-heading)');
     expect(style).not.toMatch(/accent|#C49A2C|#E2C47A/i);
+  });
+
+  it('lot 5 (T13) : après un archivage, la fenêtre affiche la nouvelle instance au retour, sans rechargement', async () => {
+    let code = 'DEMO-CI-ANCIENNE';
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ instance: { code, dataset_version: 'DEMO-CI-v2', environment: 'DEMO', status: 'ACTIVE' } }),
+    })));
+    render(<DemoBanner apiBaseUrl="http://api" />);
+    await waitFor(() => expect(screen.getByTestId('demo-banner-instance')).toHaveTextContent('DEMO-CI-ANCIENNE'));
+
+    code = 'DEMO-CI-NOUVELLE';
+    act(() => { window.dispatchEvent(new Event('focus')); });
+
+    await waitFor(() => expect(screen.getByTestId('demo-banner-instance')).toHaveTextContent('DEMO-CI-NOUVELLE'));
   });
 });

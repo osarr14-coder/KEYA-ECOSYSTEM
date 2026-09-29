@@ -214,4 +214,26 @@ describe('ReservationsView — vue Finance en lecture seule (audit UI R1, R03, P
     expect(entries[2]).toHaveTextContent('Plateforme · action automatique');
     expect(timeline).not.toHaveTextContent('@');
   });
+
+  it('lot 5 (PO-2026-09-29-01) — une archive se lit sans aucune action, avec son explication', async () => {
+    const api = createMockApiClient({
+      listReservations: vi.fn().mockResolvedValue([reservation()]),
+      getFinanceFile: vi.fn().mockResolvedValue({
+        reservation: { id: 'reservation-1', status: 'held', status_label: 'Bloquée' }, calls: [], receipts: [],
+      }),
+      getTeamPaymentCalls: vi.fn().mockResolvedValue({ calls: [], candidates: [], blocking_reason: null }),
+      getDossierChronology: vi.fn().mockResolvedValue({ reservation_id: 'reservation-1', lot: 'Lot A12', program: 'R', entries: [] }),
+    });
+    render(withApiClient(api, (
+      <ReservationsView readOnly permissions={{ canManageSales: false, canRecordMovements: false }} />
+    )));
+
+    expect(api.listReservations).toHaveBeenCalledWith(undefined);  // tous les dossiers de l'archive
+    await openDossier();
+
+    expect(await screen.findByTestId('archive-read-only')).toHaveTextContent('aucune action n’est possible');
+    expect(screen.queryByLabelText("Motif d'annulation")).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Dossier examiné/ })).not.toBeInTheDocument();
+    expect(await screen.findByText('Aucun événement enregistré pour ce dossier.')).toBeInTheDocument();
+  });
 });

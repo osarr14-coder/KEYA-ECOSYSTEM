@@ -844,3 +844,30 @@ export interface WorksiteGauge {
   next_actor: string;
   open_reserve_count: number;
 }
+
+/** Lot 5 (PO-2026-09-29-01, -03, -04) — instances de démonstration. */
+export interface DemoInstanceSummary {
+  code: string;
+  dataset_version: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  environment: string;
+  created_at: string;
+}
+
+export interface InstanceRow {
+  code: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  status_label: string;
+  dataset_version: string;
+  created_at: string;
+  archived_at: string | null;
+  origin: string | null;
+  retention_until: string | null;
+  retention_expired: boolean;
+}
+
+export interface InstancesOverview {
+  campaign_end: string | null;
+  retention_days: number;
+  instances: InstanceRow[];
+}

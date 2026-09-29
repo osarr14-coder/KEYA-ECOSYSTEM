@@ -50,7 +50,16 @@ class MyTasksView(ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Task.objects.filter(assignee=self.request.user)
+        # Lot 5 (PO-2026-09-29-01, -03) : les tâches d'une instance archivée
+        # sortent de la boîte (et de la cloche) de chacun.
+        from apps.core.models import DemoInstance, DemoInstanceStatus
+
+        archived_programs = [
+            program_id
+            for ids in DemoInstance.objects.filter(status=DemoInstanceStatus.ARCHIVED).values_list('program_ids', flat=True)
+            for program_id in ids or []
+        ]
+        queryset = Task.objects.filter(assignee=self.request.user).exclude(program_id__in=archived_programs)
 
         task_type = self.request.query_params.get('type')
         if task_type:

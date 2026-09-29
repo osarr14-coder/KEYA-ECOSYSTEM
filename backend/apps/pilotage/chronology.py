@@ -61,6 +61,10 @@ AUDIT_LABELS = {
     'disbursement.beneficiary_confirmed': ('Réception confirmée par le constructeur', 'constructeur'),
     'disbursement.reconciled': ('Décaissement rapproché (simulé)', 'finance'),
     'disbursement.cancelled': ('Décaissement annulé', 'finance'),
+    # Lot 5 (PO-2026-09-29-03, -04).
+    'instance.archived': ('Instance archivée (lecture seule)', 'admin_keyimmo'),
+    'instance.created': ('Nouvelle instance créée depuis le jeu versionné', 'admin_keyimmo'),
+    'instance.retention_expired': ('Conservation de l’archive échue', 'admin_keyimmo'),
 }
 
 # Chaîne chantier : (type de sujet, source) → (libellé, rôle attendu).

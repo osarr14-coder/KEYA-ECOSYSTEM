@@ -28,6 +28,7 @@ export interface DemoInstanceInfo {
 }
 
 let pending: Promise<DemoInstanceInfo | null> | null = null;
+export const DEMO_INSTANCE_REFRESH_MS = 30_000;
 
 /** Une seule requête par chargement d'app, partagée entre montages. */
 export function fetchDemoInstance(apiBaseUrl: string): Promise<DemoInstanceInfo | null> {
@@ -57,7 +58,25 @@ export function DemoBanner({ apiBaseUrl }: DemoBannerProps) {
   useEffect(() => {
     let active = true;
     void fetchDemoInstance(apiBaseUrl).then((info) => { if (active) setInstance(info); });
-    return () => { active = false; };
+    // Lot 5 (T13, PO-2026-09-29-03) : une fenêtre ouverte avant un archivage
+    // affiche le code de la NOUVELLE instance sans rechargement — relu au
+    // retour sur la fenêtre et toutes les 30 s tant qu'elle est visible.
+    function refresh() {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      resetDemoInstanceCache();
+      void fetchDemoInstance(apiBaseUrl).then((info) => {
+        if (active && info) setInstance((previous) => (previous?.code === info.code && previous?.status === info.status ? previous : info));
+      });
+    }
+    const timer = setInterval(refresh, DEMO_INSTANCE_REFRESH_MS);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, [apiBaseUrl]);
 
   const archived = instance?.status === 'ARCHIVED';

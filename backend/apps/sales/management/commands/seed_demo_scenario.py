@@ -101,6 +101,34 @@ LOTS = [('Lot A1', Decimal('82.00')), ('Lot A2', Decimal('75.00'))]
 PRICE = Decimal('30000000.00')
 
 
+def new_instance_code():
+    return f'DEMO-{COUNTRY_CODE}-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:4].upper()}'
+
+
+def create_instance_dataset(instance, promoter):
+    """Programme, bien et lots du jeu versionné dans `instance` (jalons et
+    pièces exigées recopiés du modèle actif). Idempotent. Partagé par la
+    commande et par l'archivage depuis l'Administration (lot 5,
+    PO-2026-09-29-03), qui crée une instance sans toucher aux comptes."""
+    set_rls_context(organization_id=promoter.id)
+    if Program.objects.filter(organization=promoter, name=PROGRAM_NAME, demo_instance=instance).exists():
+        return f'Programme « {PROGRAM_NAME} » déjà présent dans {instance.code} : laissé tel quel.'
+    program = Program.objects.create(organization=promoter, name=PROGRAM_NAME, demo_instance=instance)
+    asset = Asset.objects.create(
+        organization=promoter, program=program, name='Bâtiment A', location='Cocody, Abidjan',
+    )
+    for name, surface in LOTS:
+        # Promoteur-constructeur en auto-exécution : bénéficiaire
+        # explicite des décaissements (ticket B-052).
+        lot = Lot.objects.create(
+            organization=promoter, asset=asset, name=name, surface=surface,
+            sale_price=PRICE, commercial_status=LotCommercialStatus.DISPONIBLE,
+            assigned_organization=promoter,
+        )
+        instantiate_milestones_for_lot(lot)
+    return f'Programme « {PROGRAM_NAME} » créé : {len(LOTS)} lots à {PRICE} XOF.'
+
+
 class Command(BaseCommand):
     help = 'Scénario de démonstration CDC V3 (comptes par rôle, programme, lots, barème). Opt-in : DEMO_PASSWORD.'
 
@@ -154,26 +182,7 @@ class Command(BaseCommand):
 
             instance = self._ensure_demo_instance()
             promoter = organizations[PROMOTER_ORG]
-            set_rls_context(organization_id=promoter.id)
-            if Program.objects.filter(organization=promoter, name=PROGRAM_NAME, demo_instance=instance).exists():
-                self.stdout.write(
-                    f'Programme « {PROGRAM_NAME} » déjà présent dans {instance.code} : laissé tel quel.',
-                )
-            else:
-                program = Program.objects.create(organization=promoter, name=PROGRAM_NAME, demo_instance=instance)
-                asset = Asset.objects.create(
-                    organization=promoter, program=program, name='Bâtiment A', location='Cocody, Abidjan',
-                )
-                for name, surface in LOTS:
-                    # Promoteur-constructeur en auto-exécution : bénéficiaire
-                    # explicite des décaissements (ticket B-052).
-                    lot = Lot.objects.create(
-                        organization=promoter, asset=asset, name=name, surface=surface,
-                        sale_price=PRICE, commercial_status=LotCommercialStatus.DISPONIBLE,
-                        assigned_organization=promoter,
-                    )
-                    instantiate_milestones_for_lot(lot)
-                self.stdout.write(f'Programme « {PROGRAM_NAME} » créé : {len(LOTS)} lots à {PRICE} XOF.')
+            self.stdout.write(create_instance_dataset(instance, promoter))
 
         call_command(
             'seed_demo_payment_tiers', admin_email='admin.demo@keya.test', country=COUNTRY_CODE, stdout=self.stdout,
@@ -189,8 +198,7 @@ class Command(BaseCommand):
         (archivage de la précédente)."""
         instance = active_demo_instance()
         if instance is None:
-            code = f'DEMO-{COUNTRY_CODE}-{timezone.now():%Y%m%d}-{uuid.uuid4().hex[:4].upper()}'
-            instance = DemoInstance.objects.create(code=code, dataset_version=DATASET_VERSION)
+            instance = DemoInstance.objects.create(code=new_instance_code(), dataset_version=DATASET_VERSION)
             self.stdout.write(f'Instance de démonstration {instance.code} créée ({DATASET_VERSION}).')
         else:
             self.stdout.write(f'Instance de démonstration active : {instance.code}.')

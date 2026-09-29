@@ -2,7 +2,8 @@
 
 | | |
 |---|---|
-| Décision | PO-2026-09-28-25 : proposition seulement, **aucune implémentation** à ce stade |
+| Décision | PO-2026-09-28-25 : proposition seulement — **remplacée par PO-2026-09-28-47** ; **implémentée au lot 5** (PO-2026-09-29-01 à -04), avec les écarts ci-dessous |
+| Écarts retenus | Consultation réservée à l'administrateur et au gestionnaire, back-office seulement (A6) ; garde d'écriture au niveau des modèles en plus de la requête ; suppression des archives échues non automatisée (PO-2026-09-29-04) |
 | Exigences | CDC R1 §9.2 étape 11 (« archives consultables en lecture seule selon droits »), §9.3 (archives exclues des indicateurs actifs), §10 (archive cohérente, interdit ses nouvelles écritures), T14 |
 | Existant | `DemoInstance` (code, version du jeu, statut `ACTIVE`/`ARCHIVED`, date d'archivage, instance d'origine) ; une seule instance active ; programmes rattachés à une instance ; filtre `demo_scope` (15 appels) qui ne liste que l'instance active ; commande `archive_demo_instance --confirm [--reseed]` |
 

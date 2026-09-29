@@ -5,6 +5,7 @@ import {
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
+import { useViewedArchive } from '../api/archiveView';
 import type {
   DossierLink, MilestoneSource, OutflowTotals, PilotageKey, ReceiptSource, RequiredPieceSource, ReserveSource,
 } from '../api/types';
@@ -199,6 +200,9 @@ function Sources({ sourceKey, onNavigate }: { sourceKey: PilotageKey; onNavigate
 
 export function PilotageView({ onNavigate }: { onNavigate: (target: NavigationTarget) => void }) {
   const api = useApiClient();
+  // Lot 5 (PO-2026-09-29-01, CDC §9.3) : les indicateurs d'une archive
+  // consultée sont les siens, étiquetés comme tels, jamais additionnés.
+  const archive = useViewedArchive();
   const state = useApiResource(() => api.getPilotageIndicators(), []);
   const [selected, setSelected] = useState<PilotageKey | null>(null);
 
@@ -206,7 +210,9 @@ export function PilotageView({ onNavigate }: { onNavigate: (target: NavigationTa
     <section aria-label="Pilotage" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title="Pilotage"
-        subtitle="Indicateurs calculés sur l’instance de démonstration active (données fictives). Chaque chiffre ouvre ses sources."
+        subtitle={archive
+          ? `Indicateurs de l’archive ${archive.code} seule (données fictives, lecture seule). Chaque chiffre ouvre ses sources.`
+          : 'Indicateurs calculés sur l’instance de démonstration active (données fictives). Chaque chiffre ouvre ses sources.'}
       />
       {state.status === 'loading' && <p>Calcul des indicateurs…</p>}
       {state.status === 'error' && <ApiErrorBanner error={state.error} title="Impossible de calculer les indicateurs." />}
@@ -244,7 +250,9 @@ export function PilotageView({ onNavigate }: { onNavigate: (target: NavigationTa
               />
             </div>
             <p style={{ margin: 0, fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-              {`Calculé le ${formatServerDateTime(state.data.computed_at)}. Instance active seulement : les archives sont exclues.`}
+              {archive
+                ? `Calculé le ${formatServerDateTime(state.data.computed_at)}. Archive ${archive.code} seule : jamais additionnée à l’instance active.`
+                : `Calculé le ${formatServerDateTime(state.data.computed_at)}. Instance active seulement : les archives sont exclues.`}
             </p>
           </>
         );

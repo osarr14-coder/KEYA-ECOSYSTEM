@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.http import JsonResponse
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
@@ -6,6 +7,11 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from apps.core.rls import set_rls_context
 
 ORGANIZATION_HEADER = 'HTTP_X_ORGANIZATION_ID'
+# Lot 5 (PO-2026-09-29-01) — instance consultée (archive), par son code.
+INSTANCE_VIEW_HEADER = 'HTTP_X_DEMO_INSTANCE_VIEW'
+INSTANCE_VIEW_ROLES = ('admin_keyimmo', 'gestionnaire_adv')
+SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')
+ARCHIVE_READ_ONLY = 'Instance archivée — lecture seule : aucune modification possible.'
 
 
 class OrganizationScopeMiddleware:
@@ -43,8 +49,38 @@ class OrganizationScopeMiddleware:
             request.organization = organization
             if organization is not None:
                 set_rls_context(organization_id=organization.id)
-            response = self.get_response(request)
+            requested_code = request.META.get(INSTANCE_VIEW_HEADER, '').strip()
+            if not requested_code:
+                return self.get_response(request)
+            instance, refusal = self._resolve_instance_view(request, user, requested_code)
+            if refusal is not None:
+                return refusal
+            request.viewed_demo_instance = instance
+            from apps.core.demo import instance_view
+
+            with instance_view(instance):
+                response = self.get_response(request)
         return response
+
+    @staticmethod
+    def _resolve_instance_view(request, user, code):
+        """Lot 5 (PO-2026-09-29-01, -02) : l'en-tête n'est accepté que pour
+        l'administrateur et le gestionnaire (A6) ; une écriture sur une
+        archive est refusée ici, avant toute vue."""
+        from apps.core.models import DemoInstance, DemoInstanceStatus
+        from apps.organizations.models import Membership
+
+        if not Membership.objects.filter(user_id=user.id, role__code__in=INSTANCE_VIEW_ROLES).exists():
+            return None, JsonResponse(
+                {'detail': 'La consultation des archives est réservée à l’administrateur et au gestionnaire.'},
+                status=403,
+            )
+        instance = DemoInstance.objects.filter(code=code).first()
+        if instance is None:
+            return None, JsonResponse({'detail': 'Instance inconnue.'}, status=404)
+        if instance.status == DemoInstanceStatus.ARCHIVED and request.method not in SAFE_METHODS:
+            return None, JsonResponse({'code': 'instance_archived', 'detail': ARCHIVE_READ_ONLY}, status=409)
+        return instance, None
 
     def _authenticate(self, request):
         try:

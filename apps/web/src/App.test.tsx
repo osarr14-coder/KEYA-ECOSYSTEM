@@ -456,6 +456,8 @@ describe(
         // Lot 4 (PO-2026-09-28-66) : pilotage du gestionnaire.
         'Pilotage', 'Pilotage',
         'Programmes', 'Programmes',
+        // Lot 5 (PO-2026-09-29-01) : consultation des archives.
+        'Administration', 'Instances et archives',
       ]);
     });
 
@@ -476,7 +478,8 @@ describe(
       const entries = Array.from(sidebar.querySelectorAll('li')).map((item) => item.textContent);
       expect(entries).toEqual([
         // R04 : Devis / Appels d'offres et Tarifs masqués ; J06 : libellé des paliers.
-        'Administration', 'Utilisateurs', 'Journal', 'Paliers (Country Pack, démo)',
+        // Lot 5 (PO-2026-09-29-03) : instances et archivage (étape 11).
+        'Administration', 'Utilisateurs', 'Journal', 'Instances et archives', 'Paliers (Country Pack, démo)',
       ]);
     });
   },
@@ -649,6 +652,8 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
       'À faire', 'Dossiers clients', 'Lots — prix & statut',
       // Lot 4 (PO-2026-09-28-66) : « Pilotage », gestionnaire seul.
       'Contrôles à affecter', 'Pilotage', 'Programmes',
+      // Lot 5 (PO-2026-09-29-01) : consultation des archives.
+      'Instances et archives',
     ]);
     expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
   });

@@ -15,9 +15,10 @@ from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.core.demo import demo_scope
+from apps.core import archive
+from apps.core.demo import active_scope, demo_scope
 from apps.audit import services as audit
-from apps.core.rls import set_rls_context
+from apps.core.rls import current_organization_id, set_rls_context
 from apps.evidence.models import Evidence, WorkDeclaration
 from apps.inspections.services import is_milestone_technically_accepted, lot_has_open_reserve
 from apps.organizations.models import Organization
@@ -84,6 +85,9 @@ def _expire_if_overdue(reservation, now):
     partir de `reserved` (Phase 3), un encaissement existe et le CDC suspend
     toute expiration automatique au profit d'une revue Finance (§6.1)."""
     if reservation.status != ReservationStatus.HELD or reservation.held_until > now:
+        return False
+    # Lot 5 (PO-2026-09-29-02) : une archive est figée, rien n'y expire.
+    if archive.is_archived(reservation):
         return False
     # Ticket B-051 — CDC §6.1 : « après enregistrement d'un encaissement
     # bancaire simulé, l'expiration automatique est suspendue pour revue
@@ -215,7 +219,28 @@ def _client_reservation_organization_ids(client, reservation_id=None):
     queryset = Reservation.objects.filter(client=client)
     if reservation_id is not None:
         queryset = queryset.filter(id=reservation_id)
-    return set(queryset.values_list('organization_id', flat=True))
+    organization_ids = set(queryset.values_list('organization_id', flat=True))
+    # Lot 5 (PO-2026-09-29-01, A6) : le client ne voit que l'instance
+    # active. La jointure vers le programme n'est lisible que sous le
+    # contexte de l'organisation du lot : vérifiée organisation par
+    # organisation, contexte restauré ensuite.
+    scope = active_scope('lot__asset__program__')
+    if not scope:
+        return organization_ids
+    previous = current_organization_id()
+    kept = set()
+    try:
+        for organization_id in organization_ids:
+            set_rls_context(organization_id=organization_id)
+            candidates = Reservation.objects.filter(scope, client=client, organization_id=organization_id)
+            if reservation_id is not None:
+                candidates = candidates.filter(id=reservation_id)
+            if candidates.exists():
+                kept.add(organization_id)
+    finally:
+        if previous:
+            set_rls_context(organization_id=previous)
+    return kept
 
 
 def list_client_reservations(*, client, caller_organization_id):
@@ -227,7 +252,9 @@ def list_client_reservations(*, client, caller_organization_id):
     try:
         for organization_id in _client_reservation_organization_ids(client):
             set_rls_context(organization_id=organization_id)
-            for reservation in Reservation.objects.filter(client=client, organization_id=organization_id).select_related(
+            for reservation in Reservation.objects.filter(
+                active_scope('lot__asset__program__'), client=client, organization_id=organization_id,
+            ).select_related(
                 'lot', 'lot__asset', 'lot__asset__program', 'organization',
             ):
                 _expire_if_overdue(reservation, now)
@@ -538,6 +565,9 @@ def _client_contract_organization_id(client, **filters):
 
 
 def list_client_contract_versions(*, client, caller_organization_id, reservation_id):
+    # Lot 5 (A6) : jamais le contrat d'un dossier archivé.
+    if not _client_reservation_organization_ids(client, reservation_id):
+        return None
     organization_id = (
         _client_contract_organization_id(client, reservation_id=reservation_id)
         or next(iter(_client_reservation_organization_ids(client, reservation_id)), None)
@@ -1259,6 +1289,9 @@ def _release_lapsed_eligibility(program):
     à DRAFT et libère son montant. Réévalué à chaque lecture du compte et
     avant tout contrôle — jamais de réservation de fonds sur une acceptation
     caduque."""
+    # Lot 5 (PO-2026-09-29-02) : rien n'est réévalué dans une archive.
+    if archive.program_is_archived(program.id):
+        return
     for disbursement in Disbursement.objects.select_for_update(of=('self',)).select_related(
         'milestone', 'milestone__lot',
     ).filter(program=program, status=DisbursementStatus.ELIGIBLE):

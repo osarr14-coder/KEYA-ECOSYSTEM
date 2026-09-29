@@ -1,5 +1,6 @@
 import type {
-  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, DossierChronology, JournalEntry, CommercialLot, ContractAction,
+  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, DemoInstanceSummary, DossierChronology,
+  InstancesOverview, JournalEntry, CommercialLot, ContractAction,
   ContractVersion, ControlToAssign, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
   FinanceReceipt, InspectorSummary, PaymentNotice, PublicProgram, PublicWorksite, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
@@ -8,6 +9,7 @@ import type {
   OrganizationSearchResult, PilotageIndicators, PilotageKey, PilotageSources, PricingCanal, PricingConfig, Program,
   ProgramRequest, ReservationStatus, Task,
 } from './types';
+import { ARCHIVE_READ_ONLY, getViewedArchive } from './archiveView';
 import { notifyDataChanged } from './useApiResource';
 
 export class ApiError extends Error {
@@ -102,6 +104,15 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     const token = tokenOverride ?? getAccessToken();
     const headers: Record<string, string> = {};
     if (token) headers.Authorization = `Bearer ${token}`;
+    // Lot 5 (PO-2026-09-29-01, -02) : archive consultée ; aucune écriture
+    // n'est même tentée (le serveur la refuserait aussi, 409).
+    const archive = getViewedArchive();
+    if (archive) {
+      if ((options.method ?? 'GET') !== 'GET') {
+        throw new ApiError(409, `Écriture refusée ${path} (archive)`, ARCHIVE_READ_ONLY, { code: 'instance_archived' });
+      }
+      headers['X-Demo-Instance-View'] = archive.code;
+    }
 
     let body: BodyInit | undefined;
     if (options.json !== undefined) {
@@ -201,6 +212,16 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     /** `GET /api/admin/journal/` — audit UI R1 (R02) : journal des actes,
      * lecture seule, administrateur uniquement. */
     getAdminJournal: () => request<JournalEntry[]>('/api/admin/journal/'),
+
+    /** Lot 5 (PO-2026-09-29-01) — instances de démonstration (admin, gestionnaire). */
+    getInstances: () => request<InstancesOverview>('/api/admin/instances/'),
+
+    /** Lot 5 (PO-2026-09-29-03) — archive l'instance active et en crée une
+     * nouvelle (administrateur) ; `confirmCode` reprend le code saisi. */
+    archiveInstance: (confirmCode: string) =>
+      request<{ archived: DemoInstanceSummary; created: DemoInstanceSummary | null }>('/api/admin/instances/archive/', {
+        method: 'POST', json: { confirm_code: confirmCode },
+      }),
 
     /** Lot 4 (PO-2026-09-28-46) — indicateurs du CDC §9.3, gestionnaire. */
     getPilotageIndicators: () => request<PilotageIndicators>('/api/pilotage/indicateurs/'),

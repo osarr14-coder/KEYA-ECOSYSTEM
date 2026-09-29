@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { setViewedArchive } from '../api/archiveView';
 
 import type { PilotageIndicators } from '../api/types';
 import { createMockApiClient, withApiClient } from '../testUtils';
@@ -159,4 +161,14 @@ describe('PilotageView — indicateurs du CDC §9.3 (lot 4)', () => {
     expect(await screen.findByTestId('indicator-reserves-ouverte')).toHaveTextContent(/^1\s*ouverte$/);
     expect(screen.getByTestId('indicator-reserves-levées')).toHaveTextContent(/^2\s*levées$/);
   });
+
+  it('lot 5 : les indicateurs d’une archive consultée sont étiquetés comme tels', async () => {
+    setViewedArchive({ code: 'DEMO-CI-ANCIENNE', archived_at: '2026-09-29T00:36:00Z' });
+    renderView();
+
+    expect(await screen.findByText(/Indicateurs de l’archive DEMO-CI-ANCIENNE seule/)).toBeInTheDocument();
+    expect(screen.getByText(/jamais additionnée à l’instance active/)).toBeInTheDocument();
+  });
 });
+
+afterEach(() => setViewedArchive(null));

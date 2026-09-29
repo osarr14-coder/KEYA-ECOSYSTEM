@@ -236,11 +236,18 @@ Accès aux archives en lecture seule pour l'**administrateur** et le **gestionna
 | Captures, documentation, recette | Procédure T14 mise à jour | 1 j |
 | **Total** | | **8 à 10 j** |
 
+### Réalisation (arbitrages délégués PO-2026-09-29-01 à -04)
+
+- Serveur : en-tête `X-Demo-Instance-View` (administrateur, gestionnaire ; 403 sinon), `demo_scope` sur l'instance consultée ; garde d'écriture double (requête 409 + modèles, `apps/core/archive.py`) ; lectures qui écrivaient (expiration, éligibilité caduque) figées dans une archive ; client limité à l'instance active ; tâches d'une archive hors des boîtes.
+- Étape 11 : `POST /api/admin/instances/archive/` (confirmation par code), jeu versionné rejoué sans toucher aux comptes, journal ; `GET /api/admin/instances/` ; commande `archive_demo_instance` sur le même service.
+- Rétention : `DEMO_CAMPAIGN_END`, `check_archive_retention [--record]` ; suppression non automatisée (PO-2026-09-29-04).
+- Back-office : écran « Instances et archives », `ArchiveBanner` (code, date, retour), dossiers en lecture seule avec explication, écritures refusées par le client API.
+
 ### Tests
 
 - pytest :
   - aucune écriture sur une archive, sur toutes les routes ;
-  - consultation par rôle, en particulier le client qui ne voit que ses dossiers ;
+  - consultation par rôle (A6 : administrateur et gestionnaire seulement ; le client ne voit plus ses dossiers archivés) ;
   - indicateurs actifs à « Non applicable » après archivage ;
   - journal intact (T16) ;
   - identité d'instance sur les écrans, l'API et les exports (T13).

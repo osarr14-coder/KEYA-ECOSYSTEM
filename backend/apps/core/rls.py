@@ -17,3 +17,12 @@ def set_rls_context(*, user_id=None, organization_id=None):
         _set_local(USER_SESSION_VAR, user_id)
     if organization_id is not None:
         _set_local(ORGANIZATION_SESSION_VAR, organization_id)
+
+
+def current_organization_id():
+    """Organisation RLS courante (ou `None`) — pour restaurer un contexte
+    changé le temps d'une lecture."""
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT current_setting(%s, true)', [ORGANIZATION_SESSION_VAR])
+        value = cursor.fetchone()[0]
+    return value or None

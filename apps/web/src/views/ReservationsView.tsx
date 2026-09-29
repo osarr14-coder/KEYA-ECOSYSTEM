@@ -152,13 +152,14 @@ export function reservationTone(status: ReservationStatus): PillTone {
  * inchangés : seules leur mise en page et la hiérarchie évoluent.
  */
 function ReservationDossier({
-  reservation, onChanged, onBack, permissions, mode,
+  reservation, onChanged, onBack, permissions, mode, readOnly = false,
 }: {
   reservation: AdminReservation;
   onChanged: () => void;
   onBack: () => void;
   permissions: SalesPermissions;
   mode: ReservationsMode;
+  readOnly?: boolean;
 }) {
   const needsValidation = reservation.status === 'held' && !reservation.validated_at;
   return (
@@ -192,6 +193,11 @@ function ReservationDossier({
         </div>
         <Pill tone={reservationTone(reservation.status)} data-testid="reservation-status">{reservation.status_label}</Pill>
       </header>
+      {readOnly && (
+        <p role="note" data-testid="archive-read-only" style={{ margin: 0, color: semanticColors.neutral.textMuted }}>
+          Instance archivée : ce dossier se consulte tel qu’il était à l’archivage ; aucune action n’est possible.
+        </p>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
         <KeyFigure label="Prix à la réservation (fictif)" value={formatAmount(reservation.price_amount, reservation.currency)} />
@@ -289,7 +295,7 @@ function ReservationDossier({
           </div>
         )}
       </div>
-      {permissions.canManageSales && mode !== 'finance' && <DossierChronologyCard reservationId={reservation.id} />}
+      {(permissions.canManageSales || readOnly) && mode !== 'finance' && <DossierChronologyCard reservationId={reservation.id} />}
     </article>
   );
 }
@@ -392,12 +398,19 @@ const DEFAULT_PERMISSIONS: SalesPermissions = { canManageSales: true, canRecordM
 export type ReservationsMode = 'sales' | 'finance';
 
 export function ReservationsView({
-  permissions = DEFAULT_PERMISSIONS, openReservationId, mode = 'sales',
-}: { permissions?: SalesPermissions; openReservationId?: string | null; mode?: ReservationsMode }) {
+  permissions = DEFAULT_PERMISSIONS, openReservationId, mode = 'sales', readOnly = false,
+}: {
+  permissions?: SalesPermissions; openReservationId?: string | null; mode?: ReservationsMode;
+  /** Lot 5 (PO-2026-09-29-01) : archive consultée, lecture seule. */
+  readOnly?: boolean;
+}) {
   const api = useApiClient();
   // Ticket F-075 — ouvert depuis « À faire » sur un dossier précis : tous
-  // statuts confondus, le dossier peut ne plus être « bloqué ».
-  const [statusFilter, setStatusFilter] = useState<ReservationStatus | ''>(openReservationId || mode === 'finance' ? '' : 'held');
+  // statuts confondus, le dossier peut ne plus être « bloqué ». Lot 5 : une
+  // archive s'ouvre aussi sur tous ses dossiers.
+  const [statusFilter, setStatusFilter] = useState<ReservationStatus | ''>(
+    openReservationId || mode === 'finance' || readOnly ? '' : 'held',
+  );
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(openReservationId ?? null);
   const state = useApiResource(() => api.listReservations(statusFilter || undefined), [statusFilter]);
@@ -419,6 +432,7 @@ export function ReservationsView({
         onBack={() => setSelectedId(null)}
         permissions={permissions}
         mode={mode}
+        readOnly={readOnly}
       />
     );
   }

@@ -915,6 +915,10 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # et chronologie du dossier, réservés au gestionnaire (403 pour le
             # constructeur, vérifié par apps/pilotage/tests.py).
             'pilotage-indicators', 'pilotage-indicator-sources', 'dossier-chronology',
+            # Lot 5 (PO-2026-09-29-01, -03) — ajout conscient : instances et
+            # archivage, administrateur et gestionnaire seulement (403 pour
+            # le constructeur, vérifié par apps/core/test_lot5_archive.py).
+            'admin-instances', 'admin-instance-archive',
             'procurement-devis-create', 'procurement-devis-lock',
             'procurement-admin-devis-list',
             'procurement-my-candidatures', 'procurement-my-candidature-detail',
