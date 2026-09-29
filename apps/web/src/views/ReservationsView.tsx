@@ -2,7 +2,7 @@ import { type FormEvent, useState } from 'react';
 
 import {
   ApiErrorBanner, Button, Card, Icon, Input, KeyFigure, PageHeader, Pill, type PillTone, Select, semanticColors, formatServerDateTime,
-  MilestoneGauge,
+  MilestoneGauge, Timeline,
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
@@ -289,7 +289,37 @@ function ReservationDossier({
           </div>
         )}
       </div>
+      {permissions.canManageSales && mode !== 'finance' && <DossierChronologyCard reservationId={reservation.id} />}
     </article>
+  );
+}
+
+/** Lot 4 (PO-2026-09-28-67, P12, P17 en partie) — chronologie du dossier et
+ * du chantier de son lot, reconstruite par le serveur (journal des actes,
+ * chaîne chantier, affectations de contrôle), en lecture seule. */
+function DossierChronologyCard({ reservationId }: { reservationId: string }) {
+  const api = useApiClient();
+  const state = useApiResource(() => api.getDossierChronology(reservationId), [reservationId]);
+  return (
+    <Card title="Chronologie" icon="history">
+      {state.status === 'loading' && <p style={{ margin: 0 }}>Chargement de la chronologie…</p>}
+      {state.status === 'error' && <ApiErrorBanner error={state.error} title="Impossible de charger la chronologie." />}
+      {state.status === 'success' && (
+        <Timeline
+          aria-label="Chronologie du dossier"
+          emptyText="Aucun événement enregistré pour ce dossier."
+          entries={state.data.entries.map((entry) => ({
+            id: entry.id,
+            actor: entry.actor,
+            role: entry.role,
+            action: entry.action,
+            at: entry.at,
+            justification: entry.justification || undefined,
+            object: entry.object ? { label: entry.object } : undefined,
+          }))}
+        />
+      )}
+    </Card>
   );
 }
 

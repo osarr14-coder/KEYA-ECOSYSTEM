@@ -75,6 +75,34 @@ describe('MilestonesView — jalons côté constructeur (ticket F-069)', () => {
     }));
   });
 
+  it('PO-2026-09-28-63/-64 : le constructeur désigne la pièce exigée ; la liste dit la présence, pas la conformité', async () => {
+    const addEvidenceDocument = vi.fn().mockResolvedValue({ duplicateOf: null, evidenceId: 'evidence-2' });
+    renderView([milestone({
+      status: 'awaiting_control', status_label: 'Soumis', work_declaration_id: 'declaration-1', evidence_count: 1,
+      required_pieces: [
+        { code: 'plan_implantation', label: 'Plan d’implantation', deposited: true, deposited_at: '2026-09-28T10:00:00Z', examined: null },
+        { code: 'photo_fouilles', label: 'Photo des fouilles', deposited: false, deposited_at: null, examined: null },
+      ],
+    })], { addEvidenceDocument });
+
+    const pieces = await screen.findByTestId('required-pieces');
+    expect(pieces).toHaveTextContent('Pièces exigées — 1 / 2 déposées');
+    expect(pieces).toHaveTextContent('À déposer');
+    expect(pieces).toHaveTextContent('pas conforme');
+    const select = screen.getByLabelText('Pièce exigée — Pièce pour Fondations') as HTMLSelectElement;
+    expect(select.value).toBe('photo_fouilles');  // première pièce manquante proposée
+    expect(screen.getByRole('option', { name: 'Plan d’implantation (déjà déposée)' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Autre pièce' })).toBeInTheDocument();
+
+    fireEvent.change(await screen.findByLabelText('Pièce pour Fondations'), { target: { files: [PDF] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter une pièce' }));
+
+    await waitFor(() => expect(addEvidenceDocument).toHaveBeenCalledWith({
+      workDeclarationId: 'declaration-1', file: PDF, category: 'preuve_chantier', source: 'control_tower_upload',
+      requiredPiece: 'photo_fouilles',
+    }));
+  });
+
   it('sous réserve : propose une correction rattachée à la nouvelle pièce, sans jamais lever la réserve', async () => {
     const addEvidenceDocument = vi.fn().mockResolvedValue({ duplicateOf: null, evidenceId: 'evidence-2' });
     const createReserveCorrection = vi.fn().mockResolvedValue({});

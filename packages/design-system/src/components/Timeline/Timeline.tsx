@@ -43,7 +43,8 @@ export function Timeline({ entries, 'aria-label': ariaLabel = 'Chronologie', emp
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingBottom: '16px', minWidth: 0 }}>
             <span style={{ fontWeight: 600, color: semanticColors.neutral.heading }}>{entry.action}</span>
             <span style={{ fontSize: '13px', color: semanticColors.neutral.textMuted }}>
-              {`${entry.actor} · ${entry.role} · `}
+              {/* Lot 4 : le rôle peut manquer (action automatique). */}
+              {`${[entry.actor, entry.role].filter(Boolean).join(' · ')} · `}
               <DateTime value={entry.at} />
             </span>
             {entry.justification && <span style={{ fontSize: '14px' }}>{`Motif : ${entry.justification}`}</span>}

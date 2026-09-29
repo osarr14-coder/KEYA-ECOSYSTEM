@@ -1,11 +1,12 @@
 import type {
-  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, JournalEntry, CommercialLot, ContractAction,
+  AdminReservation, Asset, BackofficeUserDetail, BackofficeUserSummary, DossierChronology, JournalEntry, CommercialLot, ContractAction,
   ContractVersion, ControlToAssign, CountryPackSummary, CustomerReceipt, Disbursement, FinanceFile, PaymentCallKind,
   FinanceReceipt, InspectorSummary, PaymentNotice, PublicProgram, PublicWorksite, ProgramAccount, ProgramAccountSummary, TeamPaymentCalls,
   CurrentPricingRates, Devis, DevisAjustement, DevisAjustementCreateResult,
   LegalPaymentTierStepInput, LegalPaymentTierTemplate, LoginResult, Lot, LotCommercialStatus,
   LotBcCharge, LotLedger, LotLedgerMarginBreakdown, LotSearchResult, Me,
-  OrganizationSearchResult, PricingCanal, PricingConfig, Program, ProgramRequest, ReservationStatus, Task,
+  OrganizationSearchResult, PilotageIndicators, PilotageKey, PilotageSources, PricingCanal, PricingConfig, Program,
+  ProgramRequest, ReservationStatus, Task,
 } from './types';
 import { notifyDataChanged } from './useApiResource';
 
@@ -200,6 +201,17 @@ export function createApiClient({ baseUrl, getAccessToken = () => null, onUnauth
     /** `GET /api/admin/journal/` — audit UI R1 (R02) : journal des actes,
      * lecture seule, administrateur uniquement. */
     getAdminJournal: () => request<JournalEntry[]>('/api/admin/journal/'),
+
+    /** Lot 4 (PO-2026-09-28-46) — indicateurs du CDC §9.3, gestionnaire. */
+    getPilotageIndicators: () => request<PilotageIndicators>('/api/pilotage/indicateurs/'),
+
+    /** Lot 4 — sources d'un indicateur (même garde serveur). */
+    getPilotageSources: <K extends PilotageKey>(key: K) =>
+      request<{ key: K; sources: PilotageSources[K] }>(`/api/pilotage/indicateurs/${key}/sources/`),
+
+    /** Lot 4 (PO-2026-09-28-67) — chronologie d'un dossier, gestionnaire. */
+    getDossierChronology: (reservationId: string) =>
+      request<DossierChronology>(`/api/dossiers/${reservationId}/chronologie/`),
 
     /** `GET /api/backoffice/users/{id}/` (ticket 011) — organisation(s)/
      * rôle(s) de l'utilisateur ciblé, strictement lecture seule. */

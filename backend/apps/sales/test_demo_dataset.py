@@ -23,7 +23,7 @@ def _seed():
 @pytest.mark.django_db
 class TestDemoDataset:
     def test_dataset_is_versioned_and_located_in_cote_divoire(self):
-        assert DATASET_VERSION == 'DEMO-CI-v1'
+        assert DATASET_VERSION == 'DEMO-CI-v2'  # PO-2026-09-28-63 : pièces exigées
         _seed()
         promoter = Organization.objects.get(name=PROMOTER_ORG)
         assert promoter.country_pack.code == 'CI'

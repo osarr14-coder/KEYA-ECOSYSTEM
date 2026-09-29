@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 
 import {
-  AlertBanner, ArchiveBanner, BRAND_NAME, Button, DateInput, DateTime, EmptyState, Field, ICON_PATHS, Icon, type IconName, Indicator,
+  AlertBanner, ArchiveBanner, BRAND_NAME, Button, CountIndicator, DateInput, DateTime, EmptyState, Field, ICON_PATHS, Icon, type IconName, Indicator,
   Input, KeyFigure, MONEY_KIND_LABELS, Money, type MoneyKind, Pill, type PillTone, ReceiptProof, Reference, ReserveCard,
   Select, SimulatedMark, Skeleton, Stepper, TabBar, Timeline, TrustEventLine, TrustLevels, VersionHistory, fetchDemoInstance,
   semanticColors, typography,
@@ -374,6 +374,14 @@ function DesignSystemGallery() {
         <div style={GRID}>
           <Indicator label="Jalons acceptés techniquement" numerator={3} denominator={4} unit="jalons déclarés" onOpenSources={() => {}} />
           <Indicator label="Réserves levées" numerator={0} denominator={0} unit="réserves ouvertes" />
+          <Indicator label="Pièces exigées déposées" numerator={1} denominator={4} unit="pièces exigées" note="Présence d’une pièce, pas sa conformité." />
+          {/* Lot 4 (PO-2026-09-28-66) — variante « comptes », sans ratio. */}
+          <CountIndicator
+            label="Réserves"
+            counts={[{ label: 'ouvertes', value: 1 }, { label: 'levées', value: 2 }]}
+            detail="La plus ancienne ouverte : 3 j"
+            onOpenSources={() => {}}
+          />
           <KeyFigure label="Signalements à traiter" value={2} tone="alert" onClick={() => {}} />
           <KeyFigure label="Dossiers concrétisés" value={0} />
         </div>

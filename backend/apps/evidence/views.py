@@ -161,4 +161,5 @@ class EvidenceViewSet(
             work_declaration=serializer.validated_data['work_declaration'],
             documents=serializer.validated_data['documents'],
             added_by=self.request.user,
+            required_piece=serializer.validated_data.get('required_piece', ''),
         )

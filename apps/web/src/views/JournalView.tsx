@@ -42,7 +42,8 @@ export function JournalView() {
               <tr key={entry.id}>
                 <td>{formatDate(entry.created_at)}</td>
                 <td>
-                  {entry.action}
+                  {/* PO-2026-09-28-67 (P17 en partie) : libellé métier. */}
+                  {entry.action_label || entry.action}
                   {entry.justification && (
                     <span style={{ display: 'block', fontSize: '13px', color: semanticColors.neutral.textMuted }}>
                       {entry.justification}

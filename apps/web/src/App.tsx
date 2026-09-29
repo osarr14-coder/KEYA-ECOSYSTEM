@@ -27,6 +27,7 @@ import { PricingView } from './views/PricingView';
 import { ProgramRequestsView } from './views/ProgramRequestsView';
 import { ProgramsView } from './views/ProgramsView';
 import { ReservationsView } from './views/ReservationsView';
+import { PilotageView } from './views/PilotageView';
 import { type NavigationTarget, TodayView } from './views/TodayView';
 import { signInAndRedirect } from './auth/signInAndRedirect';
 import { PublicHome } from './public/PublicHome';
@@ -37,7 +38,7 @@ import { DesignSystemGalleryRoute } from './gallery/DesignSystemGallery';
 
 type AuthenticatedTabId =
   'backoffice' | 'devis' | 'pricing' | 'legal-tiers' | 'lots' | 'reservations' | 'finance' | 'programs'
-  | 'program-requests' | 'controls' | 'payment-notices' | 'todo' | 'journal' | 'receipts';
+  | 'program-requests' | 'controls' | 'payment-notices' | 'todo' | 'journal' | 'receipts' | 'pilotage';
 
 /**
  * Source UNIQUE id/label/chemin des 5 onglets admin — ticket F-031 :
@@ -123,6 +124,11 @@ const TAB_DEFINITIONS: {
   // admin seul comme `POST /api/backoffice/missions/` (ticket 012).
   {
     id: 'controls', label: 'Contrôles à affecter', path: '/controles', icon: 'shield-check', group: 'Chantier', roles: ADV_ONLY,
+  },
+  // Lot 4 (PO-2026-09-28-46, -66) — indicateurs du CDC §9.3 et leurs
+  // sources, gestionnaire seul (garde serveur `IsGestionnaireADV`).
+  {
+    id: 'pilotage', label: 'Pilotage', path: '/pilotage', icon: 'bar-chart', group: 'Pilotage', roles: ADV_ONLY,
   },
   // Ticket F-049 — création Program/Asset/Lot ; F-058 — demandes sur mesure.
   {
@@ -359,6 +365,7 @@ function AuthenticatedTabs({ userRoles }: { userRoles: string[] }) {
       {activeTab === 'programs' && <ProgramsView />}
       {activeTab === 'program-requests' && <ProgramRequestsView />}
       {activeTab === 'controls' && <ControlsView />}
+      {activeTab === 'pilotage' && <PilotageView onNavigate={navigate} />}
     </AppShell>
   );
 }

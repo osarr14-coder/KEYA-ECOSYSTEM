@@ -141,6 +141,19 @@ Auteur : Claude Code, par délégation du PO ; révisables par le PO à tout mom
 | PO-2026-09-28-61 | P14 (sortie programme chez le client) | Lot 3 (avec la connexion, pour le jalon « démo présentable »). L'espace client présente les décaissements du programme vers le constructeur **comme des sorties du compte du programme**, jamais comme une dette du client (CDC §9.2 étape 9). | Claude Code (délégation PO) | Serveur, HOME — lot 3. |
 | PO-2026-09-28-62 | Autres frictions P2 hors lots (P18, P21, P24–P26, P31, P34, P36) | Non traitées avant le jalon « démo présentable » ; réexaminées après la répétition de démonstration. | Claude Code (délégation PO) | Organisation. |
 
+## 28 septembre 2026 — lot 4 (pilotage minimal), arbitrages délégués par le Product Owner
+
+Délégation du 28 septembre 2026 (« tranche toi », « continue avec le lot 4 »). Auteur : Claude Code,
+par délégation du PO ; révisables par le PO à tout moment.
+
+| ID | Sujet | Décision | Auteur | Portée |
+|---|---|---|---|---|
+| PO-2026-09-28-63 | Pièces exigées : où et comment (T18, A4) | Paramètre **versionné** du Country Pack : liste `required_pieces` (code, libellé) sur chaque étape du modèle de jalons, **recopiée sur le jalon à la création du lot** (instantané : un lot garde la version de son origine, T18). Le jeu passe à **`DEMO-CI-v2`** (modèle de jalons CI v2 avec les pièces d'A4) ; le modèle v1 n'est pas modifié (règle du jeu versionné). Au dépôt, le constructeur indique à quelle pièce exigée répond le fichier, ou « Autre pièce ». | Claude Code (délégation PO) | Serveur, jeu de démo, BUILD — lot 4. |
+| PO-2026-09-28-64 | Indicateur « Pièces » (§9.3) | Dénominateur : pièces exigées des **jalons déclarés** de l'instance active (un jalon non déclaré n'exige encore rien) ; « Non applicable » tant qu'aucun jalon n'est déclaré. Numérateur : pièces exigées pour lesquelles au moins un fichier a été déposé sur la déclaration courante. **Présence, jamais conformité** : la liste des sources montre à part si la pièce figurait dans le dernier avis du contrôleur. | Claude Code (délégation PO) | Pilotage — lot 4. |
+| PO-2026-09-28-65 | Indicateur « Jalons examinés » (§9.3) | Jalon **soumis** : déclaration courante avec au moins une pièce. **Examiné** : au moins un avis sur cette déclaration. Les acceptations techniques courantes sont un compte affiché à part, jamais fusionné au ratio. | Claude Code (délégation PO) | Pilotage — lot 4. |
+| PO-2026-09-28-66 | Accès au pilotage (A3, §9.3) | Onglet « Pilotage » réservé au **gestionnaire** (garde serveur). Entrées : ratio et liste des encaissements. Sorties : ratio et **total**, sans liste détaillée (A3) ; le détail reste à Finance (« Comptes & décaissements »). Réserves : ouvertes et levées, ancienneté en jours depuis la date serveur d'ouverture (durée jusqu'à la levée pour une réserve levée). Instance active seulement. | Claude Code (délégation PO) | Serveur, back-office — lot 4. |
+| PO-2026-09-28-67 | Chronologie du dossier (P12, P17 en partie) | Fiche dossier du gestionnaire : fusion du journal des actes (dossier, contrat, appels, encaissements, virements signalés, décaissements du lot), de la chaîne chantier (déclarations, pièces, avis, réserves du lot) et des affectations de contrôle, par date serveur. Libellés métier ; personne « organisation · rôle », jamais d'e-mail ; action du système : « Plateforme · action automatique ». Le journal de l'administrateur reçoit les mêmes libellés métier. | Claude Code (délégation PO) | Serveur, back-office — lot 4. |
+
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
 | Sujet | Question au PO |

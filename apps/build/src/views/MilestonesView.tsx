@@ -6,7 +6,7 @@ import {
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
-import type { LotMilestone, MilestoneReserve } from '../api/types';
+import type { LotMilestone, MilestoneReserve, RequiredPiece } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 
 /**
@@ -21,10 +21,19 @@ function errorMessage(caught: unknown, fallback: string) {
   return caught instanceof Error && caught.message ? caught.message : fallback;
 }
 
+const OTHER_PIECE = '';
+
 function FileAction({
-  label, submitLabel, onSubmit,
-}: { label: string; submitLabel: string; onSubmit: (file: File) => Promise<void> }) {
+  label, submitLabel, onSubmit, pieces = [],
+}: {
+  label: string; submitLabel: string; onSubmit: (file: File, requiredPiece: string) => Promise<void>;
+  /** PO-2026-09-28-63 : le constructeur dit à quelle pièce exigée répond le fichier. */
+  pieces?: RequiredPiece[];
+}) {
   const [file, setFile] = useState<File | null>(null);
+  const [requiredPiece, setRequiredPiece] = useState<string>(
+    () => pieces.find((piece) => !piece.deposited)?.code ?? OTHER_PIECE,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +43,7 @@ function FileAction({
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit(file);
+      await onSubmit(file, requiredPiece);
     } catch (caught) {
       setError(errorMessage(caught, "Échec de l'envoi."));
       setSubmitting(false);
@@ -49,6 +58,21 @@ function FileAction({
       {/* PO-2026-09-28-05 : tuile tactile de 44 px au lieu du champ fichier
           natif (21 px, débordait à 375 px) ; le champ reste le vrai contrôle
           accessible, focus visible par `.keya-file-drop` (GlobalStyles). */}
+      {pieces.length > 0 && (
+        <Select
+          aria-label={`Pièce exigée — ${label}`}
+          value={requiredPiece}
+          onChange={(event) => setRequiredPiece(event.target.value)}
+          style={{ width: 'auto', maxWidth: '100%', minHeight: '44px' }}
+        >
+          {pieces.map((piece) => (
+            <option key={piece.code} value={piece.code}>
+              {piece.deposited ? `${piece.label} (déjà déposée)` : piece.label}
+            </option>
+          ))}
+          <option value={OTHER_PIECE}>Autre pièce</option>
+        </Select>
+      )}
       <label
         className="keya-file-drop"
         style={{
@@ -188,6 +212,40 @@ function LotGaugeCard({
   );
 }
 
+/** PO-2026-09-28-63/-64 — pièces exigées du jalon et leur PRÉSENCE
+ * (« Déposée » / « À déposer ») ; la conformité reste l'affaire du
+ * contrôleur. */
+function RequiredPieces({ pieces, declared }: { pieces: RequiredPiece[]; declared: boolean }) {
+  const deposited = pieces.filter((piece) => piece.deposited).length;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} data-testid="required-pieces">
+      <h3 style={{ margin: 0, fontSize: '15px' }}>
+        {declared ? `Pièces exigées — ${deposited} / ${pieces.length} déposées` : 'Pièces exigées pour ce jalon'}
+      </h3>
+      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {pieces.map((piece) => (
+          <li
+            key={piece.code}
+            style={declared
+              ? { display: 'grid', gridTemplateColumns: '92px minmax(0, 1fr)', gap: '8px', alignItems: 'baseline' }
+              : undefined}
+          >
+            {declared && (
+              <span><Pill tone={piece.deposited ? 'info' : 'alert'}>{piece.deposited ? 'Déposée' : 'À déposer'}</Pill></span>
+            )}
+            <span>{piece.label}</span>
+          </li>
+        ))}
+      </ul>
+      {declared && (
+        <p style={{ margin: 0, fontSize: '13px', color: semanticColors.neutral.textMuted }}>
+          « Déposée » veut dire jointe, pas conforme : seul le contrôleur l’examine.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** PO-2026-09-28-60 (P20) et PO-2026-09-28-44 (P30) : après une action, le
  * constructeur reste sur le jalon et lit ce qui a changé et qui agit
  * ensuite. */
@@ -202,6 +260,7 @@ function MilestoneDetail({
   milestone, onChanged, notice,
 }: { milestone: LotMilestone; onChanged: (done?: DoneMessage) => void; notice?: string | null }) {
   const api = useApiClient();
+  const pieces = milestone.required_pieces ?? [];
   const [declaring, setDeclaring] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -217,22 +276,24 @@ function MilestoneDetail({
     }
   }
 
-  async function addEvidence(file: File) {
+  async function addEvidence(file: File, requiredPiece: string) {
     await api.addEvidenceDocument({
       workDeclarationId: milestone.work_declaration_id as string,
       file,
       category: 'preuve_chantier',
       source: 'control_tower_upload',
+      ...(requiredPiece ? { requiredPiece } : {}),
     });
     onChanged(milestone.status === 'awaiting_documents' ? 'submitted' : undefined);
   }
 
-  async function proposeCorrection(file: File) {
+  async function proposeCorrection(file: File, requiredPiece: string) {
     const { evidenceId } = await api.addEvidenceDocument({
       workDeclarationId: milestone.work_declaration_id as string,
       file,
       category: 'preuve_chantier',
       source: 'control_tower_upload',
+      ...(requiredPiece ? { requiredPiece } : {}),
     });
     await api.createReserveCorrection(milestone.reserve_id as string, evidenceId);
     onChanged('corrected');
@@ -272,6 +333,7 @@ function MilestoneDetail({
         <TrustLevels reached={milestone.trust_levels ?? {}} aria-label={`Niveaux de confiance — ${milestone.label}`} />
       </div>
 
+      {pieces.length > 0 && <RequiredPieces pieces={pieces} declared={milestone.status !== 'not_declared'} />}
       {milestone.status === 'not_declared' && (
         <div>
           <p style={{ margin: '0 0 10px' }}>Déclarez ce jalon dès que les travaux sont terminés, puis joignez au moins une pièce.</p>
@@ -283,7 +345,7 @@ function MilestoneDetail({
       {milestone.status === 'awaiting_documents' && (
         <>
           <p style={{ margin: 0 }}>Joignez au moins une pièce : une déclaration sans pièce n&apos;est pas contrôlée.</p>
-          <FileAction label={`Pièce pour ${milestone.label}`} submitLabel="Joindre la pièce" onSubmit={addEvidence} />
+          <FileAction label={`Pièce pour ${milestone.label}`} submitLabel="Joindre la pièce" onSubmit={addEvidence} pieces={pieces} />
         </>
       )}
       {milestone.status === 'awaiting_control' && (
@@ -293,7 +355,7 @@ function MilestoneDetail({
               ? 'Un contrôleur est affecté à ce jalon.'
               : 'En attente de l’affectation d’un contrôleur.'}
           </p>
-          <FileAction label={`Pièce pour ${milestone.label}`} submitLabel="Ajouter une pièce" onSubmit={addEvidence} />
+          <FileAction label={`Pièce pour ${milestone.label}`} submitLabel="Ajouter une pièce" onSubmit={addEvidence} pieces={pieces} />
         </>
       )}
       <OpenReserves reserves={milestone.open_reserves ?? []} />
@@ -307,6 +369,7 @@ function MilestoneDetail({
               label={`Correction pour ${milestone.label}`}
               submitLabel="Proposer la correction"
               onSubmit={proposeCorrection}
+              pieces={pieces}
             />
           </>
         )

@@ -37,9 +37,124 @@ export interface JournalEntry {
   organization: string;
   actor: string | null;
   action: string;
+  /** PO-2026-09-28-67 (P17 en partie) — libellé métier de l'action. */
+  action_label: string;
   object_type: string;
   object_id: string;
   justification: string;
+}
+
+/** Lot 4 (PO-2026-09-28-46, -64 à -66) — indicateurs du CDC §9.3. */
+export interface PilotageRatio {
+  label: string;
+  unit: string;
+  numerator: number;
+  denominator: number;
+}
+
+export interface PilotageIndicators {
+  computed_at: string;
+  indicators: {
+    jalons: PilotageRatio & { technically_accepted: number };
+    entrees: PilotageRatio;
+    sorties: PilotageRatio & { executed_amount: string; currency: string };
+    reserves: { label: string; open: number; lifted: number; oldest_open_days: number | null };
+    pieces: PilotageRatio & { note: string };
+  };
+}
+
+export type PilotageKey = 'jalons' | 'entrees' | 'sorties' | 'reserves' | 'pieces';
+
+export interface DossierLink {
+  id: string;
+  organization_id: string;
+}
+
+interface PilotageWhere {
+  program: string;
+  lot: string;
+  dossier: DossierLink | null;
+}
+
+export interface MilestoneSource extends PilotageWhere {
+  milestone: string;
+  cdc_state: string;
+  status_label: string;
+  examined: boolean;
+  technically_accepted: boolean;
+  last_opinion: { outcome: string; outcome_label: string; at: string; by: string } | null;
+}
+
+export interface ReceiptSource {
+  reference: string;
+  amount: string;
+  currency: string;
+  received_on: string;
+  status_label: string;
+  reconciled: boolean;
+  program: string;
+  lot: string;
+  client: string;
+  dossier: DossierLink;
+}
+
+export interface OutflowTotals {
+  executed: number;
+  reconciled: number;
+  executed_amount: string;
+  reconciled_amount: string;
+  currency: string;
+  detail: string;
+}
+
+export interface ReserveSource extends PilotageWhere {
+  milestone: string;
+  motif: string;
+  status: string | null;
+  status_label: string;
+  is_open: boolean;
+  is_lifted: boolean;
+  opened_at: string;
+  opened_by: string;
+  lifted_at: string | null;
+  age_days: number;
+}
+
+export interface RequiredPieceSource extends PilotageWhere {
+  milestone: string;
+  code: string;
+  label: string;
+  deposited: boolean;
+  deposited_at: string | null;
+  /** Dernier avis du contrôleur : pièce examinée, non examinée, ou pas d'avis (`null`). */
+  examined: boolean | null;
+}
+
+export interface PilotageSources {
+  jalons: MilestoneSource[];
+  entrees: ReceiptSource[];
+  sorties: OutflowTotals;
+  reserves: ReserveSource[];
+  pieces: RequiredPieceSource[];
+}
+
+/** Lot 4 (PO-2026-09-28-67) — chronologie du dossier. */
+export interface ChronologyEntry {
+  id: string;
+  at: string;
+  action: string;
+  actor: string;
+  role: string;
+  justification: string;
+  object: string;
+  source: 'journal' | 'chantier';
+}
+
+export interface DossierChronology {
+  reservation_id: string;
+  lot: string;
+  program: string;
+  entries: ChronologyEntry[];
 }
 
 export interface BackofficeUserSummary {

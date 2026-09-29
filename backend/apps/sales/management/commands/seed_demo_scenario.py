@@ -13,7 +13,8 @@ créé — une démonstration en cours n'est pas réinitialisée par un redéplo
 Données intégralement fictives (CDC §9.1) ; aucun acteur ne correspond à un
 partenaire contractuellement acquis.
 
-Audit UI R1 (étape 0) — **jeu initial versionné `DEMO-CI-v1`**, conforme au
+Audit UI R1 (étape 0) — **jeu initial versionné `DEMO-CI-v1`** (v2 depuis le lot 4 :
+pièces exigées par jalon, PO-2026-09-28-63), conforme au
 CDC R1 §9.1 et à l'arbitrage A02 (Côte d'Ivoire) : Country Pack « CI », un
 programme « Résidence Démonstration Abidjan », deux biens à 30 000 000 XOF,
 deux jalons (« Fondations », « Élévation », template CI posé par cette
@@ -40,15 +41,35 @@ from apps.programs.models import (
 )
 from apps.programs.services import instantiate_milestones_for_lot
 
-DATASET_VERSION = 'DEMO-CI-v1'
+# PO-2026-09-28-63 : v2 = v1 + pièces exigées par jalon (A4, T18).
+DATASET_VERSION = 'DEMO-CI-v2'
 COUNTRY_CODE = 'CI'
 COUNTRY_LABEL = "Côte d'Ivoire"
 # CDC R1 §9.1 : deux jalons de démonstration. Valeurs fictives, non validées
 # juridiquement (A09). Posés par le jeu de démonstration, pas par une
 # migration : une base sans démonstration (tests, autre déploiement) ne
 # reçoit aucun Country Pack ni template fictif.
-MILESTONE_TEMPLATE_VERSION = 1
+# PO-2026-09-28-63 : version 2 du modèle CI, qui porte les pièces exigées
+# (A4, PO-2026-09-28-53, fictives). La version 1 n'est jamais modifiée.
+MILESTONE_TEMPLATE_VERSION = 2
 MILESTONE_STEPS = [('fondations', 'Fondations'), ('elevation', 'Élévation')]
+REQUIRED_PIECES = {
+    'fondations': [
+        ('plan_implantation', 'Plan d’implantation'),
+        ('photo_fouilles', 'Photo des fouilles'),
+        ('photo_armatures', 'Photo des armatures avant coulage'),
+        ('bon_livraison_beton', 'Bon de livraison du béton'),
+    ],
+    'elevation': [
+        ('photo_niveaux', 'Photo de chaque niveau'),
+        ('photo_chainages', 'Photo des chaînages'),
+        ('releve_conformite_plans', 'Relevé de conformité aux plans'),
+    ],
+}
+
+
+def required_pieces(step_code):
+    return [{'code': code, 'label': label} for code, label in REQUIRED_PIECES.get(step_code, [])]
 
 KEYIMMO_ORG = 'KEYIMMO AFRIC (démo)'
 # PO-2026-09-27-13 : le terme « promoteur » disparaît de la plateforme ;
@@ -191,7 +212,9 @@ class Command(BaseCommand):
         )
         if created:
             MilestoneTemplateStep.objects.bulk_create([
-                MilestoneTemplateStep(template=template, order=index, code=code, label=label)
+                MilestoneTemplateStep(
+                    template=template, order=index, code=code, label=label, required_pieces=required_pieces(code),
+                )
                 for index, (code, label) in enumerate(MILESTONE_STEPS, start=1)
             ])
         return country_pack

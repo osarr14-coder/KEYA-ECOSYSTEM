@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 // Adapté selon PO-2026-09-28-22 : personnes « organisation · rôle », client par son nom, jamais d'e-mail.
@@ -40,6 +40,8 @@ function renderView(overrides: Parameters<typeof createMockApiClient>[0] = {}, o
       reservation: { id: 'reservation-1', status: 'held', status_label: 'Bloquée' }, calls: [], receipts: [],
     }),
     getTeamPaymentCalls: vi.fn().mockResolvedValue({ calls: [], candidates: [], blocking_reason: null }),
+    // Lot 4 (PO-2026-09-28-67) : chronologie de la fiche dossier.
+    getDossierChronology: vi.fn().mockResolvedValue({ reservation_id: 'reservation-1', lot: 'Lot A1', program: 'Résidence', entries: [] }),
     ...overrides,
   });
   render(withApiClient(api, <ReservationsView openReservationId={openReservationId} />));
@@ -177,5 +179,39 @@ describe('ReservationsView — vue Finance en lecture seule (audit UI R1, R03, P
     expect(screen.queryByText('Contrat')).not.toBeInTheDocument();
     expect(listContracts).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /Enregistrer/ })).not.toBeInTheDocument();
+  });
+
+  it('lot 4 (PO-2026-09-28-67) — la fiche montre la chronologie du dossier, en libellés métier', async () => {
+    renderView({
+      getDossierChronology: vi.fn().mockResolvedValue({
+        reservation_id: 'reservation-1', lot: 'Lot A12', program: 'Résidence Démonstration Abidjan',
+        entries: [
+          {
+            id: 'audit-1', at: '2026-09-27T14:30:00Z', action: 'Réservation demandée', actor: 'Awa Koné',
+            role: 'Cliente fictive', justification: '', object: '', source: 'journal',
+          },
+          {
+            id: 'trust-2', at: '2026-09-28T10:00:00Z', action: 'Réserve ouverte',
+            actor: 'Bureau de contrôle Démonstration', role: 'Contrôleur', justification: 'Enrobage insuffisant',
+            object: 'Jalon « Fondations »', source: 'chantier',
+          },
+          {
+            id: 'audit-3', at: '2026-09-28T11:00:00Z', action: 'Blocage expiré : bien libéré', actor: 'Plateforme',
+            role: 'action automatique', justification: '', object: '', source: 'journal',
+          },
+        ],
+      }),
+    });
+    await openDossier();
+
+    const timeline = await screen.findByRole('list', { name: 'Chronologie du dossier' });
+    const entries = within(timeline).getAllByTestId('timeline-entry');
+    expect(entries).toHaveLength(3);
+    expect(entries[0]).toHaveTextContent('Réservation demandée');
+    expect(entries[0]).toHaveTextContent('Awa Koné · Cliente fictive');
+    expect(entries[1]).toHaveTextContent('Motif : Enrobage insuffisant');
+    expect(entries[1]).toHaveTextContent('Jalon « Fondations »');
+    expect(entries[2]).toHaveTextContent('Plateforme · action automatique');
+    expect(timeline).not.toHaveTextContent('@');
   });
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Audit UI R1 (étape 0, complété à l'étape 5 — PO-2026-09-28-19, T14) —
 # réinitialisation LOCALE de la démonstration à partir du jeu initial
-# versionné (migrations + `seed_demo_scenario`, DEMO-CI-v1), puis
+# versionné (migrations + `seed_demo_scenario`, DEMO-CI-v2), puis
 # vérification (`check_demo_dataset`). Procédure complète :
 # docs/exploitation/PROCEDURE_REINITIALISATION_DEMO.md
 #
@@ -73,7 +73,7 @@ Plan qui serait exécuté avec --confirm :
   1/5 Sauvegarde : pg_dump -Fc de $DB_NAME + archive de $MEDIA_DIR → $BACKUP_ROOT/<horodatage UTC>/, relue avant toute suppression
   2/5 Recréation de la base $DB_NAME (dropdb --force, createdb -O $DB_USER) et vidage de $MEDIA_DIR
   3/5 Migrations et table de cache
-  4/5 Jeu initial versionné DEMO-CI-v1 (seed_demo_scenario : Country Pack CI, 2 jalons, 7 comptes, programme, 2 lots, barème)
+  4/5 Jeu initial versionné DEMO-CI-v2 (seed_demo_scenario : Country Pack CI, 2 jalons et leurs pièces exigées, 7 comptes, programme, 2 lots, barème)
   5/5 Vérification : check_demo_dataset (échoue s'il reste un écart)
 PLAN
   exit $status

@@ -911,6 +911,10 @@ class TestDevisAmountNeverLeaksToConstructeurRole:
             # démonstration (public, aucune donnée métier, M01/D01) et journal
             # en lecture seule réservé à l'administrateur (R02).
             'public-demo-instance', 'admin-journal',
+            # Lot 4 (PO-2026-09-28-46, -66, -67) — ajout conscient : pilotage
+            # et chronologie du dossier, réservés au gestionnaire (403 pour le
+            # constructeur, vérifié par apps/pilotage/tests.py).
+            'pilotage-indicators', 'pilotage-indicator-sources', 'dossier-chronology',
             'procurement-devis-create', 'procurement-devis-lock',
             'procurement-admin-devis-list',
             'procurement-my-candidatures', 'procurement-my-candidature-detail',

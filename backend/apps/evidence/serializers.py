@@ -78,7 +78,7 @@ class WorkDeclarationSerializer(_OrganizationScopedFieldsMixin, serializers.Mode
 class EvidenceSerializer(_OrganizationScopedFieldsMixin, serializers.ModelSerializer):
     class Meta:
         model = Evidence
-        fields = ['id', 'work_declaration', 'documents', 'added_by', 'created_at']
+        fields = ['id', 'work_declaration', 'documents', 'required_piece', 'added_by', 'created_at']
         read_only_fields = ['id', 'added_by', 'created_at']
 
     def __init__(self, *args, **kwargs):
@@ -91,3 +91,13 @@ class EvidenceSerializer(_OrganizationScopedFieldsMixin, serializers.ModelSerial
         self.fields['documents'].queryset = (
             Document.objects.filter(organization=organization) if organization else Document.objects.none()
         )
+
+    def validate(self, attrs):
+        # PO-2026-09-28-63 : une pièce désignée doit être l'une des pièces
+        # exigées du jalon (instantané du Country Pack) ; vide = « Autre pièce ».
+        code = attrs.get('required_piece') or ''
+        if code:
+            codes = {piece.get('code') for piece in attrs['work_declaration'].milestone.required_pieces or []}
+            if code not in codes:
+                raise serializers.ValidationError({'required_piece': 'Cette pièce n’est pas exigée pour ce jalon.'})
+        return attrs

@@ -173,6 +173,18 @@ export interface LotMilestone {
   /** PO-2026-09-28-16 : réserves ouvertes du jalon (motif, action attendue,
    * date serveur, auteur « organisation · rôle »). */
   open_reserves?: MilestoneReserve[];
+  /** PO-2026-09-28-63 : pièces exigées du jalon (Country Pack versionné) et
+   * leur présence sur la déclaration courante — jamais une conformité. */
+  required_pieces?: RequiredPiece[];
+}
+
+export interface RequiredPiece {
+  code: string;
+  label: string;
+  deposited: boolean;
+  deposited_at: string | null;
+  /** Dernier avis : pièce examinée, non examinée, ou pas d'avis (`null`). */
+  examined: boolean | null;
 }
 
 export interface MilestoneReserve {

@@ -80,12 +80,15 @@ def create_work_declaration(*, organization, milestone, declared_by, note=''):
     return declaration
 
 
-def create_evidence(*, organization, work_declaration, documents, added_by):
+def create_evidence(*, organization, work_declaration, documents, added_by, required_piece=''):
     """Génère un `TrustEvent` de niveau documenté distinct de celui de la
     déclaration — critère d'acceptation ticket 004 : jamais fusionnés.
+    `required_piece` (PO-2026-09-28-63) : pièce exigée du jalon à laquelle
+    répond ce dépôt, vide pour « Autre pièce ».
     """
     evidence = Evidence.objects.create(
         organization=organization, work_declaration=work_declaration, added_by=added_by,
+        required_piece=required_piece or '',
     )
     evidence.documents.set(documents)
     trust_repository.create(

@@ -1071,6 +1071,35 @@ def client_reserve_summary(declaration):
     return summary
 
 
+def milestone_required_pieces(milestone, declaration=None):
+    """PO-2026-09-28-63/-64 — pièces exigées du jalon (instantané du Country
+    Pack) et, pour chacune, sa PRÉSENCE sur la déclaration courante (`deposited`,
+    date du premier dépôt) puis, séparément, si le dernier avis du contrôleur
+    l'a examinée (`examined` : vrai, faux, ou `None` sans avis). Jamais une
+    conformité déduite du dépôt (CDC §9.3). Sous contexte RLS du lot."""
+    pieces = list(milestone.required_pieces or [])
+    if not pieces:
+        return []
+    if declaration is None:
+        declaration = WorkDeclaration.objects.filter(milestone=milestone).order_by('-created_at').first()
+    deposits = {}
+    if declaration is not None:
+        for evidence in Evidence.objects.filter(work_declaration=declaration).exclude(required_piece='').order_by('created_at'):
+            deposits.setdefault(evidence.required_piece, []).append(evidence)
+    last = _declaration_inspections(declaration).order_by('-created_at').first() if declaration else None
+    examined_ids = {str(item) for item in (last.examined_evidence_ids or [])} if last else set()
+    rows = []
+    for piece in pieces:
+        found = deposits.get(piece.get('code'), [])
+        rows.append({
+            'code': piece.get('code'), 'label': piece.get('label'),
+            'deposited': bool(found),
+            'deposited_at': found[0].created_at.isoformat() if found else None,
+            'examined': None if last is None else any(str(evidence.id) in examined_ids for evidence in found),
+        })
+    return rows
+
+
 def _declaration_inspections(declaration):
     return Inspection.objects.filter(Q(work_declaration=declaration) | Q(evidence__work_declaration=declaration))
 

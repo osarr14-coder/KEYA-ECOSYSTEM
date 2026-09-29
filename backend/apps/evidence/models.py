@@ -141,6 +141,10 @@ class Evidence(models.Model):
     added_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='evidences',
     )
+    # PO-2026-09-28-63 — code de la pièce exigée du jalon à laquelle répond
+    # ce dépôt (`Milestone.required_pieces`), vide pour « Autre pièce ». Dit
+    # la PRÉSENCE d'une pièce, jamais sa conformité (CDC §9.3).
+    required_piece = models.CharField(max_length=50, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

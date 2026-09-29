@@ -8,7 +8,7 @@
 
 1. **Base neuve** : réinitialiser la démonstration selon
    `docs/exploitation/PROCEDURE_REINITIALISATION_DEMO.md` (sauvegarde préalable),
-   puis vérifier « Base conforme au jeu initial DEMO-CI-v1 ».
+   puis vérifier « Base conforme au jeu initial DEMO-CI-v2 ».
 2. **Un profil de navigateur par rôle.** Le gestionnaire, Finance et
    l'administrateur utilisent la même application (back-office) ; les deux clients
    aussi (espace client). Une application garde **une seule session par profil

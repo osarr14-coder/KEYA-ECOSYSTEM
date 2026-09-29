@@ -384,6 +384,9 @@ def lot_milestone_rows(organization, lot_id):
             'reserve_id': str(reserve.id) if reserve else None,
             'correction_submitted': state['correction_submitted'],
             'control_scheduled': state['pending_mission'] is not None,
+            # PO-2026-09-28-63 : pièces exigées et leur présence (jamais une
+            # conformité) ; le constructeur désigne la pièce au dépôt.
+            'required_pieces': inspections_services.milestone_required_pieces(milestone, state['declaration']),
             # PO-2026-09-28-16 : chaque réserve ouverte du jalon (motif,
             # action attendue, date, auteur), affichée au-dessus du
             # formulaire de correction.

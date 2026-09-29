@@ -124,6 +124,8 @@ export function createApiClient({
      * cas — seulement remonté à l'appelant pour affichage éventuel. */
     addEvidenceDocument: async (params: {
       workDeclarationId: string; file: File; category: string; source: string;
+      /** PO-2026-09-28-63 : pièce exigée à laquelle répond le fichier. */
+      requiredPiece?: string;
     }) => {
       const formData = new FormData();
       formData.append('file', params.file);
@@ -134,7 +136,10 @@ export function createApiClient({
       );
       const evidence = await request<{ id: string }>('/api/evidences/', {
         method: 'POST',
-        json: { work_declaration: params.workDeclarationId, documents: [document.id] },
+        json: {
+          work_declaration: params.workDeclarationId, documents: [document.id],
+          ...(params.requiredPiece ? { required_piece: params.requiredPiece } : {}),
+        },
       });
       // Ticket F-069 — `evidenceId` : une correction de réserve se rattache
       // à l'Evidence qui vient d'être créée.

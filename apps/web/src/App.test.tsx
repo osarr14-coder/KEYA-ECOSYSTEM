@@ -453,6 +453,8 @@ describe(
         // R04 : « Demandes de programme » masquée (module différé).
         'Ventes', 'Dossiers clients', 'Lots — prix & statut',
         'Chantier', 'Contrôles à affecter',
+        // Lot 4 (PO-2026-09-28-66) : pilotage du gestionnaire.
+        'Pilotage', 'Pilotage',
         'Programmes', 'Programmes',
       ]);
     });
@@ -645,7 +647,8 @@ describe('App — accès du gestionnaire ADV, équipe KEYIMMO (ticket F-065)', (
       // PO-2026-09-27-16 et R03 : comptes et virements à Finance ; R04 :
       // « Demandes de programme » masquée.
       'À faire', 'Dossiers clients', 'Lots — prix & statut',
-      'Contrôles à affecter', 'Programmes',
+      // Lot 4 (PO-2026-09-28-66) : « Pilotage », gestionnaire seul.
+      'Contrôles à affecter', 'Pilotage', 'Programmes',
     ]);
     expect(screen.queryByText('Accès refusé')).not.toBeInTheDocument();
   });

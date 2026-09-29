@@ -42,6 +42,7 @@ export type IconName =
   | 'receipt'
   | 'arrow-down-to-line'
   | 'history'
+  | 'bar-chart'
   | 'list-checks'
   | 'key-round'
   | 'copy'
@@ -159,6 +160,13 @@ export const ICON_PATHS: Record<IconName, string[]> = {
     'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8',
     'M3 3v5h5',
     'M12 7v5l4 2',
+  ],
+  // Lot 4 — onglet « Pilotage » (lucide « chart-column »).
+  'bar-chart': [
+    'M3 3v16a2 2 0 0 0 2 2h16',
+    'M18 17V9',
+    'M13 17V5',
+    'M8 17v-3',
   ],
   'list-checks': [
     'm3 17 2 2 4-4',

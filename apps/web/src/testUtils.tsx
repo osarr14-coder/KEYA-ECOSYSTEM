@@ -17,6 +17,10 @@ export function createMockApiClient(overrides: Partial<ApiClient> = {}): ApiClie
     getMe: vi.fn(notMocked),
     searchUsers: vi.fn(notMocked),
     getAdminJournal: vi.fn(notMocked),
+    // Lot 4 (pilotage, chronologie) :
+    getPilotageIndicators: vi.fn(notMocked),
+    getPilotageSources: vi.fn(notMocked),
+    getDossierChronology: vi.fn(notMocked),
     getUserDetail: vi.fn(notMocked),
     deactivateUser: vi.fn(notMocked),
     // Ticket 027 (apps/procurement) :

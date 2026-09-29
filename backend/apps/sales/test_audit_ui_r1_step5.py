@@ -237,7 +237,7 @@ class TestResetProcedureCheck:
         out = StringIO()
         call_command('check_demo_dataset', stdout=out)
         assert 'ÉCART' not in out.getvalue()
-        assert 'Base conforme au jeu initial DEMO-CI-v1.' in out.getvalue()
+        assert 'Base conforme au jeu initial DEMO-CI-v2.' in out.getvalue()  # PO-2026-09-28-63
 
     def test_a_played_step_is_reported_and_nothing_is_written(self):
         from io import StringIO

@@ -1,5 +1,5 @@
 """PO-2026-09-28-19 (T14) — vérification EN LECTURE SEULE de la base face au
-jeu initial versionné (`seed_demo_scenario`, DEMO-CI-v1, CDC §9.1).
+jeu initial versionné (`seed_demo_scenario`, DATASET_VERSION, CDC §9.1).
 
 À lancer juste après une réinitialisation (`scripts/reset_demo_local.sh`,
 étape 5/5) : chaque contrôle affiche « OK » ou « ÉCART », et la commande
@@ -27,7 +27,7 @@ from apps.sales.models import CustomerReceipt, Disbursement, PaymentCall, Paymen
 
 from .seed_demo_scenario import (
     ACCOUNTS, CONTROL_ORG, COUNTRY_CODE, DATASET_VERSION, KEYIMMO_ORG, LOTS, MILESTONE_STEPS, PRICE, PROGRAM_NAME,
-    PROMOTER_ORG,
+    PROMOTER_ORG, required_pieces,
 )
 
 
@@ -36,7 +36,7 @@ class _Rollback(Exception):
 
 
 class Command(BaseCommand):
-    help = 'Vérifie, sans rien écrire, que la base correspond au jeu initial DEMO-CI-v1 (T14).'
+    help = 'Vérifie, sans rien écrire, que la base correspond au jeu initial versionné (T14).'
 
     def handle(self, *args, **options):
         self.gaps = 0
@@ -104,6 +104,14 @@ class Command(BaseCommand):
         for lot in lots:
             labels = list(lot.milestones.order_by('order').values_list('label', flat=True))
             self._report(labels == expected_steps, f'Jalons du {lot.name}', ' → '.join(labels))
+            # PO-2026-09-28-63 : pièces exigées recopiées du modèle CI v2.
+            pieces_ok = all(
+                milestone.required_pieces == required_pieces(milestone.code) for milestone in lot.milestones.all()
+            )
+            self._report(
+                pieces_ok, f'Pièces exigées du {lot.name}',
+                ', '.join(f'{m.label} : {len(m.required_pieces)}' for m in lot.milestones.order_by('order')),
+            )
 
         # CDC §9.1 : « les décisions et contrôles résultent des actions réelles
         # des comptes et ne sont pas préremplis comme réussis ».

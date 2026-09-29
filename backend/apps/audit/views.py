@@ -8,6 +8,7 @@ from apps.organizations.models import Organization
 
 from .models import AuditEvent
 from apps.organizations.identity import actor_label
+from apps.pilotage.chronology import audit_label
 
 JOURNAL_LIMIT = 200
 
@@ -42,6 +43,8 @@ class AdminJournalView(APIView):
                 # PO-2026-09-28-22 : « organisation · rôle », jamais l'e-mail.
                 'actor': actor_label(event.actor) if event.actor else None,
                 'action': event.action,
+                # PO-2026-09-28-67 (P17 en partie) : libellé métier.
+                'action_label': audit_label(event.action),
                 'object_type': event.object_type,
                 'object_id': str(event.object_id),
                 'justification': event.justification,

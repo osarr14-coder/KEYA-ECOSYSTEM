@@ -399,6 +399,7 @@ def instantiate_milestones_for_lot(lot):
             code=step.code,
             label=step.label,
             weight=step.weight,
+            required_pieces=list(step.required_pieces or []),
         )
         for step in template.steps.all()
     ]

@@ -181,6 +181,12 @@ Dénominateur nul : « Non applicable », jamais 100 %.
 - **Design system** : variante « comptes » d'`Indicator` pour les réserves (ouvertes, levées, ancienneté), ajoutée à la galerie.
 - **Back-office** : onglet « Pilotage » du gestionnaire (4 indicateurs, sources, 1440 px) et chronologie dans la fiche dossier (`Timeline`).
 
+### Réalisation (arbitrages délégués PO-2026-09-28-63 à -67)
+
+- Pièces exigées : `required_pieces` sur l'étape du modèle de jalons (Country Pack), recopié sur le jalon à la création du lot ; jeu **`DEMO-CI-v2`** (modèle CI v2) ; le constructeur désigne la pièce au dépôt (BUILD).
+- Serveur : `apps/pilotage` — `GET /api/pilotage/indicateurs/`, `GET /api/pilotage/indicateurs/<clé>/sources/`, `GET /api/dossiers/<id>/chronologie/` (gestionnaire) ; libellés métier aussi dans le journal de l'administrateur.
+- Écrans : onglet « Pilotage » (4 indicateurs, 5 chiffres, sources cliquables vers le dossier) ; carte « Chronologie » de la fiche dossier ; `CountIndicator` (variante « comptes ») dans la galerie.
+
 ### Tests
 
 - pytest :
