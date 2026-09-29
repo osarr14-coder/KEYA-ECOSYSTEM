@@ -24,7 +24,7 @@
 | Branche revue | `fix/audit-ui-r1` |
 | Base (dernier commit commun avec `master`) | `163b96c` (B-057 / F-079) |
 | Version revue | le dernier commit de `fix/audit-ui-r1` au moment où la revue commence — **à noter en tête de la grille (§8)** ; tout commit ajouté ensuite impose de revoir son diff |
-| Volume | 30 commits ; 331 fichiers, +22 756 / −2 937 lignes |
+| Volume | 30 commits de code et de recette (331 fichiers, +22 756 / −2 937 lignes), plus le commit de cette procédure |
 | Livrables de recette | `docs/recette/FICHE_T01_T20.md` (fiche de l'auteur), `docs/decisions/JOURNAL_DECISIONS.md` (décisions PO) |
 | Hors périmètre | branche `audit/parcours-r1` (rapport d'audit seul, non destiné à `master`) ; déploiement Render (non fait, sur accord du PO) |
 
