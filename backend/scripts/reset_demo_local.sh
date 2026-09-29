@@ -13,7 +13,10 @@
 #   - `--confirm` exigé pour exécuter, avec DEMO_PASSWORD (choisi par
 #     l'exploitant, jamais dans le dépôt) ;
 #   - SAUVEGARDE d'abord base (pg_dump -Fc) ET fichiers déposés (media), puis
-#     vérifie que la sauvegarde est relisible avant toute suppression.
+#     vérifie que la sauvegarde est relisible avant toute suppression ;
+#   - PO-2026-09-29-10 (T16) : après les migrations, le journal est mis hors
+#     de portée du compte applicatif (scripts/sql/protect_journal.sql, exécuté
+#     en administrateur Postgres) puis contrôlé (check_journal_protection).
 #
 # Usage (depuis backend/, variables lues dans .env) :
 #   PYTHON=/chemin/venv/bin/python scripts/reset_demo_local.sh --dry-run
@@ -56,6 +59,7 @@ if [ "$MODE" = "--dry-run" ]; then
     "$PG_ADMIN pg_dump --version && $PG_ADMIN dropdb --version && $PG_ADMIN createdb --version && pg_restore --version"
   check "Base joignable" "$PG_ADMIN psql -d '$DB_NAME' -Atc 'select 1'"
   check "Aucune migration en attente" "$PYTHON manage.py migrate --check"
+  check "Journal hors de portée du compte applicatif (T16)" "$PYTHON manage.py check_journal_protection"
   if [ -n "${DEMO_PASSWORD:-}" ]; then echo "  OK     DEMO_PASSWORD fourni"; else echo "  MANQUE DEMO_PASSWORD (exigé à l'exécution, jamais dans le dépôt)"; status=1; fi
   check "Dossier de sauvegarde accessible en écriture ($BACKUP_ROOT)" \
     "{ [ -d '$BACKUP_ROOT' ] && [ -w '$BACKUP_ROOT' ]; } || [ -w '$(dirname "$BACKUP_ROOT")' ]"
@@ -70,11 +74,12 @@ if [ "$MODE" = "--dry-run" ]; then
   echo
   cat <<PLAN
 Plan qui serait exécuté avec --confirm :
-  1/5 Sauvegarde : pg_dump -Fc de $DB_NAME + archive de $MEDIA_DIR → $BACKUP_ROOT/<horodatage UTC>/, relue avant toute suppression
-  2/5 Recréation de la base $DB_NAME (dropdb --force, createdb -O $DB_USER) et vidage de $MEDIA_DIR
-  3/5 Migrations et table de cache
-  4/5 Jeu initial versionné DEMO-CI-v2 (seed_demo_scenario : Country Pack CI, 2 jalons et leurs pièces exigées, 7 comptes, programme, 2 lots, barème)
-  5/5 Vérification : check_demo_dataset (échoue s'il reste un écart)
+  1/6 Sauvegarde : pg_dump -Fc de $DB_NAME + archive de $MEDIA_DIR → $BACKUP_ROOT/<horodatage UTC>/, relue avant toute suppression
+  2/6 Recréation de la base $DB_NAME (dropdb --force, createdb -O $DB_USER) et vidage de $MEDIA_DIR
+  3/6 Migrations et table de cache
+  4/6 Journal hors de portée du compte applicatif (protect_journal.sql en administrateur, puis check_journal_protection)
+  5/6 Jeu initial versionné DEMO-CI-v2 (seed_demo_scenario : Country Pack CI, 2 jalons et leurs pièces exigées, 7 comptes, programme, 2 lots, barème)
+  6/6 Vérification : check_demo_dataset (échoue s'il reste un écart)
 PLAN
   exit $status
 fi
@@ -85,7 +90,7 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="$BACKUP_ROOT/$STAMP"
 mkdir -p "$BACKUP_DIR"
 
-echo "1/5 Sauvegarde de la base $DB_NAME → $BACKUP_DIR/base.dump"
+echo "1/6 Sauvegarde de la base $DB_NAME → $BACKUP_DIR/base.dump"
 $PG_ADMIN pg_dump -Fc -d "$DB_NAME" -f /tmp/keya_base_$STAMP.dump
 cp /tmp/keya_base_$STAMP.dump "$BACKUP_DIR/base.dump" && rm -f /tmp/keya_base_$STAMP.dump
 echo "    Sauvegarde des fichiers déposés ($MEDIA_DIR) → $BACKUP_DIR/media.tar.gz"
@@ -94,19 +99,23 @@ if [ -d "$MEDIA_DIR" ]; then tar -czf "$BACKUP_DIR/media.tar.gz" -C "$MEDIA_DIR"
 pg_restore -l "$BACKUP_DIR/base.dump" > "$BACKUP_DIR/base.toc"
 echo "    Sauvegarde vérifiée ($(wc -l < "$BACKUP_DIR/base.toc") entrées)."
 
-echo "2/5 Recréation de la base $DB_NAME (propriétaire $DB_USER)"
+echo "2/6 Recréation de la base $DB_NAME (propriétaire $DB_USER)"
 $PG_ADMIN dropdb --if-exists --force "$DB_NAME"
 $PG_ADMIN createdb -O "$DB_USER" "$DB_NAME"
 if [ -d "$MEDIA_DIR" ]; then find "$MEDIA_DIR" -mindepth 1 -delete; fi
 
-echo "3/5 Migrations et cache"
+echo "3/6 Migrations et cache"
 $PYTHON manage.py migrate --no-input
 $PYTHON manage.py createcachetable
 
-echo "4/5 Jeu initial versionné (Country Pack CI, jalons, comptes, programme)"
+echo "4/6 Journal hors de portée du compte applicatif (T16)"
+$PG_ADMIN psql -q -d "$DB_NAME" -v app_role="$DB_USER" -f scripts/sql/protect_journal.sql
+$PYTHON manage.py check_journal_protection
+
+echo "5/6 Jeu initial versionné (Country Pack CI, jalons, comptes, programme)"
 $PYTHON manage.py seed_demo_scenario
 
-echo "5/5 Vérification du jeu initial"
+echo "6/6 Vérification du jeu initial"
 $PYTHON manage.py check_demo_dataset
 
 cat <<MSG
@@ -115,5 +124,6 @@ Réinitialisation terminée. Sauvegarde : $BACKUP_DIR
 Restauration :
   $PG_ADMIN dropdb $DB_NAME && $PG_ADMIN createdb -O $DB_USER $DB_NAME
   $PG_ADMIN pg_restore -d $DB_NAME < $BACKUP_DIR/base.dump
+  $PG_ADMIN psql -q -d $DB_NAME -v app_role=$DB_USER -f scripts/sql/protect_journal.sql
   tar -xzf $BACKUP_DIR/media.tar.gz -C $MEDIA_DIR
 MSG
