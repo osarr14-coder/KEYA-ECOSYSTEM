@@ -13,9 +13,18 @@ import { notifyDataChanged } from './useApiResource';
 export class ApiError extends Error {
   status: number;
 
-  constructor(status: number, message: string) {
+  /** Vérification finale (T15) : `detail` d'un refus métier et corps brut
+   * (erreurs de validation DRF par champ), pour afficher le message du
+   * serveur plutôt que le code HTTP. */
+  detail?: string;
+
+  body?: unknown;
+
+  constructor(status: number, message: string, detail?: string, body?: unknown) {
     super(message);
     this.status = status;
+    this.detail = detail;
+    this.body = body;
   }
 }
 
@@ -86,7 +95,8 @@ export function createApiClient({
       onUnauthorized?.();
     }
     if (!response.ok) {
-      throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`);
+      const errorBody = (await response.json().catch(() => undefined)) as { detail?: string } | undefined;
+      throw new ApiError(response.status, `Échec de la requête ${path} (${response.status})`, errorBody?.detail, errorBody);
     }
     // PO-2026-09-28-51 : toute écriture réussie rafraîchit aussitôt les
     // données affichées (voir `useApiResource`).

@@ -1,0 +1,65 @@
+# Fiche de réception — tests T01 à T20 (CDC R1 §11)
+
+> **Revue indépendante (CDC §11) : RESTE À FAIRE.** Cette fiche a été établie par la même session
+> que le code (Claude Code, autonome, pour le Product Owner). Elle ne vaut pas revue indépendante :
+> un relecteur distinct (autre session ou autre personne) doit la rejouer et la signer avant la
+> réception.
+
+| | |
+|---|---|
+| Version vérifiée | Branche `fix/audit-ui-r1`, commit « Vérification finale » (voir l'historique git, après `2fe8dae`) |
+| Instance jouée | `DEMO-CI-20260929-6BB7` (jeu `DEMO-CI-v2`), archivée à la fin ; instance active ensuite : `DEMO-CI-20260929-2655` |
+| Date | 29 septembre 2026, 00:50 → 02:10 (GMT) |
+| Environnement | Pile **locale** uniquement (Render non touché). Blocage d'**1 h** pour T02 (arbitrage A7, local seulement), **remis à 24 h** à la fin |
+| Outillage | Interface seule (Playwright, comptes de démonstration, clavier seul pour T20), API (jeton du compte concerné), suites automatisées |
+| Suites | Backend : 728 passés ; front : web 352, BUILD 112, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
+| Relecteur | **À désigner** (revue indépendante §11) |
+
+Légende des modes : **Écran** (rejoué par l'interface, sans intervention en base), **API** (requête
+directe avec le jeton d'un compte), **Test auto** (pytest / vitest, nom du test cité).
+Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
+
+## Tableau
+
+| Test | Exigence (CDC R1) | Mode | Preuve | Résultat |
+|---|---|---|---|---|
+| **T01** | Deux clients, même bien, même instant : une seule réservation, refus explicite pour l'autre | Écran ; Test auto | Awa et Yao cliquent « Réserver ce bien » (A1) simultanément : Yao obtient le blocage, Awa lit « Ce lot n'est plus disponible à la réservation », A1 disparaît de sa liste (captures `f-T01-awa`, `f-T01-yao`). `sales/tests.py::…::test_two_simultaneous_requests_give_exactly_one_hold` | CONFORME |
+| **T02** | Blocage impayé expiré, puis nouvelle réservation | Écran ; Test auto | Awa bloque A2 à 00:51 (échéance 01:51, blocage d'1 h local) sans payer. À 01:53 : « Votre blocage a expiré … le bien a été libéré ; vous pouvez refaire une demande » ; chez le gestionnaire, dossier « Expirée », chronologie « Blocage expiré : bien libéré — Plateforme · action automatique » ; nouvelle demande d'Awa sur A2 acceptée (au clavier) (`f-T02-a…d`). `test_lot2_relais.py::…::test_expiry_notifies_the_client_and_closes_the_call_to_pay`, `test_lot1_coherence.py::…::test_an_expiry_shows_its_date_and_kind` | CONFORME |
+| **T03** | Frais seuls → RESERVED ; COMMITTED après toutes les conditions ; 3 000 000 sans double imputation | Écran ; Test auto | Yao : après les frais rapprochés, « Réservée » ; après un complément partiel, toujours « Réservée » ; après couverture complète et contrat signé, « Concrétisée » (`f-04`, `f-T03`). `sales/tests.py::TestReservationLifecycleT03` | CONFORME |
+| **T04** | Version signée non modifiable ; nouvelle version requise, ancienne consultable | Écran ; Test auto | Contrat signé : seule la commande « Corriger : créer une nouvelle version » est proposée au gestionnaire, la version 1 reste affichée « Signé (simulé) ». `sales/tests.py::TestSignedContractIsImmutableT04` | CONFORME |
+| **T05** | Le constructeur ne peut ni accepter un jalon ni lever une réserve ; refus serveur | Écran ; Test auto | Jalon sous réserve côté BUILD : seule commande « Proposer la correction », explication « Seul le contrôleur lève une réserve » (`f-T05`). `test_audit_ui_r1.py::…::test_t05_the_builder_cannot_decide_a_reserve` | CONFORME |
+| **T06** | Réserve → correction → recontrôle ; acceptation seulement après avis conforme et levée | Écran ; Test auto | Fondations A1 : « Corrections demandées » → « Resoumis » (« Correction proposée — en attente de recontrôle ») → levée explicite + avis conforme → « Accepté techniquement » (`f-06`, `f-07`). `test_audit_ui_r1.py::TestK03ExplicitDecisionPerReserveT06` | CONFORME |
+| **T07** | Pièce remplacée après acceptation : version conservée, nouvelle revue, décaissement bloqué | Test auto (API) | **Vérifié par l'API (test serveur), non rejouable à l'écran** (PO-2026-09-29-06) : BUILD ne propose pas de dépôt sur un jalon accepté. Preuves : `sales/tests.py::…::test_a_document_added_after_acceptance_makes_it_stale_T07`, `sales/tests.py::TestLapsedAcceptanceT07`, `test_audit_ui_r1_step6.py::…::test_a_piece_added_after_acceptance_requires_a_new_review_T07`. Remplacement de pièce à l'écran : **Projet 1** | CONFORME (API) |
+| **T08** | Client qui change l'identifiant d'un dossier : refus sans fuite | API ; Test auto | Jeton d'Awa sur le dossier de Yao : `GET …/worksite/`, `…/payment-calls/`, `…/contracts/` et `POST …/cancel/` → **404** « Pas trouvé », aucun contenu du dossier (`api-checks.json`). `sales/tests.py::…::test_a_client_cannot_cancel_another_clients_reservation`, `…::test_another_client_can_neither_read_nor_sign` | CONFORME |
+| **T09** | Décaissement avec réserve ouverte ou disponible insuffisant : refus, rien d'exécuté | Écran ; Test auto | Finance, Fondations A1 sous réserve : « Décaissement non éligible : jalon non accepté techniquement dans sa version courante ; réserve ouverte sur le lot. » (`f-T09`). `sales/tests.py::…::test_an_open_reserve_blocks_eligibility`, `…::test_an_insufficient_balance_blocks_eligibility_and_never_goes_negative` | CONFORME |
+| **T10** | Requête financière répétée ; deux sorties concurrentes : pas de doublon, contrôle atomique | Test auto | `sales/tests.py::TestReceiptIdempotenceT10`, `TestConcurrentAllocationsT10`, `TestDisbursementIdempotenceT10`, `TestConcurrentEligibilityT10` | CONFORME (test auto) — non rejoué à l'écran |
+| **T11** | Décaissement sans confirmation, rapprochement motivé, absence conservée | Écran ; Test auto | Finance : « Rapprocher sans confirmation » → « Rapproché avec le motif « Confirmation bénéficiaire non reçue » » (`f-08-T11`) ; le constructeur confirme ensuite, au clavier, sa réception (`f-T20-c4`). `test_lot2_relais.py::…::test_reconciliation_without_confirmation_also_closes_it` | CONFORME |
+| **T12** | Versement partiel ou excédentaire | Écran ; Test auto | Complément de Yao : 1 000 000 affectés → appel « Partiellement couvert », dossier toujours « Réservée » ; 2 500 000 reçus, 1 900 000 affectés → « Non affecté 600 000 XOF » (`f-T12-a`, `f-T12-b`). `sales/tests.py::…::test_a_partial_payment_does_not_settle_the_call`, `…::test_an_excess_stays_unallocated_and_is_never_consumed_twice` | CONFORME |
+| **T13** | Identité d'instance et marquage sur écrans, API et export de justificatif | Écran ; API ; Test auto | Bandeau « DÉMONSTRATION — DONNÉES FICTIVES · Instance … » sur chaque écran ; en-têtes `X-Environment: DEMO`, `X-Demo-Instance: DEMO-CI-20260929-6BB7` ; archive : `X-Demo-Instance-View` ; justificatifs bancaires marqués « SIMULÉ — SANS VALEUR OPÉRATIONNELLE ». **Aucun export téléchargeable n'existe** dans le MVP : la partie « export » ne peut pas être vérifiée | PARTIEL (export NOT_TESTED : fonction absente) |
+| **T14** | Réinitialisation après parcours complet : archive consultable, nouvelle instance indépendante, statistiques actives non contaminées | Écran ; Test auto | Archivage par l'écran Administration (code saisi) : `DEMO-CI-20260929-6BB7` archivée, `DEMO-CI-20260929-2655` créée ; pilotage actif à « Non applicable » partout ; archive consultée en lecture seule par le gestionnaire (dossiers d'Awa et de Yao, chronologies de 30 et 47 événements, indicateurs de l'archive étiquetés) (`f-11`, `f-T14-a`, `f-T14-b`). `core/test_lot5_archive.py` (15 tests) | CONFORME |
+| **T15** | Dépôt interdit, trop volumineux ou non analysé ; accès direct au stockage | Écran ; Test auto | Après PO-2026-09-29-05 : `facture.bat` (contenu PDF) → « Format non autorisé : seuls PDF, JPEG et PNG sont acceptés », rien de stocké ; fichier de 10 Mo + 10 o → « Fichier trop volumineux — 10485760 octets maximum. » (`f-T15-facture-bat`, `f-T15-gros-pdf`). `evidence/tests.py::TestDocumentUploadValidation` (dont `test_a_bat_file_with_pdf_content_is_refused_and_not_stored`, `test_extension_declared_type_and_content_must_agree`). **Constat** : avant la décision, pendant ce même rejeu, le serveur avait accepté `facture.bat` comme « Plan d'implantation » du jalon Fondations A1 (règle B-047) ; la pièce reste dans l'archive `DEMO-CI-20260929-6BB7`. Accès direct au stockage : couvert par les tests de lien signé (`evidence/tests.py`), non rejoué | CONFORME |
+| **T16** | Modification/suppression d'événement via l'application ou le compte applicatif : refus, journal intact | API (compte applicatif) ; Test auto | Compte `keya_ecosystem_app` : `UPDATE`/`DELETE` sur `audit_event` et `trust_event` → **0 ligne** touchée (aucune policy RLS d'écriture) ; journal restreint à la période de l'archive, rien supprimé. `trust/tests.py::…::test_append_only_trigger_exists_in_the_database`, `core/test_lot5_archive.py::…::test_journal_intact_and_restricted_to_the_archive_period` | CONFORME |
+| **T17** | Sauvegarde et restauration isolée cohérentes | Exploitation (base) | `pg_dump` de la base jouée → `/root/keya-backups/T17-20260929T011425Z/` (base + fichiers) ; restauration dans la base isolée `keya_restore_check` ; comparaison : dossiers 3, contrats 2, appels 4, encaissements 5 / 6 600 000, décaissements 2 / 2 000 000, déclarations 3, pièces 7, documents 7, réserves 3, `audit_event` 53, `trust_event` 25, instances : **identiques** | CONFORME |
+| **T18** | Changement de version du Country Pack dans une nouvelle instance | Test auto | `pilotage/tests.py::…::test_t18_a_new_version_changes_new_lots_only` (anciennes opérations liées à leur version ; nouveau paramètre effectif sans modification du noyau) ; jeu `DEMO-CI-v2` (modèle CI v2, pièces exigées) | CONFORME (test auto) — non rejoué à l'écran |
+| **T19** | Parcours avec réserve puis sans réserve, sans intervention en base ; HOME et indicateurs reflètent les événements | Écran | Parcours principal (Yao, A1, avec réserve) et alternatif (Awa, A2, sans réserve), étapes 1 à 11, par l'interface seule ; espace client à jour (`f-09`, `f-alt-concretise`) ; pilotage : jalons examinés 3 / 3, entrées 5 / 5, sorties 1 / 2, réserves 1 ouverte / 1 levée, pièces 7 / 11 (`f-10`). **Réserves** : le script de rejeu a dû être repris plusieurs fois (sélecteurs) ; un utilisateur non technicien n'a pas rejoué le parcours | CONFORME (hors « utilisateur non technicien » : NOT_TESTED) |
+| **T20** | Mobile et clavier : actions essentielles accessibles, erreurs compréhensibles, pas de débordement | Écran (clavier seul, 375 px) | Cliente : connexion, réservation, case « J'ai lu cette version », signature, deux virements signalés, suivi — focus visible à chaque étape (contour 2 px, ou anneau natif pour case et lien), aucun débordement. Constructeur : connexion, déclaration, choix de la pièce exigée, fichier, correction, confirmation de réception — idem. Erreurs de dépôt lisibles (T15). Corrigés pendant le rejeu : message d'erreur BUILD (« Échec de la requête … (400) »), carte « Paiements reçus » coupée à 375 px. Reste : après « Confirmer la réception », le focus retombe sur la page (P2) | CONFORME (P2 noté) |
+
+## Résultat des suites
+
+- Backend : **728 passés**, 0 échec (suite complète, `pytest --create-db`, après la décision PO-2026-09-29-05).
+- Front : web 352, BUILD 112, HOME 141, Contrôle 88 (+2 ignorés, mode hors ligne différé, PO-37/PO-58), design system 246 ; `tsc` sans erreur sur les 5 espaces.
+
+## Constats du rejeu (corrigés pendant la vérification)
+
+1. BUILD affichait « Échec de la requête /api/documents/ (400) » au lieu du message du serveur — corrigé, test ajouté.
+2. BUILD « Paiements reçus » listait un paiement d'une instance archivée — corrigé (instance active seulement, A6), test ajouté.
+3. BUILD « Paiements reçus » : cartes coupées à 375 px — corrigé.
+4. T15 : règle de dépôt alignée sur le CDC §10 (PO-2026-09-29-05) — tests adaptés et ajoutés.
+
+## Constats ouverts
+
+- **Ordre du scénario non imposé** : le constructeur a pu déclarer le jalon Fondations A2 et y déposer une pièce **avant** l'examen du dossier d'Awa ; le décaissement a eu lieu avant la concrétisation. Le serveur n'impose pas que le dossier soit concrétisé avant le chantier. À arbitrer.
+- **T13 export** : aucune fonction d'export de justificatif n'existe ; à décider (fonction à ajouter ou exigence reportée).
+- **Pièce `.bat` acceptée avant PO-2026-09-29-05**, présente dans l'archive `DEMO-CI-20260929-6BB7` (Fondations A1, « Plan d'implantation »).
+- **Focus après action** (T20, P2) : après « Confirmer la réception », le focus n'est placé sur aucun élément.
+- **Revue indépendante §11** : à organiser.

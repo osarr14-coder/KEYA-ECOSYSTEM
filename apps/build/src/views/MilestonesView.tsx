@@ -6,6 +6,7 @@ import {
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
+import { ApiError } from '../api/client';
 import type { LotMilestone, MilestoneReserve, RequiredPiece } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 
@@ -17,7 +18,20 @@ import { useApiResource } from '../api/useApiResource';
  * réserve, acceptation), jamais décidé ici.
  */
 
+/** Vérification finale (T15, T20) : le message du SERVEUR (format refusé,
+ * fichier trop volumineux, pièce non exigée…), jamais « Échec de la requête
+ * /api/documents/ (400) ». */
 function errorMessage(caught: unknown, fallback: string) {
+  if (caught instanceof ApiError) {
+    if (caught.detail) return caught.detail;
+    if (caught.body && typeof caught.body === 'object') {
+      const messages = Object.values(caught.body as Record<string, unknown>)
+        .flat()
+        .filter((value): value is string => typeof value === 'string');
+      if (messages.length > 0) return messages.join(' ');
+    }
+    return fallback;
+  }
   return caught instanceof Error && caught.message ? caught.message : fallback;
 }
 

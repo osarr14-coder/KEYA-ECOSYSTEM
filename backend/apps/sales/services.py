@@ -1610,7 +1610,10 @@ def list_disbursements_as_beneficiary(*, caller_organization_id):
     try:
         for organization_id in rows:
             set_rls_context(organization_id=organization_id)
+            # Vérification finale (A6, PO-2026-09-29-01) : le constructeur ne
+            # voit que l'instance active, jamais les sorties d'une archive.
             results.extend(Disbursement.objects.select_related(*_DISBURSEMENT_RELATIONS).filter(
+                active_scope('program__'),
                 organization_id=organization_id, beneficiary_organization_id=caller_organization_id,
                 status=DisbursementStatus.EXECUTED_SIM,
             ))

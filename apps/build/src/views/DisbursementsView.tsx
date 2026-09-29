@@ -5,6 +5,7 @@ import {
 } from '@keya/design-system';
 
 import { useApiClient } from '../api/ApiClientContext';
+import { ApiError } from '../api/client';
 import type { ReceivedDisbursement } from '../api/types';
 import { useApiResource } from '../api/useApiResource';
 
@@ -38,7 +39,10 @@ function DisbursementCard({
       await api.confirmDisbursement(disbursement.id);
       onConfirmed();
     } catch (caught) {
-      setError(caught instanceof Error && caught.message ? caught.message : 'Échec de la confirmation.');
+      setError(
+        caught instanceof ApiError && caught.detail ? caught.detail
+          : caught instanceof Error && caught.message ? caught.message : 'Échec de la confirmation.',
+      );
       setConfirming(false);
     }
   }
@@ -110,7 +114,9 @@ export function DisbursementsView() {
       {state.status === 'success' && state.data.length > 0 && (
         <ul
           style={{
-            listStyle: 'none', padding: 0, margin: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px',
+            // Vérification finale (T20) : à 375 px, une colonne pleine largeur au
+            // lieu d'une carte de 340 px coupée à droite.
+            listStyle: 'none', padding: 0, margin: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: '16px',
           }}
         >
           {state.data.map((disbursement) => (

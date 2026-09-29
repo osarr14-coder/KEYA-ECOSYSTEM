@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { LotMilestone, LotRow } from '../api/types';
+import { ApiError } from '../api/client';
 import { createMockApiClient, withApiClient } from '../testUtils';
 import { MilestonesView, focusMilestone } from './MilestonesView';
 
@@ -101,6 +102,22 @@ describe('MilestonesView — jalons côté constructeur (ticket F-069)', () => {
       workDeclarationId: 'declaration-1', file: PDF, category: 'preuve_chantier', source: 'control_tower_upload',
       requiredPiece: 'photo_fouilles',
     }));
+  });
+
+  it('vérification finale (T15) : un dépôt refusé affiche le message du serveur, pas le code HTTP', async () => {
+    const addEvidenceDocument = vi.fn().mockRejectedValue(new ApiError(
+      400, 'Échec de la requête /api/documents/ (400)', undefined,
+      { file: ['Format de fichier non supporté — seuls PDF, JPEG et PNG sont acceptés.'] },
+    ));
+    renderView([milestone({
+      status: 'awaiting_documents', status_label: 'Déclaré — pièce à joindre', work_declaration_id: 'declaration-1',
+    })], { addEvidenceDocument });
+
+    fireEvent.change(await screen.findByLabelText('Pièce pour Fondations'), { target: { files: [PDF] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Joindre la pièce' }));
+
+    expect(await screen.findByText('Format de fichier non supporté — seuls PDF, JPEG et PNG sont acceptés.')).toBeInTheDocument();
+    expect(screen.queryByText(/Échec de la requête/)).not.toBeInTheDocument();
   });
 
   it('sous réserve : propose une correction rattachée à la nouvelle pièce, sans jamais lever la réserve', async () => {

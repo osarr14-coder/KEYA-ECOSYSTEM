@@ -1,8 +1,11 @@
 """Validation d'upload de documents — tickets B-046 puis B-047 (durcissement
-après revue indépendante). Vérifie le CONTENU réel du fichier, jamais le
-`Content-Type` déclaré ni l'extension du nom (tous deux choisis par le
-client) : magic bytes `%PDF-` pour un PDF, décodage Pillow réel pour une
-image JPEG/PNG.
+après revue indépendante). Vérifie le CONTENU réel du fichier : magic bytes
+`%PDF-` pour un PDF, décodage Pillow réel pour une image JPEG/PNG.
+
+PO-2026-09-29-05 (T15, CDC §10) : l'extension du nom et le `Content-Type`
+déclaré, choisis par le client, ne suffisent jamais seuls — mais ils doivent
+CONCORDER avec le contenu réel ; sinon le dépôt est refusé. Le nom stocké
+reste neutralisé (`document.<type détecté>`).
 """
 
 from django.core.exceptions import ValidationError
@@ -30,10 +33,16 @@ EXTENSION_BY_KIND = {'pdf': 'pdf', 'jpeg': 'jpg', 'png': 'png'}
 # capteurs 48/50 Mpx. PNG décodé en pleine résolution, d'où 25 Mpx.
 MAX_PIXELS_BY_KIND = {'jpeg': 50_000_000, 'png': 25_000_000}
 
-UNSUPPORTED_FORMAT_MESSAGE = (
-    'Format de fichier non supporté — seuls PDF, JPEG et PNG sont acceptés '
-    '(vérifié par le contenu réel, pas par le nom ou le type déclaré).'
-)
+# PO-2026-09-29-05 (T15, CDC §10, révise la règle du ticket B-047) : un
+# dépôt n'est accepté que si l'EXTENSION du nom, le TYPE déclaré et le
+# CONTENU réel concordent ; tout autre cas est refusé, sans stockage.
+UNSUPPORTED_FORMAT_MESSAGE = 'Format non autorisé : seuls PDF, JPEG et PNG sont acceptés'
+KIND_BY_EXTENSION = {'pdf': 'pdf', 'jpg': 'jpeg', 'jpeg': 'jpeg', 'png': 'png'}
+DECLARED_TYPES_BY_KIND = {
+    'pdf': frozenset({'application/pdf'}),
+    'jpeg': frozenset({'image/jpeg', 'image/jpg', 'image/pjpeg'}),
+    'png': frozenset({'image/png'}),
+}
 CORRUPTED_IMAGE_MESSAGE = 'Image illisible ou corrompue.'
 UPLOAD_TOO_LARGE_MESSAGE = f'Fichier trop volumineux — {MAX_UPLOAD_SIZE_BYTES} octets maximum.'
 
@@ -57,12 +66,26 @@ def detect_document_kind(uploaded_file):
         uploaded_file.seek(0)
 
 
+def expected_kind(uploaded_file):
+    """Type attendu d'après l'extension ET le type déclaré, `None` s'ils ne
+    désignent pas le même format autorisé (PO-2026-09-29-05)."""
+    name = (getattr(uploaded_file, 'name', '') or '').lower()
+    extension = name.rsplit('.', 1)[-1] if '.' in name else ''
+    kind = KIND_BY_EXTENSION.get(extension)
+    declared = (getattr(uploaded_file, 'content_type', '') or '').split(';')[0].strip().lower()
+    if kind is None or declared not in DECLARED_TYPES_BY_KIND[kind]:
+        return None
+    return kind
+
+
 def validate_document_file(uploaded_file):
     if uploaded_file.size > MAX_UPLOAD_SIZE_BYTES:
         raise ValidationError(UPLOAD_TOO_LARGE_MESSAGE)
 
+    # PO-2026-09-29-05 : extension, type déclaré et contenu réel concordent.
+    expected = expected_kind(uploaded_file)
     kind = detect_document_kind(uploaded_file)
-    if kind is None:
+    if expected is None or kind is None or kind != expected:
         raise ValidationError(UNSUPPORTED_FORMAT_MESSAGE)
     if kind in IMAGE_KINDS:
         _validate_image(uploaded_file, kind)

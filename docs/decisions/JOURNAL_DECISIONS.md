@@ -166,6 +166,13 @@ Auteur : Claude Code, par délégation du PO ; révisables par le PO à tout mom
 | PO-2026-09-29-03 | Archivage depuis l'Administration (étape 11) | Écran « Instances » de l'administrateur : « Archiver et créer une nouvelle instance », confirmation par **saisie du code** de l'instance. Route authentifiée réservée à l'administrateur. La nouvelle instance reçoit le jeu versionné (programme, biens, jalons, pièces exigées) ; les 7 comptes de démonstration sont communs aux instances et **ne sont pas modifiés** (mots de passe inchangés). Opération inscrite au journal (archivage et création). L'archivage devient la voie normale ; la réinitialisation complète reste un recours d'exploitation. | Claude Code (délégation PO) | Serveur, back-office, procédure T14 — lot 5. |
 | PO-2026-09-29-04 | Rétention (A6) : mise en œuvre | Date de fin de campagne en paramètre (`DEMO_CAMPAIGN_END`, vide = non fixée). Chaque archive affiche sa date de fin de conservation (fin de campagne + 90 jours) ; une commande de contrôle liste les archives échues et l'inscrit au journal. **La suppression effective n'est pas automatisée** : elle touche des journaux protégés contre toute suppression (triggers) et relève d'une opération d'exploitation privilégiée, avec sauvegarde, suivant une procédure tracée (§10). Écart au mot « suppression tracée » d'A6, assumé et soumis au PO. | Claude Code (délégation PO) | Serveur, procédure — lot 5. |
 
+## 29 septembre 2026 — vérification finale, décisions du Product Owner
+
+| ID | Sujet | Décision | Auteur | Portée |
+|---|---|---|---|---|
+| PO-2026-09-29-05 | T15 — contrôle des dépôts (révise la règle du ticket B-047) | Le **CDC §10 prime** sur la règle B-047 (nom neutralisé, contenu seul vérifié). Un fichier n'est accepté que si l'**extension** (pdf, jpg, jpeg, png), le **type déclaré** et le **contenu réel** concordent. Tout autre cas est refusé avec le message « Format non autorisé : seuls PDF, JPEG et PNG sont acceptés », **sans stockage**. Le test existant est adapté en citant cette décision ; le cas `facture.bat` au contenu PDF est ajouté. | Product Owner | Serveur (dépôt de pièces) — vérification finale. |
+| PO-2026-09-29-06 | T07 — pièce remplacée après acceptation | **Pas de modification de BUILD.** Fiche de réception : « vérifié par l'API (test serveur), non rejouable à l'écran », avec la preuve. Le remplacement de pièce à l'écran est noté pour le **Projet 1**. | Product Owner | Fiche T01–T20 ; Projet 1. |
+
 ## En attente d'arbitrage (mis à jour le 27 septembre 2026)
 
 | Sujet | Question au PO |

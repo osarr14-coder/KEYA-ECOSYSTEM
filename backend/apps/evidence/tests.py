@@ -616,23 +616,45 @@ class TestDocumentUploadValidation:
         assert payload not in stored_bytes
         assert stored_bytes != smuggled
 
-    def test_the_stored_extension_comes_from_the_detected_type_never_from_the_client(self):
-        """B-047 — un `facture.bat` commençant par `%PDF-` était stocké (et
-        téléchargé) en `.bat`."""
-        client, _organization, _user, _milestone = _setup_org('upload-bat@example.com', 'Org Upload Bat')
+    def test_a_bat_file_with_pdf_content_is_refused_and_not_stored(self):
+        """Adapté selon PO-2026-09-29-05 (T15, CDC §10 — révise la règle du
+        ticket B-047, qui acceptait ce fichier en le renommant `.pdf`) : un
+        `facture.bat` au contenu PDF est REFUSÉ, avec un message clair, sans
+        stockage."""
+        client, organization, _user, _milestone = _setup_org('upload-bat@example.com', 'Org Upload Bat')
         disguised = SimpleUploadedFile('facture.bat', b'%PDF-\r\ncalc.exe', content_type='application/pdf')
         response = _upload_document(client, upload_file=disguised)
-        assert response.status_code == 201
-        stored_name = Document.objects.get(id=response.data['id']).file.name
-        assert stored_name.endswith('.pdf')
-        assert '.bat' not in stored_name
+        assert response.status_code == 400
+        assert str(response.data['file'][0]) == 'Format non autorisé : seuls PDF, JPEG et PNG sont acceptés'
+        set_rls_context(organization_id=organization.id)
+        assert not Document.objects.filter(organization=organization).exists()
 
-    def test_an_image_declared_as_pdf_is_still_processed(self):
-        """B-047 — le ré-encodage (qui retire aussi les métadonnées EXIF/GPS)
-        se déclenche sur le type DÉTECTÉ, plus sur le Content-Type déclaré."""
-        client, _organization, _user, _milestone = _setup_org('upload-png-as-pdf@example.com', 'Org Upload PNG As PDF')
-        lying = SimpleUploadedFile('photo.pdf', _real_image_bytes('PNG'), content_type='application/pdf')
-        response = _upload_document(client, upload_file=lying)
+    def test_extension_declared_type_and_content_must_agree(self):
+        """PO-2026-09-29-05 : chaque discordance est refusée, sans stockage."""
+        client, organization, _user, _milestone = _setup_org('upload-agree@example.com', 'Org Upload Agree')
+        png = _real_image_bytes('PNG')
+        cases = [
+            ('photo.pdf', png, 'application/pdf'),         # contenu PNG, extension et type PDF
+            ('photo.png', png, 'application/pdf'),         # type déclaré discordant
+            ('photo.jpg', png, 'image/jpeg'),              # contenu PNG sous nom et type JPEG
+            ('piece.pdf', b'%PDF-1.4\n%x\n', 'image/png'),  # type déclaré discordant
+            ('piece', b'%PDF-1.4\n%x\n', 'application/pdf'),  # sans extension
+            ('piece.PDF.exe', b'%PDF-1.4\n%x\n', 'application/pdf'),
+        ]
+        for name, body, content_type in cases:
+            response = _upload_document(client, upload_file=SimpleUploadedFile(name, body, content_type=content_type))
+            assert response.status_code == 400, name
+            assert str(response.data['file'][0]) == 'Format non autorisé : seuls PDF, JPEG et PNG sont acceptés', name
+        set_rls_context(organization_id=organization.id)
+        assert not Document.objects.filter(organization=organization).exists()
+
+    def test_a_png_declared_as_png_is_processed(self):
+        """Adapté selon PO-2026-09-29-05 : l'ancien cas « PNG déclaré PDF »
+        (B-047) est désormais refusé ; un PNG déclaré PNG est ré-encodé (ce qui
+        retire aussi les métadonnées EXIF/GPS)."""
+        client, _organization, _user, _milestone = _setup_org('upload-png-as-png@example.com', 'Org Upload PNG As PNG')
+        honest = SimpleUploadedFile('photo.png', _real_image_bytes('PNG'), content_type='image/png')
+        response = _upload_document(client, upload_file=honest)
         assert response.status_code == 201
         assert Document.objects.get(id=response.data['id']).thumbnail.name
 

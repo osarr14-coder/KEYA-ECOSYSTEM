@@ -100,6 +100,18 @@ class TestArchiveFromAdministration:
 
 @pytest.mark.django_db
 class TestT14NewInstanceIsBlank:
+    def test_the_builder_no_longer_sees_the_payments_of_an_archive(self):
+        """Vérification finale : « Paiements reçus » listait encore une sortie
+        de l'instance archivée."""
+        from apps.sales.tests import _disbursement_scenario, _executed_disbursement
+
+        s = _disbursement_scenario()
+        _executed_disbursement(s)
+        assert len(s['constructeur'].get(reverse('beneficiary-disbursement-list')).data) == 1
+        DemoInstance.objects.create(code='DEMO-CI-TEST-ACTIVE', dataset_version='DEMO-CI-v2')
+
+        assert s['constructeur'].get(reverse('beneficiary-disbursement-list')).data == []
+
     def test_active_screens_and_indicators_start_again(self):
         _promoter, reservation_id, _declaration = _played_instance()
         _archive()
