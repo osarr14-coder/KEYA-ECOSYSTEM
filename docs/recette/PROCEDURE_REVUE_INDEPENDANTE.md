@@ -239,6 +239,8 @@ pour T19.
 
 ## 8. Grille du relecteur (à remplir)
 
+Le PO transmet aussi au relecteur une page « Revue indépendante R1 » qui reprend cette procédure avec la même grille, **remplissable en ligne** : chaque saisie y est enregistrée avec l'identité de la personne qui l'a faite, la signature du relecteur et le visa du PO (réservé au propriétaire de la page) y sont datés, et la grille se télécharge en Markdown. L'une ou l'autre forme fait foi ; la version téléchargée est jointe à l'inscription au journal.
+
 | | |
 |---|---|
 | Relecteur (nom, compte GitHub, rôle) | |
