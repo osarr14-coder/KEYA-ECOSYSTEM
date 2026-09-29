@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
+from apps.sales.testing import commit_lot
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 from apps.pricing.models import ControlOfficeCalculationMode, PricingCanal
 from apps.pricing import services as pricing_services
@@ -62,6 +63,7 @@ def _setup_constructeur_org(email, organization_name):
     lot = Lot.objects.create(organization=organization, asset=asset, name='Lot')
     instantiate_milestones_for_lot(lot)
     milestone = lot.milestones.first()
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=user)
 
     return client, organization, user, lot, declaration
@@ -1864,6 +1866,7 @@ def _create_mission_for_lot(*, admin_client, admin_user, admin_org, sponsor_org,
     if not lot.milestones.exists():
         instantiate_milestones_for_lot(lot)
     milestone = lot.milestones.get(code=milestone_code)
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declaration = create_work_declaration(organization=sponsor_org, milestone=milestone, declared_by=admin_user)
     set_rls_context(organization_id=admin_org.id)
 

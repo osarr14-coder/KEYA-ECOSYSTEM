@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
+from apps.sales.testing import commit_lot
 from apps.messaging.services import create_message
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
@@ -54,6 +55,7 @@ def _setup_constructeur_org(email, organization_name):
     lot = Lot.objects.create(organization=organization, asset=asset, name='Lot')
     instantiate_milestones_for_lot(lot)
     milestone = lot.milestones.first()
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=user)
     return client, organization, user, lot, declaration
 
@@ -264,6 +266,7 @@ class TestDeactivateUserBlocksAccessImmediatelyWithoutDeletingData:
         lot = Lot.objects.create(organization=organization, asset=asset, name='Lot')
         instantiate_milestones_for_lot(lot)
         milestone = lot.milestones.first()
+        commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
         declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=target_user)
         message = create_message(subject=lot, author=target_user, body='Message avant désactivation')
         return target_client, organization, target_user, declaration, message

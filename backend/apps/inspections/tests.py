@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
+from apps.sales.testing import commit_lot
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
@@ -60,6 +61,7 @@ def _setup_constructeur_org(email, organization_name):
     instantiate_milestones_for_lot(lot)
     milestone = lot.milestones.first()
 
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=user)
     # PO-2026-09-28-13 (K01) : une déclaration prête à être inspectée porte
     # au moins une pièce soumise ; un avis sans pièce est refusé.

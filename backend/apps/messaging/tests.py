@@ -11,6 +11,7 @@ from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.models import Document, SensitivityLevel
 from apps.evidence.services import create_document, create_work_declaration
+from apps.sales.testing import commit_lot
 from apps.inspections.models import InspectionOutcome
 from apps.inspections.testing import assign_mission, designated_pieces, submit_evidence
 from apps.messaging.models import Message
@@ -52,6 +53,7 @@ def _setup_constructeur_org(email, organization_name):
     lot = Lot.objects.create(organization=organization, asset=asset, name='Lot')
     instantiate_milestones_for_lot(lot)
     milestone = lot.milestones.first()
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=user)
     # PO-2026-09-28-13 (K01) : une déclaration prête à être inspectée porte
     # au moins une pièce soumise ; un avis sans pièce est refusé.

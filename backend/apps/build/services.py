@@ -282,6 +282,14 @@ def build_lot_rows(organization):
         .order_by('name'),
     )
     lot_ids = [lot.id for lot in lots]
+    # PO-2026-09-29-09 : lots dont le dossier est concrétisé (chantier
+    # ouvert), en une requête — lots de l'organisation active, sous sa RLS.
+    from apps.sales.models import Reservation, ReservationStatus
+
+    committed_lot_ids = set(
+        Reservation.objects.filter(lot_id__in=lot_ids, status=ReservationStatus.COMMITTED)
+        .values_list('lot_id', flat=True),
+    )
 
     milestone_counts = dict(
         Milestone.objects.filter(lot_id__in=lot_ids)
@@ -326,7 +334,7 @@ def build_lot_rows(organization):
             }
             for milestone in milestones_by_lot.get(lot.id, [])
         ]
-        next_step, next_actor = lot_next_step(gauge)
+        next_step, next_actor = lot_next_step(gauge, chantier_open=lot.id in committed_lot_ids)
         rows.append({
             'id': str(lot.id),
             'name': lot.name,
@@ -360,6 +368,11 @@ def lot_milestone_rows(organization, lot_id):
     lot = Lot.objects.filter(id=lot_id, organization=organization).first()
     if lot is None:
         return None
+    from apps.sales.services import CHANTIER_NOT_OPEN_MESSAGE, lot_chantier_is_open
+
+    # PO-2026-09-29-09 : le constructeur lit pourquoi il ne peut pas encore
+    # déclarer (même règle que le serveur, jamais recalculée côté écran).
+    chantier_open = lot_chantier_is_open(lot_id=lot.id, lot_organization_id=lot.organization_id)
     identity_cache = {}
     rows = []
     for milestone in lot.milestones.order_by('order'):
@@ -384,6 +397,8 @@ def lot_milestone_rows(organization, lot_id):
             'reserve_id': str(reserve.id) if reserve else None,
             'correction_submitted': state['correction_submitted'],
             'control_scheduled': state['pending_mission'] is not None,
+            'chantier_open': chantier_open,
+            'chantier_hint': '' if chantier_open else CHANTIER_NOT_OPEN_MESSAGE,
             # PO-2026-09-28-63 : pièces exigées et leur présence (jamais une
             # conformité) ; le constructeur désigne la pièce au dépôt.
             'required_pieces': inspections_services.milestone_required_pieces(milestone, state['declaration']),

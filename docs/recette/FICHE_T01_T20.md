@@ -12,7 +12,7 @@
 | Date | 29 septembre 2026, 00:50 → 02:10 (GMT) |
 | Environnement | Pile **locale** uniquement (Render non touché). Blocage d'**1 h** pour T02 (arbitrage A7, local seulement), **remis à 24 h** à la fin |
 | Outillage | Interface seule (Playwright, comptes de démonstration, clavier seul pour T20), API (jeton du compte concerné), suites automatisées |
-| Suites | Backend : 728 passés ; front : web 352, BUILD 113, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
+| Suites | Backend : 736 passés ; front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
 | Relecteur | **À désigner** (revue indépendante §11) |
 
 Légende des modes : **Écran** (rejoué par l'interface, sans intervention en base), **API** (requête
@@ -46,8 +46,8 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 
 ## Résultat des suites
 
-- Backend : **728 passés**, 0 échec (suite complète, `pytest --create-db`, après la décision PO-2026-09-29-05).
-- Front : web 352, BUILD 113, HOME 141, Contrôle 88 (+2 ignorés, mode hors ligne différé, PO-37/PO-58), design system 246 ; `tsc` sans erreur sur les 5 espaces.
+- Backend : **736 passés**, 0 échec (suite complète, `pytest --create-db`, après PO-2026-09-29-09 ; 728 après PO-2026-09-29-05).
+- Front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés, mode hors ligne différé, PO-37/PO-58), design system 246 ; `tsc` sans erreur sur les 5 espaces.
 
 ## Constats du rejeu (corrigés pendant la vérification)
 
@@ -56,8 +56,8 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 3. BUILD « Paiements reçus » : cartes coupées à 375 px — corrigé.
 4. T15 : règle de dépôt alignée sur le CDC §10 (PO-2026-09-29-05) — tests adaptés et ajoutés.
 5. T20 (P2) : focus perdu après « Confirmer la réception » — corrigé à la demande du PO, test ajouté (BUILD 113).
+6. Ordre du scénario (PO-2026-09-29-09) : pendant le rejeu, le constructeur avait déclaré Fondations A2 et déposé une pièce avant l'examen du dossier d'Awa, puis avait été payé avant la concrétisation. Désormais le serveur refuse toute déclaration de jalon tant que le dossier du lot n'est pas concrétisé ; BUILD affiche le motif. Tests : `build/test_ordre_scenario.py` (8) ; vérifié sur l'instance locale active (lots A1/A2 sans dossier) : motif affiché, aucun bouton, requête de déclaration refusée (400), rien de créé (`o-1440-jalon-ferme`, `o-375-jalon-ferme`). Le chemin « dossier concrétisé puis déclaration » est couvert par les tests automatisés, non rejoué à l'écran.
 
 ## Constats ouverts
 
-- **Ordre du scénario non imposé** : le constructeur a pu déclarer le jalon Fondations A2 et y déposer une pièce **avant** l'examen du dossier d'Awa ; le décaissement a eu lieu avant la concrétisation. Le serveur n'impose pas que le dossier soit concrétisé avant le chantier. À arbitrer.
 - **Revue indépendante §11** : à organiser.

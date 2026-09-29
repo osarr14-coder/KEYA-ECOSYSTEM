@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_document, create_evidence, create_work_declaration
+from apps.sales.testing import commit_lot
 from apps.home.services import compute_milestone_status, get_latest_notable_event
 from apps.inspections.models import InspectionOutcome
 from apps.inspections.services import create_inspection, get_reserve_status
@@ -83,6 +84,7 @@ def _assign_client_to_lot(email, organization, lot):
 
 def _declare_and_document_first_milestone(organization, lot, constructeur):
     milestone = lot.milestones.order_by('order').first()
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declaration = create_work_declaration(organization=organization, milestone=milestone, declared_by=constructeur)
 
     text_file = SimpleUploadedFile('rapport.txt', b'contenu du rapport', content_type='text/plain')
@@ -303,6 +305,7 @@ class TestTrustEventOrderingTieBreak:
             'home-tiebreak-milestone-constructeur@example.com', 'Org Home Tiebreak Milestone',
         )
         milestone = lot.milestones.order_by('order').first()
+        commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
         declaration = create_work_declaration(
             organization=organization, milestone=milestone, declared_by=constructeur,
         )
@@ -327,6 +330,7 @@ class TestTrustEventOrderingTieBreak:
             'home-tiebreak-lot-constructeur@example.com', 'Org Home Tiebreak Lot',
         )
         milestone = lot.milestones.order_by('order').first()
+        commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
         declaration = create_work_declaration(
             organization=organization, milestone=milestone, declared_by=constructeur,
         )
@@ -427,6 +431,7 @@ class TestEvidenceFeed:
         milestones = list(lot.milestones.order_by('order'))
         first_milestone, second_milestone = milestones[0], milestones[1]
 
+        commit_lot(first_milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
         declaration_1 = create_work_declaration(
             organization=organization, milestone=first_milestone, declared_by=constructeur,
         )
@@ -439,6 +444,7 @@ class TestEvidenceFeed:
             organization=organization, work_declaration=declaration_1, documents=[document_1], added_by=constructeur,
         )
 
+        commit_lot(second_milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
         declaration_2 = create_work_declaration(
             organization=organization, milestone=second_milestone, declared_by=constructeur,
         )

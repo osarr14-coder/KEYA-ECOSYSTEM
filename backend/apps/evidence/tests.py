@@ -15,6 +15,7 @@ from apps.core.rls import set_rls_context
 from apps.organizations.models import CountryPack, Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
 from apps.programs.services import instantiate_milestones_for_lot
+from apps.sales.testing import commit_lot
 from apps.trust.models import TrustEvent, TrustLevel
 
 from . import access
@@ -56,6 +57,9 @@ def _setup_org(email, organization_name, role_code='sponsor'):
     lot = Lot.objects.create(organization=organization, asset=asset, name='Lot')
     instantiate_milestones_for_lot(lot)
     milestone = lot.milestones.first()
+    # PO-2026-09-29-09 : le chantier ne s'ouvre qu'après la concrétisation
+    # du dossier ; ces tests portent sur les pièces, pas sur la vente.
+    commit_lot(lot)
 
     return client, organization, user, milestone
 

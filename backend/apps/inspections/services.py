@@ -946,9 +946,17 @@ def milestone_gauge_rows(lot):
     return rows
 
 
-def lot_next_step(milestone_rows):
+CHANTIER_NOT_OPEN_STEP = ('Concrétisation du dossier (chantier non ouvert)', 'Gestionnaire (dossier de vente)')
+
+
+def lot_next_step(milestone_rows, chantier_open=True):
     """Prochaine étape d'un lot à partir de ses jalons ordonnés
-    (`cdc_state`, `label`, `control_scheduled`)."""
+    (`cdc_state`, `label`, `control_scheduled`). PO-2026-09-29-09 : tant
+    que le dossier du lot n'est pas concrétisé, aucun jalon ne se déclare ;
+    la prochaine étape est la concrétisation (un chantier déjà commencé
+    avant cette règle garde sa prochaine étape de chantier)."""
+    if not chantier_open and all(row['cdc_state'] == CDC_DRAFT for row in milestone_rows):
+        return CHANTIER_NOT_OPEN_STEP
     for row in milestone_rows:
         if row['cdc_state'] != CDC_TECHNICALLY_ACCEPTED:
             return milestone_next_step(row['label'], row['cdc_state'], row.get('control_scheduled', False))

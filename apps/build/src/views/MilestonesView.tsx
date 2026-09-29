@@ -348,7 +348,12 @@ function MilestoneDetail({
       </div>
 
       {pieces.length > 0 && <RequiredPieces pieces={pieces} declared={milestone.status !== 'not_declared'} />}
-      {milestone.status === 'not_declared' && (
+      {milestone.status === 'not_declared' && milestone.chantier_open === false && (
+        // PO-2026-09-29-09 : pas de déclaration avant la concrétisation du
+        // dossier ; le motif vient du serveur, qui refuse aussi la requête.
+        <p data-testid="chantier-closed" style={{ margin: 0 }}>{milestone.chantier_hint}</p>
+      )}
+      {milestone.status === 'not_declared' && milestone.chantier_open !== false && (
         <div>
           <p style={{ margin: '0 0 10px' }}>Déclarez ce jalon dès que les travaux sont terminés, puis joignez au moins une pièce.</p>
           <Button type="button" variant="accent" onClick={() => { void declare(); }} disabled={declaring}>

@@ -17,6 +17,7 @@ from apps.programs.models import Lot
 
 from . import services
 from .models import ContractVersion, Reservation, ReservationStatus
+from .testing import commit_lot
 
 PASSWORD = 'strongpass123'
 PRICE = '30000000.00'
@@ -642,6 +643,7 @@ def _accept_milestone(promoter, lot_id, code, outcome='conforme'):
     _inspector_client, inspector, inspector_org = _register('inspecteur')
     set_rls_context(organization_id=promoter.id)
     milestone = Milestone.objects.get(lot_id=lot_id, code=code)
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declaration = create_work_declaration(organization=promoter, milestone=milestone, declared_by=inspector)
     # PO-2026-09-28-13 (K01) : un avis désigne au moins une pièce soumise.
     _add_evidence(promoter, declaration, inspector)
@@ -1053,6 +1055,7 @@ def _accept_with_evidence(promoter, lot_id, code, author, outcome='conforme'):
     _inspector_client, inspector, inspector_org = _register('inspecteur')
     set_rls_context(organization_id=promoter.id)
     milestone = Milestone.objects.get(lot_id=lot_id, code=code)
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declaration = create_work_declaration(organization=promoter, milestone=milestone, declared_by=author)
     _add_evidence(promoter, declaration, author)
     create_inspection(

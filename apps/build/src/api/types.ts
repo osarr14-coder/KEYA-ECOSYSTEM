@@ -176,6 +176,10 @@ export interface LotMilestone {
   /** PO-2026-09-28-63 : pièces exigées du jalon (Country Pack versionné) et
    * leur présence sur la déclaration courante — jamais une conformité. */
   required_pieces?: RequiredPiece[];
+  /** PO-2026-09-29-09 : le chantier du lot n'est ouvert qu'après la
+   * concrétisation de son dossier ; `chantier_hint` explique le refus. */
+  chantier_open?: boolean;
+  chantier_hint?: string;
 }
 
 export interface RequiredPiece {

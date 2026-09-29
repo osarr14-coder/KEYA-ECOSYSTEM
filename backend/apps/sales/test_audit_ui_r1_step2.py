@@ -169,11 +169,11 @@ class TestPO18PlannedDatesAndManagerIssuedCalls:
     def test_a_technical_acceptance_never_creates_a_client_call(self):
         from apps.sales.models import PaymentCall
 
-        _builder, promoter, _milestone, _declaration_id, _evidence_id, _doc, mission_id = _declared_foundations()
-        client = _login(CLIENT)
-        lot = Lot.objects.get(organization=promoter, name='Lot A1')
-        reservation = client.post(reverse('reservation-create'), {'lot': str(lot.id), 'organization': str(promoter.id)}, format='json')
-        assert reservation.status_code == 201, reservation.data
+        # PO-2026-09-29-09 : le client réserve avant le chantier ; son
+        # dossier est concrétisé avant la déclaration.
+        _builder, promoter, _milestone, _declaration_id, _evidence_id, _doc, mission_id = _declared_foundations(
+            client_email=CLIENT,
+        )
         from apps.core.rls import set_rls_context
 
         set_rls_context(organization_id=promoter.id)

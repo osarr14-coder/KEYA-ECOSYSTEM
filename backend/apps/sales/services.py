@@ -277,6 +277,27 @@ def cancel_reservation_as_client(*, client, caller_organization_id, reservation_
     return reservation
 
 
+CHANTIER_NOT_OPEN_MESSAGE = (
+    'Chantier non ouvert : le dossier de ce lot n\'est pas encore concrétisé. '
+    'Un jalon ne se déclare qu\'après la concrétisation de la réservation.'
+)
+
+
+def lot_chantier_is_open(*, lot_id, lot_organization_id):
+    """PO-2026-09-29-09 — ordre du scénario (CDC §9.2) : le chantier d'un lot
+    ne s'ouvre qu'une fois son dossier concrétisé (`COMMITTED`, statut
+    terminal : aucune annulation possible ensuite). Lecture sous
+    l'organisation du lot (policy RLS de `sales_reservation`), contexte
+    appelant restauré."""
+    previous = current_organization_id()
+    try:
+        set_rls_context(organization_id=lot_organization_id)
+        return Reservation.objects.filter(lot_id=lot_id, status=ReservationStatus.COMMITTED).exists()
+    finally:
+        if previous:
+            set_rls_context(organization_id=previous)
+
+
 def list_reservations_as_admin(*, caller_organization_id, status=None):
     """Toutes les réservations, toutes organisations — admin/ADV. Même
     boucle de bascule que `apps.programs.services.list_program_requests_as_admin`."""
@@ -313,7 +334,9 @@ def worksite_gauge(lot):
     from apps.inspections import services as inspections_services
 
     milestones = inspections_services.milestone_gauge_rows(lot)
-    next_step, next_actor = inspections_services.lot_next_step(milestones)
+    next_step, next_actor = inspections_services.lot_next_step(
+        milestones, chantier_open=lot_chantier_is_open(lot_id=lot.id, lot_organization_id=lot.organization_id),
+    )
     return {
         'milestones': milestones,
         'accepted_milestone_count': sum(

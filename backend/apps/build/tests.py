@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_document, create_evidence, create_work_declaration
+from apps.sales.testing import commit_lot
 from apps.inspections.models import InspectionOutcome
 from apps.inspections.services import create_inspection
 from apps.inspections.testing import designated_pieces
@@ -75,6 +76,7 @@ def _assign_as_manager(lot, organization):
 
 def _declare_first_milestone(organization, lot, constructeur):
     milestone = lot.milestones.order_by('order').first()
+    commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     return create_work_declaration(organization=organization, milestone=milestone, declared_by=constructeur)
 
 

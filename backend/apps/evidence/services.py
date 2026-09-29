@@ -1,5 +1,7 @@
 import hashlib
 
+from rest_framework.exceptions import ValidationError
+
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
 
@@ -70,6 +72,13 @@ def create_work_declaration(*, organization, milestone, declared_by, note=''):
     déclaration elle-même (pas le Milestone) — voir apps/trust/models.py :
     chaque type d'objet métier a sa propre chaîne de provenance.
     """
+    # PO-2026-09-29-09 : pas de chantier avant la concrétisation du dossier.
+    # Tout ce qui suit (pièces, contrôle, acceptation, décaissement) part
+    # d'une déclaration : refuser ici ferme toute la chaîne.
+    from apps.sales.services import CHANTIER_NOT_OPEN_MESSAGE, lot_chantier_is_open
+
+    if not lot_chantier_is_open(lot_id=milestone.lot_id, lot_organization_id=milestone.organization_id):
+        raise ValidationError({'milestone': [CHANTIER_NOT_OPEN_MESSAGE]})
     declaration = WorkDeclaration.objects.create(
         organization=organization, milestone=milestone, declared_by=declared_by, note=note,
     )

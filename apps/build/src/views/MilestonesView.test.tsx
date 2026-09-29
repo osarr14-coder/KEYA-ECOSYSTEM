@@ -62,6 +62,16 @@ describe('MilestonesView — jalons côté constructeur (ticket F-069)', () => {
     expect(api.listLotMilestones).toHaveBeenCalledWith('lot-1');
   });
 
+  it('chantier non ouvert : pas de déclaration, motif du serveur affiché (PO-2026-09-29-09)', async () => {
+    const hint = 'Chantier non ouvert : le dossier de ce lot n\'est pas encore concrétisé.';
+    const declareMilestone = vi.fn();
+    renderView([milestone({ chantier_open: false, chantier_hint: hint })], { declareMilestone });
+
+    expect(await screen.findByTestId('chantier-closed')).toHaveTextContent(hint);
+    expect(screen.queryByRole('button', { name: 'Déclarer ce jalon' })).not.toBeInTheDocument();
+    expect(declareMilestone).not.toHaveBeenCalled();
+  });
+
   it('joint une pièce à une déclaration qui n’en a pas', async () => {
     const addEvidenceDocument = vi.fn().mockResolvedValue({ duplicateOf: null, evidenceId: 'evidence-1' });
     renderView([milestone({

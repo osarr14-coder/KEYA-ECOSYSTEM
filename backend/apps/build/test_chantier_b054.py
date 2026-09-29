@@ -9,6 +9,7 @@ from django.urls import reverse
 from apps.core.rls import set_rls_context
 from apps.inspections.services import create_inspection
 from apps.inspections.testing import designated_pieces
+from apps.sales.testing import commit_lot
 
 from .tests import _register, _setup_org_with_lot
 
@@ -64,6 +65,7 @@ class TestChantierPathB054:
         _inspector_client, inspector_org, inspector = _register(
             'b054-inspecteur@example.com', 'Org B054 Controle', role_code='inspecteur',
         )
+        commit_lot(lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
         return builder, organization, lot, admin, inspector, inspector_org
 
     def test_declare_document_assign_reserve_correct_and_accept(self):

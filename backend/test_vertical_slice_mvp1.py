@@ -138,6 +138,11 @@ class TestVerticalSliceMVP1:
         first_milestone = milestones[0]
         assert first_milestone.code == 'foncier'
 
+        # PO-2026-09-29-09 : le chantier s'ouvre après la concrétisation du
+        # dossier du lot (cycle de vente couvert par apps/sales).
+        from apps.sales.testing import commit_lot
+        commit_lot(lot)
+
         # --- 2. Le constructeur déclare un travail terminé (API navigable) ---
         declaration_response = constructeur_client.post(
             reverse('workdeclaration-list'),

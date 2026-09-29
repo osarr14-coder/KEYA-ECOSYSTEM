@@ -171,7 +171,15 @@ class TestArchiveConsultation:
         assert len(whole) > len(archived)
 
     def test_an_overdue_hold_in_an_archive_never_expires(self):
-        promoter, reservation_id, _declaration = _played_instance()
+        promoter, _awa_reservation, _declaration = _played_instance()
+        # PO-2026-09-29-09 : le dossier d'Awa est concrétisé avant le chantier ;
+        # le blocage échu est celui de Yao sur A2.
+        lot_a2 = Lot.objects.get(organization=promoter, name='Lot A2')
+        held = _login('client2.demo@keya.test').post(
+            reverse('reservation-create'), {'lot': str(lot_a2.id), 'organization': str(promoter.id)}, format='json',
+        )
+        assert held.status_code == 201, held.data
+        reservation_id = held.data['id']
         set_rls_context(organization_id=promoter.id)
         Reservation.objects.filter(id=reservation_id).update(held_until=timezone.now() - timedelta(hours=1))
         old, _response = _archive()

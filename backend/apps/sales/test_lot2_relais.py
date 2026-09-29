@@ -16,6 +16,7 @@ from apps.tasks import relays
 from apps.tasks.models import Task, TaskStatus, TaskType
 
 from .models import Reservation, ReservationStatus
+from .testing import commit_lot
 from .test_audit_ui_r1 import (
     ADV, CONSTRUCTEUR, FINANCE, INSPECTEUR, _add_evidence, _assign, _login, _opinion, _promoter_lot, _seed,
 )
@@ -59,6 +60,7 @@ def _fees_paid_directly(promoter, reservation_id):
 def _declare_foundations(builder, promoter, lot):
     set_rls_context(organization_id=promoter.id)
     milestone = Milestone.objects.get(lot=lot, code='fondations')
+    commit_lot(lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declared = builder.post(reverse('workdeclaration-list'), {'milestone': str(milestone.id)}, format='json')
     assert declared.status_code == 201, declared.data
     return milestone, str(declared.data['id'])

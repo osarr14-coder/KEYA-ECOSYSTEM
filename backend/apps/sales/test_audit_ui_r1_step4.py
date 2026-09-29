@@ -220,7 +220,7 @@ class TestFinanceReceiptsAndClientSignals:
 
 # ─── PO-2026-09-28-04 : niveaux de confiance exposés par le serveur ─────────
 
-from .test_audit_ui_r1 import CONSTRUCTEUR, INSPECTEUR, _declared_foundations, _opinion  # noqa: E402
+from .test_audit_ui_r1 import CONSTRUCTEUR, INSPECTEUR, _client_reservation_id, _declared_foundations, _opinion  # noqa: E402
 
 
 def _build_rows(lot_id):
@@ -268,16 +268,13 @@ class TestTrustLevelsAreExposedWithTheirEvidence:
         assert set(detail.data['trust_levels']) == {'declared', 'documented'}
 
     def test_the_client_follows_the_worksite_of_his_own_property_only(self):
-        _b, promoter, milestone, _d, _e, _doc, _mission = _declared_foundations()
+        # PO-2026-09-29-09 : le client réserve avant le chantier.
+        _b, promoter, milestone, _d, _e, _doc, _mission = _declared_foundations(client_email=CLIENT_EMAIL)
         client = _login(CLIENT_EMAIL)
-        set_rls_context(organization_id=promoter.id)
-        reservation = client.post(
-            reverse('reservation-create'), {'lot': str(milestone.lot_id), 'organization': str(promoter.id)}, format='json',
-        )
-        assert reservation.status_code == 201, reservation.data
-        worksite = client.get(reverse('my-worksite', args=[reservation.data['id']]))
+        reservation_id = _client_reservation_id(client, milestone.lot_id)
+        worksite = client.get(reverse('my-worksite', args=[reservation_id]))
         assert worksite.status_code == 200, worksite.data
         rows = {row['code']: row for row in worksite.data}
         assert rows['fondations']['status_label'] == 'En examen'
         assert set(rows['fondations']['trust_levels']) == {'declared', 'documented'}
-        assert _login('client2.demo@keya.test').get(reverse('my-worksite', args=[reservation.data['id']])).status_code == 404
+        assert _login('client2.demo@keya.test').get(reverse('my-worksite', args=[reservation_id])).status_code == 404

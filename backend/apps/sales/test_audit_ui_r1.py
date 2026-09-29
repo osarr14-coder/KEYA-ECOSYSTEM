@@ -30,6 +30,7 @@ from apps.organizations.models import Organization  # noqa: E402
 from apps.programs.models import Asset, Lot, LotCommercialStatus, Program  # noqa: E402
 
 from .management.commands.seed_demo_scenario import DATASET_VERSION, PROGRAM_NAME, PROMOTER_ORG  # noqa: E402
+from .testing import commit_lot  # noqa: E402
 
 SEED_PASSWORD = 'Demo-Test-2026!'
 
@@ -323,14 +324,28 @@ def _assign(adv, promoter, declaration_id):
     return response.data['id']
 
 
-def _declared_foundations():
+def _client_reservation_id(client, lot_id):
+    """Dossier du client connecté sur ce lot (réservé avant le chantier)."""
+    return next(row['id'] for row in client.get(reverse('my-reservations')).data if row['lot']['id'] == str(lot_id))
+
+
+def _declared_foundations(client_email=None):
     """Le constructeur de démo déclare « Fondations » du Lot A1 avec une
-    pièce ; le gestionnaire affecte le contrôleur de démo."""
+    pièce ; le gestionnaire affecte le contrôleur de démo.
+    PO-2026-09-29-09 : le chantier suit la concrétisation du dossier. Avec
+    `client_email`, ce client réserve d'abord A1 et c'est son dossier qui est
+    concrétisé (voir `_client_reservation_id`)."""
     _seed()
     builder = _login(CONSTRUCTEUR)
     promoter, lot = _promoter_lot()
+    if client_email:
+        reserved = _login(client_email).post(
+            reverse('reservation-create'), {'lot': str(lot.id), 'organization': str(promoter.id)}, format='json',
+        )
+        assert reserved.status_code == 201, reserved.data
     set_rls_context(organization_id=promoter.id)
     milestone = Milestone.objects.get(lot=lot, code='fondations')
+    commit_lot(lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
     declared = builder.post(reverse('workdeclaration-list'), {'milestone': str(milestone.id)}, format='json')
     assert declared.status_code == 201, declared.data
     declaration_id = str(declared.data['id'])

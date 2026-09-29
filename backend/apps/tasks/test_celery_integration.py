@@ -9,6 +9,7 @@ from django.db import transaction
 from apps.accounts.models import User
 from apps.core.rls import set_rls_context
 from apps.evidence.services import create_work_declaration
+from apps.sales.testing import commit_lot
 from apps.inspections.models import Inspection, InspectionOutcome, Reserve
 from apps.organizations.models import Membership, Organization, Role
 from apps.programs.models import Asset, Lot, Program
@@ -44,6 +45,7 @@ def _build_open_reserve_with_real_commits(organization_name, constructeur_email,
         lot = Lot.objects.create(organization=organization, asset=asset, name='Lot')
         instantiate_milestones_for_lot(lot)
         milestone = lot.milestones.first()
+        commit_lot(milestone.lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
         declaration = create_work_declaration(
             organization=organization, milestone=milestone, declared_by=constructeur,
         )

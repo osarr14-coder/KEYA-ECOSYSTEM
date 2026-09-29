@@ -12,10 +12,12 @@ from apps.programs.models import Lot, Milestone
 from apps.inspections.models import Reserve
 
 from .test_audit_ui_r1 import (
-    ADV, CONSTRUCTEUR, INSPECTEUR, _add_evidence, _assign, _declared_foundations, _login, _opinion,
+    ADV, CONSTRUCTEUR, INSPECTEUR, _add_evidence, _assign, _client_reservation_id, _declared_foundations, _login,
+    _opinion,
     _promoter_lot, _seed,
 )
 from .test_audit_ui_r1_step2 import CLIENT as CLIENT_EMAIL
+from .testing import commit_lot
 
 BUILDER_LABEL = 'Constructeur Démonstration Abidjan · Constructeur'
 CONTROLLER_LABEL = 'Bureau de contrôle Démonstration · Contrôleur'
@@ -28,7 +30,8 @@ def _build_rows(lot_id):
 
 
 def _with_reserve():
-    builder, promoter, milestone, declaration_id, _e, _doc, mission_id = _declared_foundations()
+    # PO-2026-09-29-09 : le client réserve A1 avant le chantier.
+    builder, promoter, milestone, declaration_id, _e, _doc, mission_id = _declared_foundations(client_email=CLIENT_EMAIL)
     opened = _opinion(_login(INSPECTEUR), mission_id, outcome='avec_reserve', reserves=[
         {'motif': 'Enrobage insuffisant', 'expected_action': 'Reprendre l’enrobage'},
     ])
@@ -40,12 +43,8 @@ def _with_reserve():
 
 def _worksite(promoter, milestone):
     client = _login(CLIENT_EMAIL)
-    set_rls_context(organization_id=promoter.id)
-    reservation = client.post(
-        reverse('reservation-create'), {'lot': str(milestone.lot_id), 'organization': str(promoter.id)}, format='json',
-    )
-    assert reservation.status_code == 201, reservation.data
-    return lambda: {row['code']: row for row in client.get(reverse('my-worksite', args=[reservation.data['id']])).data}
+    reservation_id = _client_reservation_id(client, milestone.lot_id)
+    return lambda: {row['code']: row for row in client.get(reverse('my-worksite', args=[reservation_id])).data}
 
 
 def _inspection_count(promoter):
@@ -71,6 +70,7 @@ class TestAnOpinionDesignatesAtLeastOnePiece:
         promoter, lot = _promoter_lot()
         set_rls_context(organization_id=promoter.id)
         milestone = Milestone.objects.get(lot=lot, code='fondations')
+        commit_lot(lot)  # PO-2026-09-29-09 : chantier ouvert après concrétisation
         declared = builder.post(reverse('workdeclaration-list'), {'milestone': str(milestone.id)}, format='json')
         assert declared.status_code == 201, declared.data
         mission_id = _assign(_login(ADV), promoter, str(declared.data['id']))
