@@ -85,6 +85,9 @@ MIDDLEWARE = [
     # l'organisation active du membership et pose la session var Postgres
     # utilisée par les policies RLS. Voir apps/core/middleware.py.
     'apps.core.middleware.OrganizationScopeMiddleware',
+    # PO-2026-09-29-11 (T05) : toute écriture refusée (403/405) d'un compte
+    # authentifié est inscrite au journal, dans la transaction de la requête.
+    'apps.audit.middleware.RefusedAttemptMiddleware',
     # Audit UI R1 (T13) : environnement et instance de démonstration sur
     # chaque réponse d'API.
     'apps.core.demo.DemoMarkingMiddleware',
