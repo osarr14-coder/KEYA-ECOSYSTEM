@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   AlertBanner, ApiErrorBanner, Button, formatCalendarDate, PageHeader, Pill, semanticColors, typography, SimulatedMark,
@@ -18,6 +18,11 @@ import { useApiResource } from '../api/useApiResource';
  *
  * Ticket F-076 — un paiement à confirmer est mis en avant (carte navy,
  * montant en grand, bouton or) ; les paiements confirmés restent listés.
+ *
+ * Vérification finale (T20, P2) : après « Confirmer la réception », la liste
+ * se recharge et le bouton disparaît ; le focus est placé sur « Réception
+ * confirmée. » de la même carte (annoncé aux lecteurs d'écran), au lieu de
+ * retomber sur la page.
  */
 
 
@@ -26,18 +31,25 @@ function formatAmount(value: string, currency: string) {
 }
 
 function DisbursementCard({
-  disbursement, onConfirmed,
-}: { disbursement: ReceivedDisbursement; onConfirmed: () => void }) {
+  disbursement, onConfirmed, focusOnMount = false,
+}: { disbursement: ReceivedDisbursement; onConfirmed: (id: string) => void; focusOnMount?: boolean }) {
   const api = useApiClient();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cardRef = useRef<HTMLLIElement>(null);
+  const confirmationRef = useRef<HTMLSpanElement>(null);
+  const confirmed = disbursement.beneficiary_confirmation === 'confirmed';
+
+  useEffect(() => {
+    if (focusOnMount) (confirmationRef.current ?? cardRef.current)?.focus();
+  }, [focusOnMount, confirmed]);
 
   async function handleConfirm() {
     setConfirming(true);
     setError(null);
     try {
       await api.confirmDisbursement(disbursement.id);
-      onConfirmed();
+      onConfirmed(disbursement.id);
     } catch (caught) {
       setError(
         caught instanceof ApiError && caught.detail ? caught.detail
@@ -47,9 +59,10 @@ function DisbursementCard({
     }
   }
 
-  const confirmed = disbursement.beneficiary_confirmation === 'confirmed';
   return (
     <li
+      ref={cardRef}
+      tabIndex={-1}
       aria-label={`Paiement ${disbursement.lot.name} — ${disbursement.milestone.label}`}
       style={{
         listStyle: 'none',
@@ -78,7 +91,7 @@ function DisbursementCard({
       </p>
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
         <Pill tone={confirmed ? 'success' : 'alert'} data-testid="disbursement-flow">{disbursement.flow_status_label}</Pill>
-        {confirmed && <span>Réception confirmée.</span>}
+        {confirmed && <span ref={confirmationRef} role="status" tabIndex={-1}>Réception confirmée.</span>}
       </div>
       {!confirmed && (
         <div>
@@ -95,6 +108,7 @@ function DisbursementCard({
 export function DisbursementsView() {
   const api = useApiClient();
   const state = useApiResource(() => api.listReceivedDisbursements(), []);
+  const [justConfirmed, setJustConfirmed] = useState<string | null>(null);
 
   return (
     <section aria-label="Paiements reçus">
@@ -120,7 +134,12 @@ export function DisbursementsView() {
           }}
         >
           {state.data.map((disbursement) => (
-            <DisbursementCard key={disbursement.id} disbursement={disbursement} onConfirmed={state.refetch} />
+            <DisbursementCard
+              key={disbursement.id}
+              disbursement={disbursement}
+              focusOnMount={disbursement.id === justConfirmed}
+              onConfirmed={(id) => { setJustConfirmed(id); state.refetch(); }}
+            />
           ))}
         </ul>
       )}

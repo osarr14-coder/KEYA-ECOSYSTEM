@@ -49,6 +49,30 @@ describe('DisbursementsView — paiements reçus (ticket F-068)', () => {
     expect(screen.getByTestId('disbursement-flow')).toHaveTextContent('Confirmé par le bénéficiaire (simulé)');
   });
 
+  it('place le focus sur « Réception confirmée. » après la confirmation (T20, P2)', async () => {
+    const listReceivedDisbursements = vi.fn()
+      .mockResolvedValueOnce([disbursement(), disbursement({ id: 'disbursement-2', bank_reference: 'SORTIE-002' })])
+      .mockResolvedValue([
+        disbursement({ beneficiary_confirmation: 'confirmed' }),
+        disbursement({ id: 'disbursement-2', bank_reference: 'SORTIE-002' }),
+      ]);
+    const api = createMockApiClient({
+      listReceivedDisbursements,
+      confirmDisbursement: vi.fn().mockResolvedValue(disbursement({ beneficiary_confirmation: 'confirmed' })),
+    });
+    render(withApiClient(api, <DisbursementsView />));
+
+    const buttons = await screen.findAllByRole('button', { name: 'Confirmer la réception' });
+    buttons[0].focus();
+    fireEvent.click(buttons[0]);
+
+    const confirmation = await screen.findByText('Réception confirmée.');
+    await waitFor(() => expect(confirmation).toHaveFocus());
+    expect(confirmation).toHaveAttribute('role', 'status');
+    // L'autre paiement reste à confirmer, son bouton n'a pas pris le focus.
+    expect(screen.getByRole('button', { name: 'Confirmer la réception' })).not.toHaveFocus();
+  });
+
   it('état vide explicite', async () => {
     const api = createMockApiClient({ listReceivedDisbursements: vi.fn().mockResolvedValue([]) });
     render(withApiClient(api, <DisbursementsView />));

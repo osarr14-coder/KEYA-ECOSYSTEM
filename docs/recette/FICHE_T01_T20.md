@@ -12,7 +12,7 @@
 | Date | 29 septembre 2026, 00:50 → 02:10 (GMT) |
 | Environnement | Pile **locale** uniquement (Render non touché). Blocage d'**1 h** pour T02 (arbitrage A7, local seulement), **remis à 24 h** à la fin |
 | Outillage | Interface seule (Playwright, comptes de démonstration, clavier seul pour T20), API (jeton du compte concerné), suites automatisées |
-| Suites | Backend : 728 passés ; front : web 352, BUILD 112, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
+| Suites | Backend : 728 passés ; front : web 352, BUILD 113, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
 | Relecteur | **À désigner** (revue indépendante §11) |
 
 Légende des modes : **Écran** (rejoué par l'interface, sans intervention en base), **API** (requête
@@ -42,12 +42,12 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 | **T17** | Sauvegarde et restauration isolée cohérentes | Exploitation (base) | `pg_dump` de la base jouée → `/root/keya-backups/T17-20260929T011425Z/` (base + fichiers) ; restauration dans la base isolée `keya_restore_check` ; comparaison : dossiers 3, contrats 2, appels 4, encaissements 5 / 6 600 000, décaissements 2 / 2 000 000, déclarations 3, pièces 7, documents 7, réserves 3, `audit_event` 53, `trust_event` 25, instances : **identiques** | CONFORME |
 | **T18** | Changement de version du Country Pack dans une nouvelle instance | Test auto | `pilotage/tests.py::…::test_t18_a_new_version_changes_new_lots_only` (anciennes opérations liées à leur version ; nouveau paramètre effectif sans modification du noyau) ; jeu `DEMO-CI-v2` (modèle CI v2, pièces exigées) | CONFORME (test auto) — non rejoué à l'écran |
 | **T19** | Parcours avec réserve puis sans réserve, sans intervention en base ; HOME et indicateurs reflètent les événements | Écran | Parcours principal (Yao, A1, avec réserve) et alternatif (Awa, A2, sans réserve), étapes 1 à 11, par l'interface seule ; espace client à jour (`f-09`, `f-alt-concretise`) ; pilotage : jalons examinés 3 / 3, entrées 5 / 5, sorties 1 / 2, réserves 1 ouverte / 1 levée, pièces 7 / 11 (`f-10`). **Réserves** : le script de rejeu a dû être repris plusieurs fois (sélecteurs) ; un utilisateur non technicien n'a pas rejoué le parcours | CONFORME (hors « utilisateur non technicien » : NOT_TESTED) |
-| **T20** | Mobile et clavier : actions essentielles accessibles, erreurs compréhensibles, pas de débordement | Écran (clavier seul, 375 px) | Cliente : connexion, réservation, case « J'ai lu cette version », signature, deux virements signalés, suivi — focus visible à chaque étape (contour 2 px, ou anneau natif pour case et lien), aucun débordement. Constructeur : connexion, déclaration, choix de la pièce exigée, fichier, correction, confirmation de réception — idem. Erreurs de dépôt lisibles (T15). Corrigés pendant le rejeu : message d'erreur BUILD (« Échec de la requête … (400) »), carte « Paiements reçus » coupée à 375 px. Reste : après « Confirmer la réception », le focus retombe sur la page (P2) | CONFORME (P2 noté) |
+| **T20** | Mobile et clavier : actions essentielles accessibles, erreurs compréhensibles, pas de débordement | Écran (clavier seul, 375 px) | Cliente : connexion, réservation, case « J'ai lu cette version », signature, deux virements signalés, suivi — focus visible à chaque étape (contour 2 px, ou anneau natif pour case et lien), aucun débordement. Constructeur : connexion, déclaration, choix de la pièce exigée, fichier, correction, confirmation de réception — idem. Erreurs de dépôt lisibles (T15). Corrigés pendant le rejeu : message d'erreur BUILD (« Échec de la requête … (400) »), carte « Paiements reçus » coupée à 375 px. Constaté au rejeu : après « Confirmer la réception », le focus retombait sur la page (P2) — **corrigé après la fiche** : le focus est placé sur « Réception confirmée. » de la même carte (`DisbursementsView.test.tsx`, test qui échoue sans la correction) ; vérifié à l'écran au clavier à 375 px, réponses du paiement simulées dans le navigateur car l'instance active n'en a aucun à confirmer (rien écrit en base) : focus sur « Réception confirmée. » (`role=status`), anneau visible, aucun débordement (`f-T20-c5-focus-apres-confirmation`) | CONFORME (P2 corrigé) |
 
 ## Résultat des suites
 
 - Backend : **728 passés**, 0 échec (suite complète, `pytest --create-db`, après la décision PO-2026-09-29-05).
-- Front : web 352, BUILD 112, HOME 141, Contrôle 88 (+2 ignorés, mode hors ligne différé, PO-37/PO-58), design system 246 ; `tsc` sans erreur sur les 5 espaces.
+- Front : web 352, BUILD 113, HOME 141, Contrôle 88 (+2 ignorés, mode hors ligne différé, PO-37/PO-58), design system 246 ; `tsc` sans erreur sur les 5 espaces.
 
 ## Constats du rejeu (corrigés pendant la vérification)
 
@@ -55,11 +55,11 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 2. BUILD « Paiements reçus » listait un paiement d'une instance archivée — corrigé (instance active seulement, A6), test ajouté.
 3. BUILD « Paiements reçus » : cartes coupées à 375 px — corrigé.
 4. T15 : règle de dépôt alignée sur le CDC §10 (PO-2026-09-29-05) — tests adaptés et ajoutés.
+5. T20 (P2) : focus perdu après « Confirmer la réception » — corrigé à la demande du PO, test ajouté (BUILD 113).
 
 ## Constats ouverts
 
 - **Ordre du scénario non imposé** : le constructeur a pu déclarer le jalon Fondations A2 et y déposer une pièce **avant** l'examen du dossier d'Awa ; le décaissement a eu lieu avant la concrétisation. Le serveur n'impose pas que le dossier soit concrétisé avant le chantier. À arbitrer.
 - **T13 export** : aucune fonction d'export de justificatif n'existe ; à décider (fonction à ajouter ou exigence reportée).
 - **Pièce `.bat` acceptée avant PO-2026-09-29-05**, présente dans l'archive `DEMO-CI-20260929-6BB7` (Fondations A1, « Plan d'implantation »).
-- **Focus après action** (T20, P2) : après « Confirmer la réception », le focus n'est placé sur aucun élément.
 - **Revue indépendante §11** : à organiser.
