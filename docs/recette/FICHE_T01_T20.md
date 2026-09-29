@@ -13,7 +13,7 @@
 | Environnement | Pile **locale** uniquement (Render non touché). Blocage d'**1 h** pour T02 (arbitrage A7, local seulement), **remis à 24 h** à la fin |
 | Outillage | Interface seule (Playwright, comptes de démonstration, clavier seul pour T20), API (jeton du compte concerné), suites automatisées |
 | Suites | Backend : 736 passés ; front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
-| Relecteur | **À désigner** (revue indépendante §11) |
+| Relecteur | **À désigner** (revue indépendante §11) — procédure : `docs/recette/PROCEDURE_REVUE_INDEPENDANTE.md` |
 
 Légende des modes : **Écran** (rejoué par l'interface, sans intervention en base), **API** (requête
 directe avec le jeton d'un compte), **Test auto** (pytest / vitest, nom du test cité).
