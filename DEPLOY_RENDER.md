@@ -116,13 +116,15 @@ d'associer et d'écraser la configuration de ce service existant.
 
 Pour dérouler le scénario du CDC V3 (§9) sans intervention en base :
 
-1. Service `keya-ecosystem-backend` → **Environment** → renseigner `DEMO_PASSWORD`
-   (au moins 10 caractères, choisi par vous — il n'est écrit nulle part dans le dépôt).
-2. **Manual Deploy** → *Deploy latest commit* : le `buildCommand` lance
-   `seed_demo_scenario`, qui crée (ou remet à jour) les comptes ci-dessous avec ce mot de
-   passe, le programme « Résidence Démonstration Abidjan » (2 lots à 30 000 000 XOF) et le
-   barème de paiement de démonstration. Relancé à chaque déploiement, il ne réinitialise
-   jamais une démonstration en cours.
+1. **PO-2026-09-30-11** : le build ne crée plus les comptes et le service ne porte plus la
+   variable `DEMO_PASSWORD` (elle reposait le mot de passe à chaque déploiement ; la retirer
+   du tableau de bord si elle y figure encore). Le mot de passe est posé **une seule fois, par
+   le PO, depuis son poste** : réinitialisation C7,
+   `docs/exploitation/PROCEDURE_VERIFICATION_RENDER_T15_T16.md` §7.1.
+2. `seed_demo_scenario`, lancé en C7 avec `DEMO_PASSWORD` saisi sans écho (au moins 10
+   caractères, jamais écrit dans le dépôt), crée (ou remet à jour) les comptes ci-dessous, le
+   programme « Résidence Démonstration Abidjan » (2 lots à 30 000 000 XOF) et le barème de
+   paiement de démonstration.
 3. `https://keya-ecosystem-web.onrender.com` affiche la page d'accueil publique (programmes,
    garanties, chantiers suivis, simulateur — F-079) ; « Se connecter » ouvre
    `https://keya-ecosystem-web.onrender.com/connexion` : chaque compte est redirigé
@@ -152,8 +154,8 @@ conforme → `finance` prépare 1 000 000 sur le jalon, contrôle l'éligibilit�
 décaissements) → `constructeur` confirme la réception (BUILD, Paiements reçus) → `finance`
 rapproche. Disponible final : 2 000 000 XOF.
 
-Données intégralement fictives. Pour retirer l'accès : vider `DEMO_PASSWORD` ne supprime
-pas les comptes ; changer sa valeur puis redéployer change leur mot de passe.
+Données intégralement fictives. Pour changer le mot de passe des comptes : relancer
+`seed_demo_scenario` depuis le poste du PO (§7.1 de la procédure), jamais par le build.
 
 ## Redéployer après un nouveau commit
 

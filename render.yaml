@@ -40,10 +40,12 @@ services:
     # la base. Voir apps/organizations/management/commands/seed_admin.py.
     # `createcachetable` (ticket B-047) : table du cache partagé qui porte
     # les compteurs de throttle (config/settings.py, CACHES) ; idempotent.
-    # `seed_demo_scenario` (ticket B-053) : comptes de démonstration par rôle,
-    # programme et lots fictifs — OPT-IN, ne fait rien tant que DEMO_PASSWORD
-    # n'est pas défini sur ce service (voir DEPLOY_RENDER.md).
-    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python manage.py createcachetable && python manage.py seed_admin && python manage.py seed_demo_scenario"
+    # `seed_demo_scenario` (ticket B-053) n'est PLUS lancé par le build
+    # (PO-2026-09-30-11) : il reposait le mot de passe des comptes de
+    # démonstration à chaque déploiement. Le mot de passe est posé une seule
+    # fois, par le PO, depuis son poste (réinitialisation C7,
+    # docs/exploitation/PROCEDURE_VERIFICATION_RENDER_T15_T16.md §7.1).
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python manage.py createcachetable && python manage.py seed_admin"
     startCommand: "gunicorn config.wsgi:application"
     envVars:
       - key: PYTHON_VERSION
@@ -88,11 +90,8 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         generateValue: true
-      # Ticket B-053 — mot de passe commun des comptes de démonstration, choisi
-      # par le propriétaire du déploiement (jamais écrit dans le dépôt). Vide =
-      # aucun compte de démonstration.
-      - key: DEMO_PASSWORD
-        sync: false
+      # DEMO_PASSWORD n'est plus une variable de ce service (PO-2026-09-30-11) :
+      # à retirer du tableau de bord avant le déploiement (étape C2).
 
   # ── HOME (client) ──────────────────────────────────────────────────────
   - type: web
