@@ -176,6 +176,7 @@ Points d'attention transmis par l'auteur (limites déjà déclarées) :
 | T07 | Vérifié par l'API seulement ; non rejouable à l'écran (PO-2026-09-29-06) |
 | T10, T18 | Tests automatisés seulement |
 | T13 | Export de justificatif reporté au Projet 1 (PO-2026-09-29-07) |
+| T14 | CONFORME **en local** seulement (PO-2026-09-30-13) : correction des listes de tâches, de la cloche et du Journal (PO-2026-09-30-12) prouvée par 6 tests qui échouent sans elle (`tasks/test_instance_scope.py`, `core/test_out_of_instance.py`, `core/test_lot5_archive.py`). **À rejouer** : parcours joué, archivage, puis « À faire », cloche et Journal sans tâche ni événement de l'archive ; Journal de l'archive lisible par le mode archive |
 | T17 | Sauvegarde et restauration faites par l'auteur sur sa base locale ; **à refaire** par le relecteur |
 | T19 | « Par utilisateur non technicien » : **NOT_TESTED** — à faire jouer par une personne non technicienne, sans aide sur l'outil |
 | PO-09 | Le cas « dossier concrétisé puis déclaration » n'a pas été rejoué à l'écran par l'auteur : il sera couvert par les parcours de T19 |
