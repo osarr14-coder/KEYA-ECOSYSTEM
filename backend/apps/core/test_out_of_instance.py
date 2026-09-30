@@ -166,29 +166,22 @@ def test_the_api_check_requires_the_demo_password(seeded, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_the_api_check_reports_what_the_filtering_lets_through(seeded, api):
-    """Constat du 30/09 (PO-2026-09-30-11) : le filtrage par instance tient
-    partout SAUF les listes de tâches et la vue active du journal. Ce test
-    fixe ce constat ; il changera avec le correctif soumis au PO."""
+def test_nothing_out_of_instance_is_visible_through_the_api(seeded, api):
+    """Constat du 30/09 (PO-2026-09-30-11) : listes de tâches et Journal
+    laissaient passer les données anciennes. Corrigé (PO-2026-09-30-12) :
+    aucun écart, alors que l'inventaire les trouve bien en base."""
     _seed_out_of_instance()
     output, error = _run('--api', 'http://test')
-    assert error is not None and 'visibles' in error
-    leaks = {(line.split()[1], line.split()[2]) for line in _gaps(output)}
-    assert leaks == {
-        ('admin.demo@keya.test', '/api/admin/journal/'),
-        ('admin.demo@keya.test', '/api/tasks/'),
-        ('adv.demo@keya.test', '/api/tasks/'),
-        ('adv.demo@keya.test', '/api/me/tasks/'),
-        ('adv.demo@keya.test', '/api/me/tasks/inbox/'),
-        ('finance.demo@keya.test', '/api/tasks/'),
-    }
-    assert 'antérieur(s) à l’instance' in output
+    assert error is None, output
+    assert _gaps(output) == []
+    assert f'{MARK} Programme B-047' in output
+    assert 'Aucune donnée hors instance visible' in output
 
 
 @pytest.mark.django_db
-def test_pending_tasks_of_an_archived_instance_are_detected(seeded, api):
-    """Après chaque réinitialisation (C7), les tâches en attente de l'instance
-    archivée restent dans « À faire » (`/api/me/tasks/inbox/`)."""
+def test_tasks_of_an_archived_instance_are_listed_but_not_visible(seeded, api):
+    """Après chaque réinitialisation (C7), les tâches de l'instance archivée
+    restent en base (archive) mais sortent de « À faire » et de la cloche."""
     instance = active_demo_instance()
     program = Program.objects.get(demo_instance=instance)
     set_rls_context(organization_id=program.organization_id)
@@ -202,8 +195,7 @@ def test_pending_tasks_of_an_archived_instance_are_detected(seeded, api):
     )
     call_command('archive_demo_instance', '--confirm', '--reseed', stdout=io.StringIO())
     output, error = _run('--api', 'http://test')
-    assert error is not None
+    assert error is None, output
     assert f'archive {instance.code}' in output
-    gaps = _gaps(output)
-    assert any('/api/me/tasks/inbox/' in line for line in gaps)
-    assert not any(' /api/me/tasks/ ' in line for line in gaps)  # celle-ci exclut déjà les archives
+    assert 'tâches                : 1 dont 1 en attente' in output
+    assert _gaps(output) == []

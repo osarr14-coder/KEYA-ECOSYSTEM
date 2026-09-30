@@ -65,6 +65,43 @@ def active_scope(prefix=''):
     return Q(**{f'{prefix}demo_instance': instance})
 
 
+def active_program_ids():
+    """Programmes de l'instance ACTIVE, toutes organisations : lus sous le
+    contexte RLS de chacune (une tâche vit dans l'organisation de son sujet,
+    pas forcément dans celle du programme), puis contexte rétabli. `None`
+    sans instance active (aucun filtrage)."""
+    instance = active_demo_instance()
+    if instance is None:
+        return None
+    from apps.core.rls import current_organization_id, set_rls_context
+    from apps.organizations.models import Organization
+    from apps.programs.models import Program
+
+    previous = current_organization_id()
+    ids = []
+    try:
+        for organization_id in Organization.objects.values_list('id', flat=True):
+            set_rls_context(organization_id=organization_id)
+            ids.extend(Program.objects.filter(
+                organization_id=organization_id, demo_instance=instance,
+            ).values_list('id', flat=True))
+    finally:
+        if previous:
+            set_rls_context(organization_id=previous)
+    return ids
+
+
+def active_task_scope():
+    """PO-2026-09-30-12 : toute liste de tâches (et la cloche) se limite aux
+    tâches des programmes de l'instance ACTIVE, quelle que soit l'instance
+    consultée. Les tâches des archives et celles antérieures aux instances
+    restent en base, jamais listées. Aucun filtre sans instance active."""
+    ids = active_program_ids()
+    if ids is None:
+        return Q()
+    return Q(program_id__in=ids)
+
+
 def demo_instance_payload(instance):
     if instance is None:
         return None

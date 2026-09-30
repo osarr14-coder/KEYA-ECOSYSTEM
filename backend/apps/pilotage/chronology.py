@@ -65,6 +65,9 @@ AUDIT_LABELS = {
     'instance.archived': ('Instance archivée (lecture seule)', 'admin_keyimmo'),
     'instance.created': ('Nouvelle instance créée depuis le jeu versionné', 'admin_keyimmo'),
     'instance.retention_expired': ('Conservation de l’archive échue', 'admin_keyimmo'),
+    # PO-2026-09-30-12 : comptes hors du jeu de démonstration (exploitation).
+    'account.deactivated': ('Compte hors du jeu de démonstration désactivé', ''),
+    'account.reactivated': ('Compte réactivé', ''),
     # PO-2026-09-29-11 (T05) : écriture refusée pour un motif de droits.
     'access.denied': ('Tentative refusée (droits insuffisants)', ''),
     # PO-2026-09-29-13 (T15) : fichier refusé par l'analyse, rien d'enregistré.

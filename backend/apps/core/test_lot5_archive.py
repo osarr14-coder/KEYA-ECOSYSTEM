@@ -167,8 +167,11 @@ class TestArchiveConsultation:
         actions = {row['action'] for row in archived}
         assert {'reservation.requested', 'reservation.held', 'reservation.validated'} <= actions
         assert not any(row['action'].startswith('instance.') for row in archived)
+        # PO-2026-09-30-12 : la vue courante se limite à la période de
+        # l'instance active ; le parcours joué reste lisible par l'archive.
         assert {'instance.archived', 'instance.created'} <= {row['action'] for row in whole}
-        assert len(whole) > len(archived)
+        assert not ({'reservation.requested', 'reservation.held', 'reservation.validated'}
+                    & {row['action'] for row in whole})
 
     def test_an_overdue_hold_in_an_archive_never_expires(self):
         promoter, _awa_reservation, _declaration = _played_instance()

@@ -525,12 +525,17 @@ def list_my_tasks_across_organizations(*, user, caller_organization_id, status=N
     frappe clavier) : aucun plafond `MAX_SEARCH_RESULTS` ici, même
     raisonnement que `list_program_requests_as_admin`.
     """
+    from apps.core.demo import active_task_scope
+
     results = []
+    # PO-2026-09-30-12 : « À faire », la cloche et les boîtes administrateur
+    # et contrôleur ne listent que les tâches de l'instance active.
+    scope = active_task_scope()
     organization_ids = list(Organization.objects.values_list('id', flat=True))
     try:
         for organization_id in organization_ids:
             set_rls_context(organization_id=organization_id)
-            queryset = Task.objects.filter(assignee=user)
+            queryset = Task.objects.filter(assignee=user).filter(scope)
             if status:
                 queryset = queryset.filter(status=status)
             results.extend(queryset)

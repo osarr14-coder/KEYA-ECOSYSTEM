@@ -1,8 +1,10 @@
+from django.db.models import Q
 from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.backoffice.permissions import IsAdminKeyimmo
+from apps.core.demo import active_demo_instance
 from apps.core.rls import set_rls_context
 from apps.organizations.models import Organization
 
@@ -25,24 +27,26 @@ class AdminJournalView(APIView):
 
     def get(self, request):
         caller_organization_id = request.organization.id if request.organization else None
+        # Lot 5 (PO-2026-09-29-01) : une archive consultée restreint le
+        # journal à sa période (une seule instance active à la fois).
+        # PO-2026-09-30-12 : la vue courante se limite de même à la période
+        # de l'instance active ; les événements antérieurs restent en base
+        # (ajout seul, T16), consultables avec leur archive.
+        viewed = getattr(request, 'viewed_demo_instance', None) or active_demo_instance()
+        period = Q()
+        if viewed is not None:
+            period = Q(created_at__gte=viewed.created_at)
+            if viewed.archived_at is not None:
+                period &= Q(created_at__lte=viewed.archived_at)
         events = []
         try:
             for organization in Organization.objects.all():
                 set_rls_context(organization_id=organization.id)
                 events.extend(
-                    AuditEvent.objects.select_related('actor', 'organization').order_by('-id')[:JOURNAL_LIMIT],
+                    AuditEvent.objects.filter(period).select_related('actor', 'organization').order_by('-id')[:JOURNAL_LIMIT],
                 )
         finally:
             set_rls_context(organization_id=caller_organization_id)
-        # Lot 5 (PO-2026-09-29-01) : une archive consultée restreint le
-        # journal à sa période (une seule instance active à la fois).
-        viewed = getattr(request, 'viewed_demo_instance', None)
-        if viewed is not None:
-            end = viewed.archived_at
-            events = [
-                event for event in events
-                if event.created_at >= viewed.created_at and (end is None or event.created_at <= end)
-            ]
         events.sort(key=lambda event: event.created_at, reverse=True)
         return Response([
             {

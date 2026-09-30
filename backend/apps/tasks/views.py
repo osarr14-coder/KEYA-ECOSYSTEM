@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.backoffice.permissions import IsAdminKeyimmo
+from apps.core.demo import active_task_scope
 from apps.core.viewsets import OrganizationScopedMixin
 from apps.inspections.permissions import IsInspecteur
 
@@ -50,16 +51,10 @@ class MyTasksView(ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Lot 5 (PO-2026-09-29-01, -03) : les tâches d'une instance archivée
-        # sortent de la boîte (et de la cloche) de chacun.
-        from apps.core.models import DemoInstance, DemoInstanceStatus
-
-        archived_programs = [
-            program_id
-            for ids in DemoInstance.objects.filter(status=DemoInstanceStatus.ARCHIVED).values_list('program_ids', flat=True)
-            for program_id in ids or []
-        ]
-        queryset = Task.objects.filter(assignee=self.request.user).exclude(program_id__in=archived_programs)
+        # PO-2026-09-30-12 : seules les tâches de l'instance active (les
+        # archives et les données antérieures aux instances n'apparaissent
+        # ni dans la boîte ni dans la cloche).
+        queryset = Task.objects.filter(assignee=self.request.user).filter(active_task_scope())
 
         task_type = self.request.query_params.get('type')
         if task_type:
@@ -95,6 +90,10 @@ class TaskViewSet(
 
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
+
+    def get_queryset(self):
+        # PO-2026-09-30-12 : liste et détail limités à l'instance active.
+        return super().get_queryset().filter(active_task_scope())
 
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
