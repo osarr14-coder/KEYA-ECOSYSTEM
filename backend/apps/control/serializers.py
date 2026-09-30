@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.evidence.scanning import validate_upload
 from apps.evidence.validators import raise_if_upload_was_too_large, validate_document_file
 from apps.inspections.models import InspectionOutcome
 
@@ -24,6 +25,11 @@ class SyncDocumentSerializer(serializers.Serializer):
     def to_internal_value(self, data):
         raise_if_upload_was_too_large(self.context.get('request'))
         return super().to_internal_value(data)
+
+    def validate_file(self, value):
+        # PO-2026-09-29-13 (T15) : même analyse avant stockage que
+        # `DocumentUploadSerializer`.
+        return validate_upload(value, self.context.get('request'))
 
 
 class SyncEvidenceSerializer(serializers.Serializer):

@@ -4,6 +4,7 @@ from apps.programs.models import Milestone
 
 from . import services
 from .models import Document, DocumentVisibility, Evidence, SensitivityLevel, WorkDeclaration
+from .scanning import validate_upload
 from .validators import raise_if_upload_was_too_large, validate_document_file
 
 
@@ -40,6 +41,11 @@ class DocumentUploadSerializer(serializers.Serializer):
     def to_internal_value(self, data):
         raise_if_upload_was_too_large(self.context.get('request'))
         return super().to_internal_value(data)
+
+    def validate_file(self, value):
+        # PO-2026-09-29-13 (T15) : analyse avant stockage, après le contrôle
+        # de format du validateur de champ.
+        return validate_upload(value, self.context.get('request'))
 
     def create(self, validated_data):
         request = self.context['request']

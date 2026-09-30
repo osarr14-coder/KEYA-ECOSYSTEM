@@ -67,6 +67,8 @@ AUDIT_LABELS = {
     'instance.retention_expired': ('Conservation de l’archive échue', 'admin_keyimmo'),
     # PO-2026-09-29-11 (T05) : écriture refusée pour un motif de droits.
     'access.denied': ('Tentative refusée (droits insuffisants)', ''),
+    # PO-2026-09-29-13 (T15) : fichier refusé par l'analyse, rien d'enregistré.
+    'document.upload_rejected': ('Dépôt refusé à l’analyse (fichier non enregistré)', ''),
 }
 
 # Chaîne chantier : (type de sujet, source) → (libellé, rôle attendu).

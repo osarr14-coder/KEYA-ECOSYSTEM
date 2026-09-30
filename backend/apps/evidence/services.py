@@ -6,6 +6,7 @@ from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
 
 from .models import Document, DocumentVisibility, Evidence, SensitivityLevel, WorkDeclaration
+from .scanning import ensure_scanned
 from .tasks import process_document_media
 from .validators import EXTENSION_BY_KIND, IMAGE_KINDS, detect_document_kind
 
@@ -39,6 +40,10 @@ def create_document(
     # des appels directs au service, hors HTTP, peuvent l'atteindre — les
     # deux chemins HTTP valident d'abord) : aucune extension.
     kind = detect_document_kind(uploaded_file)
+    # PO-2026-09-29-13 (T15) : aucun fichier stocké sans analyse — déjà
+    # faite par les deux chemins de dépôt HTTP, faite ici pour tout autre
+    # appelant.
+    ensure_scanned(uploaded_file, kind)
     uploaded_file.name = f'document.{EXTENSION_BY_KIND[kind]}' if kind else 'document'
 
     document = Document.objects.create(

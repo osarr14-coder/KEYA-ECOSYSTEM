@@ -230,6 +230,14 @@ KEYA_OFFLINE_SYNC_ENABLED = config('KEYA_OFFLINE_SYNC_ENABLED', default=False, c
 # renvoie d'état de lot, de jalon ou de dossier.
 KEYA_PUBLIC_WORKSITES_ENABLED = config('KEYA_PUBLIC_WORKSITES_ENABLED', default=False, cast=bool)
 
+# PO-2026-09-29-13 (T15, CDC §10) : tout dépôt est analysé avant stockage
+# (apps/evidence/scanning.py). Antivirus ClamAV joint par `clamd` :
+# `unix:/chemin/clamd.ctl` ou `hôte:port`. Non configuré ou injoignable :
+# dépôts refusés (503). Le moteur n'est PAS réglable par l'environnement.
+KEYA_UPLOAD_ANTIVIRUS = 'apps.evidence.scanning.clamd_scan'
+KEYA_CLAMD_ADDRESS = config('KEYA_CLAMD_ADDRESS', default='')
+KEYA_CLAMD_TIMEOUT_SECONDS = config('KEYA_CLAMD_TIMEOUT_SECONDS', default=30, cast=int)
+
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 
 # Ticket B-055 — la racine du backend (`/`) n'avait aucune page : ouverte par

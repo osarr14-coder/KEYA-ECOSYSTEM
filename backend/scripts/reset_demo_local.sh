@@ -60,6 +60,7 @@ if [ "$MODE" = "--dry-run" ]; then
   check "Base joignable" "$PG_ADMIN psql -d '$DB_NAME' -Atc 'select 1'"
   check "Aucune migration en attente" "$PYTHON manage.py migrate --check"
   check "Journal hors de portée du compte applicatif (T16)" "$PYTHON manage.py check_journal_protection"
+  check "Analyse des dépôts opérationnelle (T15, clamd)" "$PYTHON manage.py check_upload_scan"
   if [ -n "${DEMO_PASSWORD:-}" ]; then echo "  OK     DEMO_PASSWORD fourni"; else echo "  MANQUE DEMO_PASSWORD (exigé à l'exécution, jamais dans le dépôt)"; status=1; fi
   check "Dossier de sauvegarde accessible en écriture ($BACKUP_ROOT)" \
     "{ [ -d '$BACKUP_ROOT' ] && [ -w '$BACKUP_ROOT' ]; } || [ -w '$(dirname "$BACKUP_ROOT")' ]"
@@ -79,7 +80,7 @@ Plan qui serait exécuté avec --confirm :
   3/6 Migrations et table de cache
   4/6 Journal hors de portée du compte applicatif (protect_journal.sql en administrateur, puis check_journal_protection)
   5/6 Jeu initial versionné DEMO-CI-v2 (seed_demo_scenario : Country Pack CI, 2 jalons et leurs pièces exigées, 7 comptes, programme, 2 lots, barème)
-  6/6 Vérification : check_demo_dataset (échoue s'il reste un écart)
+  6/6 Vérification : check_demo_dataset (échoue s'il reste un écart), puis check_upload_scan (analyse des dépôts, T15)
 PLAN
   exit $status
 fi
@@ -117,6 +118,8 @@ $PYTHON manage.py seed_demo_scenario
 
 echo "6/6 Vérification du jeu initial"
 $PYTHON manage.py check_demo_dataset
+# PO-2026-09-29-13 (T15) : sans moteur d'analyse joignable, tout dépôt est refusé.
+$PYTHON manage.py check_upload_scan
 
 cat <<MSG
 

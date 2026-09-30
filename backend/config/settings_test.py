@@ -86,3 +86,8 @@ KEYA_OFFLINE_SYNC_ENABLED = True
 # PO-2026-09-28-38 : idem pour les chantiers publics ; la coupure est testée
 # explicitement (apps/sales/test_audit_ui_r1_step8.py).
 KEYA_PUBLIC_WORKSITES_ENABLED = True
+# PO-2026-09-29-13 (T15) : les tests n'ont pas de moteur clamd. Moteur de
+# test qui ne connaît que le fichier de test antivirus standard (EICAR) ; le
+# client clamd réel est testé contre un faux serveur clamd
+# (apps/evidence/test_upload_scan.py).
+KEYA_UPLOAD_ANTIVIRUS = 'apps.evidence.testing.eicar_only_scan'
