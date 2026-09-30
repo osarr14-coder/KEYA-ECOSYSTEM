@@ -5,6 +5,8 @@ from corsheaders.defaults import default_headers
 from decouple import Csv, config
 from django.core.exceptions import ImproperlyConfigured
 
+from config.environment import read_environment
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-dev-only-change-me')
@@ -239,11 +241,11 @@ KEYA_UPLOAD_ANTIVIRUS = 'apps.evidence.scanning.clamd_scan'
 KEYA_CLAMD_ADDRESS = config('KEYA_CLAMD_ADDRESS', default='')
 KEYA_CLAMD_TIMEOUT_SECONDS = config('KEYA_CLAMD_TIMEOUT_SECONDS', default=30, cast=int)
 
-# ADR 0004 : environnement de ce déploiement — DEMO (défaut, seul servi
-# aujourd'hui), PILOTE ou PRODUCTION. Source unique de `apps.core.demo.ENVIRONMENT`.
-KEYA_ENVIRONMENT = config('KEYA_ENVIRONMENT', default='DEMO')
-if KEYA_ENVIRONMENT not in ('DEMO', 'PILOTE', 'PRODUCTION'):
-    raise ImproperlyConfigured(f'KEYA_ENVIRONMENT inconnu : {KEYA_ENVIRONMENT!r} (DEMO, PILOTE ou PRODUCTION).')
+# ADR 0004, PO-2026-09-30-08 : environnement de ce déploiement — DEMO, PILOTE
+# ou PRODUCTION, déclaré explicitement (render.yaml, .env). Aucune valeur par
+# défaut : absent ou invalide, l'application refuse de démarrer. Source unique
+# de `apps.core.demo.ENVIRONMENT`.
+KEYA_ENVIRONMENT = read_environment(config('KEYA_ENVIRONMENT', default=None))
 # PO-2026-09-30-07 (dérogation T15, CDC §11) : en DÉMO seulement, et sans
 # moteur antivirus configuré, les dépôts sont acceptés sans analyse
 # antivirale (l'analyse du contenu PDF et les contrôles de format restent

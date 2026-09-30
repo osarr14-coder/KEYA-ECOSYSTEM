@@ -80,11 +80,12 @@ Dérogation écrite du Product Owner (CDC §11) : sur Render, la démonstration 
 antivirus** ; ClamAV sera branché au Projet 1, avant tout usage réel. Le point 3 ci-dessus (« aucun
 réglage d'environnement ne désactive l'analyse ») connaît donc une exception, strictement bornée :
 
-- **Conditions cumulatives** : environnement DÉMO (`KEYA_ENVIRONMENT`, défaut `DEMO`), réglage
+- **Conditions cumulatives** : environnement DÉMO (`KEYA_ENVIRONMENT`, obligatoire et sans valeur par
+  défaut, PO-2026-09-30-08), réglage
   explicite `KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS`, **aucun** moteur configuré (`KEYA_CLAMD_ADDRESS`
   vide). Un moteur configuré est toujours utilisé, et son indisponibilité refuse le dépôt.
 - **Refus de démarrer** : les réglages lèvent une erreur si ce réglage est posé en PILOTE ou en
-  PRODUCTION, ou si `KEYA_ENVIRONMENT` est inconnu (serveur web et commandes).
+  PRODUCTION, ou si `KEYA_ENVIRONMENT` est absent ou inconnu (serveur web et commandes).
 - **Ce qui reste fait** : contrôles de format, analyse du contenu PDF (point 1), ré-encodage des images.
   Seule la recherche de signatures virales manque.
 - **Trace** : chaque document porte un statut antivirus (`analyse`, `non_analyse`, `infecte`) ; les

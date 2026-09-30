@@ -3,7 +3,11 @@
 import os
 import tempfile
 
-from .settings import *  # noqa: F401,F403
+# PO-2026-09-30-08 : KEYA_ENVIRONMENT n'a pas de valeur par défaut ; les tests
+# le déclarent ici (DEMO), sauf s'il l'est déjà dans l'environnement.
+os.environ.setdefault('KEYA_ENVIRONMENT', 'DEMO')
+
+from .settings import *  # noqa: E402,F401,F403
 
 # Déploiement (Render, voir DEPLOY_RENDER.md) — `SECURE_SSL_REDIRECT` vaut
 # `not DEBUG` dans settings.py ; `DEBUG` vaut False par défaut

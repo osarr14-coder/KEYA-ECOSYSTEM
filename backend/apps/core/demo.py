@@ -13,7 +13,7 @@ from django.db.models import Q
 
 from apps.core.models import DemoInstance, DemoInstanceStatus
 
-# ADR 0004 : environnement du déploiement (réglage KEYA_ENVIRONMENT, DEMO par défaut).
+# ADR 0004 : environnement du déploiement (réglage KEYA_ENVIRONMENT, obligatoire).
 ENVIRONMENT = settings.KEYA_ENVIRONMENT
 # Lot 5 (PO-2026-09-29-01) — instance consultée par la requête en cours,
 # posée par `OrganizationScopeMiddleware` quand l'en-tête
