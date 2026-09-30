@@ -63,6 +63,7 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 ## Constats ouverts
 
 - **T15 sur Render** : l'analyse des dépôts (PO-2026-09-29-13) exige un moteur ClamAV joignable ; sans lui, tout dépôt y serait refusé. Service à décider avec le PO avant tout déploiement. En local, installer la base de signatures officielle (`freshclam`) : la session de développement n'avait que la signature EICAR.
-- **T16 sur Render** : la protection du journal (PO-2026-09-29-10) n'y est pas appliquée ; faisabilité à vérifier avant tout déploiement.
+- **T16 sur Render** : la protection du journal (PO-2026-09-29-10) n'y est pas appliquée ; faisabilité à vérifier avant tout déploiement. Une simulation locale (30/09) montre que, posée par le seul compte fourni par Render, elle serait inopérante (le compte garde le droit de se réattribuer le rôle propriétaire) ; alternative validée au niveau SQL : compte d'exécution restreint.
+- **Vérification Render de T15 et T16** : procédure prête, non exécutée — `docs/exploitation/PROCEDURE_VERIFICATION_RENDER_T15_T16.md` (sur accord du PO).
 
 - **Revue indépendante §11** : à organiser.

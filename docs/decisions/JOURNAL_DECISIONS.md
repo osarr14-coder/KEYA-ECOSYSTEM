@@ -186,6 +186,8 @@ Auteur : Claude Code, par délégation du PO ; révisables par le PO à tout mom
 |---|---|
 | Candidature partenaire (PO-13) | Démontrée en DÉMO avec données fictives marquées ; candidatures réelles en PILOTE (ADR 0004). À confirmer. |
 | Examen des candidatures | Gestionnaire (proposé), administrateur à l'activation du compte, ou rôle « Partenariats » dédié. |
+| T16 sur Render (30/09) | Selon la phase A de `docs/exploitation/PROCEDURE_VERIFICATION_RENDER_T15_T16.md` : compte d'administration distinct (ADR 0005 tel quel), compte d'exécution restreint pour l'application (validé en simulation, modifie `render.yaml` et le mode de migration), ou dispositif compensatoire (CDC §11). |
+| T15 sur Render (30/09) | Hébergement du moteur ClamAV (service privé Render à dimensionner et chiffrer) ou, à défaut, dépôts refusés sur Render. |
 | Planification | Libellés traités à l'étape 2 (« promoteur » retiré, « constructeur » conservé). Parcours sponsor « Programme sur mesure » masqué avec les modules différés (R04, réglage `KEYA_DEFERRED_MODULES_ENABLED`) en attendant le lot « Écosystème partenaires » (propriété des programmes, ADR, onboarding). |
 
 ## Faits établis à l'étape 0 de l'audit (27 septembre 2026)

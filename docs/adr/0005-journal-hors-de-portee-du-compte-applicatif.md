@@ -70,6 +70,11 @@ que du journal, et ce découpage évite de refondre le déploiement.
   a priori, pas superutilisateur (non vérifié dans cette session) ; la faisabilité (création d'un rôle
   sans connexion, transfert de propriété) est **à vérifier avant tout déploiement**, sur
   accord du PO. À défaut, un dispositif compensatoire est à faire approuver (CDC §11).
+  **Simulation locale du 30/09** (PostgreSQL 16, compte unique comme sur Render) : posée par ce seul
+  compte, la protection est inopérante — le compte qui crée le rôle propriétaire en garde le droit
+  d'administration et peut se le réattribuer. Option validée au niveau SQL : compte d'exécution
+  restreint pour l'application, le compte Render restant propriétaire. Voir
+  `docs/exploitation/PROCEDURE_VERIFICATION_RENDER_T15_T16.md`.
 - Ce que cet ADR ne promet pas (CDC §10) : l'immutabilité absolue de l'infrastructure. Un
   superutilisateur ou le propriétaire du journal peut toujours le modifier ; ces comptes ne
   sont pas ceux de l'application.
