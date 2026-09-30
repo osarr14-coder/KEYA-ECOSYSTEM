@@ -3,6 +3,7 @@ from pathlib import Path
 
 from corsheaders.defaults import default_headers
 from decouple import Csv, config
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -237,6 +238,24 @@ KEYA_PUBLIC_WORKSITES_ENABLED = config('KEYA_PUBLIC_WORKSITES_ENABLED', default=
 KEYA_UPLOAD_ANTIVIRUS = 'apps.evidence.scanning.clamd_scan'
 KEYA_CLAMD_ADDRESS = config('KEYA_CLAMD_ADDRESS', default='')
 KEYA_CLAMD_TIMEOUT_SECONDS = config('KEYA_CLAMD_TIMEOUT_SECONDS', default=30, cast=int)
+
+# ADR 0004 : environnement de ce déploiement — DEMO (défaut, seul servi
+# aujourd'hui), PILOTE ou PRODUCTION. Source unique de `apps.core.demo.ENVIRONMENT`.
+KEYA_ENVIRONMENT = config('KEYA_ENVIRONMENT', default='DEMO')
+if KEYA_ENVIRONMENT not in ('DEMO', 'PILOTE', 'PRODUCTION'):
+    raise ImproperlyConfigured(f'KEYA_ENVIRONMENT inconnu : {KEYA_ENVIRONMENT!r} (DEMO, PILOTE ou PRODUCTION).')
+# PO-2026-09-30-07 (dérogation T15, CDC §11) : en DÉMO seulement, et sans
+# moteur antivirus configuré, les dépôts sont acceptés sans analyse
+# antivirale (l'analyse du contenu PDF et les contrôles de format restent
+# actifs), chacun tracé au journal avec son empreinte, puis repassés au
+# moteur dès qu'il est branché (`manage.py rescan_unscanned_documents`).
+# Refus de démarrer ailleurs qu'en DÉMO.
+KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS = config('KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS', default=False, cast=bool)
+if KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS and KEYA_ENVIRONMENT != 'DEMO':
+    raise ImproperlyConfigured(
+        'KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS est réservé à la DÉMO (PO-2026-09-30-07) : '
+        f'refusé en {KEYA_ENVIRONMENT}. Configurer KEYA_CLAMD_ADDRESS.'
+    )
 
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 

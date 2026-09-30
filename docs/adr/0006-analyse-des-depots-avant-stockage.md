@@ -73,3 +73,31 @@ un fichier n'est jamais « en attente ». Il est analysé puis accepté, ou refu
 - Ce que cet ADR ne promet pas : détecter une menace inconnue des signatures, ou un contenu actif
   hors de la liste ci-dessus. Les PDF sont servis en téléchargement (`as_attachment`), jamais rendus
   par l'application.
+
+## Avenant du 30 septembre 2026 — dérogation de la DÉMO (PO-2026-09-30-07)
+
+Dérogation écrite du Product Owner (CDC §11) : sur Render, la démonstration fonctionne **sans moteur
+antivirus** ; ClamAV sera branché au Projet 1, avant tout usage réel. Le point 3 ci-dessus (« aucun
+réglage d'environnement ne désactive l'analyse ») connaît donc une exception, strictement bornée :
+
+- **Conditions cumulatives** : environnement DÉMO (`KEYA_ENVIRONMENT`, défaut `DEMO`), réglage
+  explicite `KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS`, **aucun** moteur configuré (`KEYA_CLAMD_ADDRESS`
+  vide). Un moteur configuré est toujours utilisé, et son indisponibilité refuse le dépôt.
+- **Refus de démarrer** : les réglages lèvent une erreur si ce réglage est posé en PILOTE ou en
+  PRODUCTION, ou si `KEYA_ENVIRONMENT` est inconnu (serveur web et commandes).
+- **Ce qui reste fait** : contrôles de format, analyse du contenu PDF (point 1), ré-encodage des images.
+  Seule la recherche de signatures virales manque.
+- **Trace** : chaque document porte un statut antivirus (`analyse`, `non_analyse`, `infecte`) ; les
+  dépôts acceptés sans moteur sont « non analysés » et tracés au journal (« Dépôt accepté sans
+  antivirus », empreinte sha256, taille, type). Les documents antérieurs à l'analyse des dépôts sont
+  aussi « non analysés » (migration `evidence.0005`).
+- **Retour à la règle** : dès le moteur branché, `manage.py rescan_unscanned_documents` repasse chaque
+  document « non analysé » (analyse du contenu PDF puis antivirus, sur le fichier stocké — les images
+  ont été ré-encodées au dépôt). Sain : « analysé » ; détecté : « détecté », **plus servi** (lien signé
+  refusé), conservé pour l'enquête ; chaque résultat est tracé au journal. La commande refuse de tourner
+  tant que la dérogation est active, et s'interrompt si le moteur tombe (les documents non traités
+  restent « non analysés »). Retirer ensuite le réglage de la dérogation.
+- **Limite assumée** : sous la dérogation, un fichier porteur d'une signature virale connue est
+  accepté (il ne sera détecté qu'à l'analyse rétroactive). Acceptable pour une démonstration où seuls
+  les comptes de démonstration, tenus par KEYIMMO, déposent des fichiers ; **jamais** en PILOTE ou
+  en PRODUCTION.

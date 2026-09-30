@@ -69,6 +69,10 @@ AUDIT_LABELS = {
     'access.denied': ('Tentative refusée (droits insuffisants)', ''),
     # PO-2026-09-29-13 (T15) : fichier refusé par l'analyse, rien d'enregistré.
     'document.upload_rejected': ('Dépôt refusé à l’analyse (fichier non enregistré)', ''),
+    # PO-2026-09-30-07 (dérogation T15 en DÉMO).
+    'document.accepted_without_antivirus': ('Dépôt accepté sans antivirus (dérogation DÉMO)', ''),
+    'document.rescanned_clean': ('Document analysé après coup : sain', ''),
+    'document.quarantined': ('Document détecté à l’analyse : plus servi', ''),
 }
 
 # Chaîne chantier : (type de sujet, source) → (libellé, rôle attendu).

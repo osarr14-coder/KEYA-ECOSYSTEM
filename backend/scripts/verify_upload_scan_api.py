@@ -19,6 +19,11 @@ Mode normal (moteur antivirus en service) :
     plus par dépôt refusé.
 Mode --moteur-arrete (moteur antivirus suspendu par l'exploitant) :
   - PDF sain → 503 « Analyse des fichiers momentanément indisponible ».
+Mode --derogation-demo (PO-2026-09-30-07 : DÉMO sans moteur) :
+  - PDF sain → 201, tracé « Dépôt accepté sans antivirus » au journal ;
+  - PDF avec JavaScript, PDF chiffré → 400 (l'analyse du contenu reste faite) ;
+  - le fichier EICAR n'est PAS envoyé : sans moteur il serait accepté et
+    stocké.
 Code de sortie 0 si tout est conforme, 1 sinon.
 """
 import argparse
@@ -39,6 +44,7 @@ ENCRYPTED = 'Fichier refusé : PDF chiffré ou protégé'
 VIRUS = 'Fichier refusé : l’analyse a détecté un contenu dangereux'
 UNAVAILABLE = 'Analyse des fichiers momentanément indisponible'
 REJECTION_ACTION = 'document.upload_rejected'
+WAIVED_ACTION = 'document.accepted_without_antivirus'
 LOGIN_SPACING_SECONDS = 13  # limite de débit de la connexion
 
 
@@ -123,7 +129,10 @@ def main():
     parser.add_argument('--api', required=True, help='URL du backend, ex. https://keya-ecosystem-backend.onrender.com')
     parser.add_argument('--constructeur', default='constructeur.demo@keya.test')
     parser.add_argument('--admin', default='admin.demo@keya.test')
-    parser.add_argument('--moteur-arrete', action='store_true', help='le moteur antivirus a été suspendu : attendre 503')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--moteur-arrete', action='store_true', help='le moteur antivirus a été suspendu : attendre 503')
+    mode.add_argument('--derogation-demo', action='store_true',
+                      help='DÉMO sans moteur (PO-2026-09-30-07) : dépôts acceptés sans antivirus et tracés')
     args = parser.parse_args()
     password = os.environ.get('DEMO_PASSWORD')
     if not password:
@@ -147,17 +156,22 @@ def main():
         last_id = max((item['id'] for item in api.journal(admin)), default=0)
         status, body = api.upload(builder, CLEAN)
         check('PDF sain (contrôle positif)', status, body, 201)
-        for label, content, text in (
-            ('PDF avec JavaScript', JAVASCRIPT, ACTIVE),
-            ('PDF chiffré', ENCRYPTED_PDF, ENCRYPTED),
-            ('PDF portant le fichier de test EICAR (antivirus)', EICAR_PDF, VIRUS),
-        ):
+        refused = [('PDF avec JavaScript', JAVASCRIPT, ACTIVE), ('PDF chiffré', ENCRYPTED_PDF, ENCRYPTED)]
+        if not args.derogation_demo:
+            refused.append(('PDF portant le fichier de test EICAR (antivirus)', EICAR_PDF, VIRUS))
+        for label, content, text in refused:
             status, body = api.upload(builder, content)
             check(label, status, body, 400, text)
-        added = sum(1 for item in api.journal(admin) if item['id'] > last_id and item.get('action') == REJECTION_ACTION)
-        ok = added == 3
+        journal = [item for item in api.journal(admin) if item['id'] > last_id]
+        added = sum(1 for item in journal if item.get('action') == REJECTION_ACTION)
+        ok = added == len(refused)
         results.append(ok)
-        print(f'{"CONFORME" if ok else "ÉCART   "}  journal de l’administrateur : {added} refus « Dépôt refusé à l’analyse » ajouté(s) (attendu 3)')
+        print(f'{"CONFORME" if ok else "ÉCART   "}  journal de l’administrateur : {added} refus « Dépôt refusé à l’analyse » ajouté(s) (attendu {len(refused)})')
+        waived = sum(1 for item in journal if item.get('action') == WAIVED_ACTION)
+        expected = 1 if args.derogation_demo else 0
+        ok = waived == expected
+        results.append(ok)
+        print(f'{"CONFORME" if ok else "ÉCART   "}  journal de l’administrateur : {waived} dépôt(s) accepté(s) sans antivirus (attendu {expected})')
 
     print(f'\n{sum(results)}/{len(results)} conforme(s).')
     return 0 if all(results) else 1

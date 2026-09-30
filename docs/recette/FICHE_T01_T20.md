@@ -12,7 +12,7 @@
 | Date | 29 septembre 2026, 00:50 → 02:10 (GMT) |
 | Environnement | Pile **locale** uniquement (Render non touché). Blocage d'**1 h** pour T02 (arbitrage A7, local seulement), **remis à 24 h** à la fin |
 | Outillage | Interface seule (Playwright, comptes de démonstration, clavier seul pour T20), API (jeton du compte concerné), suites automatisées |
-| Suites | Backend : 775 passés ; front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
+| Suites | Backend : 784 passés ; front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés hors ligne), design system 246 ; 0 erreur de types |
 | Relecteur | **À désigner** (revue indépendante §11) — procédure : `docs/recette/PROCEDURE_REVUE_INDEPENDANTE.md` |
 
 Légende des modes : **Écran** (rejoué par l'interface, sans intervention en base), **API** (requête
@@ -46,7 +46,7 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 
 ## Résultat des suites
 
-- Backend : **775 passés**, 0 échec (suite complète après PO-2026-09-30-01, exécutée en trois lots de 258, 239 et 278 tests ; 768 après PO-2026-09-29-13, en deux passages de 657 et 111 à cause de redémarrages du conteneur ; 754 après PO-2026-09-29-12, 751 après PO-2026-09-29-11, 747 après PO-2026-09-29-10, 736 après PO-2026-09-29-09, 728 après PO-2026-09-29-05).
+- Backend : **784 passés**, 0 échec (suite complète après PO-2026-09-30-07, en trois lots de 257, 249 et 278 tests — les 2 tests d'intégration Celery, ignorés au premier passage faute de Redis, repassés ensuite ; 775 après PO-2026-09-30-01, en trois lots de 258, 239 et 278 ; 768 après PO-2026-09-29-13, en deux passages de 657 et 111 à cause de redémarrages du conteneur ; 754 après PO-2026-09-29-12, 751 après PO-2026-09-29-11, 747 après PO-2026-09-29-10, 736 après PO-2026-09-29-09, 728 après PO-2026-09-29-05).
 - Front : web 352, BUILD 114, HOME 141, Contrôle 88 (+2 ignorés, mode hors ligne différé, PO-37/PO-58), design system 246 ; `tsc` sans erreur sur les 5 espaces.
 
 ## Constats du rejeu (corrigés pendant la vérification)
@@ -62,7 +62,7 @@ Résultats : CONFORME, PARTIEL, NON CONFORME, NOT_TESTED.
 
 ## Constats ouverts
 
-- **T15 sur Render** : l'analyse des dépôts (PO-2026-09-29-13) exige un moteur ClamAV joignable ; sans lui, tout dépôt y serait refusé. Service à décider avec le PO avant tout déploiement. En local, installer la base de signatures officielle (`freshclam`) : la session de développement n'avait que la signature EICAR.
+- **T15 sur Render** : décidé le 30/09 (PO-2026-09-30-07, dérogation écrite, CDC §11) — la démonstration fonctionne sans moteur antivirus : dépôts acceptés sans antivirus en DÉMO seulement, analyse du contenu PDF et contrôles de format maintenus, chaque dépôt tracé (empreinte), analyse rétroactive au branchement du moteur ; ClamAV au Projet 1, avant tout usage réel. Refus de démarrer hors DÉMO. Tests : `evidence/test_antivirus_waiver.py` (9). En local, installer la base de signatures officielle (`freshclam`) : la session de développement n'avait que la signature EICAR.
 - **T16 sur Render** : la protection du journal (PO-2026-09-29-10) n'y est pas appliquée ; faisabilité à vérifier avant tout déploiement. Une simulation locale (30/09) montre que, posée par le seul compte fourni par Render, elle serait inopérante (le compte garde le droit de se réattribuer le rôle propriétaire) ; alternative validée au niveau SQL : compte d'exécution restreint.
 - **Vérification Render de T15 et T16** : procédure prête, non exécutée — `docs/exploitation/PROCEDURE_VERIFICATION_RENDER_T15_T16.md` (sur accord du PO).
 

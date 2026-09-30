@@ -14,7 +14,7 @@ from apps.core.viewsets import OrganizationScopedMixin
 from apps.messaging.mixins import MessageThreadMixin
 
 from . import access, services
-from .models import Document, Evidence, WorkDeclaration
+from .models import AntivirusStatus, Document, Evidence, WorkDeclaration
 from .permissions import IsConstructeur
 from .serializers import (
     DocumentSerializer,
@@ -135,6 +135,10 @@ class DocumentDownloadView(APIView):
         # PO-2026-09-29-12 (A6) : un lien signé obtenu avant l'archivage ne
         # sert plus un document d'une archive.
         if not Document.objects.filter(id=document.id).filter(document_instance_scope()).exists():
+            raise Http404
+        # PO-2026-09-30-07 : un fichier détecté à l'analyse rétroactive n'est
+        # plus servi (il reste en base, pour l'enquête).
+        if document.antivirus_status == AntivirusStatus.INFECTE:
             raise Http404
 
         return FileResponse(document.file.open('rb'), as_attachment=True, filename=document.file.name)

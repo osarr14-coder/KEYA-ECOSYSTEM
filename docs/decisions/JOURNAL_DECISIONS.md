@@ -185,13 +185,13 @@ Auteur : Claude Code, par délégation du PO ; révisables par le PO à tout mom
 | PO-2026-09-30-04 | Candidature partenaire (suite de PO-2026-09-27-13) | **En DÉMO, candidatures fictives marquées ; candidatures réelles en PILOTE seulement** (ADR 0004). Aucun parcours de candidature dans le R1 (pas d'inscription publique, R01) : à construire dans le lot « Écosystème partenaires ». | Product Owner | Lot « Écosystème partenaires ». |
 | PO-2026-09-30-05 | Examen des candidatures partenaires | **Le gestionnaire examine et propose ; l'administrateur active le compte** (séparation des tâches). Pas de rôle « Partenariats » dédié à ce stade. | Product Owner | Lot « Écosystème partenaires ». |
 | PO-2026-09-30-06 | Parcours sponsor « Programme sur mesure » | **Reste masqué dans le R1** avec les modules différés (R04, `KEYA_DEFERRED_MODULES_ENABLED`), code conservé ; repris dans le lot « Écosystème partenaires » après l'ADR sur la propriété des programmes par KEYIMMO. | Product Owner | Lot « Écosystème partenaires ». |
+| PO-2026-09-30-07 | T15 sur Render — dérogation écrite (CDC §11) | **Dispositif compensatoire pour la démonstration ; antivirus ClamAV au Projet 1, avant tout usage réel.** En DÉMO seulement, sur réglage explicite (`KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS`) et sans moteur configuré, les dépôts sont acceptés sans analyse antivirale ; l'analyse du contenu PDF (scripts, programmes, fichiers embarqués, PDF chiffrés) et les contrôles de format restent faits. Chaque dépôt ainsi accepté est tracé au journal (« Dépôt accepté sans antivirus », empreinte sha256) et le document porte le statut « non analysé ». L'application refuse de démarrer avec ce réglage en PILOTE ou en PRODUCTION (`KEYA_ENVIRONMENT`). Dès que le moteur est branché : analyse rétroactive (`manage.py rescan_unscanned_documents`), un document détecté n'est plus servi. Réponse type : « Formats et contenus sont contrôlés ; l'analyse antivirale est prévue avant tout usage réel. » | Product Owner | `apps/evidence/scanning.py`, réglages, commande `rescan_unscanned_documents`, avenant à l'ADR 0006, `render.yaml`. |
 
 ## En attente d'arbitrage (mis à jour le 30 septembre 2026)
 
 | Sujet | Question au PO |
 |---|---|
 | T16 sur Render (30/09) | Selon la phase A de `docs/exploitation/PROCEDURE_VERIFICATION_RENDER_T15_T16.md` : compte d'administration distinct (ADR 0005 tel quel), compte d'exécution restreint pour l'application (validé en simulation, modifie `render.yaml` et le mode de migration), ou dispositif compensatoire (CDC §11). |
-| T15 sur Render (30/09) | Hébergement du moteur ClamAV (service privé Render à dimensionner et chiffrer) ou, à défaut, dépôts refusés sur Render. |
 
 ## Faits établis à l'étape 0 de l'audit (27 septembre 2026)
 

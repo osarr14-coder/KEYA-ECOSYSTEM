@@ -5,8 +5,8 @@ from rest_framework.exceptions import ValidationError
 from apps.trust import repository as trust_repository
 from apps.trust.models import TrustLevel
 
-from .models import Document, DocumentVisibility, Evidence, SensitivityLevel, WorkDeclaration
-from .scanning import ensure_scanned
+from .models import AntivirusStatus, Document, DocumentVisibility, Evidence, SensitivityLevel, WorkDeclaration
+from .scanning import ACCEPTED_WITHOUT_ANTIVIRUS, ensure_scanned
 from .tasks import process_document_media
 from .validators import EXTENSION_BY_KIND, IMAGE_KINDS, detect_document_kind
 
@@ -57,7 +57,18 @@ def create_document(
         hash=file_hash,
         duplicate_of=duplicate_of,
         file=uploaded_file,
+        antivirus_status=uploaded_file.keya_antivirus_status,
     )
+    if document.antivirus_status == AntivirusStatus.NON_ANALYSE:
+        # PO-2026-09-30-07 : chaque dépôt accepté sans antivirus (dérogation
+        # de la DÉMO) est tracé, avec son empreinte, pour être repassé au
+        # moteur dès qu'il sera branché.
+        from apps.audit import services as audit_services
+
+        audit_services.record(
+            organization_id=organization.id, actor=owner, action=ACCEPTED_WITHOUT_ANTIVIRUS, obj=document,
+            payload={'sha256': file_hash, 'size': uploaded_file.size, 'kind': kind or '', 'derogation': 'PO-2026-09-30-07'},
+        )
 
     if kind in IMAGE_KINDS:
         # organization_id/owner sont transmis explicitement : un worker

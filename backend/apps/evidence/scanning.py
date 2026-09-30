@@ -21,9 +21,17 @@ ou refusé sans que rien ne soit écrit (ni fichier, ni Document). Deux
    commande INSTREAM) configuré par `KEYA_CLAMD_ADDRESS`.
 
 Fermeture par défaut : moteur non configuré, injoignable, en erreur ou
-réponse illisible → dépôt refusé (503), rien d'enregistré. Aucun réglage
-d'environnement ne désactive l'analyse (`KEYA_UPLOAD_ANTIVIRUS` ne se
-change que dans le code des réglages : settings_test.py).
+réponse illisible → dépôt refusé (503), rien d'enregistré. Le moteur n'est
+pas réglable par l'environnement (`KEYA_UPLOAD_ANTIVIRUS` ne se change que
+dans le code des réglages : settings_test.py).
+
+Seule exception, PO-2026-09-30-07 (dérogation écrite, CDC §11) : en DÉMO,
+avec `KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS` et sans moteur configuré, le
+dépôt est accepté sans antivirus — l'analyse du contenu PDF et les
+contrôles de format restent faits —, le document porte le statut « non
+analysé » et chaque dépôt est tracé au journal avec son empreinte. Dès que
+le moteur est branché, `manage.py rescan_unscanned_documents` repasse ces
+documents. Les réglages refusent le démarrage de cette exception hors DÉMO.
 """
 import hashlib
 import logging
@@ -55,6 +63,9 @@ UNAVAILABLE_MESSAGE = (
 )
 
 AUDIT_ACTION = 'document.upload_rejected'
+ACCEPTED_WITHOUT_ANTIVIRUS = 'document.accepted_without_antivirus'
+RESCANNED_CLEAN = 'document.rescanned_clean'
+QUARANTINED = 'document.quarantined'
 
 # Noms PDF qui portent une exécution ou un contenu caché (CDC §10 « refuser
 # les formats actifs »). Les liens `/URI`, formulaires simples et
@@ -210,17 +221,44 @@ def clamd_scan(data):
     raise ScanUnavailable()
 
 
-def scan_before_storage(uploaded_file, kind):
-    """Analyse complète ; renvoie l'empreinte sha256 du fichier analysé.
-    Lève `ScanRejected` (contenu refusé) ou `ScanUnavailable`."""
-    uploaded_file.seek(0)
-    data = uploaded_file.read()
-    uploaded_file.seek(0)
+def antivirus_waived():
+    """PO-2026-09-30-07 (dérogation T15, CDC §11) : vrai seulement en DÉMO,
+    avec le réglage explicite, et sans moteur configuré. Un moteur configuré
+    est toujours utilisé (et son absence refuse le dépôt)."""
+    return (
+        settings.KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS
+        and settings.KEYA_ENVIRONMENT == 'DEMO'
+        and not getattr(settings, 'KEYA_CLAMD_ADDRESS', '')
+    )
+
+
+def scan_data(data, kind):
+    """Analyse du contenu PDF puis antivirus. Lève `ScanRejected` ou
+    `ScanUnavailable` ; ne regarde pas la dérogation."""
     if kind == 'pdf':
         analyse_pdf(data)
     signature = import_string(settings.KEYA_UPLOAD_ANTIVIRUS)(data)
     if signature:
         raise ScanRejected('antivirus', REJECTED_MESSAGE, signature)
+
+
+def scan_before_storage(uploaded_file, kind):
+    """Analyse complète ; renvoie l'empreinte sha256 du fichier analysé et
+    pose `keya_antivirus_status` sur le fichier. Lève `ScanRejected` (contenu
+    refusé) ou `ScanUnavailable`. Sous la dérogation de la DÉMO, l'analyse du
+    contenu PDF est faite, l'antivirus ne l'est pas (statut « non analysé »)."""
+    from .models import AntivirusStatus
+
+    uploaded_file.seek(0)
+    data = uploaded_file.read()
+    uploaded_file.seek(0)
+    if antivirus_waived():
+        if kind == 'pdf':
+            analyse_pdf(data)
+        uploaded_file.keya_antivirus_status = AntivirusStatus.NON_ANALYSE
+    else:
+        scan_data(data, kind)
+        uploaded_file.keya_antivirus_status = AntivirusStatus.ANALYSE
     uploaded_file.keya_scanned_sha256 = hashlib.sha256(data).hexdigest()
     return uploaded_file.keya_scanned_sha256
 

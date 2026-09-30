@@ -77,6 +77,13 @@ services:
       # tournent en synchrone dans la requête plutôt qu'en arrière-plan.
       - key: CELERY_TASK_ALWAYS_EAGER
         value: "True"
+      # PO-2026-09-30-07 (dérogation T15, ADR 0006 avenant) : démonstration
+      # sans moteur antivirus ; dépôts acceptés sans antivirus, tracés au
+      # journal, repassés au moteur au Projet 1. Refusé hors DÉMO.
+      - key: KEYA_ENVIRONMENT
+        value: DEMO
+      - key: KEYA_DEMO_UPLOADS_WITHOUT_ANTIVIRUS
+        value: "True"
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD

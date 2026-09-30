@@ -20,6 +20,18 @@ class SensitivityLevel(models.TextChoices):
     CONFIDENTIEL = 'confidentiel', 'Confidentiel'
 
 
+class AntivirusStatus(models.TextChoices):
+    """PO-2026-09-29-13 et PO-2026-09-30-07 (T15) — ce que l'antivirus a dit
+    du fichier stocké. `non_analyse` : accepté sans moteur (dispositif
+    compensatoire de la DÉMO) ou déposé avant l'analyse des dépôts ; repassé
+    au moteur par `manage.py rescan_unscanned_documents`. `infecte` : détecté
+    à cette nouvelle analyse — le fichier n'est plus servi."""
+
+    ANALYSE = 'analyse', 'Analysé'
+    NON_ANALYSE = 'non_analyse', 'Non analysé'
+    INFECTE = 'infecte', 'Détecté — non servi'
+
+
 class DocumentVisibility(models.TextChoices):
     """Audience visée pour un document — distincte de `sensitivity_level`
     (qui conditionne l'accès technique) : c'est une intention d'usage
@@ -90,6 +102,11 @@ class Document(models.Model):
     source = models.CharField(max_length=100)
     captured_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Défaut prudent : un document dont l'analyse n'est pas attestée est
+    # « non analysé » (y compris ceux déposés avant PO-2026-09-29-13).
+    antivirus_status = models.CharField(
+        max_length=20, choices=AntivirusStatus.choices, default=AntivirusStatus.NON_ANALYSE,
+    )
 
     class Meta:
         db_table = 'evidence_document'
