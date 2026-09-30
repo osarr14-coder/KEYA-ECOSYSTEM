@@ -3,6 +3,13 @@ que le journal est hors de sa portée : il ne possède ni la base, ni le
 schéma, ni les tables `audit_event`/`trust_event`, ni leurs fonctions de
 trigger, et n'a sur ces tables que la lecture et l'ajout. Lecture seule.
 
+Complété après la simulation d'un hébergement à compte unique (procédure
+docs/exploitation/PROCEDURE_VERIFICATION_RENDER_T15_T16.md) : le compte ne
+doit être ni superutilisateur, ni dispensé de la RLS (BYPASSRLS), ni
+capable de s'attribuer le rôle propriétaire (option d'administration sur ce
+rôle, ou CREATEROLE avant PostgreSQL 16) — sinon il peut à tout moment
+redevenir propriétaire du journal.
+
 La protection elle-même est posée par un administrateur Postgres
 (`scripts/sql/protect_journal.sql`) : le compte applicatif ne peut pas se
 retirer ses propres droits de propriétaire. Voir l'ADR 0005.
@@ -12,14 +19,32 @@ from django.db import connection
 JOURNAL_TABLES = ('audit_event', 'trust_event')
 TRIGGER_FUNCTIONS = ('audit_event_reject_mutation', 'trust_event_reject_mutation')
 FORBIDDEN_PRIVILEGES = ('UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES')
+OWNER_ROLE = 'keya_ecosystem_owner'
+# Avant PostgreSQL 16, CREATEROLE permet d'accorder n'importe quel rôle non
+# superutilisateur, donc de s'accorder le rôle propriétaire.
+PG16 = 160000
 
 
-def collect_facts():
-    """Faits lus dans le catalogue Postgres, pour le compte connecté."""
-    facts = {'tables': {}, 'functions': {}}
+def collect_facts(owner_role=OWNER_ROLE):
+    """Faits lus dans le catalogue Postgres, pour le compte connecté.
+    `owner_role` : rôle censé posséder le journal (ADR 0005 par défaut ; le
+    compte fourni par l'hébergeur dans l'option « compte d'exécution
+    restreint »)."""
+    facts = {'tables': {}, 'functions': {}, 'owner_role': owner_role}
     with connection.cursor() as cursor:
-        cursor.execute('SELECT current_user')
-        facts['role'] = cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT current_user, rolsuper, rolbypassrls, rolcreaterole, current_setting('server_version_num')::int "
+            'FROM pg_roles WHERE rolname = current_user',
+        )
+        facts['role'], facts['superuser'], facts['bypassrls'], facts['createrole'], facts['server_version_num'] = (
+            cursor.fetchone()
+        )
+        cursor.execute(
+            'SELECT EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid '
+            'JOIN pg_roles a ON a.oid = m.member WHERE r.rolname = %s AND a.rolname = current_user AND m.admin_option)',
+            [owner_role],
+        )
+        facts['owner_role_admin_option'] = cursor.fetchone()[0]
         cursor.execute(
             "SELECT pg_has_role(current_user, datdba, 'MEMBER') FROM pg_database WHERE datname = current_database()",
         )
@@ -55,7 +80,15 @@ def evaluate(facts):
     """Liste de `(conforme, libellé)` ; conforme = le compte applicatif ne
     peut ni modifier ni supprimer le journal."""
     role = facts['role']
+    can_grant_owner = facts['owner_role_admin_option'] or (
+        facts['createrole'] and facts['server_version_num'] < PG16
+    )
     checks = [
+        (not facts['superuser'], f'{role} n’est pas superutilisateur'),
+        (not facts['bypassrls'], f'{role} n’est pas dispensé de la RLS (BYPASSRLS)'),
+        (not can_grant_owner,
+         f'{role} ne peut pas s’attribuer le rôle propriétaire {facts["owner_role"]} (ni option '
+         'd’administration, ni CREATEROLE avant PostgreSQL 16)'),
         (not facts['database_owner'], f'{role} ne possède pas la base'),
         (not facts['schema_owner'], f'{role} ne possède pas le schéma public (il ne peut pas supprimer une table du journal)'),
     ]

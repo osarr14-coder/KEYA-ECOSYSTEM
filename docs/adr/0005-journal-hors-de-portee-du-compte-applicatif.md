@@ -43,7 +43,9 @@ Séparer **qui possède** le journal de **qui l'utilise** :
    `manage.py check_journal_protection`, qui échoue tant qu'un moyen de modifier ou de supprimer
    le journal subsiste (propriété de la base, du schéma, des tables ou des fonctions ; droit
    `UPDATE`, `DELETE`, `TRUNCATE`, `TRIGGER` ou `REFERENCES` ; RLS non forcée ; trigger
-   désactivé).
+   désactivé). Complété le 30/09 (PO-2026-09-30-01) : compte superutilisateur, compte dispensé de
+   la RLS (BYPASSRLS), compte capable de s'attribuer le rôle propriétaire (option d'administration,
+   ou CREATEROLE avant PostgreSQL 16) ; `--proprietaire` désigne un autre rôle propriétaire.
 
 Les tables métier restent possédées par le compte applicatif : le CDC ne demande la protection
 que du journal, et ce découpage évite de refondre le déploiement.
